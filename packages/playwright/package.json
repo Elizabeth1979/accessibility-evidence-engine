@@ -1,0 +1,16 @@
+{
+  "name": "@aee/playwright",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@aee/core": "0.1.0",
+    "@aee/judges": "0.1.0",
+    "@aee/observers": "0.1.0",
+    "@aee/reporter": "0.1.0",
+    "@aee/schemas": "0.1.0"
+  }
+}

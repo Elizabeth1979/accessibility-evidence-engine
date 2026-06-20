@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/run.schema.json",
+  "title": "AEE Run",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "startedAt",
+    "status"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "version": {
+      "type": "string"
+    },
+    "startedAt": {
+      "$ref": "./common.schema.json#/$defs/isoTimestamp"
+    },
+    "finishedAt": {
+      "$ref": "./common.schema.json#/$defs/isoTimestamp"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "checkpoints": {
+      "type": "array",
+      "items": {
+        "$ref": "./checkpoint.schema.json"
+      }
+    },
+    "interactions": {
+      "type": "array",
+      "items": {
+        "$ref": "./interaction.schema.json"
+      }
+    },
+    "results": {
+      "type": "object",
+      "properties": {
+        "pass": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "fail": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object"
+    },
+    "config": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
+

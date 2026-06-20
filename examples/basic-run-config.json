@@ -1,0 +1,26 @@
+{
+  "version": "0.1.0",
+  "projectRoot": "..",
+  "fixturePath": "./basic-fixture.json",
+  "outputDir": "aee-output",
+  "policy": {
+    "name": "default"
+  },
+  "observers": [
+    "dom",
+    "accessibility-tree"
+  ],
+  "judges": [
+    "structure",
+    "release"
+  ],
+  "checkpointName": "fixture-start",
+  "interaction": {
+    "kind": "custom",
+    "actor": "engine",
+    "target": {
+      "role": "document",
+      "name": "Fixture page"
+    }
+  }
+}

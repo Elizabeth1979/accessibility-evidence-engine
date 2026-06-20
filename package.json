@@ -1,0 +1,21 @@
+{
+  "name": "accessibility-evidence-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Evidence-based accessibility investigations for Playwright flows.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
+    "playwright:install": "playwright install chromium",
+    "test:playwright": "npm run build && playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}

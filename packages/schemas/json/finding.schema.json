@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/finding.schema.json",
+  "title": "AEE Finding",
+  "type": "object",
+  "required": [
+    "id",
+    "message",
+    "severity",
+    "evidenceRecordIds"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "message": {
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "./common.schema.json#/$defs/severity"
+    },
+    "ruleId": {
+      "type": "string"
+    },
+    "target": {
+      "$ref": "./common.schema.json#/$defs/targetDescriptor"
+    },
+    "evidenceRecordIds": {
+      "type": "array",
+      "items": {
+        "$ref": "./common.schema.json#/$defs/uid"
+      }
+    },
+    "artifactIds": {
+      "type": "array",
+      "items": {
+        "$ref": "./common.schema.json#/$defs/uid"
+      }
+    },
+    "suggestedFix": {
+      "type": "string"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": false
+}
+

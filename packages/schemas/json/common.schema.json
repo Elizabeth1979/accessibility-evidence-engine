@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/common.schema.json",
+  "title": "AEE Common Definitions",
+  "$defs": {
+    "uid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "isoTimestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "artifactKind": {
+      "type": "string",
+      "enum": [
+        "screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "network-log",
+        "screen-reader-log",
+        "trace",
+        "video",
+        "custom"
+      ]
+    },
+    "artifactRef": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "path"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/uid"
+        },
+        "kind": {
+          "$ref": "#/$defs/artifactKind"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string"
+        },
+        "contentHash": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "targetDescriptor": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "selector": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "nodePath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "fail",
+        "unknown"
+      ]
+    }
+  }
+}
+

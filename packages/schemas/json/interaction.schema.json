@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/interaction.schema.json",
+  "title": "AEE Interaction",
+  "type": "object",
+  "required": [
+    "id",
+    "runId",
+    "timestamp",
+    "actor",
+    "kind"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "runId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "checkpointId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "timestamp": {
+      "$ref": "./common.schema.json#/$defs/isoTimestamp"
+    },
+    "actor": {
+      "type": "string",
+      "enum": [
+        "test",
+        "engine",
+        "user-script"
+      ]
+    },
+    "kind": {
+      "type": "string"
+    },
+    "target": {
+      "$ref": "./common.schema.json#/$defs/targetDescriptor"
+    },
+    "input": {
+      "type": "string"
+    },
+    "meta": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
+

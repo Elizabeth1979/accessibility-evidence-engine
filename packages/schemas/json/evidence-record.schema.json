@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/evidence-record.schema.json",
+  "title": "AEE Evidence Record",
+  "type": "object",
+  "required": [
+    "id",
+    "runId",
+    "observerId",
+    "phase",
+    "status",
+    "timestamp"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "runId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "checkpointId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "interactionId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "observerId": {
+      "type": "string"
+    },
+    "observerVersion": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "before",
+        "after",
+        "continuous"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "unsupported",
+        "no_signal",
+        "observer_error",
+        "timeout"
+      ]
+    },
+    "timestamp": {
+      "$ref": "./common.schema.json#/$defs/isoTimestamp"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "summary": {
+      "type": "string"
+    },
+    "beforeStateRef": {
+      "$ref": "./common.schema.json#/$defs/artifactRef"
+    },
+    "afterStateRef": {
+      "$ref": "./common.schema.json#/$defs/artifactRef"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "./common.schema.json#/$defs/artifactRef"
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "meta": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}
+

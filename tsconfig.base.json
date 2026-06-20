@@ -1,0 +1,41 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@aee/core": [
+        "packages/core/src/index.ts"
+      ],
+      "@aee/schemas": [
+        "packages/schemas/src/index.ts"
+      ],
+      "@aee/playwright": [
+        "packages/playwright/src/index.ts"
+      ],
+      "@aee/observers": [
+        "packages/observers/src/index.ts"
+      ],
+      "@aee/judges": [
+        "packages/judges/src/index.ts"
+      ],
+      "@aee/reporter": [
+        "packages/reporter/src/index.ts"
+      ],
+      "@aee/cli": [
+        "packages/cli/src/index.ts"
+      ]
+    }
+  }
+}

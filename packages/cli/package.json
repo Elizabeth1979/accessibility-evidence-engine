@@ -1,0 +1,20 @@
+{
+  "name": "@aee/cli",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "aee": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@aee/core": "0.1.0",
+    "@aee/judges": "0.1.0",
+    "@aee/observers": "0.1.0",
+    "@aee/playwright": "0.1.0",
+    "@aee/reporter": "0.1.0",
+    "@aee/schemas": "0.1.0"
+  }
+}

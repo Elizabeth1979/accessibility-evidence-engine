@@ -1,0 +1,25 @@
+{
+  "url": "https://example.test/checkout",
+  "title": "Checkout",
+  "html": "<!doctype html><html lang=\"en\"><head><title>Checkout</title></head><body><header><h1>Checkout</h1></header><main><form><label for=\"email\">Email</label><input id=\"email\" type=\"email\" aria-describedby=\"email-hint\" /><p id=\"email-hint\">We will send the receipt here.</p><button type=\"submit\">Pay now</button></form></main></body></html>",
+  "accessibilityTree": {
+    "role": "WebArea",
+    "name": "Checkout",
+    "children": [
+      {
+        "role": "heading",
+        "name": "Checkout",
+        "level": 1
+      },
+      {
+        "role": "textbox",
+        "name": "Email",
+        "description": "We will send the receipt here."
+      },
+      {
+        "role": "button",
+        "name": "Pay now"
+      }
+    ]
+  }
+}

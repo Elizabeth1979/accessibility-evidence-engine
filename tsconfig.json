@@ -1,0 +1,27 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./packages/schemas"
+    },
+    {
+      "path": "./packages/playwright"
+    },
+    {
+      "path": "./packages/observers"
+    },
+    {
+      "path": "./packages/judges"
+    },
+    {
+      "path": "./packages/reporter"
+    },
+    {
+      "path": "./packages/cli"
+    }
+  ]
+}
+
