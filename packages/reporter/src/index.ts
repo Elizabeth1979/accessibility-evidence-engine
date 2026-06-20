@@ -1,5 +1,5 @@
 import type { ReporterArtifact, ReporterInput, ReporterPlugin } from "@aee/core";
-import { CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
 
 export function createJsonReporter(): ReporterPlugin {
   return {
@@ -11,23 +11,23 @@ export function createJsonReporter(): ReporterPlugin {
       capabilities: ["json"]
     },
     async render(input: ReporterInput): Promise<ReporterArtifact[]> {
+      const payload = {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        run: input.run,
+        bundles: input.bundles,
+        records: input.records,
+        judgments: input.judgments,
+        findings: input.findings,
+        artifacts: input.artifacts
+      };
+
+      assertValidSchema("report", payload, "AEE JSON report payload");
+
       return [
         {
           label: "aee-report.json",
           mimeType: "application/json",
-          content: JSON.stringify(
-            {
-              schemaVersion: CURRENT_SCHEMA_VERSION,
-              run: input.run,
-              bundles: input.bundles,
-              records: input.records,
-              judgments: input.judgments,
-              findings: input.findings,
-              artifacts: input.artifacts
-            },
-            null,
-            2
-          )
+          content: JSON.stringify(payload, null, 2)
         }
       ];
     }

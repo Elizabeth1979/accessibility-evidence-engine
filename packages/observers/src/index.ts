@@ -60,6 +60,10 @@ export interface RuntimeObserverContext extends ObserverContext {
     content(): Promise<string>;
     snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
+    snapshotScreenshot?(options?: unknown): Promise<Uint8Array>;
+    setupNetworkTracking?(options?: unknown): Promise<void>;
+    snapshotNetworkLog?(options?: unknown): Promise<unknown>;
+    teardownNetworkTracking?(options?: unknown): Promise<void>;
     accessibility?: {
       snapshot(options?: unknown): Promise<unknown>;
     };
@@ -104,6 +108,36 @@ export function createFocusObserver(): ObserverPlugin {
   };
 }
 
+export function createVisualObserver(): ObserverPlugin {
+  return {
+    manifest: defaultObserverManifests[3],
+    async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureVisualRecord(context as RuntimeObserverContext, "before")];
+    },
+    async captureAfter(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureVisualRecord(context as RuntimeObserverContext, "after")];
+    }
+  };
+}
+
+export function createNetworkObserver(): ObserverPlugin {
+  return {
+    manifest: defaultObserverManifests[4],
+    async setup(context: ObserverContext): Promise<void> {
+      await setupNetworkTracking(context as RuntimeObserverContext);
+    },
+    async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureNetworkRecord(context as RuntimeObserverContext, "before")];
+    },
+    async captureAfter(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureNetworkRecord(context as RuntimeObserverContext, "after")];
+    },
+    async teardown(context: ObserverContext): Promise<void> {
+      await teardownNetworkTracking(context as RuntimeObserverContext);
+    }
+  };
+}
+
 export function createUnsupportedObserver(observerId: string): ObserverPlugin {
   const manifest = defaultObserverManifests.find((candidate) => candidate.id === observerId);
 
@@ -134,6 +168,14 @@ export function createDefaultObserverPlugins(observerIds: string[] = ["dom", "ac
 
     if (observerId === "focus") {
       return createFocusObserver();
+    }
+
+    if (observerId === "visual") {
+      return createVisualObserver();
+    }
+
+    if (observerId === "network") {
+      return createNetworkObserver();
     }
 
     return createUnsupportedObserver(observerId);
@@ -337,6 +379,177 @@ async function captureFocusRecord(
   };
 }
 
+async function captureVisualRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): Promise<EvidenceRecord> {
+  const snapshotScreenshot = context.page?.snapshotScreenshot?.bind(context.page);
+
+  if (!snapshotScreenshot) {
+    return {
+      id: `visual:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "visual",
+      observerVersion: "0.1.0",
+      phase,
+      status: "unsupported",
+      timestamp: getTimestamp(),
+      diagnostics: ["Page screenshot API is unavailable."]
+    };
+  }
+
+  let screenshot: Uint8Array;
+
+  try {
+    screenshot = await snapshotScreenshot();
+  } catch (error) {
+    return {
+      id: `visual:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "visual",
+      observerVersion: "0.1.0",
+      phase,
+      status: "observer_error",
+      timestamp: getTimestamp(),
+      diagnostics: [
+        error instanceof Error
+          ? `Screenshot capture failed: ${error.message}`
+          : "Screenshot capture failed."
+      ]
+    };
+  }
+
+  const artifact = await maybeWriteArtifact(
+    context,
+    "visual",
+    phase,
+    "screenshot",
+    "png",
+    "image/png",
+    screenshot
+  );
+
+  return {
+    id: `visual:${phase}:${Date.now()}`,
+    runId: context.runId,
+    checkpointId: context.checkpointId,
+    interactionId: context.interactionId,
+    observerId: "visual",
+    observerVersion: "0.1.0",
+    phase,
+    status: "ok",
+    timestamp: getTimestamp(),
+    summary: `Captured screenshot ${phase} state.`,
+    ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
+    artifacts: artifact ? [artifact] : [],
+    meta: {
+      byteLength: screenshot.byteLength
+    }
+  };
+}
+
+async function captureNetworkRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): Promise<EvidenceRecord> {
+  const snapshotNetworkLog = context.page?.snapshotNetworkLog?.bind(context.page);
+
+  if (!snapshotNetworkLog) {
+    return {
+      id: `network:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "network",
+      observerVersion: "0.1.0",
+      phase,
+      status: "unsupported",
+      timestamp: getTimestamp(),
+      diagnostics: ["Page network log API is unavailable."]
+    };
+  }
+
+  let networkLog: unknown;
+
+  try {
+    networkLog = await snapshotNetworkLog();
+  } catch (error) {
+    return {
+      id: `network:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "network",
+      observerVersion: "0.1.0",
+      phase,
+      status: "observer_error",
+      timestamp: getTimestamp(),
+      diagnostics: [
+        error instanceof Error
+          ? `Network log capture failed: ${error.message}`
+          : "Network log capture failed."
+      ]
+    };
+  }
+
+  const content = JSON.stringify(networkLog ?? [], null, 2);
+  const artifact = await maybeWriteArtifact(
+    context,
+    "network",
+    phase,
+    "network-log",
+    "json",
+    "application/json",
+    content
+  );
+  const eventCount = Array.isArray(networkLog) ? networkLog.length : undefined;
+
+  return {
+    id: `network:${phase}:${Date.now()}`,
+    runId: context.runId,
+    checkpointId: context.checkpointId,
+    interactionId: context.interactionId,
+    observerId: "network",
+    observerVersion: "0.1.0",
+    phase,
+    status: "ok",
+    timestamp: getTimestamp(),
+    summary:
+      eventCount !== undefined
+        ? `Captured ${eventCount} network events ${phase} state.`
+        : `Captured network log ${phase} state.`,
+    ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
+    artifacts: artifact ? [artifact] : [],
+    meta: {
+      eventCount
+    }
+  };
+}
+
+async function setupNetworkTracking(context: RuntimeObserverContext): Promise<void> {
+  const setupTracking = context.page?.setupNetworkTracking?.bind(context.page);
+
+  if (!setupTracking) {
+    return;
+  }
+
+  await setupTracking();
+}
+
+async function teardownNetworkTracking(context: RuntimeObserverContext): Promise<void> {
+  const teardownTracking = context.page?.teardownNetworkTracking?.bind(context.page);
+
+  if (!teardownTracking) {
+    return;
+  }
+
+  await teardownTracking();
+}
+
 async function maybeWriteArtifact(
   context: RuntimeObserverContext,
   observerId: string,
@@ -344,7 +557,7 @@ async function maybeWriteArtifact(
   kind: ArtifactKind,
   extension: string,
   mediaType: string,
-  content: string
+  content: string | Uint8Array
 ) {
   if (!context.artifactDir) {
     return undefined;
@@ -353,7 +566,7 @@ async function maybeWriteArtifact(
   await mkdir(context.artifactDir, { recursive: true });
   const filename = `${observerId}-${phase}.${extension}`;
   const targetPath = path.join(context.artifactDir, filename);
-  await writeFile(targetPath, content, "utf8");
+  await writeFile(targetPath, content);
 
   return {
     id: `${observerId}:${phase}:artifact`,

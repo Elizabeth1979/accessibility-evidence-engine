@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/cli-config.schema.json",
+  "title": "AEE CLI Config",
+  "type": "object",
+  "required": [
+    "projectRoot",
+    "fixturePath"
+  ],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "projectRoot": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outputDir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixturePath": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "observers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "judges": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checkpointName": {
+      "type": "string"
+    },
+    "interaction": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "tab",
+            "shift-tab",
+            "click",
+            "hover",
+            "focus",
+            "enter",
+            "space",
+            "escape",
+            "arrow-key",
+            "type",
+            "submit",
+            "custom"
+          ]
+        },
+        "actor": {
+          "type": "string",
+          "enum": [
+            "test",
+            "engine",
+            "user-script"
+          ]
+        },
+        "target": {
+          "$ref": "./common.schema.json#/$defs/targetDescriptor"
+        },
+        "input": {
+          "type": "string"
+        },
+        "meta": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -18,7 +18,7 @@ import {
 } from "@aee/observers";
 import { buildCheckpoint, buildInteraction, createVirtualPage, type PlaywrightPageLike, type VirtualPageFixture } from "@aee/playwright";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
-import { CURRENT_SCHEMA_VERSION, schemaCatalog } from "@aee/schemas";
+import { assertValidSchema, CURRENT_SCHEMA_VERSION, schemaCatalog, type SchemaName } from "@aee/schemas";
 
 export interface AeeCliConfig {
   version?: string;
@@ -44,21 +44,6 @@ export interface AeeCliConfig {
   };
 }
 
-const VALID_INTERACTION_KINDS = new Set<Interaction["kind"]>([
-  "tab",
-  "shift-tab",
-  "click",
-  "hover",
-  "focus",
-  "enter",
-  "space",
-  "escape",
-  "arrow-key",
-  "type",
-  "submit",
-  "custom"
-]);
-
 export interface RunCommandResult {
   runId: string;
   outputDir: string;
@@ -66,75 +51,31 @@ export interface RunCommandResult {
   artifactFiles: string[];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function validateConfig(config: unknown): asserts config is AeeCliConfig {
-  if (!isRecord(config)) {
-    throw new Error("Config must be a JSON object.");
-  }
-
-  if (typeof config.projectRoot !== "string" || config.projectRoot.length === 0) {
-    throw new Error(`Config must include a non-empty "projectRoot". Expected shape aligned with ${schemaCatalog.run}.`);
-  }
-
-  if (config.fixturePath !== undefined && typeof config.fixturePath !== "string") {
-    throw new Error('"fixturePath" must be a string when provided.');
-  }
-
-  if (config.outputDir !== undefined && typeof config.outputDir !== "string") {
-    throw new Error('"outputDir" must be a string when provided.');
-  }
-
-  if (config.observers !== undefined && !Array.isArray(config.observers)) {
-    throw new Error('"observers" must be an array of observer ids.');
-  }
-
-  if (config.judges !== undefined && !Array.isArray(config.judges)) {
-    throw new Error('"judges" must be an array of judge ids.');
-  }
-
-  if (config.interaction !== undefined) {
-    if (!isRecord(config.interaction)) {
-      throw new Error('"interaction" must be an object when provided.');
-    }
-
-    if (
-      config.interaction.kind !== undefined &&
-      (typeof config.interaction.kind !== "string" ||
-        !VALID_INTERACTION_KINDS.has(config.interaction.kind as Interaction["kind"]))
-    ) {
-      throw new Error(`"interaction.kind" must be one of: ${Array.from(VALID_INTERACTION_KINDS).join(", ")}.`);
-    }
-  }
-}
-
-function validateFixture(fixture: unknown): asserts fixture is VirtualPageFixture {
-  if (!isRecord(fixture)) {
-    throw new Error("Fixture must be a JSON object.");
-  }
-
-  if (typeof fixture.url !== "string" || typeof fixture.html !== "string") {
-    throw new Error('Fixture must include string "url" and "html" properties.');
-  }
-}
-
-async function loadJsonFile<T>(filePath: string): Promise<T> {
+async function loadJsonFile<T>(
+  filePath: string,
+  schemaName: SchemaName,
+  label: string
+): Promise<T> {
   const raw = await readFile(filePath, "utf8");
-  return JSON.parse(raw) as T;
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid JSON in ${label} at ${filePath}: ${message}`);
+  }
+
+  assertValidSchema(schemaName, parsed, `${label} at ${filePath} (${schemaCatalog[schemaName]})`);
+  return parsed as T;
 }
 
 export async function loadConfig(configPath: string): Promise<AeeCliConfig> {
-  const config = await loadJsonFile<AeeCliConfig>(configPath);
-  validateConfig(config);
-  return config;
+  return loadJsonFile<AeeCliConfig>(configPath, "cliConfig", "AEE CLI config");
 }
 
 export async function loadFixture(fixturePath: string): Promise<VirtualPageFixture> {
-  const fixture = await loadJsonFile<VirtualPageFixture>(fixturePath);
-  validateFixture(fixture);
-  return fixture;
+  return loadJsonFile<VirtualPageFixture>(fixturePath, "virtualPageFixture", "AEE virtual page fixture");
 }
 
 export function createBootstrapPlan(config: AeeCliConfig) {
@@ -218,6 +159,8 @@ export async function runWithPage(
   const reporterFiles = await writeReporterArtifacts(outputDir, reporterArtifacts);
   const artifactFiles = execution.artifacts.map((artifact) => artifact.path);
 
+  assertValidSchema("run", execution.run, "AEE run output");
+  assertValidSchema("evidenceBundle", execution.bundles[0], "AEE evidence bundle output");
   await writeFile(path.join(outputDir, "run.json"), JSON.stringify(execution.run, null, 2), "utf8");
   await writeFile(path.join(outputDir, "bundle.json"), JSON.stringify(execution.bundles[0], null, 2), "utf8");
 

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/virtual-page-fixture.schema.json",
+  "title": "AEE Virtual Page Fixture",
+  "type": "object",
+  "required": [
+    "url",
+    "html"
+  ],
+  "properties": {
+    "url": {
+      "type": "string",
+      "minLength": 1
+    },
+    "html": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "accessibilityTree": {},
+    "focusTarget": {},
+    "screenshotPngBase64": {
+      "type": "string"
+    },
+    "networkEvents": {
+      "type": "array",
+      "items": {}
+    }
+  },
+  "additionalProperties": false
+}

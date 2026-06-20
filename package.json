@@ -11,6 +11,7 @@
     "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "playwright:install": "playwright install chromium",
+    "test:unit": "npm run build && node --test packages/schemas/dist/validator.test.js packages/cli/dist/config-validation.test.js",
     "test:playwright": "npm run build && playwright test"
   },
   "devDependencies": {

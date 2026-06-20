@@ -13,6 +13,7 @@ import {
 import { createDefaultJudgePlugins } from "@aee/judges";
 import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
+import { assertValidSchema } from "@aee/schemas";
 
 export interface PlaywrightPageLike {
   url(): string;
@@ -21,6 +22,10 @@ export interface PlaywrightPageLike {
   screenshot?(options?: unknown): Promise<unknown>;
   snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
   snapshotFocusTarget?(options?: unknown): Promise<unknown>;
+  snapshotScreenshot?(options?: unknown): Promise<Uint8Array>;
+  setupNetworkTracking?(options?: unknown): Promise<void>;
+  snapshotNetworkLog?(options?: unknown): Promise<unknown>;
+  teardownNetworkTracking?(options?: unknown): Promise<void>;
   accessibility?: {
     snapshot(options?: unknown): Promise<unknown>;
   };
@@ -32,6 +37,8 @@ export interface VirtualPageFixture {
   title?: string;
   accessibilityTree?: unknown;
   focusTarget?: unknown;
+  screenshotPngBase64?: string;
+  networkEvents?: unknown[];
 }
 
 export interface PlaywrightInteractionContext<TPage extends PlaywrightPageLike = PlaywrightPageLike> {
@@ -101,7 +108,17 @@ export function createVirtualPage(fixture: VirtualPageFixture): PlaywrightPageLi
     },
     async snapshotFocusTarget() {
       return fixture.focusTarget ?? null;
-    }
+    },
+    async snapshotNetworkLog() {
+      return fixture.networkEvents ?? [];
+    },
+    ...(fixture.screenshotPngBase64
+      ? {
+          async snapshotScreenshot() {
+            return Uint8Array.from(Buffer.from(fixture.screenshotPngBase64!, "base64"));
+          }
+        }
+      : {})
   };
 }
 
@@ -250,9 +267,43 @@ interface EvaluatablePageLike extends PlaywrightPageLike {
   evaluate?(pageFunction: () => unknown): Promise<unknown>;
 }
 
+interface RequestLike {
+  url(): string;
+  method(): string;
+  headers(): Record<string, string>;
+  postData(): string | null;
+  resourceType(): string;
+}
+
+interface ResponseLike {
+  url(): string;
+  status(): number;
+  statusText(): string;
+  ok(): boolean;
+  headers(): Record<string, string>;
+  fromServiceWorker(): boolean;
+  request(): RequestLike;
+}
+
+interface EventedPageLike extends PlaywrightPageLike {
+  on?(event: "request", listener: (request: RequestLike) => void): unknown;
+  on?(event: "response", listener: (response: ResponseLike) => void): unknown;
+  off?(event: "request", listener: (request: RequestLike) => void): unknown;
+  off?(event: "response", listener: (response: ResponseLike) => void): unknown;
+  removeListener?(event: "request", listener: (request: RequestLike) => void): unknown;
+  removeListener?(event: "response", listener: (response: ResponseLike) => void): unknown;
+}
+
 async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = page as CdpEnabledPageLike;
   const evaluatablePage = page as EvaluatablePageLike;
+  const eventedPage = page as EventedPageLike;
+  const customScreenshot = page.snapshotScreenshot?.bind(page);
+  const customSetupNetworkTracking = page.setupNetworkTracking?.bind(page);
+  const customSnapshotNetworkLog = page.snapshotNetworkLog?.bind(page);
+  const customTeardownNetworkTracking = page.teardownNetworkTracking?.bind(page);
+  const nativeScreenshot = page.screenshot?.bind(page);
+  const networkTracker = createNetworkTracker(eventedPage);
   const snapshotAccessibilityTree =
     page.snapshotAccessibilityTree
       ? async () => page.snapshotAccessibilityTree?.()
@@ -315,13 +366,113 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
               };
             })
         : undefined;
+  const snapshotScreenshot =
+    customScreenshot
+      ? async () => customScreenshot()
+      : nativeScreenshot
+        ? async () => {
+            const value = await nativeScreenshot({ type: "png" });
+
+            if (value instanceof Uint8Array) {
+              return value;
+            }
+
+            throw new Error("Screenshot API returned a non-binary payload.");
+          }
+        : undefined;
+  const setupNetworkTracking =
+    customSetupNetworkTracking ??
+    (networkTracker
+      ? async () => {
+          networkTracker.setup();
+        }
+      : undefined);
+  const snapshotNetworkLog =
+    customSnapshotNetworkLog ??
+    (networkTracker
+      ? async () => networkTracker.snapshot()
+      : undefined);
+  const teardownNetworkTracking =
+    customTeardownNetworkTracking ??
+    (networkTracker
+      ? async () => {
+          networkTracker.teardown();
+        }
+      : undefined);
 
   return {
     async content() {
       return page.content();
     },
     snapshotAccessibilityTree,
-    snapshotFocusTarget
+    snapshotFocusTarget,
+    snapshotScreenshot,
+    setupNetworkTracking,
+    snapshotNetworkLog,
+    teardownNetworkTracking
+  };
+}
+
+function createNetworkTracker(page: EventedPageLike) {
+  if (!page.on) {
+    return undefined;
+  }
+
+  const events: Array<Record<string, unknown>> = [];
+  let tracking = false;
+  const requestListener = (request: RequestLike) => {
+    events.push({
+      kind: "request",
+      url: request.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+      headers: request.headers(),
+      postData: request.postData(),
+      timestamp: new Date().toISOString()
+    });
+  };
+  const responseListener = (response: ResponseLike) => {
+    events.push({
+      kind: "response",
+      url: response.url(),
+      status: response.status(),
+      statusText: response.statusText(),
+      ok: response.ok(),
+      fromServiceWorker: response.fromServiceWorker(),
+      headers: response.headers(),
+      method: response.request().method(),
+      timestamp: new Date().toISOString()
+    });
+  };
+
+  return {
+    setup() {
+      if (tracking) {
+        return;
+      }
+
+      page.on?.("request", requestListener);
+      page.on?.("response", responseListener);
+      tracking = true;
+    },
+    snapshot() {
+      return events.map((event) => ({ ...event }));
+    },
+    teardown() {
+      if (!tracking) {
+        return;
+      }
+
+      if (page.off) {
+        page.off("request", requestListener);
+        page.off("response", responseListener);
+      } else if (page.removeListener) {
+        page.removeListener("request", requestListener);
+        page.removeListener("response", responseListener);
+      }
+
+      tracking = false;
+    }
   };
 }
 
@@ -338,6 +489,8 @@ async function writeReporterArtifacts(
   run: import("@aee/core").AeeRun
 ): Promise<string[]> {
   await mkdir(outputDir, { recursive: true });
+  assertValidSchema("run", run, "AEE run output");
+  assertValidSchema("evidenceBundle", bundle, "AEE evidence bundle output");
 
   const writes = artifacts.map(async (artifact) => {
     const targetPath = path.join(outputDir, artifact.label);

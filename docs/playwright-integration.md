@@ -61,6 +61,49 @@ await runAeeOnPage({
 });
 ```
 
+## Screenshot example
+
+The visual observer can capture PNG artifacts around an interaction.
+
+```ts
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["visual"],
+  judges: ["release"],
+  interaction: {
+    kind: "click",
+    actor: "test"
+  },
+  async performInteraction({ page }) {
+    await page.click("#save");
+  }
+});
+```
+
+## Network example
+
+The network observer can capture request and response activity around an interaction.
+
+```ts
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["network"],
+  judges: ["release"],
+  interaction: {
+    kind: "click",
+    actor: "test"
+  },
+  async performInteraction({ page }) {
+    await Promise.all([
+      page.waitForResponse("https://aee.test/api/save"),
+      page.click("#save")
+    ]);
+  }
+});
+```
+
 ## Notes
 
 - `outputDir` is optional. When provided, AEE writes reports and captured artifacts into `outputDir/<run-id>/`.
@@ -68,4 +111,6 @@ await runAeeOnPage({
 - The DOM observer relies on `page.content()`.
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
 - The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
+- The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
+- The network observer tracks request and response events between `setup` and `teardown`, then snapshots the accumulated log before and after the interaction boundary.
 - This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.

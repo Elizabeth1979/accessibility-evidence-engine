@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/report.schema.json",
+  "title": "AEE Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "run",
+    "bundles",
+    "records",
+    "judgments",
+    "findings",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run": {
+      "$ref": "./run.schema.json"
+    },
+    "bundles": {
+      "type": "array",
+      "items": {
+        "$ref": "./evidence-bundle.schema.json"
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "./evidence-record.schema.json"
+      }
+    },
+    "judgments": {
+      "type": "array",
+      "items": {
+        "$ref": "./judgment.schema.json"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "./finding.schema.json"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "./common.schema.json#/$defs/artifactRef"
+      }
+    }
+  },
+  "additionalProperties": false
+}

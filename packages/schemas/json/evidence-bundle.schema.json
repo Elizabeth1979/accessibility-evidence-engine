@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/evidence-bundle.schema.json",
+  "title": "AEE Evidence Bundle",
+  "type": "object",
+  "required": [
+    "runId",
+    "interaction",
+    "records",
+    "artifacts",
+    "correlation"
+  ],
+  "properties": {
+    "runId": {
+      "$ref": "./common.schema.json#/$defs/uid"
+    },
+    "interaction": {
+      "$ref": "./interaction.schema.json"
+    },
+    "checkpoint": {
+      "$ref": "./checkpoint.schema.json"
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "./evidence-record.schema.json"
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "./common.schema.json#/$defs/artifactRef"
+      }
+    },
+    "correlation": {
+      "type": "object",
+      "required": [
+        "strategy",
+        "participatingObserverIds"
+      ],
+      "properties": {
+        "strategy": {
+          "type": "string"
+        },
+        "participatingObserverIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "unknownObserverIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

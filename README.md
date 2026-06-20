@@ -26,6 +26,9 @@ This is still intentionally a foundation-first codebase, but it now includes a v
 - The fixture runner builds and executes end to end
 - DOM and accessibility-tree observers can capture artifacts from a virtual or real page-like object
 - Focus evidence can be captured around a real keyboard interaction
+- Screenshot evidence can be captured around a real page interaction
+- Network evidence can be captured around a real page interaction
+- CLI inputs and emitted JSON outputs are schema-validated at runtime
 - Judges and reporters can turn that evidence into a first pass/fail report bundle
 
 ## Runnable slice
@@ -46,7 +49,8 @@ To run the real-page smoke test from a fresh machine:
 
 1. Install dependencies with `npm install`
 2. Install the Chromium test browser with `npm run playwright:install`
-3. Run the smoke test with `npm run test:playwright`
+3. Run the schema and CLI unit tests with `npm run test:unit`
+4. Run the smoke test with `npm run test:playwright`
 
 - Integration notes: [docs/playwright-integration.md](/Users/elizabeth/accessibility-evidence-engine/docs/playwright-integration.md)
 - Architecture notes: [docs/architecture.md](/Users/elizabeth/accessibility-evidence-engine/docs/architecture.md)
@@ -54,8 +58,8 @@ To run the real-page smoke test from a fresh machine:
 
 ## Next implementation steps
 
-1. Replace manual config validation with runtime JSON Schema validation.
-2. Add screenshot and network observers against Playwright pages.
-3. Extend keyboard judging beyond a simple focus-transition pass/fail.
-4. Extend reporter output with richer evidence correlation and artifact summaries.
-5. Introduce release policy enforcement once non-placeholder judgments exist.
+1. Extend keyboard judging beyond a simple focus-transition pass/fail.
+2. Extend reporter output with richer evidence correlation and artifact summaries.
+3. Introduce release policy enforcement once non-placeholder judgments exist.
+4. Add richer network analysis, such as filtering noise and correlating requests to interactions.
+5. Expand schema coverage further if we add new artifact kinds or richer report sections.
