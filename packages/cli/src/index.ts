@@ -4,9 +4,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
-  DEFAULT_POLICY,
   executeRun,
-  type AeePolicyConfig,
+  resolvePolicyConfig,
+  type AeePolicyOverrides,
   type Interaction,
   type ReporterInput,
   type ReporterArtifact
@@ -25,7 +25,7 @@ export interface AeeCliConfig {
   projectRoot: string;
   outputDir?: string;
   fixturePath?: string;
-  policy?: Partial<AeePolicyConfig>;
+  policy?: AeePolicyOverrides;
   observers?: string[];
   judges?: string[];
   checkpointName?: string;
@@ -79,11 +79,13 @@ export async function loadFixture(fixturePath: string): Promise<VirtualPageFixtu
 }
 
 export function createBootstrapPlan(config: AeeCliConfig) {
+  const resolvedPolicy = resolvePolicyConfig(config.policy);
+
   return {
     projectRoot: config.projectRoot,
     selectedObservers: config.observers ?? ["dom", "accessibility-tree"],
     selectedJudges: config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id),
-    policyName: config.policy?.name ?? DEFAULT_POLICY.name
+    policyName: resolvedPolicy.name
   };
 }
 
@@ -93,6 +95,7 @@ export async function runWithPage(
   configPathForResolution: string
 ): Promise<RunCommandResult> {
   const resolvedProjectRoot = path.resolve(path.dirname(configPathForResolution), config.projectRoot);
+  const resolvedPolicy = resolvePolicyConfig(config.policy);
   const runId = `run-${Date.now()}`;
   const outputBaseDir = config.outputDir ?? "aee-output";
   const outputDir = path.join(resolvedProjectRoot, outputBaseDir, runId);
@@ -136,14 +139,15 @@ export async function runWithPage(
       mode: "fixture-runner"
     },
     config: {
-      policyName: config.policy?.name ?? DEFAULT_POLICY.name
+      policyName: resolvedPolicy.name
     },
     checkpoint,
     interaction,
     observerContext,
     observerPlugins: createDefaultObserverPlugins(config.observers),
     judgePlugins: createDefaultJudgePlugins(config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id)),
-    policyName: config.policy?.name ?? DEFAULT_POLICY.name
+    policyName: resolvedPolicy.name,
+    releasePolicy: resolvedPolicy.release
   });
 
   const reporterInput = {

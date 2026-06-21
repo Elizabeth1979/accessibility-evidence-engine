@@ -25,6 +25,13 @@ export interface AeePolicyConfig {
   observers: ObserverPolicy;
 }
 
+export interface AeePolicyOverrides {
+  name?: string;
+  release?: Partial<ReleasePolicy>;
+  capture?: Partial<CapturePolicy>;
+  observers?: Partial<ObserverPolicy>;
+}
+
 export const DEFAULT_POLICY: AeePolicyConfig = {
   name: "default",
   release: {
@@ -44,3 +51,20 @@ export const DEFAULT_POLICY: AeePolicyConfig = {
   }
 };
 
+export function resolvePolicyConfig(overrides?: AeePolicyOverrides): AeePolicyConfig {
+  return {
+    name: overrides?.name ?? DEFAULT_POLICY.name,
+    release: {
+      ...DEFAULT_POLICY.release,
+      ...(overrides?.release ?? {})
+    },
+    capture: {
+      ...DEFAULT_POLICY.capture,
+      ...(overrides?.capture ?? {})
+    },
+    observers: {
+      ...DEFAULT_POLICY.observers,
+      ...(overrides?.observers ?? {})
+    }
+  };
+}

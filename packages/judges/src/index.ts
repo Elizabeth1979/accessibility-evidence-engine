@@ -1,4 +1,4 @@
-import type { EvidenceBundle, EvidenceRecord, Finding, JudgePlugin, Judgment } from "@aee/core";
+import { DEFAULT_POLICY, type EvidenceBundle, type EvidenceRecord, type Finding, type JudgePlugin, type Judgment } from "@aee/core";
 
 export const defaultJudgeManifests = [
   {
@@ -319,21 +319,71 @@ function createReleaseJudge(): JudgePlugin {
 
   return {
     manifest,
-    async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
+    async judge(bundle: EvidenceBundle, context): Promise<Judgment[]> {
       const observerErrors = bundle.records.filter((record) => record.status === "observer_error");
       const unsupported = bundle.records.filter((record) => record.status === "unsupported");
+      const releasePolicy = context.releasePolicy ?? DEFAULT_POLICY.release;
+      const priorJudgments = (context.priorJudgments ?? []).filter((judgment) =>
+        meetsMinimumConfidence(judgment, releasePolicy.minimumConfidence)
+      );
+      const blockingFailures = priorJudgments.filter(
+        (judgment) =>
+          judgment.verdict === "fail" &&
+          typeof judgment.severity === "string" &&
+          releasePolicy.failOnSeverities.includes(judgment.severity)
+      );
+      const unresolvedUnknowns = priorJudgments.filter((judgment) => judgment.verdict === "unknown");
       let verdict: Judgment["verdict"] = "pass";
-      let summary = "Release gate is clear for this bootstrap slice.";
+      let summary = "Release gate passed. No blocking judgments met the current policy threshold.";
       let severity: Judgment["severity"] = "info";
+      let suggestedFix: string | undefined;
+      let evidenceRecordIds = bundle.records.map((record) => record.id);
+      let artifactIds: string[] | undefined;
 
       if (observerErrors.length > 0) {
         verdict = "fail";
-        summary = "Release gate failed because one or more required observers errored.";
+        summary = `Release gate failed because ${describeObserverCount(observerErrors.length, "observer error")} blocked evidence capture.`;
         severity = "high";
-      } else if (unsupported.length > 0) {
-        verdict = "unknown";
-        summary = "Release gate is unknown because one or more observers were unsupported.";
-        severity = "medium";
+        suggestedFix = "Stabilize or replace the observers that errored before relying on this release gate.";
+        evidenceRecordIds = observerErrors.map((record) => record.id);
+        artifactIds = collectArtifactIds(observerErrors);
+      } else if (blockingFailures.length > 0) {
+        verdict = "fail";
+        summary = `Release gate failed because ${describeJudgmentCount(blockingFailures.length, "blocking judgment")} met the current policy threshold.`;
+        severity = "high";
+        suggestedFix = "Resolve the blocking accessibility judgments or relax the release policy intentionally.";
+        evidenceRecordIds = collectJudgmentEvidenceIds(blockingFailures);
+        artifactIds = collectJudgmentArtifactIds(blockingFailures);
+      } else if (unsupported.length > 0 || unresolvedUnknowns.length > 0) {
+        const unresolvedSummary = describeUnresolvedSignals(unsupported.length, unresolvedUnknowns.length);
+
+        if (releasePolicy.unknownBehavior === "fail") {
+          verdict = "fail";
+          summary = `Release gate failed because ${unresolvedSummary} remain unresolved under the current policy.`;
+          severity = "high";
+          suggestedFix = "Resolve the unsupported observers or unknown judgments, or relax the release policy intentionally.";
+        } else if (releasePolicy.unknownBehavior === "warn") {
+          verdict = "unknown";
+          summary = `Release gate is unknown because ${unresolvedSummary} remain unresolved.`;
+          severity = "medium";
+          suggestedFix = "Review the unsupported observers or unknown judgments before promoting this run.";
+        } else {
+          summary = `Release gate passed, but ${unresolvedSummary} were ignored by policy.`;
+          severity = "info";
+        }
+
+        evidenceRecordIds = [
+          ...new Set([
+            ...unsupported.map((record) => record.id),
+            ...collectJudgmentEvidenceIds(unresolvedUnknowns)
+          ])
+        ];
+        artifactIds = [
+          ...new Set([
+            ...collectArtifactIds(unsupported),
+            ...collectJudgmentArtifactIds(unresolvedUnknowns)
+          ])
+        ];
       }
 
       return [
@@ -346,7 +396,9 @@ function createReleaseJudge(): JudgePlugin {
           summary,
           severity,
           confidence: 0.75,
-          evidenceRecordIds: bundle.records.map((record) => record.id)
+          evidenceRecordIds,
+          artifactIds: artifactIds && artifactIds.length > 0 ? artifactIds : undefined,
+          suggestedFix
         }
       ];
     }
@@ -365,7 +417,24 @@ function getFocusTarget(record: EvidenceRecord): unknown {
 }
 
 function collectArtifactIds(records: EvidenceRecord[]): string[] {
-  return records.flatMap((record) => record.artifacts?.map((artifact) => artifact.id) ?? []);
+  const artifactIds = new Set<string>();
+
+  for (const record of records) {
+    for (const artifact of [
+      record.beforeStateRef,
+      record.afterStateRef,
+      record.rawRef,
+      ...(record.artifacts ?? [])
+    ]) {
+      if (!artifact) {
+        continue;
+      }
+
+      artifactIds.add(artifact.id);
+    }
+  }
+
+  return [...artifactIds];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -407,6 +476,48 @@ function getNumericField(target: unknown, field: string): number | undefined {
   }
 
   return typeof target[field] === "number" ? target[field] : undefined;
+}
+
+function collectJudgmentEvidenceIds(judgments: Judgment[]): string[] {
+  return [...new Set(judgments.flatMap((judgment) => judgment.evidenceRecordIds))];
+}
+
+function collectJudgmentArtifactIds(judgments: Judgment[]): string[] {
+  return [...new Set(judgments.flatMap((judgment) => judgment.artifactIds ?? []))];
+}
+
+function meetsMinimumConfidence(judgment: Judgment, minimumConfidence: number | undefined): boolean {
+  if (minimumConfidence === undefined) {
+    return true;
+  }
+
+  if (typeof judgment.confidence !== "number") {
+    return true;
+  }
+
+  return judgment.confidence >= minimumConfidence;
+}
+
+function describeObserverCount(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function describeJudgmentCount(count: number, label: string): string {
+  return `${count} ${label}${count === 1 ? "" : "s"}`;
+}
+
+function describeUnresolvedSignals(unsupportedCount: number, unknownCount: number): string {
+  const parts: string[] = [];
+
+  if (unsupportedCount > 0) {
+    parts.push(`${unsupportedCount} unsupported observer${unsupportedCount === 1 ? "" : "s"}`);
+  }
+
+  if (unknownCount > 0) {
+    parts.push(`${unknownCount} unknown judgment${unknownCount === 1 ? "" : "s"}`);
+  }
+
+  return parts.join(" and ");
 }
 
 function evaluateDirection(

@@ -3,6 +3,8 @@ import path from "node:path";
 
 import {
   executeRun,
+  resolvePolicyConfig,
+  type AeePolicyOverrides,
   type ArtifactRef,
   type Checkpoint,
   type Interaction,
@@ -56,6 +58,7 @@ export interface RunAeeOnPageOptions<TPage extends PlaywrightPageLike = Playwrig
   version?: string;
   observers?: string[];
   judges?: string[];
+  policy?: AeePolicyOverrides;
   checkpointName?: string;
   interaction?: InteractionRequest;
   writeReports?: boolean;
@@ -163,6 +166,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
   options: RunAeeOnPageOptions<TPage>
 ): Promise<RunAeeOnPageResult> {
   const runId = options.runId ?? `run-${Date.now()}`;
+  const resolvedPolicy = resolvePolicyConfig(options.policy);
   const outputDir = options.outputDir
     ? path.resolve(options.projectRoot, options.outputDir, runId)
     : undefined;
@@ -223,8 +227,11 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
       mode: "playwright-page"
     },
     config: {
-      writeReports: options.writeReports ?? true
-    }
+      writeReports: options.writeReports ?? true,
+      policyName: resolvedPolicy.name
+    },
+    policyName: resolvedPolicy.name,
+    releasePolicy: resolvedPolicy.release
   });
 
   const reportArtifacts = await renderReports({

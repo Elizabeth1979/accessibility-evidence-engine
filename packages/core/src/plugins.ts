@@ -1,3 +1,4 @@
+import type { ReleasePolicy } from "./policy";
 import type { AeeRun, ArtifactRef, EvidenceBundle, EvidenceRecord, Finding, Judgment } from "./types";
 
 export type PluginKind = "observer" | "judge" | "reporter" | "fix-provider";
@@ -28,6 +29,8 @@ export interface ObserverContext {
 export interface JudgeContext {
   runId: string;
   policyName?: string;
+  releasePolicy?: ReleasePolicy;
+  priorJudgments?: Judgment[];
   meta?: Record<string, unknown>;
 }
 

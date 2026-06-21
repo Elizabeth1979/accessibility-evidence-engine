@@ -510,8 +510,8 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
   expect(report.run.status).toBe("completed");
   expect(report.run.results).toEqual({
-    pass: 1,
-    fail: 1,
+    pass: 0,
+    fail: 2,
     unknown: 0
   });
   expect(report.judgments).toEqual(
@@ -523,7 +523,7 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
       }),
       expect.objectContaining({
         judgeId: "release",
-        verdict: "pass"
+        verdict: "fail"
       })
     ])
   );

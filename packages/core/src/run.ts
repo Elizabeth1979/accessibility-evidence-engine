@@ -1,4 +1,5 @@
 import type { JudgePlugin, ObserverContext, ObserverPlugin } from "./plugins";
+import type { ReleasePolicy } from "./policy";
 import { buildEvidenceBundle, createRunShell, summarizeJudgments } from "./engine";
 import type { AeeRun, Checkpoint, EvidenceBundle, EvidenceRecord, Finding, Interaction, Judgment } from "./types";
 
@@ -21,6 +22,7 @@ export interface RunExecutionInput {
   observerPlugins: ObserverPlugin[];
   judgePlugins: JudgePlugin[];
   policyName?: string;
+  releasePolicy?: ReleasePolicy;
   executeInteraction?: (context: InteractionExecutionContext) => Promise<void>;
 }
 
@@ -72,7 +74,7 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
       records
     });
 
-    const judgments = await runJudges(input.judgePlugins, bundle, input.policyName);
+    const judgments = await runJudges(input.judgePlugins, bundle, input.policyName, input.releasePolicy);
     const findings = judgments.flatMap((judgment) => judgment.findings ?? []);
 
     run.status = "completed";
@@ -117,18 +119,37 @@ async function capturePhase(
 async function runJudges(
   judgePlugins: JudgePlugin[],
   bundle: EvidenceBundle,
-  policyName?: string
+  policyName?: string,
+  releasePolicy?: ReleasePolicy
 ): Promise<Judgment[]> {
-  const batches = await Promise.all(
-    judgePlugins.map((judge) =>
+  const standardJudges = judgePlugins.filter((judge) => judge.manifest.id !== "release");
+  const releaseJudges = judgePlugins.filter((judge) => judge.manifest.id === "release");
+
+  const primaryBatches = await Promise.all(
+    standardJudges.map((judge) =>
       judge.judge(bundle, {
         runId: bundle.runId,
-        policyName
+        policyName,
+        releasePolicy,
+        priorJudgments: []
       })
     )
   );
 
-  return batches.flat();
+  const primaryJudgments = primaryBatches.flat();
+
+  const releaseBatches = await Promise.all(
+    releaseJudges.map((judge) =>
+      judge.judge(bundle, {
+        runId: bundle.runId,
+        policyName,
+        releasePolicy,
+        priorJudgments: primaryJudgments
+      })
+    )
+  );
+
+  return [...primaryJudgments, ...releaseBatches.flat()];
 }
 
 async function runObserverLifecycle(
