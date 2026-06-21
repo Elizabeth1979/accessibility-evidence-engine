@@ -5,7 +5,10 @@ import { DEFAULT_POLICY, type EvidenceBundle, type Judgment } from "@aee/core";
 
 import { createDefaultJudgePlugins } from "./index";
 
-function createBundle(records: EvidenceBundle["records"]): EvidenceBundle {
+function createBundle(
+  records: EvidenceBundle["records"],
+  interactionOverrides?: Partial<EvidenceBundle["interaction"]>
+): EvidenceBundle {
   return {
     runId: "run-1",
     interaction: {
@@ -18,7 +21,8 @@ function createBundle(records: EvidenceBundle["records"]): EvidenceBundle {
       target: {
         role: "button",
         name: "Continue"
-      }
+      },
+      ...interactionOverrides
     },
     checkpoint: {
       id: "checkpoint-1",
@@ -137,4 +141,170 @@ test("release judge ignores low-confidence blockers and can fail on unresolved u
   assert.match(judgment.summary, /unknown judgment/);
   assert.match(judgment.summary, /unsupported observer/);
   assert.deepEqual(judgment.evidenceRecordIds, ["record-screen-reader"]);
+});
+
+test("keyboard judge passes enter activation when an activatable control produces DOM change", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "save",
+            name: "Save"
+          }
+        }
+      },
+      {
+        id: "record-dom-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.010Z"
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "save",
+            name: "Save"
+          }
+        }
+      },
+      {
+        id: "record-dom-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.120Z",
+        meta: {
+          changed: true
+        },
+        changes: [
+          {
+            path: "dom.html",
+            summary: "DOM markup changed after the interaction.",
+            impact: "major"
+          }
+        ]
+      }
+    ],
+    {
+      kind: "enter",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /DOM changed/);
+  assert.match(judgment.summary, /Focus stayed/);
+});
+
+test("keyboard judge fails space activation when an activatable control has no observable response", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: {
+            tagName: "div",
+            id: "custom-button",
+            role: "button",
+            name: "Save"
+          }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "div",
+            id: "custom-button",
+            role: "button",
+            name: "Save"
+          }
+        }
+      },
+      {
+        id: "record-dom-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.120Z",
+        meta: {
+          changed: false
+        },
+        changes: [
+          {
+            path: "dom.html",
+            summary: "DOM markup did not change after the interaction.",
+            impact: "none"
+          }
+        ]
+      }
+    ],
+    {
+      kind: "space",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "fail");
+  assert.match(judgment.summary, /no observable activation response/);
+  assert.equal(judgment.severity, "high");
 });

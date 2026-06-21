@@ -1,4 +1,12 @@
-import { DEFAULT_POLICY, type EvidenceBundle, type EvidenceRecord, type Finding, type JudgePlugin, type Judgment } from "@aee/core";
+import {
+  DEFAULT_POLICY,
+  type EvidenceBundle,
+  type EvidenceRecord,
+  type Finding,
+  type JudgePlugin,
+  type Judgment,
+  type TargetDescriptor
+} from "@aee/core";
 
 export const defaultJudgeManifests = [
   {
@@ -147,167 +155,288 @@ function createKeyboardJudge(): JudgePlugin {
   return {
     manifest,
     async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
-      if (bundle.interaction.kind !== "tab" && bundle.interaction.kind !== "shift-tab") {
-        return [
-          {
-            id: `keyboard:${bundle.interaction.id}`,
-            judgeId: "keyboard",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "unknown",
-            summary: "Keyboard judge currently evaluates tab-based focus transitions only.",
-            severity: "info",
-            confidence: 0.5,
-            evidenceRecordIds: bundle.records.map((record) => record.id)
-          }
-        ];
+      if (bundle.interaction.kind === "tab" || bundle.interaction.kind === "shift-tab") {
+        return judgeTabFocusTransition(bundle);
       }
 
-      const beforeRecord = findFocusRecord(bundle.records, "before");
-      const afterRecord = findFocusRecord(bundle.records, "after");
-
-      if (!beforeRecord || !afterRecord) {
-        return [
-          {
-            id: `keyboard:${bundle.interaction.id}`,
-            judgeId: "keyboard",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "unknown",
-            summary: "Keyboard judge requires focus observer evidence before and after the interaction.",
-            severity: "medium",
-            confidence: 0.75,
-            evidenceRecordIds: bundle.records.map((record) => record.id)
-          }
-        ];
+      if (bundle.interaction.kind === "enter" || bundle.interaction.kind === "space") {
+        return judgeKeyboardActivation(bundle);
       }
-
-      const beforeTarget = getFocusTarget(beforeRecord);
-      const afterTarget = getFocusTarget(afterRecord);
-      const beforeKey = serializeFocusTarget(beforeTarget);
-      const afterKey = serializeFocusTarget(afterTarget);
-      const beforeOrderIndex = getNumericField(beforeTarget, "focusOrderIndex");
-      const afterOrderIndex = getNumericField(afterTarget, "focusOrderIndex");
-      const focusableCount =
-        getNumericField(beforeTarget, "focusableCount") ?? getNumericField(afterTarget, "focusableCount");
-
-      if (afterTarget === null) {
-        const finding: Finding = {
-          id: `keyboard:${bundle.interaction.id}:focus-lost`,
-          message: "Keyboard interaction left the page without a focused target.",
-          severity: "high",
-          ruleId: "keyboard-focus-presence",
-          evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-          artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-          suggestedFix: "Ensure a visible, interactive control retains focus after keyboard navigation."
-        };
-
-        return [
-          {
-            id: `keyboard:${bundle.interaction.id}`,
-            judgeId: "keyboard",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "fail",
-            summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
-            severity: "high",
-            confidence: 0.95,
-            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-            findings: [finding],
-            suggestedFix: finding.suggestedFix
-          }
-        ];
-      }
-
-      if (beforeKey === afterKey) {
-        const finding: Finding = {
-          id: `keyboard:${bundle.interaction.id}:focus-stalled`,
-          message: "Tab interaction did not move focus to a new target.",
-          severity: "medium",
-          ruleId: "keyboard-focus-transition",
-          evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-          artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-          suggestedFix: "Ensure the next tabbable control receives focus after keyboard navigation."
-        };
-
-        return [
-          {
-            id: `keyboard:${bundle.interaction.id}`,
-            judgeId: "keyboard",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "fail",
-            summary: `Keyboard focus did not advance. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
-            severity: "medium",
-            confidence: 0.9,
-            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-            findings: [finding],
-            suggestedFix: finding.suggestedFix
-          }
-        ];
-      }
-
-      const directionVerdict = evaluateDirection(
-        bundle.interaction.kind,
-        beforeOrderIndex,
-        afterOrderIndex,
-        focusableCount
-      );
-
-      if (directionVerdict === "wrong-direction") {
-        return [
-          {
-            id: `keyboard:${bundle.interaction.id}`,
-            judgeId: "keyboard",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "fail",
-            summary: `Keyboard focus moved in the wrong direction. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
-            severity: "high",
-            confidence: 0.95,
-            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-            findings: [
-              {
-                id: `keyboard:${bundle.interaction.id}:wrong-direction`,
-                message: `Expected ${bundle.interaction.kind} to move focus ${bundle.interaction.kind === "tab" ? "forward" : "backward"}, but it moved differently.`,
-                severity: "high",
-                ruleId: "keyboard-focus-direction",
-                evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-                artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-                suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
-              }
-            ],
-            suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
-          }
-        ];
-      }
-
-      const directionText =
-        bundle.interaction.kind === "shift-tab" ? "moved backward" : "advanced forward";
-      const orderingSuffix =
-        directionVerdict === "direction-unverified"
-          ? " Focus order metadata was unavailable, so direction was inferred from the target change only."
-          : "";
 
       return [
-        {
-          id: `keyboard:${bundle.interaction.id}`,
-          judgeId: "keyboard",
-          judgeVersion: "0.1.0",
-          scope: "interaction",
-          verdict: "pass",
-          summary: `Keyboard focus ${directionText} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.${orderingSuffix}`,
-          severity: "info",
-          confidence: directionVerdict === "direction-unverified" ? 0.75 : 0.95,
-          evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-          artifactIds: collectArtifactIds([beforeRecord, afterRecord])
-        }
+        buildKeyboardUnknownJudgment(
+          bundle,
+          "Keyboard judge currently evaluates tab navigation and enter/space activation only.",
+          "info",
+          0.5
+        )
       ];
     }
   };
+}
+
+function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
+  const beforeRecord = findFocusRecord(bundle.records, "before");
+  const afterRecord = findFocusRecord(bundle.records, "after");
+
+  if (!beforeRecord || !afterRecord) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Keyboard judge requires focus observer evidence before and after the interaction.",
+        "medium",
+        0.75
+      )
+    ];
+  }
+
+  const beforeTarget = getFocusTarget(beforeRecord);
+  const afterTarget = getFocusTarget(afterRecord);
+  const beforeKey = serializeFocusTarget(beforeTarget);
+  const afterKey = serializeFocusTarget(afterTarget);
+  const beforeOrderIndex = getNumericField(beforeTarget, "focusOrderIndex");
+  const afterOrderIndex = getNumericField(afterTarget, "focusOrderIndex");
+  const focusableCount =
+    getNumericField(beforeTarget, "focusableCount") ?? getNumericField(afterTarget, "focusableCount");
+
+  if (afterTarget === null) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:focus-lost`,
+      message: "Keyboard interaction left the page without a focused target.",
+      severity: "high",
+      ruleId: "keyboard-focus-presence",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: "Ensure a visible, interactive control retains focus after keyboard navigation."
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        severity: "high",
+        confidence: 0.95,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  if (beforeKey === afterKey) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:focus-stalled`,
+      message: "Tab interaction did not move focus to a new target.",
+      severity: "medium",
+      ruleId: "keyboard-focus-transition",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: "Ensure the next tabbable control receives focus after keyboard navigation."
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Keyboard focus did not advance. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+        severity: "medium",
+        confidence: 0.9,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  const directionVerdict = evaluateDirection(
+    bundle.interaction.kind as "tab" | "shift-tab",
+    beforeOrderIndex,
+    afterOrderIndex,
+    focusableCount
+  );
+
+  if (directionVerdict === "wrong-direction") {
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Keyboard focus moved in the wrong direction. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+        severity: "high",
+        confidence: 0.95,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [
+          {
+            id: `keyboard:${bundle.interaction.id}:wrong-direction`,
+            message: `Expected ${bundle.interaction.kind} to move focus ${bundle.interaction.kind === "tab" ? "forward" : "backward"}, but it moved differently.`,
+            severity: "high",
+            ruleId: "keyboard-focus-direction",
+            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+            suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
+          }
+        ],
+        suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
+      }
+    ];
+  }
+
+  const directionText =
+    bundle.interaction.kind === "shift-tab" ? "moved backward" : "advanced forward";
+  const orderingSuffix =
+    directionVerdict === "direction-unverified"
+      ? " Focus order metadata was unavailable, so direction was inferred from the target change only."
+      : "";
+
+  return [
+    {
+      id: `keyboard:${bundle.interaction.id}`,
+      judgeId: "keyboard",
+      judgeVersion: "0.1.0",
+      scope: "interaction",
+      verdict: "pass",
+      summary: `Keyboard focus ${directionText} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.${orderingSuffix}`,
+      severity: "info",
+      confidence: directionVerdict === "direction-unverified" ? 0.75 : 0.95,
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord])
+    }
+  ];
+}
+
+function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
+  const beforeRecord = findFocusRecord(bundle.records, "before");
+  const afterRecord = findFocusRecord(bundle.records, "after");
+
+  if (!beforeRecord || !afterRecord) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Keyboard activation checks require focus observer evidence before and after the interaction.",
+        "medium",
+        0.75
+      )
+    ];
+  }
+
+  const beforeTarget = getFocusTarget(beforeRecord);
+  const afterTarget = getFocusTarget(afterRecord);
+  const beforeKey = serializeFocusTarget(beforeTarget);
+  const afterKey = serializeFocusTarget(afterTarget);
+
+  if (!isActivatableKeyboardTarget(bundle.interaction.target, beforeTarget)) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Keyboard activation checks currently apply to activatable controls only.",
+        "info",
+        0.6,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (afterTarget === null) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:activation-focus-lost`,
+      message: "Keyboard activation left the page without a focused target.",
+      severity: "high",
+      ruleId: "keyboard-activation-focus-presence",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: "Keep focus on the activated control or move it intentionally to the resulting UI."
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Keyboard activation lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        severity: "high",
+        confidence: 0.95,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  const activationSignals = collectActivationSignals(bundle.records, beforeRecord, afterRecord, beforeKey, afterKey);
+
+  if (activationSignals.length === 0) {
+    const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
+    const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
+    const suggestedFix = `Ensure ${bundle.interaction.kind} activates the focused control and produces an observable response.`;
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.`,
+        severity: "high",
+        confidence: 0.9,
+        evidenceRecordIds,
+        artifactIds,
+        findings: [
+          {
+            id: `keyboard:${bundle.interaction.id}:activation-no-response`,
+            message: `Expected ${bundle.interaction.kind} to activate the focused control, but no focus, DOM, or network response was observed.`,
+            severity: "high",
+            ruleId: "keyboard-activation-response",
+            evidenceRecordIds,
+            artifactIds,
+            suggestedFix
+          }
+        ],
+        suggestedFix
+      }
+    ];
+  }
+
+  const evidenceRecordIds = [
+    ...new Set(activationSignals.flatMap((signal) => signal.evidenceRecordIds))
+  ];
+  const artifactIds = [
+    ...new Set(activationSignals.flatMap((signal) => signal.artifactIds))
+  ];
+  const focusOutcome =
+    beforeKey === afterKey
+      ? `Focus stayed on ${describeFocusTarget(afterTarget)}.`
+      : `Focus moved from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.`;
+
+  return [
+    {
+      id: `keyboard:${bundle.interaction.id}`,
+      judgeId: "keyboard",
+      judgeVersion: "0.1.0",
+      scope: "interaction",
+      verdict: "pass",
+      summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}`,
+      severity: "info",
+      confidence: 0.9,
+      evidenceRecordIds,
+      artifactIds: artifactIds.length > 0 ? artifactIds : undefined
+    }
+  ];
 }
 
 function createReleaseJudge(): JudgePlugin {
@@ -405,6 +534,131 @@ function createReleaseJudge(): JudgePlugin {
   };
 }
 
+interface ActivationSignal {
+  label: string;
+  evidenceRecordIds: string[];
+  artifactIds: string[];
+}
+
+function buildKeyboardUnknownJudgment(
+  bundle: EvidenceBundle,
+  summary: string,
+  severity: Judgment["severity"],
+  confidence: number,
+  evidenceRecordIds: string[] = bundle.records.map((record) => record.id)
+): Judgment {
+  return {
+    id: `keyboard:${bundle.interaction.id}`,
+    judgeId: "keyboard",
+    judgeVersion: "0.1.0",
+    scope: "interaction",
+    verdict: "unknown",
+    summary,
+    severity,
+    confidence,
+    evidenceRecordIds
+  };
+}
+
+function collectActivationSignals(
+  records: EvidenceRecord[],
+  beforeRecord: EvidenceRecord,
+  afterRecord: EvidenceRecord,
+  beforeKey: string,
+  afterKey: string
+): ActivationSignal[] {
+  const signals: ActivationSignal[] = [];
+
+  if (beforeKey !== afterKey) {
+    signals.push({
+      label: "focus moved",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord])
+    });
+  }
+
+  const domRecords = records.filter(
+    (record) => record.observerId === "dom" && record.phase === "after" && record.status === "ok" && hasDomChange(record)
+  );
+
+  if (domRecords.length > 0) {
+    signals.push({
+      label: "DOM changed",
+      evidenceRecordIds: domRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(domRecords)
+    });
+  }
+
+  const networkRecords = records.filter(
+    (record) =>
+      record.observerId === "network" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      (getNumericMetaField(record, "newInterestingEventCount") ?? 0) > 0
+  );
+
+  if (networkRecords.length > 0) {
+    signals.push({
+      label: "network activity",
+      evidenceRecordIds: networkRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(networkRecords)
+    });
+  }
+
+  return signals;
+}
+
+function hasDomChange(record: EvidenceRecord): boolean {
+  if (getBooleanMetaField(record, "changed") === true) {
+    return true;
+  }
+
+  return (
+    record.changes?.some((change) => change.path === "dom.html" && change.impact !== "none") ?? false
+  );
+}
+
+function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focusTarget: unknown): boolean {
+  const activatableRoles = new Set([
+    "button",
+    "link",
+    "checkbox",
+    "radio",
+    "switch",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "option",
+    "tab"
+  ]);
+  const activatableInputTypes = new Set(["button", "submit", "reset", "checkbox", "radio", "image"]);
+
+  if (target?.role && activatableRoles.has(target.role)) {
+    return true;
+  }
+
+  if (!isRecord(focusTarget)) {
+    return false;
+  }
+
+  const role = typeof focusTarget.role === "string" ? focusTarget.role : undefined;
+  if (role && activatableRoles.has(role)) {
+    return true;
+  }
+
+  const tagName = typeof focusTarget.tagName === "string" ? focusTarget.tagName : undefined;
+  if (tagName === "button" || tagName === "a" || tagName === "summary") {
+    return true;
+  }
+
+  if (tagName === "input") {
+    const type = typeof focusTarget.type === "string" ? focusTarget.type : undefined;
+    return type ? activatableInputTypes.has(type) : false;
+  }
+
+  return false;
+}
+
 function findFocusRecord(
   records: EvidenceRecord[],
   phase: EvidenceRecord["phase"]
@@ -476,6 +730,22 @@ function getNumericField(target: unknown, field: string): number | undefined {
   }
 
   return typeof target[field] === "number" ? target[field] : undefined;
+}
+
+function getNumericMetaField(record: EvidenceRecord, field: string): number | undefined {
+  if (!isRecord(record.meta)) {
+    return undefined;
+  }
+
+  return typeof record.meta[field] === "number" ? record.meta[field] : undefined;
+}
+
+function getBooleanMetaField(record: EvidenceRecord, field: string): boolean | undefined {
+  if (!isRecord(record.meta)) {
+    return undefined;
+  }
+
+  return typeof record.meta[field] === "boolean" ? record.meta[field] : undefined;
 }
 
 function collectJudgmentEvidenceIds(judgments: Judgment[]): string[] {

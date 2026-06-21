@@ -29,7 +29,8 @@ This is still intentionally a foundation-first codebase, but it now includes a v
 - Screenshot evidence can be captured around a real page interaction
 - Network evidence can be captured around a real page interaction
 - CLI inputs and emitted JSON outputs are schema-validated at runtime
-- Keyboard judging now checks focus direction, not just whether focus changed
+- DOM and network observers now emit simple per-interaction change summaries
+- Keyboard judging now checks focus direction and basic enter/space activation behavior
 - Network observer output now summarizes per-interaction request and response deltas while filtering obvious non-network noise
 - Markdown reports now summarize observer coverage, bundle correlation, and artifact inventories
 - Release judgments now enforce policy thresholds against emitted accessibility failures
@@ -63,7 +64,7 @@ To run the real-page smoke test from a fresh machine:
 ## Next implementation steps
 
 1. Expand schema coverage further if we add new artifact kinds or richer report sections.
-2. Add keyboard-activation and composite-widget judging beyond plain tab order.
+2. Add composite-widget and arrow-key judging beyond plain tab order.
 3. Add richer change-response judging once more interaction observers are available.
 4. Let Playwright flows opt into stricter capture policies beyond the current defaults.
 5. Add reporter views that highlight blocking policy failures first for triage.

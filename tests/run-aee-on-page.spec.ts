@@ -20,6 +20,8 @@ interface JsonReport {
     meta?: {
       focusTarget?: unknown;
       byteLength?: number;
+      changed?: boolean;
+      previousByteLength?: number;
       eventCount?: number;
       interestingEventCount?: number;
       filteredNoiseCount?: number;
@@ -210,6 +212,92 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   );
 });
 
+test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <button id="save" type="button">Save</button>
+      <p id="status">Idle</p>
+    </main>
+  `);
+  await page.locator("#save").evaluate((button) => {
+    button.addEventListener("click", () => {
+      const status = document.querySelector("#status");
+
+      if (status) {
+        status.textContent = "Saved";
+      }
+    });
+  });
+  await page.focus("#save");
+
+  const outputBaseDir = testInfo.outputPath("aee-enter-activation-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus", "dom"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-enter-activation",
+    interaction: {
+      kind: "enter",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("Enter");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#status")).toHaveText("Saved");
+  await expect(page.locator("#save")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 2,
+    fail: 0,
+    unknown: 0
+  });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        meta: expect.objectContaining({
+          changed: true,
+          previousByteLength: expect.any(Number)
+        })
+      }),
+      expect.objectContaining({
+        observerId: "focus",
+        phase: "after",
+        status: "ok"
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "pass",
+        summary: expect.stringContaining("DOM changed")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
 test("runAeeOnPage can capture network activity around an interaction", async ({ page }, testInfo) => {
   await page.route("https://aee.test/api/save", async (route) => {
     await route.fulfill({
@@ -333,6 +421,77 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
           interestingUrls: expect.arrayContaining(["https://aee.test/api/save"]),
           newInterestingUrls: expect.arrayContaining(["https://aee.test/api/save"])
         })
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage fails keyboard judging when space does not activate a custom button", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <div id="save" role="button" tabindex="0">Save</div>
+      <p id="status">Idle</p>
+    </main>
+  `);
+  await page.focus("#save");
+
+  const outputBaseDir = testInfo.outputPath("aee-space-no-activation-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus", "dom"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-space-no-activation",
+    interaction: {
+      kind: "space",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("Space");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#status")).toHaveText("Idle");
+  await expect(page.locator("#save")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 0,
+    fail: 2,
+    unknown: 0
+  });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        meta: expect.objectContaining({
+          changed: false
+        })
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "fail",
+        summary: expect.stringContaining("no observable activation response")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "fail"
       })
     ])
   );

@@ -71,6 +71,7 @@ export interface RuntimeObserverContext extends ObserverContext {
   artifactDir?: string;
   captureLabel?: string;
   runtimeState?: {
+    domBeforeHtml?: string;
     networkBeforeSummary?: NetworkLogSummary;
   };
 }
@@ -234,6 +235,10 @@ async function captureDomRecord(
   }
 
   const html = await context.page.content();
+  const byteLength = Buffer.byteLength(html, "utf8");
+  const previousHtml = phase === "after" ? context.runtimeState?.domBeforeHtml : undefined;
+  const changed = previousHtml !== undefined ? previousHtml !== html : undefined;
+  const previousByteLength = previousHtml !== undefined ? Buffer.byteLength(previousHtml, "utf8") : undefined;
   const artifact = await maybeWriteArtifact(
     context,
     "dom",
@@ -243,6 +248,13 @@ async function captureDomRecord(
     "text/html",
     html
   );
+
+  if (phase === "before") {
+    context.runtimeState = {
+      ...(context.runtimeState ?? {}),
+      domBeforeHtml: html
+    };
+  }
 
   return {
     id: `dom:${phase}:${Date.now()}`,
@@ -254,9 +266,41 @@ async function captureDomRecord(
     phase,
     status: "ok",
     timestamp: getTimestamp(),
-    summary: `Captured DOM ${phase} state.`,
+    summary:
+      phase === "after" && changed !== undefined
+        ? changed
+          ? "Captured DOM after state with observable markup changes."
+          : "Captured DOM after state with no observable markup changes."
+        : `Captured DOM ${phase} state.`,
     ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
-    artifacts: artifact ? [artifact] : []
+    artifacts: artifact ? [artifact] : [],
+    changes:
+      phase === "after" && changed !== undefined
+        ? [
+            {
+              path: "dom.html",
+              summary: changed
+                ? "DOM markup changed after the interaction."
+                : "DOM markup did not change after the interaction.",
+              before: {
+                byteLength: previousByteLength
+              },
+              after: {
+                byteLength
+              },
+              impact: changed ? "major" : "none"
+            }
+          ]
+        : undefined,
+    meta: {
+      byteLength,
+      ...(phase === "after" && changed !== undefined
+        ? {
+            changed,
+            previousByteLength
+          }
+        : {})
+    }
   };
 }
 
