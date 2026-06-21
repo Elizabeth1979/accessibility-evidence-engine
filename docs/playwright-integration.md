@@ -114,6 +114,33 @@ await runAeeOnPage({
 });
 ```
 
+## Active descendant example
+
+The focus snapshot can also track `aria-activedescendant`, which lets the keyboard judge evaluate listbox-style composites even when DOM focus stays on the composite host.
+
+```ts
+await page.focus("#city-listbox");
+
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["focus"],
+  judges: ["keyboard", "release"],
+  interaction: {
+    kind: "arrow-key",
+    input: "ArrowDown",
+    actor: "test",
+    target: {
+      role: "option",
+      name: "Tel Aviv"
+    }
+  },
+  async performInteraction({ page }) {
+    await page.keyboard.press("ArrowDown");
+  }
+});
+```
+
 ## Screenshot example
 
 The visual observer can capture PNG artifacts around an interaction.
@@ -164,7 +191,7 @@ await runAeeOnPage({
 - The DOM observer relies on `page.content()`.
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
 - The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
-- The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, and basic enter/space activation checks.
+- The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
 - The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.

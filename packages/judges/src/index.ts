@@ -458,8 +458,8 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  const beforeTarget = getFocusTarget(beforeRecord);
-  const afterTarget = getFocusTarget(afterRecord);
+  const beforeTarget = getCompositeNavigationTarget(beforeRecord);
+  const afterTarget = getCompositeNavigationTarget(afterRecord);
   const beforeKey = serializeFocusTarget(beforeTarget);
   const afterKey = serializeFocusTarget(afterTarget);
   const arrowKey = getArrowKey(bundle);
@@ -980,6 +980,16 @@ function findFocusRecord(
 
 function getFocusTarget(record: EvidenceRecord): unknown {
   return isRecord(record.meta) ? record.meta.focusTarget ?? null : null;
+}
+
+function getCompositeNavigationTarget(record: EvidenceRecord): unknown {
+  const focusTarget = getFocusTarget(record);
+
+  if (isRecord(focusTarget) && isRecord(focusTarget.activeDescendant)) {
+    return focusTarget.activeDescendant;
+  }
+
+  return focusTarget;
 }
 
 function collectArtifactIds(records: EvidenceRecord[]): string[] {

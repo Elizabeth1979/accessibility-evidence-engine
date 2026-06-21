@@ -440,3 +440,83 @@ test("keyboard judge fails arrow-key navigation when focus stalls in a tablist",
   assert.match(judgment.summary, /did not move focus within the tablist/);
   assert.equal(judgment.severity, "high");
 });
+
+test("keyboard judge passes arrow-key navigation when aria-activedescendant changes within a listbox", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: {
+            tagName: "div",
+            id: "city-listbox",
+            role: "listbox",
+            name: "Cities",
+            activeDescendantId: "city-tel-aviv",
+            activeDescendant: {
+              tagName: "div",
+              id: "city-tel-aviv",
+              role: "option",
+              name: "Tel Aviv",
+              compositeRole: "listbox",
+              compositeItemIndex: 0,
+              compositeItemCount: 3
+            }
+          }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "div",
+            id: "city-listbox",
+            role: "listbox",
+            name: "Cities",
+            activeDescendantId: "city-haifa",
+            activeDescendant: {
+              tagName: "div",
+              id: "city-haifa",
+              role: "option",
+              name: "Haifa",
+              compositeRole: "listbox",
+              compositeItemIndex: 1,
+              compositeItemCount: 3
+            }
+          }
+        }
+      }
+    ],
+    {
+      kind: "arrow-key",
+      input: "ArrowDown",
+      target: {
+        role: "option",
+        name: "Tel Aviv"
+      }
+    }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /listbox/);
+  assert.match(judgment.summary, /ArrowDown/);
+});

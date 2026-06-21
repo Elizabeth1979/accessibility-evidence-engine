@@ -336,6 +336,7 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
               const globalRef = globalThis as unknown as {
                 document?: {
                   activeElement?: unknown;
+                  getElementById?: (id: string) => unknown;
                   querySelectorAll?: (selector: string) => Iterable<unknown>;
                 };
                 getComputedStyle?: (element: unknown) => {
@@ -431,6 +432,66 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
 
                 return undefined;
               };
+              const getElementSummary = (
+                element: {
+                  tagName?: unknown;
+                  id?: unknown;
+                  textContent?: unknown;
+                  type?: unknown;
+                  tabIndex?: unknown;
+                  disabled?: unknown;
+                  parentElement?: unknown;
+                  getAttribute?: (name: string) => string | null;
+                  getClientRects?: () => { length?: number };
+                  querySelectorAll?: (selector: string) => Iterable<unknown>;
+                }
+              ) => {
+                const role = element.getAttribute?.("role");
+                const tagName =
+                  typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
+                const id =
+                  typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
+                const name =
+                  element.getAttribute?.("aria-label") ??
+                  element.getAttribute?.("name") ??
+                  (typeof element.textContent === "string" && element.textContent.trim().length > 0
+                    ? element.textContent.trim().slice(0, 120)
+                    : undefined);
+                const type =
+                  typeof element.type === "string" && element.type.length > 0
+                    ? element.type
+                    : undefined;
+                const focusOrderIndex = focusableElements.indexOf(element);
+                const tabIndex = typeof element.tabIndex === "number" ? element.tabIndex : undefined;
+                const disabled = typeof element.disabled === "boolean" ? element.disabled : undefined;
+                const compositeContext = getCompositeRole(element);
+                const compositeSelector = compositeContext.compositeRole
+                  ? itemRoleSelectors[compositeContext.compositeRole]
+                  : undefined;
+                const compositeItems = compositeSelector
+                  ? Array.from(compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []).filter(
+                      isElementLike
+                    )
+                  : [];
+                const compositeItemIndex = compositeItems.indexOf(element);
+
+                return {
+                  tagName,
+                  id,
+                  role: role ?? undefined,
+                  name,
+                  type,
+                  tabIndex,
+                  disabled,
+                  ariaSelected: getBooleanAttribute(element, "aria-selected"),
+                  ariaChecked: getBooleanAttribute(element, "aria-checked"),
+                  compositeRole: compositeContext.compositeRole,
+                  compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
+                  compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
+                  focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
+                  focusableCount: focusableElements.length
+                };
+              };
 
               const focusableElements = Array.from(
                 documentRef?.querySelectorAll?.(
@@ -467,50 +528,20 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                 const rects = element.getClientRects?.();
                 return typeof rects?.length === "number" ? rects.length > 0 : true;
               });
-              const role = activeElement.getAttribute?.("role");
-              const tagName =
-                typeof activeElement.tagName === "string" ? activeElement.tagName.toLowerCase() : undefined;
-              const id =
-                typeof activeElement.id === "string" && activeElement.id.length > 0 ? activeElement.id : undefined;
-              const name =
-                activeElement.getAttribute?.("aria-label") ??
-                activeElement.getAttribute?.("name") ??
-                (typeof activeElement.textContent === "string" && activeElement.textContent.trim().length > 0
-                  ? activeElement.textContent.trim().slice(0, 120)
-                  : undefined);
-              const type =
-                typeof activeElement.type === "string" && activeElement.type.length > 0
-                  ? activeElement.type
-                  : undefined;
-              const focusOrderIndex = focusableElements.indexOf(activeElement);
-              const tabIndex = typeof activeElement.tabIndex === "number" ? activeElement.tabIndex : undefined;
-              const disabled = typeof activeElement.disabled === "boolean" ? activeElement.disabled : undefined;
-              const compositeContext = getCompositeRole(activeElement);
-              const compositeSelector = compositeContext.compositeRole
-                ? itemRoleSelectors[compositeContext.compositeRole]
+              const activeDescendantId = activeElement.getAttribute?.("aria-activedescendant") ?? undefined;
+              const activeDescendantCandidate = activeDescendantId
+                ? documentRef?.getElementById?.(activeDescendantId)
                 : undefined;
-              const compositeItems = compositeSelector
-                ? Array.from(compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []).filter(
-                    isElementLike
-                  )
-                : [];
-              const compositeItemIndex = compositeItems.indexOf(activeElement);
+              const activeDescendant =
+                activeDescendantCandidate && isElementLike(activeDescendantCandidate)
+                  ? getElementSummary(activeDescendantCandidate)
+                  : undefined;
+              const activeElementSummary = getElementSummary(activeElement);
 
               return {
-                tagName,
-                id,
-                role: role ?? undefined,
-                name,
-                type,
-                tabIndex,
-                disabled,
-                ariaSelected: getBooleanAttribute(activeElement, "aria-selected"),
-                ariaChecked: getBooleanAttribute(activeElement, "aria-checked"),
-                compositeRole: compositeContext.compositeRole,
-                compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
-                compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
-                focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
-                focusableCount: focusableElements.length
+                ...activeElementSummary,
+                activeDescendantId,
+                activeDescendant
               };
             })
         : undefined;

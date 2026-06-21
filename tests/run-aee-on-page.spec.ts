@@ -666,6 +666,198 @@ test("runAeeOnPage fails keyboard judging when arrow-right does not move focus w
   );
 });
 
+test("runAeeOnPage passes keyboard judging when arrow-down updates aria-activedescendant in a listbox", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <div
+        id="city-listbox"
+        role="listbox"
+        tabindex="0"
+        aria-label="Cities"
+        aria-activedescendant="city-tel-aviv"
+      >
+        <div id="city-tel-aviv" role="option" aria-selected="true">Tel Aviv</div>
+        <div id="city-haifa" role="option" aria-selected="false">Haifa</div>
+        <div id="city-jerusalem" role="option" aria-selected="false">Jerusalem</div>
+      </div>
+      <p id="status">Tel Aviv</p>
+    </main>
+  `);
+  await page.evaluate(() => {
+    const listbox = document.querySelector<HTMLElement>("#city-listbox");
+    const status = document.querySelector("#status");
+    const options = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]'));
+
+    listbox?.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown") {
+        return;
+      }
+
+      event.preventDefault();
+      const currentId = listbox.getAttribute("aria-activedescendant");
+      const currentIndex = Math.max(
+        0,
+        options.findIndex((option) => option.id === currentId)
+      );
+      const nextIndex = (currentIndex + 1) % options.length;
+      const nextOption = options[nextIndex];
+
+      if (!nextOption) {
+        return;
+      }
+
+      listbox.setAttribute("aria-activedescendant", nextOption.id);
+      options.forEach((option, index) => {
+        option.setAttribute("aria-selected", index === nextIndex ? "true" : "false");
+      });
+
+      if (status && nextOption.textContent) {
+        status.textContent = nextOption.textContent;
+      }
+    });
+  });
+  await page.focus("#city-listbox");
+
+  const outputBaseDir = testInfo.outputPath("aee-activedescendant-listbox-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-activedescendant-listbox",
+    interaction: {
+      kind: "arrow-key",
+      input: "ArrowDown",
+      actor: "test",
+      target: {
+        role: "option",
+        name: "Tel Aviv"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("ArrowDown");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#city-listbox")).toBeFocused();
+  await expect(page.locator("#status")).toHaveText("Haifa");
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 2,
+    fail: 0,
+    unknown: 0
+  });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        meta: expect.objectContaining({
+          focusTarget: expect.objectContaining({
+            role: "listbox",
+            activeDescendantId: "city-haifa",
+            activeDescendant: expect.objectContaining({
+              role: "option",
+              compositeRole: "listbox",
+              compositeItemIndex: 1,
+              compositeItemCount: 3
+            })
+          })
+        })
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "pass",
+        summary: expect.stringContaining("listbox")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage fails keyboard judging when aria-activedescendant does not change in a listbox", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <div
+        id="city-listbox"
+        role="listbox"
+        tabindex="0"
+        aria-label="Cities"
+        aria-activedescendant="city-tel-aviv"
+      >
+        <div id="city-tel-aviv" role="option" aria-selected="true">Tel Aviv</div>
+        <div id="city-haifa" role="option" aria-selected="false">Haifa</div>
+        <div id="city-jerusalem" role="option" aria-selected="false">Jerusalem</div>
+      </div>
+    </main>
+  `);
+  await page.focus("#city-listbox");
+
+  const outputBaseDir = testInfo.outputPath("aee-activedescendant-listbox-stalled-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-activedescendant-listbox-stalled",
+    interaction: {
+      kind: "arrow-key",
+      input: "ArrowDown",
+      actor: "test",
+      target: {
+        role: "option",
+        name: "Tel Aviv"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("ArrowDown");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#city-listbox")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 0,
+    fail: 2,
+    unknown: 0
+  });
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "fail",
+        summary: expect.stringContaining("listbox")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "fail"
+      })
+    ])
+  );
+});
+
 test("runAeeOnPage can capture focus movement around a tab interaction", async ({ page }, testInfo) => {
   await page.setContent(`
     <main>
