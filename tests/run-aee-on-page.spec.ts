@@ -21,6 +21,18 @@ interface JsonReport {
       focusTarget?: unknown;
       byteLength?: number;
       eventCount?: number;
+      interestingEventCount?: number;
+      filteredNoiseCount?: number;
+      requestCount?: number;
+      responseCount?: number;
+      matchedResponseCount?: number;
+      newEventCount?: number;
+      newInterestingEventCount?: number;
+      newRequestCount?: number;
+      newResponseCount?: number;
+      newMatchedResponseCount?: number;
+      interestingUrls?: string[];
+      newInterestingUrls?: string[];
       focusOrderIndex?: number;
       focusableCount?: number;
     };
@@ -298,7 +310,9 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
         phase: "before",
         status: "ok",
         meta: expect.objectContaining({
-          eventCount: 0
+          eventCount: 0,
+          interestingEventCount: 0,
+          filteredNoiseCount: 0
         })
       }),
       expect.objectContaining({
@@ -306,7 +320,18 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
         phase: "after",
         status: "ok",
         meta: expect.objectContaining({
-          eventCount: expect.any(Number)
+          eventCount: expect.any(Number),
+          interestingEventCount: expect.any(Number),
+          requestCount: expect.any(Number),
+          responseCount: expect.any(Number),
+          matchedResponseCount: expect.any(Number),
+          newEventCount: expect.any(Number),
+          newInterestingEventCount: expect.any(Number),
+          newRequestCount: expect.any(Number),
+          newResponseCount: expect.any(Number),
+          newMatchedResponseCount: expect.any(Number),
+          interestingUrls: expect.arrayContaining(["https://aee.test/api/save"]),
+          newInterestingUrls: expect.arrayContaining(["https://aee.test/api/save"])
         })
       })
     ])

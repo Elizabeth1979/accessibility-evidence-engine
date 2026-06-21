@@ -70,6 +70,34 @@ export interface RuntimeObserverContext extends ObserverContext {
   };
   artifactDir?: string;
   captureLabel?: string;
+  runtimeState?: {
+    networkBeforeSummary?: NetworkLogSummary;
+  };
+}
+
+interface NetworkEventRecord {
+  kind: "request" | "response";
+  url: string;
+  method?: string;
+  status?: number;
+  ok?: boolean;
+  resourceType?: string;
+  timestamp?: string;
+  requestId?: number;
+  noise: boolean;
+}
+
+interface NetworkLogSummary {
+  events: NetworkEventRecord[];
+  eventCount: number;
+  interestingEventCount: number;
+  filteredNoiseCount: number;
+  requestCount: number;
+  responseCount: number;
+  matchedResponseCount: number;
+  unmatchedRequestCount: number;
+  unmatchedResponseCount: number;
+  interestingUrls: string[];
 }
 
 export function createDomObserver(): ObserverPlugin {
@@ -506,7 +534,16 @@ async function captureNetworkRecord(
     "application/json",
     content
   );
-  const eventCount = Array.isArray(networkLog) ? networkLog.length : undefined;
+  const summary = summarizeNetworkLog(networkLog);
+  const previousSummary = phase === "after" ? context.runtimeState?.networkBeforeSummary : undefined;
+  const deltaSummary = phase === "after" ? summarizeNetworkDelta(previousSummary, summary) : undefined;
+
+  if (phase === "before") {
+    context.runtimeState = {
+      ...(context.runtimeState ?? {}),
+      networkBeforeSummary: summary
+    };
+  }
 
   return {
     id: `network:${phase}:${Date.now()}`,
@@ -519,13 +556,51 @@ async function captureNetworkRecord(
     status: "ok",
     timestamp: getTimestamp(),
     summary:
-      eventCount !== undefined
-        ? `Captured ${eventCount} network events ${phase} state.`
-        : `Captured network log ${phase} state.`,
+      phase === "after"
+        ? formatAfterNetworkSummary(summary, deltaSummary)
+        : formatBeforeNetworkSummary(summary),
     ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
     artifacts: artifact ? [artifact] : [],
+    changes: deltaSummary
+      ? [
+          {
+            path: "network.events",
+            summary: formatNetworkChangeSummary(deltaSummary),
+            before: {
+              eventCount: previousSummary?.eventCount ?? 0,
+              interestingEventCount: previousSummary?.interestingEventCount ?? 0
+            },
+            after: {
+              eventCount: summary.eventCount,
+              interestingEventCount: summary.interestingEventCount
+            },
+            impact: deltaSummary.interestingEventCount > 0 ? "major" : "none"
+          }
+        ]
+      : undefined,
     meta: {
-      eventCount
+      eventCount: summary.eventCount,
+      interestingEventCount: summary.interestingEventCount,
+      filteredNoiseCount: summary.filteredNoiseCount,
+      requestCount: summary.requestCount,
+      responseCount: summary.responseCount,
+      matchedResponseCount: summary.matchedResponseCount,
+      unmatchedRequestCount: summary.unmatchedRequestCount,
+      unmatchedResponseCount: summary.unmatchedResponseCount,
+      interestingUrls: summary.interestingUrls,
+      ...(deltaSummary
+        ? {
+            newEventCount: deltaSummary.eventCount,
+            newInterestingEventCount: deltaSummary.interestingEventCount,
+            newFilteredNoiseCount: deltaSummary.filteredNoiseCount,
+            newRequestCount: deltaSummary.requestCount,
+            newResponseCount: deltaSummary.responseCount,
+            newMatchedResponseCount: deltaSummary.matchedResponseCount,
+            newUnmatchedRequestCount: deltaSummary.unmatchedRequestCount,
+            newUnmatchedResponseCount: deltaSummary.unmatchedResponseCount,
+            newInterestingUrls: deltaSummary.interestingUrls
+          }
+        : {})
     }
   };
 }
@@ -574,6 +649,157 @@ async function maybeWriteArtifact(
     path: targetPath,
     mediaType
   };
+}
+
+function summarizeNetworkLog(networkLog: unknown): NetworkLogSummary {
+  const events = Array.isArray(networkLog)
+    ? networkLog.map((event) => normalizeNetworkEvent(event)).filter((event): event is NetworkEventRecord => Boolean(event))
+    : [];
+
+  return summarizeNormalizedNetworkEvents(events);
+}
+
+function summarizeNetworkDelta(
+  previousSummary: NetworkLogSummary | undefined,
+  currentSummary: NetworkLogSummary
+): NetworkLogSummary {
+  const previousCount = previousSummary?.events.length ?? 0;
+  const deltaEvents =
+    currentSummary.events.length >= previousCount
+      ? currentSummary.events.slice(previousCount)
+      : currentSummary.events;
+
+  return summarizeNormalizedNetworkEvents(deltaEvents);
+}
+
+function summarizeNormalizedNetworkEvents(events: NetworkEventRecord[]): NetworkLogSummary {
+  let interestingEventCount = 0;
+  let filteredNoiseCount = 0;
+  let requestCount = 0;
+  let responseCount = 0;
+  let matchedResponseCount = 0;
+  let unmatchedResponseCount = 0;
+  const interestingUrls = new Set<string>();
+  const pendingRequests = new Map<string, number>();
+
+  for (const event of events) {
+    if (event.noise) {
+      filteredNoiseCount += 1;
+      continue;
+    }
+
+    interestingEventCount += 1;
+    interestingUrls.add(event.url);
+
+    const correlationKey = getNetworkCorrelationKey(event);
+
+    if (event.kind === "request") {
+      requestCount += 1;
+      pendingRequests.set(correlationKey, (pendingRequests.get(correlationKey) ?? 0) + 1);
+      continue;
+    }
+
+    responseCount += 1;
+    const outstanding = pendingRequests.get(correlationKey) ?? 0;
+
+    if (outstanding > 0) {
+      matchedResponseCount += 1;
+      pendingRequests.set(correlationKey, outstanding - 1);
+    } else {
+      unmatchedResponseCount += 1;
+    }
+  }
+
+  const unmatchedRequestCount = [...pendingRequests.values()].reduce((total, count) => total + count, 0);
+
+  return {
+    events,
+    eventCount: events.length,
+    interestingEventCount,
+    filteredNoiseCount,
+    requestCount,
+    responseCount,
+    matchedResponseCount,
+    unmatchedRequestCount,
+    unmatchedResponseCount,
+    interestingUrls: [...interestingUrls].slice(0, 5)
+  };
+}
+
+function normalizeNetworkEvent(event: unknown): NetworkEventRecord | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+
+  const kind = event.kind;
+  const url = event.url;
+
+  if ((kind !== "request" && kind !== "response") || typeof url !== "string") {
+    return undefined;
+  }
+
+  return {
+    kind,
+    url,
+    method: typeof event.method === "string" ? event.method : undefined,
+    status: typeof event.status === "number" ? event.status : undefined,
+    ok: typeof event.ok === "boolean" ? event.ok : undefined,
+    resourceType: typeof event.resourceType === "string" ? event.resourceType : undefined,
+    timestamp: typeof event.timestamp === "string" ? event.timestamp : undefined,
+    requestId: typeof event.requestId === "number" ? event.requestId : undefined,
+    noise: isNetworkNoiseUrl(url)
+  };
+}
+
+function isNetworkNoiseUrl(url: string): boolean {
+  return (
+    url.startsWith("data:") ||
+    url.startsWith("about:") ||
+    url.startsWith("blob:") ||
+    url.startsWith("javascript:") ||
+    url.startsWith("chrome:") ||
+    url.startsWith("chrome-extension:") ||
+    url.startsWith("devtools:")
+  );
+}
+
+function getNetworkCorrelationKey(event: NetworkEventRecord): string {
+  if (typeof event.requestId === "number") {
+    return `request-id:${event.requestId}`;
+  }
+
+  return `${event.method ?? "UNKNOWN"} ${event.url}`;
+}
+
+function formatBeforeNetworkSummary(summary: NetworkLogSummary): string {
+  return `Captured ${summary.eventCount} network events before state (${summary.interestingEventCount} interesting, ${summary.filteredNoiseCount} filtered as noise).`;
+}
+
+function formatAfterNetworkSummary(summary: NetworkLogSummary, deltaSummary: NetworkLogSummary | undefined): string {
+  if (!deltaSummary) {
+    return `Captured ${summary.eventCount} network events after state (${summary.interestingEventCount} interesting, ${summary.filteredNoiseCount} filtered as noise).`;
+  }
+
+  return `Captured ${summary.eventCount} network events after state; ${formatNetworkDeltaSummary(deltaSummary)}.`;
+}
+
+function formatNetworkChangeSummary(deltaSummary: NetworkLogSummary): string {
+  if (deltaSummary.interestingEventCount === 0) {
+    if (deltaSummary.filteredNoiseCount > 0) {
+      return `Observed ${deltaSummary.filteredNoiseCount} new network events, but all were filtered as noise.`;
+    }
+
+    return "No new network activity was observed around the interaction.";
+  }
+
+  return formatNetworkDeltaSummary(deltaSummary);
+}
+
+function formatNetworkDeltaSummary(deltaSummary: NetworkLogSummary): string {
+  const urlSuffix =
+    deltaSummary.interestingUrls.length > 0 ? ` URLs: ${deltaSummary.interestingUrls.join(", ")}.` : "";
+
+  return `Observed ${deltaSummary.interestingEventCount} new interesting network events (${deltaSummary.requestCount} request${deltaSummary.requestCount === 1 ? "" : "s"}, ${deltaSummary.responseCount} response${deltaSummary.responseCount === 1 ? "" : "s"}, ${deltaSummary.matchedResponseCount} matched pair${deltaSummary.matchedResponseCount === 1 ? "" : "s"}, ${deltaSummary.filteredNoiseCount} filtered).${urlSuffix}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

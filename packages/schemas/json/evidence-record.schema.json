@@ -71,6 +71,39 @@
         "$ref": "./common.schema.json#/$defs/artifactRef"
       }
     },
+    "rawRef": {
+      "$ref": "./common.schema.json#/$defs/artifactRef"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "summary"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "before": {},
+          "after": {},
+          "impact": {
+            "type": "string",
+            "enum": [
+              "none",
+              "minor",
+              "major",
+              "unknown"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
     "diagnostics": {
       "type": "array",
       "items": {
@@ -83,4 +116,3 @@
   },
   "additionalProperties": false
 }
-

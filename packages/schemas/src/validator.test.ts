@@ -41,7 +41,21 @@ const sampleRecord = {
   status: "ok" as const,
   timestamp: "2026-06-20T00:00:01.100Z",
   beforeStateRef: sampleArtifact,
-  artifacts: [sampleArtifact]
+  rawRef: sampleArtifact,
+  artifacts: [sampleArtifact],
+  changes: [
+    {
+      path: "network.events",
+      summary: "Observed new network activity.",
+      before: {
+        eventCount: 0
+      },
+      after: {
+        eventCount: 2
+      },
+      impact: "major" as const
+    }
+  ]
 };
 
 const sampleFinding = {

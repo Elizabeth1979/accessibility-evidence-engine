@@ -481,10 +481,17 @@ function createNetworkTracker(page: EventedPageLike) {
   }
 
   const events: Array<Record<string, unknown>> = [];
+  const requestIds = new WeakMap<object, number>();
+  let nextRequestId = 1;
   let tracking = false;
   const requestListener = (request: RequestLike) => {
+    const requestObject = request as object;
+    const requestId = nextRequestId++;
+    requestIds.set(requestObject, requestId);
+
     events.push({
       kind: "request",
+      requestId,
       url: request.url(),
       method: request.method(),
       resourceType: request.resourceType(),
@@ -494,15 +501,19 @@ function createNetworkTracker(page: EventedPageLike) {
     });
   };
   const responseListener = (response: ResponseLike) => {
+    const request = response.request();
+    const requestId = requestIds.get(request as object);
+
     events.push({
       kind: "response",
+      requestId,
       url: response.url(),
       status: response.status(),
       statusText: response.statusText(),
       ok: response.ok(),
       fromServiceWorker: response.fromServiceWorker(),
       headers: response.headers(),
-      method: response.request().method(),
+      method: request.method(),
       timestamp: new Date().toISOString()
     });
   };
