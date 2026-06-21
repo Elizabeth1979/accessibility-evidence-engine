@@ -21,11 +21,14 @@ interface JsonReport {
       focusTarget?: unknown;
       byteLength?: number;
       eventCount?: number;
+      focusOrderIndex?: number;
+      focusableCount?: number;
     };
   }>;
   judgments: Array<{
     judgeId: string;
     verdict: string;
+    summary?: string;
   }>;
 }
 
@@ -359,12 +362,24 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
       expect.objectContaining({
         observerId: "focus",
         phase: "before",
-        status: "ok"
+        status: "ok",
+        meta: expect.objectContaining({
+          focusTarget: expect.objectContaining({
+            focusOrderIndex: 0,
+            focusableCount: 2
+          })
+        })
       }),
       expect.objectContaining({
         observerId: "focus",
         phase: "after",
-        status: "ok"
+        status: "ok",
+        meta: expect.objectContaining({
+          focusTarget: expect.objectContaining({
+            focusOrderIndex: 1,
+            focusableCount: 2
+          })
+        })
       })
     ])
   );
@@ -373,6 +388,138 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
       expect.objectContaining({
         judgeId: "keyboard",
         verdict: "pass"
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage can capture backward focus movement around a shift-tab interaction", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <button id="first">First</button>
+      <button id="second">Second</button>
+      <button id="third">Third</button>
+    </main>
+  `);
+  await page.focus("#second");
+
+  const outputBaseDir = testInfo.outputPath("aee-shift-tab-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-shift-tab",
+    interaction: {
+      kind: "shift-tab",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Second"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("Shift+Tab");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  expect(result.artifactFiles).toHaveLength(2);
+  await expect(page.locator("#first")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 2,
+    fail: 0,
+    unknown: 0
+  });
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "pass"
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage fails keyboard judging when tab moves focus backward", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <button id="first">First</button>
+      <button id="second">Second</button>
+      <button id="third">Third</button>
+    </main>
+  `);
+  await page.evaluate(() => {
+    window.addEventListener(
+      "keydown",
+      (event) => {
+        if (event.key === "Tab" && !event.shiftKey) {
+          event.preventDefault();
+          const target = document.querySelector<HTMLElement>("#first");
+          target?.focus();
+        }
+      },
+      { once: true }
+    );
+  });
+  await page.focus("#second");
+
+  const outputBaseDir = testInfo.outputPath("aee-tab-wrong-direction-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-tab-wrong-direction",
+    interaction: {
+      kind: "tab",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Second"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("Tab");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  expect(result.artifactFiles).toHaveLength(2);
+  await expect(page.locator("#first")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 1,
+    fail: 1,
+    unknown: 0
+  });
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "fail",
+        summary: expect.stringContaining("wrong direction")
       }),
       expect.objectContaining({
         judgeId: "release",

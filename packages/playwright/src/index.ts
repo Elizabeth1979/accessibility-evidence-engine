@@ -326,14 +326,27 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
       : evaluatablePage.evaluate
         ? async () =>
             evaluatablePage.evaluate?.(() => {
-              const documentRef = (globalThis as unknown as { document?: { activeElement?: unknown } }).document;
+              const globalRef = globalThis as unknown as {
+                document?: {
+                  activeElement?: unknown;
+                  querySelectorAll?: (selector: string) => Iterable<unknown>;
+                };
+                getComputedStyle?: (element: unknown) => {
+                  display?: string;
+                  visibility?: string;
+                };
+              };
+              const documentRef = globalRef.document;
               const activeElement = documentRef?.activeElement as
                 | {
                     tagName?: unknown;
                     id?: unknown;
                     textContent?: unknown;
                     type?: unknown;
+                    tabIndex?: unknown;
+                    disabled?: unknown;
                     getAttribute?: (name: string) => string | null;
+                    getClientRects?: () => { length?: number };
                   }
                 | undefined;
 
@@ -341,6 +354,41 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                 return null;
               }
 
+              const focusableElements = Array.from(
+                documentRef?.querySelectorAll?.(
+                  'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'
+                ) ?? []
+              ).filter(
+                (
+                  element
+                ): element is {
+                  tagName?: unknown;
+                  id?: unknown;
+                  textContent?: unknown;
+                  type?: unknown;
+                  tabIndex?: unknown;
+                  disabled?: unknown;
+                  getAttribute?: (name: string) => string | null;
+                  getClientRects?: () => { length?: number };
+                } => typeof element === "object" && element !== null
+              ).filter((element) => {
+                if (typeof element.tabIndex === "number" && element.tabIndex < 0) {
+                  return false;
+                }
+
+                if (Boolean(element.disabled)) {
+                  return false;
+                }
+
+                const style = globalRef.getComputedStyle?.(element);
+
+                if (style?.display === "none" || style?.visibility === "hidden") {
+                  return false;
+                }
+
+                const rects = element.getClientRects?.();
+                return typeof rects?.length === "number" ? rects.length > 0 : true;
+              });
               const role = activeElement.getAttribute?.("role");
               const tagName =
                 typeof activeElement.tagName === "string" ? activeElement.tagName.toLowerCase() : undefined;
@@ -356,13 +404,20 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                 typeof activeElement.type === "string" && activeElement.type.length > 0
                   ? activeElement.type
                   : undefined;
+              const focusOrderIndex = focusableElements.indexOf(activeElement);
+              const tabIndex = typeof activeElement.tabIndex === "number" ? activeElement.tabIndex : undefined;
+              const disabled = typeof activeElement.disabled === "boolean" ? activeElement.disabled : undefined;
 
               return {
                 tagName,
                 id,
                 role: role ?? undefined,
                 name,
-                type
+                type,
+                tabIndex,
+                disabled,
+                focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
+                focusableCount: focusableElements.length
               };
             })
         : undefined;

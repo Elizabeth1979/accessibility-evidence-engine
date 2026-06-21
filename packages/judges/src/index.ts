@@ -186,33 +186,111 @@ function createKeyboardJudge(): JudgePlugin {
       const afterTarget = getFocusTarget(afterRecord);
       const beforeKey = serializeFocusTarget(beforeTarget);
       const afterKey = serializeFocusTarget(afterTarget);
+      const beforeOrderIndex = getNumericField(beforeTarget, "focusOrderIndex");
+      const afterOrderIndex = getNumericField(afterTarget, "focusOrderIndex");
+      const focusableCount =
+        getNumericField(beforeTarget, "focusableCount") ?? getNumericField(afterTarget, "focusableCount");
 
-      if (beforeKey !== afterKey && afterTarget !== null) {
+      if (afterTarget === null) {
+        const finding: Finding = {
+          id: `keyboard:${bundle.interaction.id}:focus-lost`,
+          message: "Keyboard interaction left the page without a focused target.",
+          severity: "high",
+          ruleId: "keyboard-focus-presence",
+          evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+          artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+          suggestedFix: "Ensure a visible, interactive control retains focus after keyboard navigation."
+        };
+
         return [
           {
             id: `keyboard:${bundle.interaction.id}`,
             judgeId: "keyboard",
             judgeVersion: "0.1.0",
             scope: "interaction",
-            verdict: "pass",
-            summary: `Keyboard focus advanced from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.`,
-            severity: "info",
-            confidence: 0.9,
+            verdict: "fail",
+            summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+            severity: "high",
+            confidence: 0.95,
             evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-            artifactIds: collectArtifactIds([beforeRecord, afterRecord])
+            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+            findings: [finding],
+            suggestedFix: finding.suggestedFix
           }
         ];
       }
 
-      const finding: Finding = {
-        id: `keyboard:${bundle.interaction.id}:focus-stalled`,
-        message: "Tab interaction did not move focus to a new target.",
-        severity: "medium",
-        ruleId: "keyboard-focus-transition",
-        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-        suggestedFix: "Ensure the next tabbable control receives focus after keyboard navigation."
-      };
+      if (beforeKey === afterKey) {
+        const finding: Finding = {
+          id: `keyboard:${bundle.interaction.id}:focus-stalled`,
+          message: "Tab interaction did not move focus to a new target.",
+          severity: "medium",
+          ruleId: "keyboard-focus-transition",
+          evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+          artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+          suggestedFix: "Ensure the next tabbable control receives focus after keyboard navigation."
+        };
+
+        return [
+          {
+            id: `keyboard:${bundle.interaction.id}`,
+            judgeId: "keyboard",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `Keyboard focus did not advance. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+            severity: "medium",
+            confidence: 0.9,
+            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+            findings: [finding],
+            suggestedFix: finding.suggestedFix
+          }
+        ];
+      }
+
+      const directionVerdict = evaluateDirection(
+        bundle.interaction.kind,
+        beforeOrderIndex,
+        afterOrderIndex,
+        focusableCount
+      );
+
+      if (directionVerdict === "wrong-direction") {
+        return [
+          {
+            id: `keyboard:${bundle.interaction.id}`,
+            judgeId: "keyboard",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `Keyboard focus moved in the wrong direction. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+            severity: "high",
+            confidence: 0.95,
+            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+            findings: [
+              {
+                id: `keyboard:${bundle.interaction.id}:wrong-direction`,
+                message: `Expected ${bundle.interaction.kind} to move focus ${bundle.interaction.kind === "tab" ? "forward" : "backward"}, but it moved differently.`,
+                severity: "high",
+                ruleId: "keyboard-focus-direction",
+                evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+                artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+                suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
+              }
+            ],
+            suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
+          }
+        ];
+      }
+
+      const directionText =
+        bundle.interaction.kind === "shift-tab" ? "moved backward" : "advanced forward";
+      const orderingSuffix =
+        directionVerdict === "direction-unverified"
+          ? " Focus order metadata was unavailable, so direction was inferred from the target change only."
+          : "";
 
       return [
         {
@@ -220,14 +298,12 @@ function createKeyboardJudge(): JudgePlugin {
           judgeId: "keyboard",
           judgeVersion: "0.1.0",
           scope: "interaction",
-          verdict: "fail",
-          summary: `Keyboard focus did not advance. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
-          severity: "medium",
-          confidence: 0.9,
+          verdict: "pass",
+          summary: `Keyboard focus ${directionText} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.${orderingSuffix}`,
+          severity: "info",
+          confidence: directionVerdict === "direction-unverified" ? 0.75 : 0.95,
           evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-          artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-          findings: [finding],
-          suggestedFix: finding.suggestedFix
+          artifactIds: collectArtifactIds([beforeRecord, afterRecord])
         }
       ];
     }
@@ -323,4 +399,42 @@ function describeFocusTarget(target: unknown): string {
   const name = typeof target.name === "string" && target.name.length > 0 ? `"${target.name}"` : undefined;
 
   return [tagName, id, role, name].filter(Boolean).join(" ");
+}
+
+function getNumericField(target: unknown, field: string): number | undefined {
+  if (!isRecord(target)) {
+    return undefined;
+  }
+
+  return typeof target[field] === "number" ? target[field] : undefined;
+}
+
+function evaluateDirection(
+  interactionKind: "tab" | "shift-tab",
+  beforeOrderIndex: number | undefined,
+  afterOrderIndex: number | undefined,
+  focusableCount: number | undefined
+): "correct-direction" | "wrong-direction" | "direction-unverified" {
+  if (
+    beforeOrderIndex === undefined ||
+    afterOrderIndex === undefined ||
+    focusableCount === undefined ||
+    focusableCount < 2
+  ) {
+    return "direction-unverified";
+  }
+
+  if (interactionKind === "tab") {
+    const movedForward =
+      afterOrderIndex > beforeOrderIndex ||
+      (beforeOrderIndex === focusableCount - 1 && afterOrderIndex === 0);
+
+    return movedForward ? "correct-direction" : "wrong-direction";
+  }
+
+  const movedBackward =
+    afterOrderIndex < beforeOrderIndex ||
+    (beforeOrderIndex === 0 && afterOrderIndex === focusableCount - 1);
+
+  return movedBackward ? "correct-direction" : "wrong-direction";
 }
