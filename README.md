@@ -34,7 +34,7 @@ This is still intentionally a foundation-first codebase, but it now includes a v
 - Keyboard judging now checks focus direction, roving arrow-key navigation, `aria-activedescendant` listbox-style navigation, and basic enter/space activation behavior
 - Change-response judging now checks whether click-like interactions produce observable DOM, focus, or network outcomes
 - Network observer output now summarizes per-interaction request and response deltas while filtering obvious non-network noise
-- Markdown reports now summarize observer coverage, bundle correlation, and artifact inventories
+- Markdown reports now open with blocking judgments, unresolved signals, and suggested fixes before the deeper evidence tables
 - Release judgments now enforce policy thresholds against emitted accessibility failures
 - Judges and reporters can turn that evidence into a first pass/fail report bundle
 
@@ -69,4 +69,4 @@ To run the real-page smoke test from a fresh machine:
 2. Expand composite-widget judging beyond the current simple roving-focus and listbox-style `aria-activedescendant` cases.
 3. Expand change-response judging beyond the current click and submit cases.
 4. Let Playwright flows opt into stricter capture policies beyond the current defaults.
-5. Add reporter views that highlight blocking policy failures first for triage.
+5. Add alternate report formats or exports once the markdown triage view stabilizes.

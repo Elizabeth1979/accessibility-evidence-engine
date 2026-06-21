@@ -219,4 +219,5 @@ await runAeeOnPage({
 - The change-response judge currently evaluates click and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
+- The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.
 - This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.

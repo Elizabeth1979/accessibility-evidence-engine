@@ -70,6 +70,17 @@ const sampleRecords = [
     confidence: 0.8,
     summary: "Visual evidence captured after the interaction.",
     rawRef: sampleArtifacts[2]
+  },
+  {
+    id: "record-screen-reader-after",
+    runId: "run-1",
+    checkpointId: "checkpoint-1",
+    interactionId: "interaction-1",
+    observerId: "guidepup-screen-reader",
+    phase: "after" as const,
+    status: "unsupported" as const,
+    timestamp: "2026-06-21T09:00:01.300Z",
+    diagnostics: ["Guidepup is not available in this environment."]
   }
 ];
 
@@ -105,11 +116,23 @@ const sampleJudgments = [
     judgeId: "release",
     judgeVersion: "0.1.0",
     scope: "interaction" as const,
-    verdict: "pass" as const,
-    summary: "Release policy remains informational in this scaffold.",
-    severity: "info" as const,
-    confidence: 0.5,
-    evidenceRecordIds: ["record-focus-before", "record-focus-after", "record-visual-after"]
+    verdict: "fail" as const,
+    summary: "Release gate failed because one blocking judgment met the current policy threshold.",
+    severity: "high" as const,
+    confidence: 0.75,
+    evidenceRecordIds: ["record-focus-before", "record-focus-after", "record-visual-after"],
+    suggestedFix: "Resolve blocking accessibility judgments before release."
+  },
+  {
+    id: "screen-reader:interaction-1",
+    judgeId: "screen-reader",
+    judgeVersion: "0.1.0",
+    scope: "interaction" as const,
+    verdict: "unknown" as const,
+    summary: "Screen reader evidence is unavailable in this environment.",
+    severity: "medium" as const,
+    confidence: 0.6,
+    evidenceRecordIds: ["record-screen-reader-after"]
   }
 ];
 
@@ -121,9 +144,9 @@ const sampleInput: ReporterInput = {
     finishedAt: "2026-06-21T09:00:02.000Z",
     status: "completed",
     results: {
-      pass: 1,
-      fail: 1,
-      unknown: 0
+      pass: 0,
+      fail: 2,
+      unknown: 1
     },
     environment: {
       mode: "playwright-page"
@@ -176,9 +199,18 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
 
   assert.equal(artifact.label, "aee-report.md");
   assert.match(artifact.content, /## Run Summary/);
-  assert.match(artifact.content, /\| Verdicts \| pass 1, fail 1, unknown 0 \|/);
+  assert.match(artifact.content, /\| Verdicts \| pass 0, fail 2, unknown 1 \|/);
+  assert.match(artifact.content, /## Triage/);
+  assert.match(artifact.content, /### Blocking Judgments/);
+  assert.match(artifact.content, /Release gate failed because one blocking judgment met the current policy threshold\./);
+  assert.match(artifact.content, /### Unresolved Signals/);
+  assert.match(artifact.content, /Screen reader evidence is unavailable in this environment\./);
+  assert.match(artifact.content, /Guidepup is not available in this environment\./);
+  assert.match(artifact.content, /### Suggested Fixes/);
+  assert.match(artifact.content, /Resolve blocking accessibility judgments before release\./);
   assert.match(artifact.content, /## Observer Coverage/);
   assert.match(artifact.content, /\| focus \| 2 \| 2 \| 0 \| 0 \| 0 \| 0 \| 3 \|/);
+  assert.match(artifact.content, /\| guidepup-screen-reader \| 1 \| 0 \| 1 \| 0 \| 0 \| 0 \| 0 \|/);
   assert.match(artifact.content, /## Artifact Summary/);
   assert.match(artifact.content, /\| dom-snapshot \| 2 \|/);
   assert.match(artifact.content, /\| screenshot \| 1 \|/);

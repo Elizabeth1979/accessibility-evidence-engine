@@ -86,6 +86,7 @@ function renderMarkdownReport(input: ReporterInput): string {
   const verdicts = input.run.results ?? summarizeVerdicts(input.judgments);
   const observerCoverage = summarizeObserverCoverage(input.records);
   const artifactSummary = summarizeArtifacts(input.artifacts);
+  const triageSummary = buildTriageSummary(input);
 
   lines.push("## Run Summary", "");
   lines.push(
@@ -109,6 +110,67 @@ function renderMarkdownReport(input: ReporterInput): string {
     ),
     ""
   );
+
+  lines.push("## Triage", "");
+  if (triageSummary.blockingJudgments.length === 0) {
+    lines.push("No blocking judgments were detected.", "");
+  } else {
+    lines.push("### Blocking Judgments", "");
+    lines.push(
+      ...renderTable(
+        ["Judge", "Severity", "Summary", "Suggested Fix"],
+        triageSummary.blockingJudgments.map((judgment) => [
+          judgment.judgeId,
+          judgment.severity ?? "n/a",
+          judgment.summary,
+          judgment.suggestedFix ?? collectFindingFix(judgment.findings) ?? "n/a"
+        ])
+      ),
+      ""
+    );
+  }
+
+  if (triageSummary.unresolvedJudgments.length === 0 && triageSummary.unresolvedRecords.length === 0) {
+    lines.push("### Unresolved Signals", "", "No unresolved judgments or observer gaps were detected.", "");
+  } else {
+    lines.push("### Unresolved Signals", "");
+
+    if (triageSummary.unresolvedJudgments.length > 0) {
+      lines.push(
+        ...renderTable(
+          ["Judge", "Severity", "Summary"],
+          triageSummary.unresolvedJudgments.map((judgment) => [
+            judgment.judgeId,
+            judgment.severity ?? "n/a",
+            judgment.summary
+          ])
+        ),
+        ""
+      );
+    }
+
+    if (triageSummary.unresolvedRecords.length > 0) {
+      lines.push(
+        ...renderTable(
+          ["Observer", "Phase", "Status", "Summary"],
+          triageSummary.unresolvedRecords.map((record) => [
+            record.observerId,
+            record.phase,
+            record.status,
+            record.summary ?? formatDiagnostics(record.diagnostics)
+          ])
+        ),
+        ""
+      );
+    }
+  }
+
+  if (triageSummary.recommendedFixes.length === 0) {
+    lines.push("### Suggested Fixes", "", "No explicit suggested fixes were emitted.", "");
+  } else {
+    lines.push("### Suggested Fixes", "");
+    lines.push(...triageSummary.recommendedFixes.map((fix) => `- ${fix}`), "");
+  }
 
   lines.push("## Observer Coverage", "");
   if (observerCoverage.length === 0) {
@@ -260,6 +322,13 @@ function renderMarkdownReport(input: ReporterInput): string {
   return lines.join("\n");
 }
 
+interface TriageSummary {
+  blockingJudgments: Judgment[];
+  unresolvedJudgments: Judgment[];
+  unresolvedRecords: EvidenceRecord[];
+  recommendedFixes: string[];
+}
+
 function summarizeVerdicts(judgments: Judgment[]): RunSummary {
   return judgments.reduce(
     (summary, judgment) => {
@@ -279,6 +348,35 @@ function summarizeVerdicts(judgments: Judgment[]): RunSummary {
       unknown: 0
     }
   );
+}
+
+function buildTriageSummary(input: ReporterInput): TriageSummary {
+  const blockingJudgments = [...input.judgments]
+    .filter((judgment) => judgment.verdict === "fail")
+    .sort(compareJudgmentsForTriage);
+  const unresolvedJudgments = [...input.judgments]
+    .filter((judgment) => judgment.verdict === "unknown")
+    .sort(compareJudgmentsForTriage);
+  const unresolvedRecords = [...input.records]
+    .filter((record) => record.status !== "ok")
+    .sort(compareRecordsForTriage);
+  const recommendedFixes = [
+    ...new Set(
+      [
+        ...blockingJudgments.map((judgment) => judgment.suggestedFix),
+        ...blockingJudgments.flatMap((judgment) => (judgment.findings ?? []).map((finding) => finding.suggestedFix)),
+        ...unresolvedJudgments.map((judgment) => judgment.suggestedFix),
+        ...input.findings.map((finding) => finding.suggestedFix)
+      ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+    )
+  ];
+
+  return {
+    blockingJudgments,
+    unresolvedJudgments,
+    unresolvedRecords,
+    recommendedFixes
+  };
 }
 
 function summarizeObserverCoverage(records: EvidenceRecord[]): ObserverCoverageSummary[] {
@@ -327,6 +425,38 @@ function summarizeArtifacts(artifacts: ArtifactRef[]): Array<[string, number]> {
   return [...counts.entries()].sort((left, right) => left[0].localeCompare(right[0]));
 }
 
+function compareJudgmentsForTriage(left: Judgment, right: Judgment): number {
+  const leftPriority = getJudgmentTriagePriority(left);
+  const rightPriority = getJudgmentTriagePriority(right);
+
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+
+  const severityDelta = getSeverityRank(right.severity) - getSeverityRank(left.severity);
+  if (severityDelta !== 0) {
+    return severityDelta;
+  }
+
+  const leftConfidence = left.confidence ?? -1;
+  const rightConfidence = right.confidence ?? -1;
+
+  if (leftConfidence !== rightConfidence) {
+    return rightConfidence - leftConfidence;
+  }
+
+  return left.judgeId.localeCompare(right.judgeId);
+}
+
+function compareRecordsForTriage(left: EvidenceRecord, right: EvidenceRecord): number {
+  const severityDelta = getRecordStatusRank(right.status) - getRecordStatusRank(left.status);
+  if (severityDelta !== 0) {
+    return severityDelta;
+  }
+
+  return left.observerId.localeCompare(right.observerId);
+}
+
 function findJudgmentsForBundle(bundle: EvidenceBundle, judgments: Judgment[]): Judgment[] {
   const bundleRecordIds = new Set(bundle.records.map((record) => record.id));
   const bundleArtifactIds = new Set(bundle.artifacts.map((artifact) => artifact.id));
@@ -349,6 +479,10 @@ function findFindingsForBundle(bundle: EvidenceBundle, findings: Finding[]): Fin
 
 function hasOverlap(values: string[], candidates: Set<string>): boolean {
   return values.some((value) => candidates.has(value));
+}
+
+function collectFindingFix(findings?: Finding[]): string | undefined {
+  return findings?.map((finding) => finding.suggestedFix).find((value): value is string => Boolean(value));
 }
 
 function collectRecordArtifacts(record: EvidenceRecord): ArtifactRef[] {
@@ -431,4 +565,57 @@ function formatList(values?: string[]): string {
 function getStringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = record?.[key];
   return typeof value === "string" ? value : undefined;
+}
+
+function getJudgmentTriagePriority(judgment: Judgment): number {
+  if (judgment.judgeId === "release" && judgment.verdict === "fail") {
+    return 0;
+  }
+
+  if (judgment.verdict === "fail") {
+    return 1;
+  }
+
+  if (judgment.verdict === "unknown") {
+    return 2;
+  }
+
+  return 3;
+}
+
+function getSeverityRank(severity?: Judgment["severity"] | Finding["severity"]): number {
+  switch (severity) {
+    case "critical":
+      return 5;
+    case "high":
+      return 4;
+    case "medium":
+      return 3;
+    case "low":
+      return 2;
+    case "info":
+      return 1;
+    default:
+      return 0;
+  }
+}
+
+function getRecordStatusRank(status: EvidenceRecord["status"]): number {
+  switch (status) {
+    case "observer_error":
+      return 5;
+    case "timeout":
+      return 4;
+    case "unsupported":
+      return 3;
+    case "no_signal":
+      return 2;
+    case "ok":
+    default:
+      return 1;
+  }
+}
+
+function formatDiagnostics(diagnostics?: string[]): string {
+  return diagnostics && diagnostics.length > 0 ? diagnostics.join("; ") : "No summary provided.";
 }
