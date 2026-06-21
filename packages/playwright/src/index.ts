@@ -6,6 +6,7 @@ import {
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
+  type CapturePolicy,
   type Checkpoint,
   type Interaction,
   type ReporterInput,
@@ -88,12 +89,14 @@ export interface CheckpointRequest {
 
 export interface InteractionRequest {
   kind: Interaction["kind"];
-  timestamp: string;
+  timestamp?: string;
   actor?: Interaction["actor"];
   target?: TargetDescriptor;
   input?: string;
   meta?: Record<string, unknown>;
 }
+
+const defaultPlaywrightObserverIds = ["dom", "accessibility-tree"];
 
 export function createVirtualPage(fixture: VirtualPageFixture): PlaywrightPageLike {
   return {
@@ -145,7 +148,7 @@ export function buildInteraction(options: AeePlaywrightOptions, request: Interac
   return {
     id: `${prefix}:${request.kind}:${Date.now()}`,
     runId: options.runId,
-    timestamp: request.timestamp,
+    timestamp: request.timestamp ?? new Date().toISOString(),
     actor: request.actor ?? "test",
     kind: request.kind,
     target: request.target,
@@ -162,11 +165,36 @@ export function artifactFromPath(id: string, kind: ArtifactRef["kind"], path: st
   };
 }
 
+export function resolveObserverIdsForCapturePolicy(
+  observerIds: string[] | undefined,
+  capturePolicy: CapturePolicy
+): string[] {
+  const selectedObserverIds = [...new Set(observerIds ?? defaultPlaywrightObserverIds)];
+
+  return selectedObserverIds.filter((observerId) => {
+    if (observerId === "dom") {
+      return capturePolicy.includeDomSnapshot;
+    }
+
+    if (observerId === "accessibility-tree") {
+      return capturePolicy.includeAccessibilityTree;
+    }
+
+    if (observerId === "visual") {
+      return capturePolicy.includeScreenshots;
+    }
+
+    return true;
+  });
+}
+
 export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
   options: RunAeeOnPageOptions<TPage>
 ): Promise<RunAeeOnPageResult> {
   const runId = options.runId ?? `run-${Date.now()}`;
   const resolvedPolicy = resolvePolicyConfig(options.policy);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(options.observers, resolvedPolicy.capture);
+  const performInteraction = options.performInteraction;
   const outputDir = options.outputDir
     ? path.resolve(options.projectRoot, options.outputDir, runId)
     : undefined;
@@ -212,23 +240,29 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     checkpoint,
     interaction,
     observerContext,
-    observerPlugins: createDefaultObserverPlugins(options.observers),
+    observerPlugins: createDefaultObserverPlugins(selectedObservers),
     judgePlugins: createDefaultJudgePlugins(options.judges),
-    executeInteraction: options.performInteraction
+    executeInteraction: performInteraction
       ? async () =>
-          options.performInteraction?.({
-            page: options.page,
-            runId,
-            checkpoint,
-            interaction
-          })
+          runInteractionWithStabilization(
+            resolvedPolicy.capture.stabilizeAfterInteractionMs,
+            performInteraction,
+            {
+              page: options.page,
+              runId,
+              checkpoint,
+              interaction
+            }
+          )
       : undefined,
     environment: {
       mode: "playwright-page"
     },
     config: {
       writeReports: options.writeReports ?? true,
-      policyName: resolvedPolicy.name
+      policyName: resolvedPolicy.name,
+      capturePolicy: resolvedPolicy.capture,
+      selectedObservers
     },
     policyName: resolvedPolicy.name,
     releasePolicy: resolvedPolicy.release
@@ -255,6 +289,24 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     artifactFiles: execution.artifacts.map((artifact) => artifact.path),
     reportArtifacts
   };
+}
+
+async function runInteractionWithStabilization<TPage extends PlaywrightPageLike>(
+  stabilizeAfterInteractionMs: number,
+  performInteraction: (context: PlaywrightInteractionContext<TPage>) => Promise<void>,
+  context: PlaywrightInteractionContext<TPage>
+): Promise<void> {
+  await performInteraction(context);
+
+  if (stabilizeAfterInteractionMs > 0) {
+    await waitFor(stabilizeAfterInteractionMs);
+  }
+}
+
+function waitFor(durationMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, durationMs);
+  });
 }
 
 interface CdpSessionLike {

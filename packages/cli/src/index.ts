@@ -16,7 +16,14 @@ import {
   createDefaultObserverPlugins,
   type RuntimeObserverContext
 } from "@aee/observers";
-import { buildCheckpoint, buildInteraction, createVirtualPage, type PlaywrightPageLike, type VirtualPageFixture } from "@aee/playwright";
+import {
+  buildCheckpoint,
+  buildInteraction,
+  createVirtualPage,
+  resolveObserverIdsForCapturePolicy,
+  type PlaywrightPageLike,
+  type VirtualPageFixture
+} from "@aee/playwright";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema, CURRENT_SCHEMA_VERSION, schemaCatalog, type SchemaName } from "@aee/schemas";
 
@@ -80,10 +87,11 @@ export async function loadFixture(fixturePath: string): Promise<VirtualPageFixtu
 
 export function createBootstrapPlan(config: AeeCliConfig) {
   const resolvedPolicy = resolvePolicyConfig(config.policy);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(config.observers, resolvedPolicy.capture);
 
   return {
     projectRoot: config.projectRoot,
-    selectedObservers: config.observers ?? ["dom", "accessibility-tree"],
+    selectedObservers,
     selectedJudges: config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id),
     policyName: resolvedPolicy.name
   };
@@ -96,6 +104,7 @@ export async function runWithPage(
 ): Promise<RunCommandResult> {
   const resolvedProjectRoot = path.resolve(path.dirname(configPathForResolution), config.projectRoot);
   const resolvedPolicy = resolvePolicyConfig(config.policy);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(config.observers, resolvedPolicy.capture);
   const runId = `run-${Date.now()}`;
   const outputBaseDir = config.outputDir ?? "aee-output";
   const outputDir = path.join(resolvedProjectRoot, outputBaseDir, runId);
@@ -139,12 +148,14 @@ export async function runWithPage(
       mode: "fixture-runner"
     },
     config: {
-      policyName: resolvedPolicy.name
+      policyName: resolvedPolicy.name,
+      capturePolicy: resolvedPolicy.capture,
+      selectedObservers
     },
     checkpoint,
     interaction,
     observerContext,
-    observerPlugins: createDefaultObserverPlugins(config.observers),
+    observerPlugins: createDefaultObserverPlugins(selectedObservers),
     judgePlugins: createDefaultJudgePlugins(config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id)),
     policyName: resolvedPolicy.name,
     releasePolicy: resolvedPolicy.release

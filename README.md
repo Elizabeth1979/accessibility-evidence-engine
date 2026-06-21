@@ -35,6 +35,7 @@ This is still intentionally a foundation-first codebase, but it now includes a v
 - Change-response judging now checks whether click-like interactions produce observable DOM, focus, or network outcomes
 - Network observer output now summarizes per-interaction request and response deltas while filtering obvious non-network noise
 - Markdown reports now open with blocking judgments, unresolved signals, and suggested fixes before the deeper evidence tables
+- Playwright and CLI runs now honor capture-policy toggles for DOM, accessibility-tree, and screenshot collection, plus a configurable post-interaction stabilization wait
 - Release judgments now enforce policy thresholds against emitted accessibility failures
 - Judges and reporters can turn that evidence into a first pass/fail report bundle
 
@@ -68,5 +69,5 @@ To run the real-page smoke test from a fresh machine:
 1. Expand schema coverage further if we add new artifact kinds or richer report sections.
 2. Expand composite-widget judging beyond the current simple roving-focus and listbox-style `aria-activedescendant` cases.
 3. Expand change-response judging beyond the current click and submit cases.
-4. Let Playwright flows opt into stricter capture policies beyond the current defaults.
+4. Add richer policy controls for minimum observer coverage and required evidence on critical interactions.
 5. Add alternate report formats or exports once the markdown triage view stabilizes.

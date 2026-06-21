@@ -208,10 +208,43 @@ await runAeeOnPage({
 });
 ```
 
+## Capture policy example
+
+`runAeeOnPage(...)` also honors `policy.capture`, which lets a flow disable specific capture types or wait longer before the after-phase observers run.
+
+```ts
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["dom", "accessibility-tree", "visual"],
+  judges: ["change-response", "release"],
+  policy: {
+    name: "stable-dom-only",
+    capture: {
+      includeAccessibilityTree: false,
+      includeScreenshots: false,
+      stabilizeAfterInteractionMs: 500
+    }
+  },
+  interaction: {
+    kind: "click",
+    actor: "test",
+    target: {
+      role: "button",
+      name: "Save"
+    }
+  },
+  async performInteraction({ page }) {
+    await page.click("#save");
+  }
+});
+```
+
 ## Notes
 
 - `outputDir` is optional. When provided, AEE writes reports and captured artifacts into `outputDir/<run-id>/`.
 - Without `outputDir`, `runAeeOnPage(...)` still returns in-memory `reportArtifacts`.
+- `policy.capture` filters incompatible observer requests before execution and records the applied capture policy in the emitted run config.
 - The DOM observer relies on `page.content()`.
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
 - The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
