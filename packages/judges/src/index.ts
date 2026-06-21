@@ -94,6 +94,10 @@ export function createBuiltinJudge(judgeId: string): JudgePlugin {
     return createKeyboardJudge();
   }
 
+  if (judgeId === "change-response") {
+    return createChangeResponseJudge();
+  }
+
   if (judgeId === "release") {
     return createReleaseJudge();
   }
@@ -635,6 +639,126 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
   ];
 }
 
+function createChangeResponseJudge(): JudgePlugin {
+  const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "change-response");
+
+  if (!manifest) {
+    throw new Error("Missing change-response judge manifest.");
+  }
+
+  return {
+    manifest,
+    async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
+      if (bundle.interaction.kind !== "click" && bundle.interaction.kind !== "submit") {
+        return [
+          {
+            id: `change-response:${bundle.interaction.id}`,
+            judgeId: "change-response",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: "Change-response judge currently evaluates click and submit interactions only.",
+            severity: "info",
+            confidence: 0.5,
+            evidenceRecordIds: bundle.records.map((record) => record.id)
+          }
+        ];
+      }
+
+      if (!isResponseExpectedForInteraction(bundle.interaction)) {
+        return [
+          {
+            id: `change-response:${bundle.interaction.id}`,
+            judgeId: "change-response",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: "Change-response judge could not determine whether this interaction was expected to trigger a visible or network response.",
+            severity: "info",
+            confidence: 0.6,
+            evidenceRecordIds: bundle.records.map((record) => record.id)
+          }
+        ];
+      }
+
+      const observedSignals = collectChangeResponseSignals(bundle.records);
+      const relevantObserverIds = new Set(["dom", "network", "focus"]);
+      const availableEvidenceRecords = bundle.records.filter(
+        (record) => relevantObserverIds.has(record.observerId) && record.status === "ok"
+      );
+
+      if (availableEvidenceRecords.length === 0) {
+        return [
+          {
+            id: `change-response:${bundle.interaction.id}`,
+            judgeId: "change-response",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: "Change-response judge requires DOM, network, or focus evidence to evaluate the interaction outcome.",
+            severity: "medium",
+            confidence: 0.7,
+            evidenceRecordIds: bundle.records.map((record) => record.id)
+          }
+        ];
+      }
+
+      if (observedSignals.length === 0) {
+        const evidenceRecordIds = availableEvidenceRecords.map((record) => record.id);
+        const artifactIds = collectArtifactIds(availableEvidenceRecords);
+        const suggestedFix =
+          bundle.interaction.kind === "submit"
+            ? "Ensure form submission produces an observable response such as DOM, focus, or network activity."
+            : "Ensure the click interaction produces an observable response such as DOM, focus, or network activity.";
+
+        return [
+          {
+            id: `change-response:${bundle.interaction.id}`,
+            judgeId: "change-response",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.`,
+            severity: "high",
+            confidence: 0.9,
+            evidenceRecordIds,
+            artifactIds: artifactIds.length > 0 ? artifactIds : undefined,
+            findings: [
+              {
+                id: `change-response:${bundle.interaction.id}:no-response`,
+                message: `Expected ${bundle.interaction.kind} to trigger a visible, focus, or network response, but no supported observer detected one.`,
+                severity: "high",
+                ruleId: "interaction-response-observable",
+                evidenceRecordIds,
+                artifactIds: artifactIds.length > 0 ? artifactIds : undefined,
+                suggestedFix
+              }
+            ],
+            suggestedFix
+          }
+        ];
+      }
+
+      return [
+        {
+          id: `change-response:${bundle.interaction.id}`,
+          judgeId: "change-response",
+          judgeVersion: "0.1.0",
+          scope: "interaction",
+          verdict: "pass",
+          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).`,
+          severity: "info",
+          confidence: 0.9,
+          evidenceRecordIds: [...new Set(observedSignals.flatMap((signal) => signal.evidenceRecordIds))],
+          artifactIds: [
+            ...new Set(observedSignals.flatMap((signal) => signal.artifactIds))
+          ]
+        }
+      ];
+    }
+  };
+}
+
 function createReleaseJudge(): JudgePlugin {
   const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "release");
 
@@ -804,6 +928,53 @@ function collectActivationSignals(
   return signals;
 }
 
+function collectChangeResponseSignals(records: EvidenceRecord[]): ActivationSignal[] {
+  const signals: ActivationSignal[] = [];
+  const domRecords = records.filter(
+    (record) => record.observerId === "dom" && record.phase === "after" && record.status === "ok" && hasDomChange(record)
+  );
+  const networkRecords = records.filter(
+    (record) =>
+      record.observerId === "network" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      (getNumericMetaField(record, "newInterestingEventCount") ?? 0) > 0
+  );
+  const beforeFocusRecord = findFocusRecord(records, "before");
+  const afterFocusRecord = findFocusRecord(records, "after");
+
+  if (domRecords.length > 0) {
+    signals.push({
+      label: "DOM changed",
+      evidenceRecordIds: domRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(domRecords)
+    });
+  }
+
+  if (networkRecords.length > 0) {
+    signals.push({
+      label: "network activity",
+      evidenceRecordIds: networkRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(networkRecords)
+    });
+  }
+
+  if (beforeFocusRecord && afterFocusRecord) {
+    const beforeKey = serializeFocusTarget(getFocusTarget(beforeFocusRecord));
+    const afterKey = serializeFocusTarget(getFocusTarget(afterFocusRecord));
+
+    if (beforeKey !== afterKey) {
+      signals.push({
+        label: "focus moved",
+        evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
+        artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
+      });
+    }
+  }
+
+  return signals;
+}
+
 function hasDomChange(record: EvidenceRecord): boolean {
   if (getBooleanMetaField(record, "changed") === true) {
     return true;
@@ -812,6 +983,42 @@ function hasDomChange(record: EvidenceRecord): boolean {
   return (
     record.changes?.some((change) => change.path === "dom.html" && change.impact !== "none") ?? false
   );
+}
+
+function isResponseExpectedForInteraction(interaction: EvidenceBundle["interaction"]): boolean {
+  if (interaction.kind === "submit") {
+    return true;
+  }
+
+  if (interaction.kind !== "click") {
+    return false;
+  }
+
+  const actionableRoles = new Set([
+    "button",
+    "link",
+    "checkbox",
+    "radio",
+    "switch",
+    "menuitem",
+    "menuitemcheckbox",
+    "menuitemradio",
+    "tab"
+  ]);
+
+  return Boolean(interaction.target?.role && actionableRoles.has(interaction.target.role));
+}
+
+function describeTarget(target: TargetDescriptor | undefined): string {
+  if (!target) {
+    return "the target";
+  }
+
+  const parts = [target.role, target.name ? `"${target.name}"` : undefined].filter(
+    (value): value is string => Boolean(value)
+  );
+
+  return parts.length > 0 ? parts.join(" ") : "the target";
 }
 
 function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focusTarget: unknown): boolean {

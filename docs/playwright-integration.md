@@ -141,6 +141,30 @@ await runAeeOnPage({
 });
 ```
 
+## Change-response example
+
+The change-response judge can evaluate whether a click interaction produced an observable outcome when paired with DOM, network, or focus evidence.
+
+```ts
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["dom"],
+  judges: ["change-response", "release"],
+  interaction: {
+    kind: "click",
+    actor: "test",
+    target: {
+      role: "button",
+      name: "Save"
+    }
+  },
+  async performInteraction({ page }) {
+    await page.click("#save");
+  }
+});
+```
+
 ## Screenshot example
 
 The visual observer can capture PNG artifacts around an interaction.
@@ -192,6 +216,7 @@ await runAeeOnPage({
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
 - The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
 - The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
+- The change-response judge currently evaluates click and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.

@@ -520,3 +520,108 @@ test("keyboard judge passes arrow-key navigation when aria-activedescendant chan
   assert.match(judgment.summary, /listbox/);
   assert.match(judgment.summary, /ArrowDown/);
 });
+
+test("change-response judge passes when a click interaction changes the DOM", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-dom-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z"
+      },
+      {
+        id: "record-dom-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          changed: true
+        },
+        changes: [
+          {
+            path: "dom.html",
+            summary: "DOM markup changed after the interaction.",
+            impact: "major"
+          }
+        ]
+      }
+    ],
+    {
+      kind: "click",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /DOM changed/);
+});
+
+test("change-response judge fails when a click interaction has no observable response", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-dom-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z"
+      },
+      {
+        id: "record-dom-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          changed: false
+        },
+        changes: [
+          {
+            path: "dom.html",
+            summary: "DOM markup did not change after the interaction.",
+            impact: "none"
+          }
+        ]
+      }
+    ],
+    {
+      kind: "click",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "fail");
+  assert.match(judgment.summary, /No observable response followed the click interaction/);
+  assert.equal(judgment.severity, "high");
+});

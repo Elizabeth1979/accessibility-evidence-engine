@@ -298,6 +298,84 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
   );
 });
 
+test("runAeeOnPage passes change-response judging when a click updates the DOM", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <button id="save" type="button">Save</button>
+      <p id="status">Idle</p>
+    </main>
+  `);
+  await page.locator("#save").evaluate((button) => {
+    button.addEventListener("click", () => {
+      const status = document.querySelector("#status");
+
+      if (status) {
+        status.textContent = "Saved";
+      }
+    });
+  });
+
+  const outputBaseDir = testInfo.outputPath("aee-click-response-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["dom"],
+    judges: ["change-response", "release"],
+    checkpointName: "click-response",
+    interaction: {
+      kind: "click",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.click("#save");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#status")).toHaveText("Saved");
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 2,
+    fail: 0,
+    unknown: 0
+  });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "dom",
+        phase: "after",
+        status: "ok",
+        meta: expect.objectContaining({
+          changed: true
+        })
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: "pass",
+        summary: expect.stringContaining("DOM changed")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
 test("runAeeOnPage can capture network activity around an interaction", async ({ page }, testInfo) => {
   await page.route("https://aee.test/api/save", async (route) => {
     await route.fulfill({
@@ -421,6 +499,63 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
           interestingUrls: expect.arrayContaining(["https://aee.test/api/save"]),
           newInterestingUrls: expect.arrayContaining(["https://aee.test/api/save"])
         })
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage fails change-response judging when a click produces no observable response", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <button id="save" type="button">Save</button>
+      <p id="status">Idle</p>
+    </main>
+  `);
+
+  const outputBaseDir = testInfo.outputPath("aee-click-no-response-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["dom"],
+    judges: ["change-response", "release"],
+    checkpointName: "click-no-response",
+    interaction: {
+      kind: "click",
+      actor: "test",
+      target: {
+        role: "button",
+        name: "Save"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.click("#save");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#status")).toHaveText("Idle");
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 0,
+    fail: 2,
+    unknown: 0
+  });
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: "fail",
+        summary: expect.stringContaining("No observable response followed the click interaction")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "fail"
       })
     ])
   );
