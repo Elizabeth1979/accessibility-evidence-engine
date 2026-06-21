@@ -352,14 +352,85 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                     type?: unknown;
                     tabIndex?: unknown;
                     disabled?: unknown;
+                    parentElement?: unknown;
                     getAttribute?: (name: string) => string | null;
                     getClientRects?: () => { length?: number };
+                    querySelectorAll?: (selector: string) => Iterable<unknown>;
                   }
                 | undefined;
 
               if (!activeElement) {
                 return null;
               }
+
+              const isElementLike = (
+                value: unknown
+              ): value is {
+                tagName?: unknown;
+                id?: unknown;
+                textContent?: unknown;
+                type?: unknown;
+                tabIndex?: unknown;
+                disabled?: unknown;
+                parentElement?: unknown;
+                getAttribute?: (name: string) => string | null;
+                getClientRects?: () => { length?: number };
+                querySelectorAll?: (selector: string) => Iterable<unknown>;
+              } => typeof value === "object" && value !== null;
+              const compositeRoles = ["tablist", "radiogroup", "listbox", "menu", "menubar", "tree", "grid"];
+              const itemRoleSelectors: Record<string, string> = {
+                tablist: '[role="tab"]',
+                radiogroup: '[role="radio"]',
+                listbox: '[role="option"]',
+                menu: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+                menubar: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+                tree: '[role="treeitem"]',
+                grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
+              };
+              const getCompositeRole = (
+                element: {
+                  parentElement?: unknown;
+                  getAttribute?: (name: string) => string | null;
+                } | undefined
+              ) => {
+                let current = element?.parentElement;
+
+                while (isElementLike(current)) {
+                  const currentRole = current.getAttribute?.("role");
+
+                  if (typeof currentRole === "string" && compositeRoles.includes(currentRole)) {
+                    return {
+                      compositeRole: currentRole,
+                      compositeElement: current
+                    };
+                  }
+
+                  current = current.parentElement;
+                }
+
+                return {
+                  compositeRole: undefined,
+                  compositeElement: undefined
+                };
+              };
+              const getBooleanAttribute = (
+                element: {
+                  getAttribute?: (name: string) => string | null;
+                },
+                name: string
+              ) => {
+                const value = element.getAttribute?.(name);
+
+                if (value === "true") {
+                  return true;
+                }
+
+                if (value === "false") {
+                  return false;
+                }
+
+                return undefined;
+              };
 
               const focusableElements = Array.from(
                 documentRef?.querySelectorAll?.(
@@ -414,6 +485,16 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
               const focusOrderIndex = focusableElements.indexOf(activeElement);
               const tabIndex = typeof activeElement.tabIndex === "number" ? activeElement.tabIndex : undefined;
               const disabled = typeof activeElement.disabled === "boolean" ? activeElement.disabled : undefined;
+              const compositeContext = getCompositeRole(activeElement);
+              const compositeSelector = compositeContext.compositeRole
+                ? itemRoleSelectors[compositeContext.compositeRole]
+                : undefined;
+              const compositeItems = compositeSelector
+                ? Array.from(compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []).filter(
+                    isElementLike
+                  )
+                : [];
+              const compositeItemIndex = compositeItems.indexOf(activeElement);
 
               return {
                 tagName,
@@ -423,6 +504,11 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                 type,
                 tabIndex,
                 disabled,
+                ariaSelected: getBooleanAttribute(activeElement, "aria-selected"),
+                ariaChecked: getBooleanAttribute(activeElement, "aria-checked"),
+                compositeRole: compositeContext.compositeRole,
+                compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
+                compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
                 focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
                 focusableCount: focusableElements.length
               };

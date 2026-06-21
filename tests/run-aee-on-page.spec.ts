@@ -497,6 +497,175 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
   );
 });
 
+test("runAeeOnPage passes keyboard judging when arrow-right moves focus within a tablist", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <div role="tablist" aria-label="Sections">
+        <button id="tab-overview" role="tab" aria-selected="true" tabindex="0">Overview</button>
+        <button id="tab-pricing" role="tab" aria-selected="false" tabindex="-1">Pricing</button>
+        <button id="tab-faq" role="tab" aria-selected="false" tabindex="-1">FAQ</button>
+      </div>
+      <p id="status">Overview</p>
+    </main>
+  `);
+  await page.evaluate(() => {
+    const tabs = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]'));
+    const status = document.querySelector("#status");
+
+    for (const [index, tab] of tabs.entries()) {
+      tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowRight") {
+          return;
+        }
+
+        event.preventDefault();
+        const nextIndex = (index + 1) % tabs.length;
+
+        tabs.forEach((candidate, candidateIndex) => {
+          candidate.setAttribute("aria-selected", candidateIndex === nextIndex ? "true" : "false");
+          candidate.tabIndex = candidateIndex === nextIndex ? 0 : -1;
+        });
+
+        tabs[nextIndex]?.focus();
+
+        if (status && tabs[nextIndex]?.textContent) {
+          status.textContent = tabs[nextIndex].textContent;
+        }
+      });
+    }
+  });
+  await page.focus("#tab-overview");
+
+  const outputBaseDir = testInfo.outputPath("aee-arrow-tablist-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-arrow-tablist",
+    interaction: {
+      kind: "arrow-key",
+      input: "ArrowRight",
+      actor: "test",
+      target: {
+        role: "tab",
+        name: "Overview"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("ArrowRight");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#tab-pricing")).toBeFocused();
+  await expect(page.locator("#status")).toHaveText("Pricing");
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 2,
+    fail: 0,
+    unknown: 0
+  });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        meta: expect.objectContaining({
+          focusTarget: expect.objectContaining({
+            role: "tab",
+            compositeRole: "tablist",
+            compositeItemIndex: 1,
+            compositeItemCount: 3
+          })
+        })
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "pass",
+        summary: expect.stringContaining("tablist")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "pass"
+      })
+    ])
+  );
+});
+
+test("runAeeOnPage fails keyboard judging when arrow-right does not move focus within a tablist", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <main>
+      <div role="tablist" aria-label="Sections">
+        <button id="tab-overview" role="tab" aria-selected="true" tabindex="0">Overview</button>
+        <button id="tab-pricing" role="tab" aria-selected="false" tabindex="-1">Pricing</button>
+        <button id="tab-faq" role="tab" aria-selected="false" tabindex="-1">FAQ</button>
+      </div>
+    </main>
+  `);
+  await page.focus("#tab-overview");
+
+  const outputBaseDir = testInfo.outputPath("aee-arrow-tablist-stalled-output");
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: outputBaseDir,
+    observers: ["focus"],
+    judges: ["keyboard", "release"],
+    checkpointName: "keyboard-arrow-tablist-stalled",
+    interaction: {
+      kind: "arrow-key",
+      input: "ArrowRight",
+      actor: "test",
+      target: {
+        role: "tab",
+        name: "Overview"
+      }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.keyboard.press("ArrowRight");
+    }
+  });
+
+  expect(result.reporterFiles).toHaveLength(2);
+  await expect(page.locator("#tab-overview")).toBeFocused();
+
+  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  expect(jsonReportPath).toBeTruthy();
+
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(report.run.status).toBe("completed");
+  expect(report.run.results).toEqual({
+    pass: 0,
+    fail: 2,
+    unknown: 0
+  });
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "fail",
+        summary: expect.stringContaining("did not move focus within the tablist")
+      }),
+      expect.objectContaining({
+        judgeId: "release",
+        verdict: "fail"
+      })
+    ])
+  );
+});
+
 test("runAeeOnPage can capture focus movement around a tab interaction", async ({ page }, testInfo) => {
   await page.setContent(`
     <main>

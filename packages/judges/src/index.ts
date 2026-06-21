@@ -159,6 +159,10 @@ function createKeyboardJudge(): JudgePlugin {
         return judgeTabFocusTransition(bundle);
       }
 
+      if (bundle.interaction.kind === "arrow-key") {
+        return judgeCompositeArrowNavigation(bundle);
+      }
+
       if (bundle.interaction.kind === "enter" || bundle.interaction.kind === "space") {
         return judgeKeyboardActivation(bundle);
       }
@@ -166,7 +170,7 @@ function createKeyboardJudge(): JudgePlugin {
       return [
         buildKeyboardUnknownJudgment(
           bundle,
-          "Keyboard judge currently evaluates tab navigation and enter/space activation only.",
+          "Keyboard judge currently evaluates tab navigation, roving arrow-key navigation, and enter/space activation only.",
           "info",
           0.5
         )
@@ -439,6 +443,198 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
   ];
 }
 
+function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
+  const beforeRecord = findFocusRecord(bundle.records, "before");
+  const afterRecord = findFocusRecord(bundle.records, "after");
+
+  if (!beforeRecord || !afterRecord) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Arrow-key checks require focus observer evidence before and after the interaction.",
+        "medium",
+        0.75
+      )
+    ];
+  }
+
+  const beforeTarget = getFocusTarget(beforeRecord);
+  const afterTarget = getFocusTarget(afterRecord);
+  const beforeKey = serializeFocusTarget(beforeTarget);
+  const afterKey = serializeFocusTarget(afterTarget);
+  const arrowKey = getArrowKey(bundle);
+
+  if (!arrowKey) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Arrow-key checks require interaction.input or interaction.meta.key to specify the pressed arrow key.",
+        "medium",
+        0.7,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  const compositeRole = getCompositeNavigationRole(bundle.interaction.target, beforeTarget, afterTarget);
+  if (!compositeRole) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        "Arrow-key checks currently apply to detectable roving-focus composites such as tablists, radiogroups, listboxes, menus, trees, and grids.",
+        "info",
+        0.65,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (afterTarget === null) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:composite-focus-lost`,
+      message: "Arrow-key navigation left the composite widget without a focused target.",
+      severity: "high",
+      ruleId: "keyboard-composite-focus-presence",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: "Keep focus within the composite widget while arrow-key navigation is in progress."
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Arrow-key navigation lost focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        severity: "high",
+        confidence: 0.95,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  if (beforeKey === afterKey) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:composite-focus-stalled`,
+      message: "Arrow-key navigation did not move focus to another item in the composite widget.",
+      severity: "high",
+      ruleId: "keyboard-composite-focus-transition",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: `Ensure ${arrowKey} moves focus to another item in the ${compositeRole}.`
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Arrow-key navigation did not move focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+        severity: "high",
+        confidence: 0.9,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  if (!isSameCompositeNavigationContext(beforeTarget, afterTarget, compositeRole)) {
+    const finding: Finding = {
+      id: `keyboard:${bundle.interaction.id}:composite-focus-escaped`,
+      message: "Arrow-key navigation moved focus outside the expected composite widget items.",
+      severity: "high",
+      ruleId: "keyboard-composite-focus-scope",
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+      suggestedFix: `Keep ${arrowKey} navigation scoped to peer items in the ${compositeRole}.`
+    };
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Arrow-key navigation moved focus outside the expected ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+        severity: "high",
+        confidence: 0.9,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [finding],
+        suggestedFix: finding.suggestedFix
+      }
+    ];
+  }
+
+  const directionVerdict = evaluateCompositeArrowDirection(
+    arrowKey,
+    getNumericField(beforeTarget, "compositeItemIndex"),
+    getNumericField(afterTarget, "compositeItemIndex"),
+    getNumericField(beforeTarget, "compositeItemCount") ?? getNumericField(afterTarget, "compositeItemCount")
+  );
+
+  if (directionVerdict === "wrong-direction") {
+    const suggestedFix = `Ensure ${arrowKey} follows the item order within the ${compositeRole}.`;
+
+    return [
+      {
+        id: `keyboard:${bundle.interaction.id}`,
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: `Arrow-key navigation moved in the wrong direction within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+        severity: "high",
+        confidence: 0.95,
+        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+        findings: [
+          {
+            id: `keyboard:${bundle.interaction.id}:composite-wrong-direction`,
+            message: `Expected ${arrowKey} to move focus in the matching direction within the ${compositeRole}, but it moved differently.`,
+            severity: "high",
+            ruleId: "keyboard-composite-focus-direction",
+            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
+            suggestedFix
+          }
+        ],
+        suggestedFix
+      }
+    ];
+  }
+
+  const directionSuffix =
+    directionVerdict === "direction-unverified"
+      ? " Composite item ordering metadata was unavailable, so direction was inferred from the focus move only."
+      : "";
+
+  return [
+    {
+      id: `keyboard:${bundle.interaction.id}`,
+      judgeId: "keyboard",
+      judgeVersion: "0.1.0",
+      scope: "interaction",
+      verdict: "pass",
+      summary: `Arrow-key navigation moved focus within the ${compositeRole} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)} using ${arrowKey}.${directionSuffix}`,
+      severity: "info",
+      confidence: directionVerdict === "direction-unverified" ? 0.75 : 0.95,
+      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord])
+    }
+  ];
+}
+
 function createReleaseJudge(): JudgePlugin {
   const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "release");
 
@@ -659,6 +855,122 @@ function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focus
   return false;
 }
 
+function getArrowKey(bundle: EvidenceBundle): "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | undefined {
+  const candidates = [
+    bundle.interaction.input,
+    getStringMetaField(bundle.interaction.meta, "key"),
+    getStringMetaField(bundle.interaction.meta, "direction")
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    if (
+      candidate === "ArrowRight" ||
+      candidate === "ArrowLeft" ||
+      candidate === "ArrowUp" ||
+      candidate === "ArrowDown"
+    ) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function getCompositeNavigationRole(
+  target: TargetDescriptor | undefined,
+  beforeTarget: unknown,
+  afterTarget: unknown
+): string | undefined {
+  const beforeCompositeRole = getStringField(beforeTarget, "compositeRole");
+  const afterCompositeRole = getStringField(afterTarget, "compositeRole");
+
+  if (beforeCompositeRole && beforeCompositeRole === afterCompositeRole) {
+    return beforeCompositeRole;
+  }
+
+  if (beforeCompositeRole) {
+    return beforeCompositeRole;
+  }
+
+  if (afterCompositeRole) {
+    return afterCompositeRole;
+  }
+
+  if (target?.role === "tab") {
+    return "tablist";
+  }
+
+  return undefined;
+}
+
+function isSameCompositeNavigationContext(
+  beforeTarget: unknown,
+  afterTarget: unknown,
+  compositeRole: string
+): boolean {
+  const beforeCompositeRole = getStringField(beforeTarget, "compositeRole");
+  const afterCompositeRole = getStringField(afterTarget, "compositeRole");
+
+  if (beforeCompositeRole && afterCompositeRole) {
+    if (beforeCompositeRole !== compositeRole || afterCompositeRole !== compositeRole) {
+      return false;
+    }
+  }
+
+  const beforeFamily = getCompositeItemFamily(getStringField(beforeTarget, "role"));
+  const afterFamily = getCompositeItemFamily(getStringField(afterTarget, "role"));
+
+  if (!beforeFamily || !afterFamily) {
+    return false;
+  }
+
+  return beforeFamily === afterFamily;
+}
+
+function getCompositeItemFamily(role: string | undefined): string | undefined {
+  if (!role) {
+    return undefined;
+  }
+
+  if (role === "tab" || role === "radio" || role === "option" || role === "treeitem") {
+    return role;
+  }
+
+  if (role === "menuitem" || role === "menuitemcheckbox" || role === "menuitemradio") {
+    return "menuitem";
+  }
+
+  if (role === "gridcell" || role === "rowheader" || role === "columnheader") {
+    return "gridcell";
+  }
+
+  return undefined;
+}
+
+function evaluateCompositeArrowDirection(
+  arrowKey: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown",
+  beforeIndex: number | undefined,
+  afterIndex: number | undefined,
+  itemCount: number | undefined
+): "correct-direction" | "wrong-direction" | "direction-unverified" {
+  if (beforeIndex === undefined || afterIndex === undefined || itemCount === undefined || itemCount < 2) {
+    return "direction-unverified";
+  }
+
+  const movesForward =
+    arrowKey === "ArrowRight" || arrowKey === "ArrowDown";
+  const movedForward =
+    afterIndex > beforeIndex || (beforeIndex === itemCount - 1 && afterIndex === 0);
+  const movedBackward =
+    afterIndex < beforeIndex || (beforeIndex === 0 && afterIndex === itemCount - 1);
+
+  if (movesForward) {
+    return movedForward ? "correct-direction" : "wrong-direction";
+  }
+
+  return movedBackward ? "correct-direction" : "wrong-direction";
+}
+
 function findFocusRecord(
   records: EvidenceRecord[],
   phase: EvidenceRecord["phase"]
@@ -732,6 +1044,14 @@ function getNumericField(target: unknown, field: string): number | undefined {
   return typeof target[field] === "number" ? target[field] : undefined;
 }
 
+function getStringField(target: unknown, field: string): string | undefined {
+  if (!isRecord(target)) {
+    return undefined;
+  }
+
+  return typeof target[field] === "string" ? target[field] : undefined;
+}
+
 function getNumericMetaField(record: EvidenceRecord, field: string): number | undefined {
   if (!isRecord(record.meta)) {
     return undefined;
@@ -746,6 +1066,11 @@ function getBooleanMetaField(record: EvidenceRecord, field: string): boolean | u
   }
 
   return typeof record.meta[field] === "boolean" ? record.meta[field] : undefined;
+}
+
+function getStringMetaField(record: Record<string, unknown> | undefined, field: string): string | undefined {
+  const value = record?.[field];
+  return typeof value === "string" ? value : undefined;
 }
 
 function collectJudgmentEvidenceIds(judgments: Judgment[]): string[] {

@@ -308,3 +308,135 @@ test("keyboard judge fails space activation when an activatable control has no o
   assert.match(judgment.summary, /no observable activation response/);
   assert.equal(judgment.severity, "high");
 });
+
+test("keyboard judge passes arrow-key navigation within a tablist when focus moves to the next tab", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "tab-overview",
+            role: "tab",
+            name: "Overview",
+            compositeRole: "tablist",
+            compositeItemIndex: 0,
+            compositeItemCount: 3
+          }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "tab-pricing",
+            role: "tab",
+            name: "Pricing",
+            compositeRole: "tablist",
+            compositeItemIndex: 1,
+            compositeItemCount: 3
+          }
+        }
+      }
+    ],
+    {
+      kind: "arrow-key",
+      input: "ArrowRight",
+      target: {
+        role: "tab",
+        name: "Overview"
+      }
+    }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /moved focus within the tablist/);
+  assert.match(judgment.summary, /ArrowRight/);
+});
+
+test("keyboard judge fails arrow-key navigation when focus stalls in a tablist", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "tab-overview",
+            role: "tab",
+            name: "Overview",
+            compositeRole: "tablist",
+            compositeItemIndex: 0,
+            compositeItemCount: 3
+          }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        checkpointId: "checkpoint-1",
+        interactionId: "interaction-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "tab-overview",
+            role: "tab",
+            name: "Overview",
+            compositeRole: "tablist",
+            compositeItemIndex: 0,
+            compositeItemCount: 3
+          }
+        }
+      }
+    ],
+    {
+      kind: "arrow-key",
+      input: "ArrowRight",
+      target: {
+        role: "tab",
+        name: "Overview"
+      }
+    }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, {
+    runId: "run-1"
+  });
+
+  assert.equal(judgment.verdict, "fail");
+  assert.match(judgment.summary, /did not move focus within the tablist/);
+  assert.equal(judgment.severity, "high");
+});
