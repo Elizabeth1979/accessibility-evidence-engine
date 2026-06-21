@@ -236,7 +236,7 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
     projectRoot: process.cwd(),
     outputDir: outputBaseDir,
     observers: ["focus", "dom"],
-    judges: ["keyboard", "release"],
+    judges: ["keyboard", "change-response", "release"],
     checkpointName: "keyboard-enter-activation",
     interaction: {
       kind: "enter",
@@ -261,7 +261,7 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
   expect(report.run.status).toBe("completed");
   expect(report.run.results).toEqual({
-    pass: 2,
+    pass: 3,
     fail: 0,
     unknown: 0
   });
@@ -289,6 +289,11 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
         judgeId: "keyboard",
         verdict: "pass",
         summary: expect.stringContaining("DOM changed")
+      }),
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: "pass",
+        summary: expect.stringContaining("enter interaction")
       }),
       expect.objectContaining({
         judgeId: "release",
@@ -576,7 +581,7 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
     projectRoot: process.cwd(),
     outputDir: outputBaseDir,
     observers: ["focus", "dom"],
-    judges: ["keyboard", "release"],
+    judges: ["keyboard", "change-response", "release"],
     checkpointName: "keyboard-space-no-activation",
     interaction: {
       kind: "space",
@@ -602,7 +607,7 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
   expect(report.run.status).toBe("completed");
   expect(report.run.results).toEqual({
     pass: 0,
-    fail: 2,
+    fail: 3,
     unknown: 0
   });
   expect(report.records).toEqual(
@@ -623,6 +628,11 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
         judgeId: "keyboard",
         verdict: "fail",
         summary: expect.stringContaining("no observable activation response")
+      }),
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: "fail",
+        summary: expect.stringContaining("No observable response followed the space interaction")
       }),
       expect.objectContaining({
         judgeId: "release",

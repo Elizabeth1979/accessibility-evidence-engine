@@ -32,7 +32,7 @@ This is still intentionally a foundation-first codebase, but it now includes a v
 - DOM and network observers now emit simple per-interaction change summaries
 - Focus snapshots now include simple composite-widget metadata for roving patterns and `aria-activedescendant`
 - Keyboard judging now checks focus direction, roving arrow-key navigation, `aria-activedescendant` listbox-style navigation, and basic enter/space activation behavior
-- Change-response judging now checks whether click-like interactions produce observable DOM, focus, or network outcomes
+- Change-response judging now checks whether click, enter, space, and submit interactions produce observable DOM, focus, or network outcomes
 - Network observer output now summarizes per-interaction request and response deltas while filtering obvious non-network noise
 - Markdown reports now open with blocking judgments, unresolved signals, and suggested fixes before the deeper evidence tables
 - Playwright and CLI runs now honor capture-policy toggles for DOM, accessibility-tree, and screenshot collection, plus a configurable post-interaction stabilization wait
@@ -68,6 +68,6 @@ To run the real-page smoke test from a fresh machine:
 
 1. Expand schema coverage further if we add new artifact kinds or richer report sections.
 2. Expand composite-widget judging beyond the current simple roving-focus and listbox-style `aria-activedescendant` cases.
-3. Expand change-response judging beyond the current click and submit cases.
+3. Expand change-response judging beyond the current activation and submit cases.
 4. Add richer policy controls for minimum observer coverage and required evidence on critical interactions.
 5. Add alternate report formats or exports once the markdown triage view stabilizes.

@@ -649,7 +649,7 @@ function createChangeResponseJudge(): JudgePlugin {
   return {
     manifest,
     async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
-      if (bundle.interaction.kind !== "click" && bundle.interaction.kind !== "submit") {
+      if (!supportsChangeResponseInteraction(bundle.interaction.kind)) {
         return [
           {
             id: `change-response:${bundle.interaction.id}`,
@@ -657,7 +657,7 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "unknown",
-            summary: "Change-response judge currently evaluates click and submit interactions only.",
+            summary: "Change-response judge currently evaluates click, enter, space, and submit interactions only.",
             severity: "info",
             confidence: 0.5,
             evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -665,7 +665,7 @@ function createChangeResponseJudge(): JudgePlugin {
         ];
       }
 
-      if (!isResponseExpectedForInteraction(bundle.interaction)) {
+      if (!isResponseExpectedForInteraction(bundle.interaction, bundle.records)) {
         return [
           {
             id: `change-response:${bundle.interaction.id}`,
@@ -706,10 +706,7 @@ function createChangeResponseJudge(): JudgePlugin {
       if (observedSignals.length === 0) {
         const evidenceRecordIds = availableEvidenceRecords.map((record) => record.id);
         const artifactIds = collectArtifactIds(availableEvidenceRecords);
-        const suggestedFix =
-          bundle.interaction.kind === "submit"
-            ? "Ensure form submission produces an observable response such as DOM, focus, or network activity."
-            : "Ensure the click interaction produces an observable response such as DOM, focus, or network activity.";
+        const suggestedFix = buildChangeResponseSuggestedFix(bundle.interaction.kind);
 
         return [
           {
@@ -985,15 +982,39 @@ function hasDomChange(record: EvidenceRecord): boolean {
   );
 }
 
-function isResponseExpectedForInteraction(interaction: EvidenceBundle["interaction"]): boolean {
+function supportsChangeResponseInteraction(interactionKind: EvidenceBundle["interaction"]["kind"]): boolean {
+  return (
+    interactionKind === "click" ||
+    interactionKind === "enter" ||
+    interactionKind === "space" ||
+    interactionKind === "submit"
+  );
+}
+
+function isResponseExpectedForInteraction(
+  interaction: EvidenceBundle["interaction"],
+  records: EvidenceRecord[]
+): boolean {
   if (interaction.kind === "submit") {
     return true;
+  }
+
+  if (interaction.kind === "enter" || interaction.kind === "space") {
+    const beforeFocusRecord = findFocusRecord(records, "before");
+    return isActivatableKeyboardTarget(
+      interaction.target,
+      beforeFocusRecord ? getFocusTarget(beforeFocusRecord) : undefined
+    );
   }
 
   if (interaction.kind !== "click") {
     return false;
   }
 
+  return isActionableTargetRole(interaction.target?.role);
+}
+
+function isActionableTargetRole(role: string | undefined): boolean {
   const actionableRoles = new Set([
     "button",
     "link",
@@ -1006,7 +1027,19 @@ function isResponseExpectedForInteraction(interaction: EvidenceBundle["interacti
     "tab"
   ]);
 
-  return Boolean(interaction.target?.role && actionableRoles.has(interaction.target.role));
+  return Boolean(role && actionableRoles.has(role));
+}
+
+function buildChangeResponseSuggestedFix(interactionKind: EvidenceBundle["interaction"]["kind"]): string {
+  if (interactionKind === "submit") {
+    return "Ensure form submission produces an observable response such as DOM, focus, or network activity.";
+  }
+
+  if (interactionKind === "enter" || interactionKind === "space") {
+    return `Ensure the ${interactionKind} interaction activates the target and produces an observable response such as DOM, focus, or network activity.`;
+  }
+
+  return `Ensure the ${interactionKind} interaction produces an observable response such as DOM, focus, or network activity.`;
 }
 
 function describeTarget(target: TargetDescriptor | undefined): string {
