@@ -2,7 +2,12 @@
   "name": "accessibility-evidence-engine",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "Evidence-based accessibility investigations for Playwright flows.",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@11.19.0",
   "workspaces": [
     "packages/*"
   ],
@@ -11,6 +16,7 @@
     "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "playwright:install": "playwright install chromium",
+    "test:package": "npm run build && node scripts/check-packages.mjs",
     "test:unit": "npm run build && node --test packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
     "test:playwright": "npm run build && playwright test"
   },

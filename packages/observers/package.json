@@ -1,11 +1,40 @@
 {
   "name": "@aee/observers",
   "version": "0.1.0",
+  "description": "DOM, accessibility-tree, focus, screenshot, and network observers for Accessibility Evidence Engine.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts"
   ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elizabeth1979/accessibility-evidence-engine.git",
+    "directory": "packages/observers"
+  },
+  "homepage": "https://github.com/Elizabeth1979/accessibility-evidence-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
+  },
+  "keywords": ["accessibility", "evidence", "playwright", "testing", "observers"],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@aee/core": "0.1.0"
   }

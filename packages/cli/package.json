@@ -1,14 +1,43 @@
 {
   "name": "@aee/cli",
   "version": "0.1.0",
+  "description": "Fixture-based command-line runner for Accessibility Evidence Engine.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "aee": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts"
   ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elizabeth1979/accessibility-evidence-engine.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/Elizabeth1979/accessibility-evidence-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
+  },
+  "keywords": ["accessibility", "evidence", "playwright", "testing", "cli"],
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@aee/core": "0.1.0",
     "@aee/judges": "0.1.0",

@@ -568,7 +568,8 @@ async function captureNetworkRecord(
     };
   }
 
-  const content = JSON.stringify(networkLog ?? [], null, 2);
+  const sanitizedNetworkLog = sanitizeNetworkLog(networkLog);
+  const content = JSON.stringify(sanitizedNetworkLog, null, 2);
   const artifact = await maybeWriteArtifact(
     context,
     "network",
@@ -578,7 +579,7 @@ async function captureNetworkRecord(
     "application/json",
     content
   );
-  const summary = summarizeNetworkLog(networkLog);
+  const summary = summarizeNetworkLog(sanitizedNetworkLog);
   const previousSummary = phase === "after" ? context.runtimeState?.networkBeforeSummary : undefined;
   const deltaSummary = phase === "after" ? summarizeNetworkDelta(previousSummary, summary) : undefined;
 
@@ -647,6 +648,74 @@ async function captureNetworkRecord(
         : {})
     }
   };
+}
+
+function sanitizeNetworkLog(networkLog: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(networkLog)) {
+    return [];
+  }
+
+  return networkLog
+    .map((event) => sanitizeNetworkEvent(event))
+    .filter((event): event is Record<string, unknown> => Boolean(event));
+}
+
+function sanitizeNetworkEvent(event: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(event)) {
+    return undefined;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  const copiedFields = [
+    "kind",
+    "requestId",
+    "method",
+    "resourceType",
+    "timestamp",
+    "status",
+    "statusText",
+    "ok",
+    "fromServiceWorker"
+  ];
+
+  for (const field of copiedFields) {
+    if (event[field] !== undefined) {
+      sanitized[field] = event[field];
+    }
+  }
+
+  if (typeof event.url === "string") {
+    sanitized.url = redactNetworkUrl(event.url);
+  }
+
+  if (isRecord(event.headers)) {
+    sanitized.headers = Object.fromEntries(
+      Object.keys(event.headers).map((name) => [name, "[REDACTED]"])
+    );
+  }
+
+  if (event.postData !== undefined) {
+    sanitized.postData = event.postData === null ? null : "[REDACTED]";
+  }
+
+  return sanitized;
+}
+
+function redactNetworkUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.hash = "";
+
+    for (const name of new Set(url.searchParams.keys())) {
+      url.searchParams.set(name, "[REDACTED]");
+    }
+
+    return url.toString();
+  } catch {
+    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
+  }
 }
 
 async function setupNetworkTracking(context: RuntimeObserverContext): Promise<void> {

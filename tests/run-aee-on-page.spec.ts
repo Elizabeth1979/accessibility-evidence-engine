@@ -87,6 +87,9 @@ test("runAeeOnPage captures evidence from a real Playwright page", async ({ page
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  expect(JSON.stringify(report)).not.toMatch(
+    /private-token|private-authorization|private-api-key|private@example\.com/
+  );
   expect(report.run.status).toBe("completed");
   expect(report.run.results).toEqual({
     pass: 2,
@@ -381,8 +384,8 @@ test("runAeeOnPage passes change-response judging when a click updates the DOM",
   );
 });
 
-test("runAeeOnPage can capture network activity around an interaction", async ({ page }, testInfo) => {
-  await page.route("https://aee.test/api/save", async (route) => {
+test("runAeeOnPage captures redacted network activity around an interaction", async ({ page }, testInfo) => {
+  await page.route("https://aee.test/api/save?token=private-token", async (route) => {
     await route.fulfill({
       status: 200,
       headers: {
@@ -401,7 +404,14 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
   `);
   await page.locator("#save").evaluate((button) => {
     button.addEventListener("click", async () => {
-      await fetch("https://aee.test/api/save");
+      await fetch("https://aee.test/api/save?token=private-token", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer private-authorization",
+          "x-api-key": "private-api-key"
+        },
+        body: JSON.stringify({ email: "private@example.com" })
+      });
       const status = document.querySelector("#status");
 
       if (status) {
@@ -428,7 +438,7 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
     },
     async performInteraction({ page: interactionPage }) {
       await Promise.all([
-        interactionPage.waitForResponse("https://aee.test/api/save"),
+        interactionPage.waitForResponse("https://aee.test/api/save?token=private-token"),
         interactionPage.click("#save")
       ]);
     }
@@ -444,20 +454,25 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
   expect(afterLogPath).toBeTruthy();
 
   const beforeLog = JSON.parse(await readFile(beforeLogPath!, "utf8")) as Array<Record<string, unknown>>;
-  const afterLog = JSON.parse(await readFile(afterLogPath!, "utf8")) as Array<Record<string, unknown>>;
+  const afterLogContent = await readFile(afterLogPath!, "utf8");
+  const afterLog = JSON.parse(afterLogContent) as Array<Record<string, unknown>>;
 
   expect(beforeLog).toHaveLength(0);
   expect(afterLog.length).toBeGreaterThanOrEqual(2);
+  expect(afterLogContent).not.toMatch(
+    /private-token|private-authorization|private-api-key|private@example\.com/
+  );
   expect(afterLog).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         kind: "request",
-        url: "https://aee.test/api/save",
-        method: "GET"
+        url: "https://aee.test/api/save?token=%5BREDACTED%5D",
+        method: "POST",
+        postData: "[REDACTED]"
       }),
       expect.objectContaining({
         kind: "response",
-        url: "https://aee.test/api/save",
+        url: "https://aee.test/api/save?token=%5BREDACTED%5D",
         status: 200,
         ok: true
       })
@@ -501,8 +516,12 @@ test("runAeeOnPage can capture network activity around an interaction", async ({
           newRequestCount: expect.any(Number),
           newResponseCount: expect.any(Number),
           newMatchedResponseCount: expect.any(Number),
-          interestingUrls: expect.arrayContaining(["https://aee.test/api/save"]),
-          newInterestingUrls: expect.arrayContaining(["https://aee.test/api/save"])
+          interestingUrls: expect.arrayContaining([
+            "https://aee.test/api/save?token=%5BREDACTED%5D"
+          ]),
+          newInterestingUrls: expect.arrayContaining([
+            "https://aee.test/api/save?token=%5BREDACTED%5D"
+          ])
         })
       })
     ])

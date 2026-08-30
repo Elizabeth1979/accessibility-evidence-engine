@@ -1,0 +1,69 @@
+name: Bug report
+description: Report reproducible incorrect behavior in AEE
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug. Do not include credentials, personal data, proprietary page content, or raw workplace evidence. Report security or privacy vulnerabilities through the private process in SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Provide the AEE version or commit hash where the problem occurs.
+      placeholder: 0.1.0 or commit hash
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the behavior and why it appears incorrect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide sanitized configuration, fixture, or test code and exact commands.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include operating system, Node.js version, npm version, browser, and Playwright version when relevant.
+      placeholder: macOS; Node 24; npm 11; Chromium; Playwright 1.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Sanitized output
+      description: Paste only the smallest useful error or report excerpt after reviewing it for private data.
+      render: text
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: I removed credentials, personal data, and proprietary evidence.
+          required: true
+        - label: This is not a security vulnerability requiring private disclosure.
+          required: true

@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose an evidence, observer, judge, policy, or reporting improvement
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the accessibility investigation problem first, then the proposed capability. Please do not include private application evidence.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What investigation or workflow is difficult today, and who is affected?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the observer, evidence, judgment, policy, report, or API behavior you would like.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and trust considerations
+      description: What evidence would support the result? How should unknown or missing evidence behave? Could this capture sensitive data?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I searched existing issues and the roadmap for related work.
+          required: true
+        - label: I have not described a passing result as accessibility or WCAG certification.
+          required: true

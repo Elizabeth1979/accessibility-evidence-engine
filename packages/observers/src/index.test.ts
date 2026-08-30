@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { createNetworkObserver, type RuntimeObserverContext } from "./index";
@@ -111,4 +114,59 @@ test("createNetworkObserver summarizes per-interaction network deltas and filter
     newUnmatchedResponseCount: 1,
     newInterestingUrls: ["https://aee.test/api/save", "https://aee.test/api/telemetry"]
   });
+});
+
+test("createNetworkObserver redacts sensitive network data before writing artifacts", async () => {
+  const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-network-redaction-"));
+
+  try {
+    const observer = createNetworkObserver();
+    const context: RuntimeObserverContext = {
+      runId: "run-private",
+      checkpointId: "checkpoint-private",
+      interactionId: "interaction-private",
+      artifactDir,
+      page: {
+        async content() {
+          return "<main></main>";
+        },
+        async snapshotNetworkLog() {
+          return [
+            {
+              kind: "request",
+              requestId: 1,
+              url: "https://user:password@aee.test/api/save?token=top-secret#private",
+              method: "POST",
+              resourceType: "fetch",
+              headers: {
+                authorization: "Bearer private-token",
+                "x-trace-id": "private-trace"
+              },
+              postData: JSON.stringify({ email: "private@example.com" }),
+              body: "unrecognized-private-payload",
+              timestamp: "2026-06-21T12:00:01.000Z"
+            }
+          ];
+        }
+      }
+    };
+
+    const [record] = await observer.captureBefore!(context);
+    const artifactPath = record.artifacts?.[0]?.path;
+    assert.ok(artifactPath, "Expected a network artifact path.");
+
+    const content = await readFile(artifactPath, "utf8");
+    assert.doesNotMatch(content, /top-secret|private-token|private-trace|private@example|password|private-payload/);
+
+    const [event] = JSON.parse(content) as Array<Record<string, unknown>>;
+    assert.equal(event.url, "https://aee.test/api/save?token=%5BREDACTED%5D");
+    assert.deepEqual(event.headers, {
+      authorization: "[REDACTED]",
+      "x-trace-id": "[REDACTED]"
+    });
+    assert.equal(event.postData, "[REDACTED]");
+    assert.equal(event.body, undefined);
+  } finally {
+    await rm(artifactDir, { recursive: true, force: true });
+  }
 });

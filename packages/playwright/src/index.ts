@@ -661,11 +661,11 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "request",
       requestId,
-      url: request.url(),
+      url: redactNetworkUrl(request.url()),
       method: request.method(),
       resourceType: request.resourceType(),
-      headers: request.headers(),
-      postData: request.postData(),
+      headers: redactHeaderValues(request.headers()),
+      postData: request.postData() === null ? null : "[REDACTED]",
       timestamp: new Date().toISOString()
     });
   };
@@ -676,12 +676,12 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "response",
       requestId,
-      url: response.url(),
+      url: redactNetworkUrl(response.url()),
       status: response.status(),
       statusText: response.statusText(),
       ok: response.ok(),
       fromServiceWorker: response.fromServiceWorker(),
-      headers: response.headers(),
+      headers: redactHeaderValues(response.headers()),
       method: request.method(),
       timestamp: new Date().toISOString()
     });
@@ -716,6 +716,27 @@ function createNetworkTracker(page: EventedPageLike) {
       tracking = false;
     }
   };
+}
+
+function redactHeaderValues(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.keys(headers).map((name) => [name, "[REDACTED]"]));
+}
+
+function redactNetworkUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.username = "";
+    url.password = "";
+    url.hash = "";
+
+    for (const name of new Set(url.searchParams.keys())) {
+      url.searchParams.set(name, "[REDACTED]");
+    }
+
+    return url.toString();
+  } catch {
+    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
+  }
 }
 
 async function renderReports(input: ReporterInput): Promise<ReporterArtifact[]> {

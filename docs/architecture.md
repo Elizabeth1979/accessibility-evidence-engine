@@ -2,54 +2,54 @@
 
 ## Intent
 
-This scaffold turns the approved architecture review into concrete module boundaries. The biggest design choice is that raw collection, evidence correlation, judgment, reporting, and fix planning remain separate layers.
+AEE separates raw collection, evidence correlation, judgment, policy gating, and reporting. This boundary keeps judges independent of browser APIs and makes every result traceable to normalized evidence records.
+
+The current implementation is a tested vertical slice. Some observer and judge manifests intentionally remain extension points; see the capability table in the [README](../README.md#current-capabilities).
 
 ## Execution model
 
-1. A run starts with a versioned config and environment snapshot.
-2. A checkpoint captures stable page state before or after meaningful events.
-3. An interaction request describes what happened, who triggered it, and what target was involved.
-4. Observers capture evidence before and after the interaction.
-5. Correlation groups observer outputs into one normalized `EvidenceBundle`.
-6. Judges consume normalized evidence and emit versioned judgments and findings.
-7. Reporters and fix providers operate on judgments rather than raw DOM state.
+1. A run starts with a versioned configuration and environment snapshot.
+2. A checkpoint identifies the page state and interaction boundary.
+3. Observers perform setup and capture before-state evidence.
+4. The Playwright adapter performs the requested interaction.
+5. The adapter waits for the configured stabilization delay.
+6. Observers capture after-state evidence.
+7. Correlation groups the records and artifacts into one normalized `EvidenceBundle`.
+8. Non-release judges emit judgments and findings from that bundle.
+9. Release judges apply policy to the preceding judgments.
+10. Observers tear down, and reporters render the completed result.
+
+The current engine produces one evidence bundle per execution. A longer user journey can call `runAeeOnPage(...)` at multiple meaningful interaction boundaries.
 
 ## Module responsibilities
 
 ### `@aee/core`
 
-Owns the normalized domain model and plugin contracts. It should remain dependency-light and avoid direct Playwright or screen-reader coupling.
+Owns the normalized domain model, policy types, orchestration, evidence correlation, and plugin contracts. It remains independent of Playwright and concrete observer implementations.
 
 ### `@aee/schemas`
 
-Owns JSON Schema artifacts and the schema catalog. Other packages can depend on the schema filenames and versions without having to own the raw schema documents.
+Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas.
 
 ### `@aee/playwright`
 
-Owns adapter contracts that let Playwright tests emit checkpoints and interactions without forcing the rest of the system to depend on Playwright internals.
+Adapts real Playwright pages and virtual fixture pages to the shared execution pipeline. It owns interaction bracketing, fixed-delay stabilization, Playwright-specific accessibility/focus/network adapters, artifact output, and the `runAeeOnPage(...)` entry point.
 
 ### `@aee/observers`
 
-Owns observer manifests and registration helpers. Real observer implementations will eventually live here or in sibling packages.
+Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, and network observers. Guidepup and axe are declared but unsupported extension points. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
 
 ### `@aee/judges`
 
-Owns judge manifests and the default judge pipeline ordering.
+Owns judge manifests and the built-in structure, keyboard, change-response, and release judges. Interaction, screen-reader, and visual judges currently emit `unknown` judgments as extension scaffolds.
 
 ### `@aee/reporter`
 
-Owns output formats such as JSON and Markdown summaries.
+Owns JSON and Markdown output. Reporters consume completed runs, normalized evidence, judgments, findings, and artifact references; they do not query the page.
 
 ### `@aee/cli`
 
-Owns config loading and user-facing bootstrap behavior.
-
-## Key constraints
-
-- Judges must not read raw page state directly.
-- Observer failures must be distinguishable from lack of evidence.
-- Unknown must remain first-class all the way through release policy.
-- Plugin contracts must be versioned so teams can extend safely.
+Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`.
 
 ## Dependency graph
 
@@ -63,12 +63,15 @@ graph TD
   reporter["@aee/reporter"]
   cli["@aee/cli"]
 
-  playwright --> core
-  playwright --> schemas
   observers --> core
   judges --> core
   reporter --> core
   reporter --> schemas
+  playwright --> core
+  playwright --> schemas
+  playwright --> observers
+  playwright --> judges
+  playwright --> reporter
   cli --> core
   cli --> schemas
   cli --> playwright
@@ -77,11 +80,21 @@ graph TD
   cli --> reporter
 ```
 
-## First implementation targets
+## Key invariants
 
-- Real config validation from JSON Schema
-- Real Playwright adapter plumbing
-- DOM and accessibility tree observers
-- Evidence correlation
-- Keyboard-focused judge
+- Judges consume normalized evidence and do not read live page state.
+- `unknown`, unsupported capture, and observer errors remain distinct from pass and fail.
+- Release judgments run after other selected judges so policy can evaluate their results.
+- Plugin manifests and artifact schemas are versioned.
+- Raw evidence may be stored as artifacts instead of embedded in reports.
+- Network redaction occurs before artifact persistence; other artifact types still require careful handling.
 
+## Current constraints
+
+- Execution currently correlates a single interaction and checkpoint.
+- Stabilization is a configured timeout, not a browser-state condition.
+- Observer capture runs concurrently with `Promise.all` within each phase.
+- Setup, capture, or teardown failures are not yet governed by the declared observer timeout and continuation policy.
+- Fix providers and automated remediation plans are not implemented.
+
+See [Evidence privacy](privacy.md) for the artifact trust boundary and [Observer lifecycle](observer-lifecycle.md) for phase-level behavior.

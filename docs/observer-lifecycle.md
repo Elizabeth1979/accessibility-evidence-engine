@@ -1,52 +1,59 @@
 # Observer Lifecycle
 
-## Lifecycle phases
+## Current lifecycle
 
-### 1. Run start
+### 1. Run initialization
 
-The engine resolves configuration, plugin manifests, release policy, and environment metadata. Observers can perform lightweight setup here, but not page capture.
+The caller resolves configuration, selected plugins, capture policy, release policy, environment metadata, checkpoint, and interaction. The run moves from `pending` to `running`.
 
-### 2. Checkpoint before action
+### 2. Observer setup
 
-The engine can request a stable page snapshot before an interaction or assertion boundary. This is optional, but useful for initial page state and debugging.
+Each selected observer receives the shared context. Network tracking, for example, attaches request and response listeners during setup. Setup runs concurrently across observers.
 
-### 3. Interaction before-capture
+### 3. Before capture
 
-Observers registered for `before` capture gather baseline state. Examples include DOM snapshots, accessibility tree snapshots, focus location, and screenshot artifacts.
+Observers capture the baseline state for the interaction. Depending on the selected observers, this can include DOM, accessibility tree, focus, screenshot, or network evidence. Captures run concurrently within the phase.
 
 ### 4. Interaction execution
 
-The interaction engine performs the action. Observers do not decide whether the action was accessible during this step.
+The Playwright adapter calls `performInteraction(...)`. Observers collect evidence but do not decide whether the action was accessible while it executes.
 
-The current Playwright adapter exposes this as `performInteraction(...)`, which lets a test run a real action such as `page.keyboard.press("Tab")` between the `before` and `after` capture phases.
+### 5. Stabilization
 
-### 5. Interaction after-capture
+After the interaction resolves, `runAeeOnPage(...)` waits for `policy.capture.stabilizeAfterInteractionMs`. The current strategy is a fixed delay. It does not yet detect network idle, animation completion, or mutation silence.
 
-Observers registered for `after` capture gather post-action state. This is the main phase used for change detection.
+The fixture CLI does not perform a live interaction and therefore does not add a stabilization wait.
 
-### 6. Stabilization
+### 6. After capture
 
-The engine optionally waits for configured settling conditions such as network quiet, animation completion, or mutation silence. This is necessary to reduce false negatives for dynamic interfaces.
+Observers capture post-interaction state. DOM and network observers also derive simple change summaries from the before and after states.
 
 ### 7. Correlation
 
-The engine converts raw evidence records into a normalized `EvidenceBundle` keyed by interaction, observer, and artifact identifiers.
+The engine sorts evidence records, collects unique artifact references, and builds an `EvidenceBundle` for the interaction and checkpoint.
 
-### 8. Judgment
+### 8. Judgment and release policy
 
-Judges read only the normalized bundle and emit judgments and findings. They should not directly query DOM APIs.
+Non-release judges run concurrently against the normalized bundle. Release judges then receive those prior judgments and apply the configured severity, confidence, and unknown-result policy.
 
-### 9. Reporting and fixes
+### 9. Teardown
 
-Reporters render the run output. Fix providers can propose remediation plans grounded in the same evidence IDs.
+Observer teardown runs in a `finally` block, including when execution fails. Network observers detach their page listeners here.
 
-### 10. Teardown
+### 10. Reporting
 
-Observers release handles, flush buffers, and publish final diagnostics.
+After engine execution and teardown complete, the CLI or Playwright adapter validates applicable outputs and renders JSON and Markdown reports. When an output directory is configured, reports and raw artifacts are written below `<output-dir>/<run-id>/`.
 
-## Observer contract expectations
+## Observer contract
 
-- Every observer must declare its capabilities.
-- Every observer must surface explicit `status`.
-- Every observer may attach artifacts instead of inlining large payloads.
-- Observer errors should not abort the entire run unless policy explicitly demands it.
+- Every observer declares a versioned manifest and capabilities.
+- Capture results use explicit statuses such as `ok`, `unsupported`, `no_signal`, `observer_error`, and `timeout`.
+- Large raw states can be attached as artifacts instead of embedded in evidence records.
+- Judges receive normalized records and artifact references rather than direct page access.
+- Network data is sanitized before artifact persistence, including logs from custom page adapters.
+
+## Current limitations
+
+The policy model declares `perObserverTimeoutMs` and `continueOnObserverError`, but the execution engine does not enforce those fields yet. Observer implementations convert many capture failures into `observer_error` records, while an unhandled setup, capture, or teardown exception can still reject the run.
+
+DOM, accessibility-tree, focus, screenshot, and report output can contain sensitive page data. See [Evidence privacy](privacy.md) before sharing artifacts.

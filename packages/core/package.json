@@ -1,10 +1,38 @@
 {
   "name": "@aee/core",
   "version": "0.1.0",
+  "description": "Core types, policies, orchestration, and plugin contracts for Accessibility Evidence Engine.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
-    "dist"
-  ]
+    "dist/*.js",
+    "dist/*.js.map",
+    "dist/*.d.ts"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elizabeth1979/accessibility-evidence-engine.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/Elizabeth1979/accessibility-evidence-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
+  },
+  "keywords": ["accessibility", "evidence", "testing", "typescript"],
+  "publishConfig": {
+    "access": "public"
+  }
 }
-

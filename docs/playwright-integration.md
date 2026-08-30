@@ -2,6 +2,8 @@
 
 `@aee/playwright` provides a small bridge from a Playwright `page` into the shared AEE execution pipeline.
 
+The package currently resolves through this repository's npm workspace and has not yet been published to a package registry.
+
 ## What it does
 
 - Builds a checkpoint and interaction for the current page
@@ -252,5 +254,6 @@ await runAeeOnPage({
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
+- Before network artifacts are persisted, AEE removes URL credentials and fragments, redacts all query and header values, replaces request bodies, and drops unknown event fields. URL paths remain visible. See [Evidence privacy](privacy.md).
 - The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.
 - This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.
