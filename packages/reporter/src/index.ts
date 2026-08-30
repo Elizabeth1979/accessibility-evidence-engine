@@ -130,8 +130,16 @@ function renderMarkdownReport(input: ReporterInput): string {
     );
   }
 
-  if (triageSummary.unresolvedJudgments.length === 0 && triageSummary.unresolvedRecords.length === 0) {
-    lines.push("### Unresolved Signals", "", "No unresolved judgments or observer gaps were detected.", "");
+  if (
+    triageSummary.unresolvedJudgments.length === 0 &&
+    triageSummary.unresolvedRecords.length === 0
+  ) {
+    lines.push(
+      "### Unresolved Signals",
+      "",
+      "No unresolved judgments or observer gaps were detected.",
+      ""
+    );
   } else {
     lines.push("### Unresolved Signals", "");
 
@@ -178,7 +186,16 @@ function renderMarkdownReport(input: ReporterInput): string {
   } else {
     lines.push(
       ...renderTable(
-        ["Observer", "Records", "OK", "Unsupported", "No Signal", "Observer Error", "Timeout", "Artifacts"],
+        [
+          "Observer",
+          "Records",
+          "OK",
+          "Unsupported",
+          "No Signal",
+          "Observer Error",
+          "Timeout",
+          "Artifacts"
+        ],
         observerCoverage.map((summary) => [
           summary.observerId,
           String(summary.records),
@@ -364,7 +381,9 @@ function buildTriageSummary(input: ReporterInput): TriageSummary {
     ...new Set(
       [
         ...blockingJudgments.map((judgment) => judgment.suggestedFix),
-        ...blockingJudgments.flatMap((judgment) => (judgment.findings ?? []).map((finding) => finding.suggestedFix)),
+        ...blockingJudgments.flatMap((judgment) =>
+          (judgment.findings ?? []).map((finding) => finding.suggestedFix)
+        ),
         ...unresolvedJudgments.map((judgment) => judgment.suggestedFix),
         ...input.findings.map((finding) => finding.suggestedFix)
       ].filter((value): value is string => typeof value === "string" && value.trim().length > 0)
@@ -412,7 +431,9 @@ function summarizeObserverCoverage(records: EvidenceRecord[]): ObserverCoverageS
     summaries.set(record.observerId, existing);
   }
 
-  return [...summaries.values()].sort((left, right) => left.observerId.localeCompare(right.observerId));
+  return [...summaries.values()].sort((left, right) =>
+    left.observerId.localeCompare(right.observerId)
+  );
 }
 
 function summarizeArtifacts(artifacts: ArtifactRef[]): Array<[string, number]> {
@@ -463,7 +484,8 @@ function findJudgmentsForBundle(bundle: EvidenceBundle, judgments: Judgment[]): 
 
   return judgments.filter(
     (judgment) =>
-      hasOverlap(judgment.evidenceRecordIds, bundleRecordIds) || hasOverlap(judgment.artifactIds ?? [], bundleArtifactIds)
+      hasOverlap(judgment.evidenceRecordIds, bundleRecordIds) ||
+      hasOverlap(judgment.artifactIds ?? [], bundleArtifactIds)
   );
 }
 
@@ -473,7 +495,8 @@ function findFindingsForBundle(bundle: EvidenceBundle, findings: Finding[]): Fin
 
   return findings.filter(
     (finding) =>
-      hasOverlap(finding.evidenceRecordIds, bundleRecordIds) || hasOverlap(finding.artifactIds ?? [], bundleArtifactIds)
+      hasOverlap(finding.evidenceRecordIds, bundleRecordIds) ||
+      hasOverlap(finding.artifactIds ?? [], bundleArtifactIds)
   );
 }
 
@@ -482,7 +505,9 @@ function hasOverlap(values: string[], candidates: Set<string>): boolean {
 }
 
 function collectFindingFix(findings?: Finding[]): string | undefined {
-  return findings?.map((finding) => finding.suggestedFix).find((value): value is string => Boolean(value));
+  return findings
+    ?.map((finding) => finding.suggestedFix)
+    .find((value): value is string => Boolean(value));
 }
 
 function collectRecordArtifacts(record: EvidenceRecord): ArtifactRef[] {
@@ -534,10 +559,8 @@ function renderTable(headers: string[], rows: string[][]): string[] {
   return [
     `| ${headers.map((header) => escapeMarkdownCell(header)).join(" | ")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
-    ...rows.map((row) =>
-      `| ${headers
-        .map((_, index) => escapeMarkdownCell(row[index] ?? ""))
-        .join(" | ")} |`
+    ...rows.map(
+      (row) => `| ${headers.map((_, index) => escapeMarkdownCell(row[index] ?? "")).join(" | ")} |`
     )
   ];
 }
@@ -562,7 +585,10 @@ function formatList(values?: string[]): string {
   return values && values.length > 0 ? values.join(", ") : "n/a";
 }
 
-function getStringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+function getStringField(
+  record: Record<string, unknown> | undefined,
+  key: string
+): string | undefined {
   const value = record?.[key];
   return typeof value === "string" ? value : undefined;
 }

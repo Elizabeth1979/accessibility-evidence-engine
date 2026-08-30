@@ -66,13 +66,18 @@ test("runWithPage records the capture policy and filtered observer set", async (
 
   try {
     const result = await runWithPage(config, page, configPath);
-    const reportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+    const reportPath = result.reporterFiles.find((filePath) =>
+      filePath.endsWith("aee-report.json")
+    );
 
     assert.ok(reportPath, "Expected a JSON reporter output file.");
 
     const report = JSON.parse(await readFile(reportPath, "utf8")) as JsonReport;
 
-    assert.deepEqual(report.records.map((record) => record.observerId), ["dom", "dom"]);
+    assert.deepEqual(
+      report.records.map((record) => record.observerId),
+      ["dom", "dom"]
+    );
     assert.deepEqual(report.run.config?.selectedObservers, ["dom"]);
     assert.deepEqual(report.run.config?.capturePolicy, {
       includeScreenshots: false,

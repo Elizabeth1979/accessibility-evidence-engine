@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/common.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/common.schema.json",
   "title": "AEE Common Definitions",
   "$defs": {
     "uid": {
@@ -26,11 +26,7 @@
     },
     "artifactRef": {
       "type": "object",
-      "required": [
-        "id",
-        "kind",
-        "path"
-      ],
+      "required": ["id", "kind", "path"],
       "properties": {
         "id": {
           "$ref": "#/$defs/uid"
@@ -77,22 +73,11 @@
     },
     "severity": {
       "type": "string",
-      "enum": [
-        "info",
-        "low",
-        "medium",
-        "high",
-        "critical"
-      ]
+      "enum": ["info", "low", "medium", "high", "critical"]
     },
     "verdict": {
       "type": "string",
-      "enum": [
-        "pass",
-        "fail",
-        "unknown"
-      ]
+      "enum": ["pass", "fail", "unknown"]
     }
   }
 }
-

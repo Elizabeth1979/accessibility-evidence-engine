@@ -34,7 +34,13 @@
   "bugs": {
     "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
   },
-  "keywords": ["accessibility", "evidence", "playwright", "testing", "cli"],
+  "keywords": [
+    "accessibility",
+    "evidence",
+    "playwright",
+    "testing",
+    "cli"
+  ],
   "publishConfig": {
     "access": "public"
   },

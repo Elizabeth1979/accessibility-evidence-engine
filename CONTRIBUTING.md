@@ -51,7 +51,7 @@ See [Architecture](docs/architecture.md) and [Observer lifecycle](docs/observer-
 5. Update documentation when behavior, configuration, or limitations change.
 6. Review generated evidence for sensitive information before attaching it anywhere.
 
-The repository uses strict TypeScript. Follow the existing naming, import, and formatting style; no separate formatter or linter is enforced yet.
+The repository uses strict TypeScript, ESLint, and Prettier. Follow the existing naming and import style, then run the automated checks below.
 
 ## Required checks
 
@@ -60,7 +60,10 @@ Run the same checks used by continuous integration:
 ```bash
 npm audit --audit-level=high
 npm run check
+npm run format:check
+npm run lint
 npm run test:unit
+npm run test:coverage
 npm run test:playwright
 ```
 

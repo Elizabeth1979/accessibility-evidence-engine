@@ -1,12 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/virtual-page-fixture.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/virtual-page-fixture.schema.json",
   "title": "AEE Virtual Page Fixture",
   "type": "object",
-  "required": [
-    "url",
-    "html"
-  ],
+  "required": ["url", "html"],
   "properties": {
     "url": {
       "type": "string",

@@ -202,10 +202,7 @@ await runAeeOnPage({
     actor: "test"
   },
   async performInteraction({ page }) {
-    await Promise.all([
-      page.waitForResponse("https://aee.test/api/save"),
-      page.click("#save")
-    ]);
+    await Promise.all([page.waitForResponse("https://aee.test/api/save"), page.click("#save")]);
   }
 });
 ```
@@ -245,6 +242,7 @@ await runAeeOnPage({
 ## Notes
 
 - `outputDir` is optional. When provided, AEE writes reports and captured artifacts into `outputDir/<run-id>/`.
+- A caller-provided `runId` must contain 1–128 letters, numbers, dots, underscores, or hyphens and must begin with a letter or number. Path separators and traversal segments are rejected before output is created.
 - Without `outputDir`, `runAeeOnPage(...)` still returns in-memory `reportArtifacts`.
 - `policy.capture` filters incompatible observer requests before execution and records the applied capture policy in the emitted run config.
 - The DOM observer relies on `page.content()`.

@@ -1,16 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/evidence-record.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/evidence-record.schema.json",
   "title": "AEE Evidence Record",
   "type": "object",
-  "required": [
-    "id",
-    "runId",
-    "observerId",
-    "phase",
-    "status",
-    "timestamp"
-  ],
+  "required": ["id", "runId", "observerId", "phase", "status", "timestamp"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -32,21 +25,11 @@
     },
     "phase": {
       "type": "string",
-      "enum": [
-        "before",
-        "after",
-        "continuous"
-      ]
+      "enum": ["before", "after", "continuous"]
     },
     "status": {
       "type": "string",
-      "enum": [
-        "ok",
-        "unsupported",
-        "no_signal",
-        "observer_error",
-        "timeout"
-      ]
+      "enum": ["ok", "unsupported", "no_signal", "observer_error", "timeout"]
     },
     "timestamp": {
       "$ref": "./common.schema.json#/$defs/isoTimestamp"
@@ -78,10 +61,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": [
-          "path",
-          "summary"
-        ],
+        "required": ["path", "summary"],
         "properties": {
           "path": {
             "type": "string"
@@ -93,12 +73,7 @@
           "after": {},
           "impact": {
             "type": "string",
-            "enum": [
-              "none",
-              "minor",
-              "major",
-              "unknown"
-            ]
+            "enum": ["none", "minor", "major", "unknown"]
           }
         },
         "additionalProperties": false

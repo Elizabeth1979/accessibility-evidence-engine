@@ -1,7 +1,15 @@
 import type { JudgePlugin, ObserverContext, ObserverPlugin } from "./plugins";
 import type { ReleasePolicy } from "./policy";
 import { buildEvidenceBundle, createRunShell, summarizeJudgments } from "./engine";
-import type { AeeRun, Checkpoint, EvidenceBundle, EvidenceRecord, Finding, Interaction, Judgment } from "./types";
+import type {
+  AeeRun,
+  Checkpoint,
+  EvidenceBundle,
+  EvidenceRecord,
+  Finding,
+  Interaction,
+  Judgment
+} from "./types";
 
 export interface InteractionExecutionContext {
   runId: string;
@@ -53,7 +61,11 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
   try {
     await runObserverLifecycle(input.observerPlugins, "setup", input.observerContext);
 
-    const beforeRecords = await capturePhase(input.observerPlugins, "before", input.observerContext);
+    const beforeRecords = await capturePhase(
+      input.observerPlugins,
+      "before",
+      input.observerContext
+    );
 
     if (input.executeInteraction) {
       await input.executeInteraction({
@@ -74,7 +86,12 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
       records
     });
 
-    const judgments = await runJudges(input.judgePlugins, bundle, input.policyName, input.releasePolicy);
+    const judgments = await runJudges(
+      input.judgePlugins,
+      bundle,
+      input.policyName,
+      input.releasePolicy
+    );
     const findings = judgments.flatMap((judgment) => judgment.findings ?? []);
 
     run.status = "completed";

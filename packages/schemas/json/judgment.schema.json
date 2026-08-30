@@ -1,16 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/judgment.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/judgment.schema.json",
   "title": "AEE Judgment",
   "type": "object",
-  "required": [
-    "id",
-    "judgeId",
-    "scope",
-    "verdict",
-    "summary",
-    "evidenceRecordIds"
-  ],
+  "required": ["id", "judgeId", "scope", "verdict", "summary", "evidenceRecordIds"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -23,12 +16,7 @@
     },
     "scope": {
       "type": "string",
-      "enum": [
-        "run",
-        "checkpoint",
-        "interaction",
-        "component"
-      ]
+      "enum": ["run", "checkpoint", "interaction", "component"]
     },
     "verdict": {
       "$ref": "./common.schema.json#/$defs/verdict"
@@ -71,4 +59,3 @@
   },
   "additionalProperties": false
 }
-

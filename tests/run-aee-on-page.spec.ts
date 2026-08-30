@@ -83,7 +83,9 @@ test("runAeeOnPage captures evidence from a real Playwright page", async ({ page
     ...result.artifactFiles.map((filePath) => access(filePath))
   ]);
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -123,7 +125,9 @@ test("runAeeOnPage captures evidence from a real Playwright page", async ({ page
   );
 });
 
-test("runAeeOnPage can capture screenshots around a click interaction", async ({ page }, testInfo) => {
+test("runAeeOnPage can capture screenshots around a click interaction", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main style="padding: 24px; background: white;">
       <button id="save" type="button">Save</button>
@@ -167,7 +171,9 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   expect(result.artifactFiles).toHaveLength(2);
   await expect(page.locator("#status")).toHaveText("Saved");
 
-  const screenshotBuffers = await Promise.all(result.artifactFiles.map((filePath) => readFile(filePath)));
+  const screenshotBuffers = await Promise.all(
+    result.artifactFiles.map((filePath) => readFile(filePath))
+  );
   for (const [index, screenshotBuffer] of screenshotBuffers.entries()) {
     expect(result.artifactFiles[index]?.endsWith(".png")).toBe(true);
     expect(screenshotBuffer.subarray(0, 8)).toEqual(
@@ -175,7 +181,9 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
     );
   }
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -215,7 +223,9 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   );
 });
 
-test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({ page }, testInfo) => {
+test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="save" type="button">Save</button>
@@ -258,7 +268,9 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
   await expect(page.locator("#status")).toHaveText("Saved");
   await expect(page.locator("#save")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -306,7 +318,9 @@ test("runAeeOnPage passes keyboard judging when enter activates a focused button
   );
 });
 
-test("runAeeOnPage passes change-response judging when a click updates the DOM", async ({ page }, testInfo) => {
+test("runAeeOnPage passes change-response judging when a click updates the DOM", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="save" type="button">Save</button>
@@ -347,7 +361,9 @@ test("runAeeOnPage passes change-response judging when a click updates the DOM",
   expect(result.reporterFiles).toHaveLength(2);
   await expect(page.locator("#status")).toHaveText("Saved");
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -384,7 +400,9 @@ test("runAeeOnPage passes change-response judging when a click updates the DOM",
   );
 });
 
-test("runAeeOnPage captures redacted network activity around an interaction", async ({ page }, testInfo) => {
+test("runAeeOnPage captures redacted network activity around an interaction", async ({
+  page
+}, testInfo) => {
   await page.route("https://aee.test/api/save?token=private-token", async (route) => {
     await route.fulfill({
       status: 200,
@@ -448,12 +466,18 @@ test("runAeeOnPage captures redacted network activity around an interaction", as
   expect(result.artifactFiles).toHaveLength(2);
   await expect(page.locator("#status")).toHaveText("Saved");
 
-  const beforeLogPath = result.artifactFiles.find((filePath) => filePath.endsWith("network-before.json"));
-  const afterLogPath = result.artifactFiles.find((filePath) => filePath.endsWith("network-after.json"));
+  const beforeLogPath = result.artifactFiles.find((filePath) =>
+    filePath.endsWith("network-before.json")
+  );
+  const afterLogPath = result.artifactFiles.find((filePath) =>
+    filePath.endsWith("network-after.json")
+  );
   expect(beforeLogPath).toBeTruthy();
   expect(afterLogPath).toBeTruthy();
 
-  const beforeLog = JSON.parse(await readFile(beforeLogPath!, "utf8")) as Array<Record<string, unknown>>;
+  const beforeLog = JSON.parse(await readFile(beforeLogPath!, "utf8")) as Array<
+    Record<string, unknown>
+  >;
   const afterLogContent = await readFile(afterLogPath!, "utf8");
   const afterLog = JSON.parse(afterLogContent) as Array<Record<string, unknown>>;
 
@@ -479,7 +503,9 @@ test("runAeeOnPage captures redacted network activity around an interaction", as
     ])
   );
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -528,7 +554,9 @@ test("runAeeOnPage captures redacted network activity around an interaction", as
   );
 });
 
-test("runAeeOnPage fails change-response judging when a click produces no observable response", async ({ page }, testInfo) => {
+test("runAeeOnPage fails change-response judging when a click produces no observable response", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="save" type="button">Save</button>
@@ -560,7 +588,9 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
   expect(result.reporterFiles).toHaveLength(2);
   await expect(page.locator("#status")).toHaveText("Idle");
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -585,7 +615,9 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
   );
 });
 
-test("runAeeOnPage fails keyboard judging when space does not activate a custom button", async ({ page }, testInfo) => {
+test("runAeeOnPage fails keyboard judging when space does not activate a custom button", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <div id="save" role="button" tabindex="0">Save</div>
@@ -619,7 +651,9 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
   await expect(page.locator("#status")).toHaveText("Idle");
   await expect(page.locator("#save")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -661,7 +695,9 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
   );
 });
 
-test("runAeeOnPage passes keyboard judging when arrow-right moves focus within a tablist", async ({ page }, testInfo) => {
+test("runAeeOnPage passes keyboard judging when arrow-right moves focus within a tablist", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <div role="tablist" aria-label="Sections">
@@ -726,7 +762,9 @@ test("runAeeOnPage passes keyboard judging when arrow-right moves focus within a
   await expect(page.locator("#tab-pricing")).toBeFocused();
   await expect(page.locator("#status")).toHaveText("Pricing");
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -768,7 +806,9 @@ test("runAeeOnPage passes keyboard judging when arrow-right moves focus within a
   );
 });
 
-test("runAeeOnPage fails keyboard judging when arrow-right does not move focus within a tablist", async ({ page }, testInfo) => {
+test("runAeeOnPage fails keyboard judging when arrow-right does not move focus within a tablist", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <div role="tablist" aria-label="Sections">
@@ -805,7 +845,9 @@ test("runAeeOnPage fails keyboard judging when arrow-right does not move focus w
   expect(result.reporterFiles).toHaveLength(2);
   await expect(page.locator("#tab-overview")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -830,7 +872,9 @@ test("runAeeOnPage fails keyboard judging when arrow-right does not move focus w
   );
 });
 
-test("runAeeOnPage passes keyboard judging when arrow-down updates aria-activedescendant in a listbox", async ({ page }, testInfo) => {
+test("runAeeOnPage passes keyboard judging when arrow-down updates aria-activedescendant in a listbox", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <div
@@ -908,7 +952,9 @@ test("runAeeOnPage passes keyboard judging when arrow-down updates aria-activede
   await expect(page.locator("#city-listbox")).toBeFocused();
   await expect(page.locator("#status")).toHaveText("Haifa");
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -954,7 +1000,9 @@ test("runAeeOnPage passes keyboard judging when arrow-down updates aria-activede
   );
 });
 
-test("runAeeOnPage fails keyboard judging when aria-activedescendant does not change in a listbox", async ({ page }, testInfo) => {
+test("runAeeOnPage fails keyboard judging when aria-activedescendant does not change in a listbox", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <div
@@ -997,7 +1045,9 @@ test("runAeeOnPage fails keyboard judging when aria-activedescendant does not ch
   expect(result.reporterFiles).toHaveLength(2);
   await expect(page.locator("#city-listbox")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -1022,7 +1072,9 @@ test("runAeeOnPage fails keyboard judging when aria-activedescendant does not ch
   );
 });
 
-test("runAeeOnPage can capture focus movement around a tab interaction", async ({ page }, testInfo) => {
+test("runAeeOnPage can capture focus movement around a tab interaction", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="first">First</button>
@@ -1056,7 +1108,9 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
   expect(result.artifactFiles).toHaveLength(4);
   await expect(page.locator("#second")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -1106,7 +1160,9 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
   );
 });
 
-test("runAeeOnPage can capture backward focus movement around a shift-tab interaction", async ({ page }, testInfo) => {
+test("runAeeOnPage can capture backward focus movement around a shift-tab interaction", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="first">First</button>
@@ -1141,7 +1197,9 @@ test("runAeeOnPage can capture backward focus movement around a shift-tab intera
   expect(result.artifactFiles).toHaveLength(2);
   await expect(page.locator("#first")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
@@ -1165,7 +1223,9 @@ test("runAeeOnPage can capture backward focus movement around a shift-tab intera
   );
 });
 
-test("runAeeOnPage fails keyboard judging when tab moves focus backward", async ({ page }, testInfo) => {
+test("runAeeOnPage fails keyboard judging when tab moves focus backward", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <main>
       <button id="first">First</button>
@@ -1213,7 +1273,9 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
   expect(result.artifactFiles).toHaveLength(2);
   await expect(page.locator("#first")).toBeFocused();
 
-  const jsonReportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
   expect(jsonReportPath).toBeTruthy();
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;

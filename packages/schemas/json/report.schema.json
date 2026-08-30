@@ -1,17 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/report.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/report.schema.json",
   "title": "AEE Report",
   "type": "object",
-  "required": [
-    "schemaVersion",
-    "run",
-    "bundles",
-    "records",
-    "judgments",
-    "findings",
-    "artifacts"
-  ],
+  "required": ["schemaVersion", "run", "bundles", "records", "judgments", "findings", "artifacts"],
   "properties": {
     "schemaVersion": {
       "type": "string",

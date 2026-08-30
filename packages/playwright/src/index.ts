@@ -44,7 +44,9 @@ export interface VirtualPageFixture {
   networkEvents?: unknown[];
 }
 
-export interface PlaywrightInteractionContext<TPage extends PlaywrightPageLike = PlaywrightPageLike> {
+export interface PlaywrightInteractionContext<
+  TPage extends PlaywrightPageLike = PlaywrightPageLike
+> {
   page: TPage;
   runId: string;
   checkpoint: Checkpoint;
@@ -128,7 +130,10 @@ export function createVirtualPage(fixture: VirtualPageFixture): PlaywrightPageLi
   };
 }
 
-export function buildCheckpoint(options: AeePlaywrightOptions, request: CheckpointRequest): Checkpoint {
+export function buildCheckpoint(
+  options: AeePlaywrightOptions,
+  request: CheckpointRequest
+): Checkpoint {
   const prefix = options.checkpointPrefix ?? "checkpoint";
 
   return {
@@ -142,7 +147,10 @@ export function buildCheckpoint(options: AeePlaywrightOptions, request: Checkpoi
   };
 }
 
-export function buildInteraction(options: AeePlaywrightOptions, request: InteractionRequest): Interaction {
+export function buildInteraction(
+  options: AeePlaywrightOptions,
+  request: InteractionRequest
+): Interaction {
   const prefix = options.interactionPrefix ?? "interaction";
 
   return {
@@ -192,12 +200,17 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
   options: RunAeeOnPageOptions<TPage>
 ): Promise<RunAeeOnPageResult> {
   const runId = options.runId ?? `run-${Date.now()}`;
+  assertSafeRunId(runId);
   const resolvedPolicy = resolvePolicyConfig(options.policy);
-  const selectedObservers = resolveObserverIdsForCapturePolicy(options.observers, resolvedPolicy.capture);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(
+    options.observers,
+    resolvedPolicy.capture
+  );
   const performInteraction = options.performInteraction;
-  const outputDir = options.outputDir
-    ? path.resolve(options.projectRoot, options.outputDir, runId)
+  const outputRoot = options.outputDir
+    ? path.resolve(options.projectRoot, options.outputDir)
     : undefined;
+  const outputDir = outputRoot ? path.resolve(outputRoot, runId) : undefined;
   const artifactDir = outputDir ? path.join(outputDir, "artifacts") : undefined;
 
   if (artifactDir) {
@@ -279,7 +292,12 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
 
   const reporterFiles =
     outputDir && (options.writeReports ?? true)
-      ? await writeReporterArtifacts(outputDir, reportArtifacts, execution.bundles[0], execution.run)
+      ? await writeReporterArtifacts(
+          outputDir,
+          reportArtifacts,
+          execution.bundles[0],
+          execution.run
+        )
       : [];
 
   return {
@@ -289,6 +307,14 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     artifactFiles: execution.artifacts.map((artifact) => artifact.path),
     reportArtifacts
   };
+}
+
+function assertSafeRunId(runId: string): void {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(runId) || runId === "." || runId === "..") {
+    throw new Error(
+      "Invalid runId. Use 1-128 letters, numbers, dots, underscores, or hyphens, beginning with a letter or number."
+    );
+  }
 }
 
 async function runInteractionWithStabilization<TPage extends PlaywrightPageLike>(
@@ -353,7 +379,9 @@ interface EventedPageLike extends PlaywrightPageLike {
   removeListener?(event: "response", listener: (response: ResponseLike) => void): unknown;
 }
 
-async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObserverContext["page"]> {
+async function createObserverPage(
+  page: PlaywrightPageLike
+): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = page as CdpEnabledPageLike;
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
@@ -363,129 +391,40 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
   const customTeardownNetworkTracking = page.teardownNetworkTracking?.bind(page);
   const nativeScreenshot = page.screenshot?.bind(page);
   const networkTracker = createNetworkTracker(eventedPage);
-  const snapshotAccessibilityTree =
-    page.snapshotAccessibilityTree
-      ? async () => page.snapshotAccessibilityTree?.()
-      : page.accessibility?.snapshot
-        ? async () => page.accessibility?.snapshot?.()
-        : cdpPage.context
-          ? async () => {
-              const session = await cdpPage.context!().newCDPSession(page);
+  const snapshotAccessibilityTree = page.snapshotAccessibilityTree
+    ? async () => page.snapshotAccessibilityTree?.()
+    : page.accessibility?.snapshot
+      ? async () => page.accessibility?.snapshot?.()
+      : cdpPage.context
+        ? async () => {
+            const session = await cdpPage.context!().newCDPSession(page);
 
-              try {
-                return await session.send("Accessibility.getFullAXTree");
-              } finally {
-                await session.detach?.();
-              }
+            try {
+              return await session.send("Accessibility.getFullAXTree");
+            } finally {
+              await session.detach?.();
             }
-          : undefined;
-  const snapshotFocusTarget =
-    page.snapshotFocusTarget
-      ? async () => page.snapshotFocusTarget?.()
-      : evaluatablePage.evaluate
-        ? async () =>
-            evaluatablePage.evaluate?.(() => {
-              const globalRef = globalThis as unknown as {
-                document?: {
-                  activeElement?: unknown;
-                  getElementById?: (id: string) => unknown;
-                  querySelectorAll?: (selector: string) => Iterable<unknown>;
-                };
-                getComputedStyle?: (element: unknown) => {
-                  display?: string;
-                  visibility?: string;
-                };
-              };
-              const documentRef = globalRef.document;
-              const activeElement = documentRef?.activeElement as
-                | {
-                    tagName?: unknown;
-                    id?: unknown;
-                    textContent?: unknown;
-                    type?: unknown;
-                    tabIndex?: unknown;
-                    disabled?: unknown;
-                    parentElement?: unknown;
-                    getAttribute?: (name: string) => string | null;
-                    getClientRects?: () => { length?: number };
-                    querySelectorAll?: (selector: string) => Iterable<unknown>;
-                  }
-                | undefined;
-
-              if (!activeElement) {
-                return null;
-              }
-
-              const isElementLike = (
-                value: unknown
-              ): value is {
-                tagName?: unknown;
-                id?: unknown;
-                textContent?: unknown;
-                type?: unknown;
-                tabIndex?: unknown;
-                disabled?: unknown;
-                parentElement?: unknown;
-                getAttribute?: (name: string) => string | null;
-                getClientRects?: () => { length?: number };
+          }
+        : undefined;
+  const snapshotFocusTarget = page.snapshotFocusTarget
+    ? async () => page.snapshotFocusTarget?.()
+    : evaluatablePage.evaluate
+      ? async () =>
+          evaluatablePage.evaluate?.(() => {
+            const globalRef = globalThis as unknown as {
+              document?: {
+                activeElement?: unknown;
+                getElementById?: (id: string) => unknown;
                 querySelectorAll?: (selector: string) => Iterable<unknown>;
-              } => typeof value === "object" && value !== null;
-              const compositeRoles = ["tablist", "radiogroup", "listbox", "menu", "menubar", "tree", "grid"];
-              const itemRoleSelectors: Record<string, string> = {
-                tablist: '[role="tab"]',
-                radiogroup: '[role="radio"]',
-                listbox: '[role="option"]',
-                menu: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-                menubar: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-                tree: '[role="treeitem"]',
-                grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
               };
-              const getCompositeRole = (
-                element: {
-                  parentElement?: unknown;
-                  getAttribute?: (name: string) => string | null;
-                } | undefined
-              ) => {
-                let current = element?.parentElement;
-
-                while (isElementLike(current)) {
-                  const currentRole = current.getAttribute?.("role");
-
-                  if (typeof currentRole === "string" && compositeRoles.includes(currentRole)) {
-                    return {
-                      compositeRole: currentRole,
-                      compositeElement: current
-                    };
-                  }
-
-                  current = current.parentElement;
-                }
-
-                return {
-                  compositeRole: undefined,
-                  compositeElement: undefined
-                };
+              getComputedStyle?: (element: unknown) => {
+                display?: string;
+                visibility?: string;
               };
-              const getBooleanAttribute = (
-                element: {
-                  getAttribute?: (name: string) => string | null;
-                },
-                name: string
-              ) => {
-                const value = element.getAttribute?.(name);
-
-                if (value === "true") {
-                  return true;
-                }
-
-                if (value === "false") {
-                  return false;
-                }
-
-                return undefined;
-              };
-              const getElementSummary = (
-                element: {
+            };
+            const documentRef = globalRef.document;
+            const activeElement = documentRef?.activeElement as
+              | {
                   tagName?: unknown;
                   id?: unknown;
                   textContent?: unknown;
@@ -497,59 +436,155 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                   getClientRects?: () => { length?: number };
                   querySelectorAll?: (selector: string) => Iterable<unknown>;
                 }
-              ) => {
-                const role = element.getAttribute?.("role");
-                const tagName =
-                  typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
-                const id =
-                  typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
-                const name =
-                  element.getAttribute?.("aria-label") ??
-                  element.getAttribute?.("name") ??
-                  (typeof element.textContent === "string" && element.textContent.trim().length > 0
-                    ? element.textContent.trim().slice(0, 120)
-                    : undefined);
-                const type =
-                  typeof element.type === "string" && element.type.length > 0
-                    ? element.type
-                    : undefined;
-                const focusOrderIndex = focusableElements.indexOf(element);
-                const tabIndex = typeof element.tabIndex === "number" ? element.tabIndex : undefined;
-                const disabled = typeof element.disabled === "boolean" ? element.disabled : undefined;
-                const compositeContext = getCompositeRole(element);
-                const compositeSelector = compositeContext.compositeRole
-                  ? itemRoleSelectors[compositeContext.compositeRole]
-                  : undefined;
-                const compositeItems = compositeSelector
-                  ? Array.from(compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []).filter(
-                      isElementLike
-                    )
-                  : [];
-                const compositeItemIndex = compositeItems.indexOf(element);
+              | undefined;
 
-                return {
-                  tagName,
-                  id,
-                  role: role ?? undefined,
-                  name,
-                  type,
-                  tabIndex,
-                  disabled,
-                  ariaSelected: getBooleanAttribute(element, "aria-selected"),
-                  ariaChecked: getBooleanAttribute(element, "aria-checked"),
-                  compositeRole: compositeContext.compositeRole,
-                  compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
-                  compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
-                  focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
-                  focusableCount: focusableElements.length
-                };
+            if (!activeElement) {
+              return null;
+            }
+
+            const isElementLike = (
+              value: unknown
+            ): value is {
+              tagName?: unknown;
+              id?: unknown;
+              textContent?: unknown;
+              type?: unknown;
+              tabIndex?: unknown;
+              disabled?: unknown;
+              parentElement?: unknown;
+              getAttribute?: (name: string) => string | null;
+              getClientRects?: () => { length?: number };
+              querySelectorAll?: (selector: string) => Iterable<unknown>;
+            } => typeof value === "object" && value !== null;
+            const compositeRoles = [
+              "tablist",
+              "radiogroup",
+              "listbox",
+              "menu",
+              "menubar",
+              "tree",
+              "grid"
+            ];
+            const itemRoleSelectors: Record<string, string> = {
+              tablist: '[role="tab"]',
+              radiogroup: '[role="radio"]',
+              listbox: '[role="option"]',
+              menu: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+              menubar: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+              tree: '[role="treeitem"]',
+              grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
+            };
+            const getCompositeRole = (
+              element:
+                | {
+                    parentElement?: unknown;
+                    getAttribute?: (name: string) => string | null;
+                  }
+                | undefined
+            ) => {
+              let current = element?.parentElement;
+
+              while (isElementLike(current)) {
+                const currentRole = current.getAttribute?.("role");
+
+                if (typeof currentRole === "string" && compositeRoles.includes(currentRole)) {
+                  return {
+                    compositeRole: currentRole,
+                    compositeElement: current
+                  };
+                }
+
+                current = current.parentElement;
+              }
+
+              return {
+                compositeRole: undefined,
+                compositeElement: undefined
               };
+            };
+            const getBooleanAttribute = (
+              element: {
+                getAttribute?: (name: string) => string | null;
+              },
+              name: string
+            ) => {
+              const value = element.getAttribute?.(name);
 
-              const focusableElements = Array.from(
-                documentRef?.querySelectorAll?.(
-                  'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'
-                ) ?? []
-              ).filter(
+              if (value === "true") {
+                return true;
+              }
+
+              if (value === "false") {
+                return false;
+              }
+
+              return undefined;
+            };
+            const getElementSummary = (element: {
+              tagName?: unknown;
+              id?: unknown;
+              textContent?: unknown;
+              type?: unknown;
+              tabIndex?: unknown;
+              disabled?: unknown;
+              parentElement?: unknown;
+              getAttribute?: (name: string) => string | null;
+              getClientRects?: () => { length?: number };
+              querySelectorAll?: (selector: string) => Iterable<unknown>;
+            }) => {
+              const role = element.getAttribute?.("role");
+              const tagName =
+                typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
+              const id =
+                typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
+              const name =
+                element.getAttribute?.("aria-label") ??
+                element.getAttribute?.("name") ??
+                (typeof element.textContent === "string" && element.textContent.trim().length > 0
+                  ? element.textContent.trim().slice(0, 120)
+                  : undefined);
+              const type =
+                typeof element.type === "string" && element.type.length > 0
+                  ? element.type
+                  : undefined;
+              const focusOrderIndex = focusableElements.indexOf(element);
+              const tabIndex = typeof element.tabIndex === "number" ? element.tabIndex : undefined;
+              const disabled = typeof element.disabled === "boolean" ? element.disabled : undefined;
+              const compositeContext = getCompositeRole(element);
+              const compositeSelector = compositeContext.compositeRole
+                ? itemRoleSelectors[compositeContext.compositeRole]
+                : undefined;
+              const compositeItems = compositeSelector
+                ? Array.from(
+                    compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []
+                  ).filter(isElementLike)
+                : [];
+              const compositeItemIndex = compositeItems.indexOf(element);
+
+              return {
+                tagName,
+                id,
+                role: role ?? undefined,
+                name,
+                type,
+                tabIndex,
+                disabled,
+                ariaSelected: getBooleanAttribute(element, "aria-selected"),
+                ariaChecked: getBooleanAttribute(element, "aria-checked"),
+                compositeRole: compositeContext.compositeRole,
+                compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
+                compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
+                focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
+                focusableCount: focusableElements.length
+              };
+            };
+
+            const focusableElements = Array.from(
+              documentRef?.querySelectorAll?.(
+                'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'
+              ) ?? []
+            )
+              .filter(
                 (
                   element
                 ): element is {
@@ -562,12 +597,13 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                   getAttribute?: (name: string) => string | null;
                   getClientRects?: () => { length?: number };
                 } => typeof element === "object" && element !== null
-              ).filter((element) => {
+              )
+              .filter((element) => {
                 if (typeof element.tabIndex === "number" && element.tabIndex < 0) {
                   return false;
                 }
 
-                if (Boolean(element.disabled)) {
+                if (element.disabled) {
                   return false;
                 }
 
@@ -580,37 +616,37 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
                 const rects = element.getClientRects?.();
                 return typeof rects?.length === "number" ? rects.length > 0 : true;
               });
-              const activeDescendantId = activeElement.getAttribute?.("aria-activedescendant") ?? undefined;
-              const activeDescendantCandidate = activeDescendantId
-                ? documentRef?.getElementById?.(activeDescendantId)
+            const activeDescendantId =
+              activeElement.getAttribute?.("aria-activedescendant") ?? undefined;
+            const activeDescendantCandidate = activeDescendantId
+              ? documentRef?.getElementById?.(activeDescendantId)
+              : undefined;
+            const activeDescendant =
+              activeDescendantCandidate && isElementLike(activeDescendantCandidate)
+                ? getElementSummary(activeDescendantCandidate)
                 : undefined;
-              const activeDescendant =
-                activeDescendantCandidate && isElementLike(activeDescendantCandidate)
-                  ? getElementSummary(activeDescendantCandidate)
-                  : undefined;
-              const activeElementSummary = getElementSummary(activeElement);
+            const activeElementSummary = getElementSummary(activeElement);
 
-              return {
-                ...activeElementSummary,
-                activeDescendantId,
-                activeDescendant
-              };
-            })
-        : undefined;
-  const snapshotScreenshot =
-    customScreenshot
-      ? async () => customScreenshot()
-      : nativeScreenshot
-        ? async () => {
-            const value = await nativeScreenshot({ type: "png" });
+            return {
+              ...activeElementSummary,
+              activeDescendantId,
+              activeDescendant
+            };
+          })
+      : undefined;
+  const snapshotScreenshot = customScreenshot
+    ? async () => customScreenshot()
+    : nativeScreenshot
+      ? async () => {
+          const value = await nativeScreenshot({ type: "png" });
 
-            if (value instanceof Uint8Array) {
-              return value;
-            }
-
-            throw new Error("Screenshot API returned a non-binary payload.");
+          if (value instanceof Uint8Array) {
+            return value;
           }
-        : undefined;
+
+          throw new Error("Screenshot API returned a non-binary payload.");
+        }
+      : undefined;
   const setupNetworkTracking =
     customSetupNetworkTracking ??
     (networkTracker
@@ -620,9 +656,7 @@ async function createObserverPage(page: PlaywrightPageLike): Promise<RuntimeObse
       : undefined);
   const snapshotNetworkLog =
     customSnapshotNetworkLog ??
-    (networkTracker
-      ? async () => networkTracker.snapshot()
-      : undefined);
+    (networkTracker ? async () => networkTracker.snapshot() : undefined);
   const teardownNetworkTracking =
     customTeardownNetworkTracking ??
     (networkTracker

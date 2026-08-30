@@ -1,12 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/cli-config.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/cli-config.schema.json",
   "title": "AEE CLI Config",
   "type": "object",
-  "required": [
-    "projectRoot",
-    "fixturePath"
-  ],
+  "required": ["projectRoot", "fixturePath"],
   "properties": {
     "version": {
       "type": "string"
@@ -27,10 +24,65 @@
       "type": "object",
       "properties": {
         "name": {
-          "type": "string"
+          "type": "string",
+          "minLength": 1
+        },
+        "release": {
+          "type": "object",
+          "properties": {
+            "failOnSeverities": {
+              "type": "array",
+              "items": {
+                "$ref": "./common.schema.json#/$defs/severity"
+              },
+              "uniqueItems": true
+            },
+            "unknownBehavior": {
+              "type": "string",
+              "enum": ["ignore", "warn", "fail"]
+            },
+            "minimumConfidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "capture": {
+          "type": "object",
+          "properties": {
+            "includeScreenshots": {
+              "type": "boolean"
+            },
+            "includeAccessibilityTree": {
+              "type": "boolean"
+            },
+            "includeDomSnapshot": {
+              "type": "boolean"
+            },
+            "stabilizeAfterInteractionMs": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "observers": {
+          "type": "object",
+          "properties": {
+            "perObserverTimeoutMs": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "continueOnObserverError": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "observers": {
       "type": "array",
@@ -71,11 +123,7 @@
         },
         "actor": {
           "type": "string",
-          "enum": [
-            "test",
-            "engine",
-            "user-script"
-          ]
+          "enum": ["test", "engine", "user-script"]
         },
         "target": {
           "$ref": "./common.schema.json#/$defs/targetDescriptor"

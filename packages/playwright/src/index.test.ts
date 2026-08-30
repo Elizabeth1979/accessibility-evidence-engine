@@ -16,7 +16,9 @@ interface JsonReport {
   }>;
 }
 
-function createMutablePage(initialHtml: string): PlaywrightPageLike & { setHtml: (html: string) => void } {
+function createMutablePage(
+  initialHtml: string
+): PlaywrightPageLike & { setHtml: (html: string) => void } {
   let html = initialHtml;
 
   return {
@@ -37,21 +39,42 @@ function getJsonReport(content: string): JsonReport {
 }
 
 function getReporterContent(result: Awaited<ReturnType<typeof runAeeOnPage>>): JsonReport {
-  const artifact = result.reportArtifacts.find((candidate) => candidate.label === "aee-report.json");
+  const artifact = result.reportArtifacts.find(
+    (candidate) => candidate.label === "aee-report.json"
+  );
 
   assert.ok(artifact, "Expected a JSON reporter artifact.");
   return getJsonReport(artifact.content);
 }
 
 test("resolveObserverIdsForCapturePolicy filters disabled capture observers", () => {
-  const selectedObservers = resolveObserverIdsForCapturePolicy(["dom", "accessibility-tree", "visual", "focus"], {
-    includeDomSnapshot: false,
-    includeAccessibilityTree: false,
-    includeScreenshots: false,
-    stabilizeAfterInteractionMs: 0
-  });
+  const selectedObservers = resolveObserverIdsForCapturePolicy(
+    ["dom", "accessibility-tree", "visual", "focus"],
+    {
+      includeDomSnapshot: false,
+      includeAccessibilityTree: false,
+      includeScreenshots: false,
+      stabilizeAfterInteractionMs: 0
+    }
+  );
 
   assert.deepEqual(selectedObservers, ["focus"]);
+});
+
+test("runAeeOnPage rejects run IDs that can escape the output directory", async () => {
+  const page = createMutablePage("<main>Safe output</main>");
+
+  await assert.rejects(
+    () =>
+      runAeeOnPage({
+        page,
+        projectRoot: process.cwd(),
+        outputDir: "aee-output",
+        runId: "../escaped",
+        writeReports: false
+      }),
+    /Invalid runId/
+  );
 });
 
 test("runAeeOnPage can miss delayed DOM changes when stabilization is disabled", async () => {
@@ -94,7 +117,9 @@ test("runAeeOnPage can miss delayed DOM changes when stabilization is disabled",
   });
 
   const report = getReporterContent(result);
-  const changeResponseJudgment = report.judgments.find((judgment) => judgment.judgeId === "change-response");
+  const changeResponseJudgment = report.judgments.find(
+    (judgment) => judgment.judgeId === "change-response"
+  );
 
   assert.equal(changeResponseJudgment?.verdict, "fail");
   assert.match(changeResponseJudgment?.summary ?? "", /no observable response/i);
@@ -145,11 +170,16 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
   });
 
   const report = getReporterContent(result);
-  const changeResponseJudgment = report.judgments.find((judgment) => judgment.judgeId === "change-response");
+  const changeResponseJudgment = report.judgments.find(
+    (judgment) => judgment.judgeId === "change-response"
+  );
 
   assert.equal(changeResponseJudgment?.verdict, "pass");
   assert.match(changeResponseJudgment?.summary ?? "", /dom changed/i);
-  assert.deepEqual(report.records.map((record) => record.observerId), ["dom", "dom"]);
+  assert.deepEqual(
+    report.records.map((record) => record.observerId),
+    ["dom", "dom"]
+  );
   assert.equal(report.artifacts.length, 0);
   assert.deepEqual(report.run.config?.selectedObservers, ["dom"]);
   assert.deepEqual(report.run.config?.capturePolicy, {

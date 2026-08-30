@@ -14,15 +14,25 @@
   "scripts": {
     "build": "tsc -b packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
     "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --max-warnings=0",
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "playwright:install": "playwright install chromium",
+    "test": "npm run test:unit && npm run test:playwright",
+    "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
     "test:package": "npm run build && node scripts/check-packages.mjs",
     "test:unit": "npm run build && node --test packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
     "test:playwright": "npm run build && playwright test"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.54.1",
     "@types/node": "^24.0.0",
-    "typescript": "^5.9.0"
+    "eslint": "^10.9.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.6",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.68.0"
   }
 }

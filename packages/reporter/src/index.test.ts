@@ -202,7 +202,10 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
   assert.match(artifact.content, /\| Verdicts \| pass 0, fail 2, unknown 1 \|/);
   assert.match(artifact.content, /## Triage/);
   assert.match(artifact.content, /### Blocking Judgments/);
-  assert.match(artifact.content, /Release gate failed because one blocking judgment met the current policy threshold\./);
+  assert.match(
+    artifact.content,
+    /Release gate failed because one blocking judgment met the current policy threshold\./
+  );
   assert.match(artifact.content, /### Unresolved Signals/);
   assert.match(artifact.content, /Screen reader evidence is unavailable in this environment\./);
   assert.match(artifact.content, /Guidepup is not available in this environment\./);
@@ -217,6 +220,9 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
   assert.match(artifact.content, /## Bundle 1: `tab` on button "Continue"/);
   assert.match(artifact.content, /\| Participating observers \| focus, visual \|/);
   assert.match(artifact.content, /Keyboard interaction stalled on the same element\./);
-  assert.match(artifact.content, /Ensure focus moves to the next interactive control when Tab is pressed\./);
+  assert.match(
+    artifact.content,
+    /Ensure focus moves to the next interactive control when Tab is pressed\./
+  );
   assert.match(artifact.content, /\/tmp\/after\.png/);
 });

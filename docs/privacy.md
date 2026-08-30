@@ -10,7 +10,10 @@ Network artifacts are sanitized before they are written to disk, including netwo
 - preserves query parameter names but replaces every query value with `[REDACTED]`;
 - preserves header names but replaces every header value with `[REDACTED]`;
 - replaces request bodies with `[REDACTED]`; and
-- drops unrecognized event properties rather than persisting arbitrary payloads.
+- reconstructs recognized event properties only from their expected primitive types; and
+- drops malformed or unrecognized event properties rather than persisting arbitrary payloads.
+
+Malformed URL strings are replaced completely with `[REDACTED]` rather than being persisted.
 
 The URL scheme, host, port, and path remain visible because they are used to correlate requests and responses. Do not place credentials, personal information, or other secrets in URL paths.
 

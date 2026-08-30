@@ -1,0 +1,7 @@
+**/dist/
+**/node_modules/
+aee-output/
+coverage/
+package-lock.json
+playwright-report/
+test-results/

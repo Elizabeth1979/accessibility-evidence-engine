@@ -1,14 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/finding.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/finding.schema.json",
   "title": "AEE Finding",
   "type": "object",
-  "required": [
-    "id",
-    "message",
-    "severity",
-    "evidenceRecordIds"
-  ],
+  "required": ["id", "message", "severity", "evidenceRecordIds"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -49,4 +44,3 @@
   },
   "additionalProperties": false
 }
-

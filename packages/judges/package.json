@@ -31,7 +31,12 @@
   "bugs": {
     "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
   },
-  "keywords": ["accessibility", "evidence", "testing", "judging"],
+  "keywords": [
+    "accessibility",
+    "evidence",
+    "testing",
+    "judging"
+  ],
   "publishConfig": {
     "access": "public"
   },

@@ -130,6 +130,31 @@ test("assertValidSchema reports missing required CLI config properties", () => {
   );
 });
 
+test("validateSchema rejects malformed nested policy values", () => {
+  const result = validateSchema("cliConfig", {
+    projectRoot: ".",
+    fixturePath: "./fixture.json",
+    policy: {
+      capture: {
+        includeScreenshots: "yes",
+        stabilizeAfterInteractionMs: -1
+      },
+      release: {
+        unknownBehavior: "approve-everything"
+      },
+      observers: {
+        perObserverTimeoutMs: 0
+      }
+    }
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /must be boolean/);
+  assert.match(result.errors.join(" "), /must be >= 0/);
+  assert.match(result.errors.join(" "), /must be equal to one of the allowed values/);
+  assert.match(result.errors.join(" "), /must be >= 1/);
+});
+
 test("validateSchema rejects malformed virtual page fixtures", () => {
   const result = validateSchema("virtualPageFixture", {
     url: "https://example.com"

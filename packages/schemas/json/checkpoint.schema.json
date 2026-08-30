@@ -1,14 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/checkpoint.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/checkpoint.schema.json",
   "title": "AEE Checkpoint",
   "type": "object",
-  "required": [
-    "id",
-    "runId",
-    "timestamp",
-    "trigger"
-  ],
+  "required": ["id", "runId", "timestamp", "trigger"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -27,12 +22,7 @@
     },
     "trigger": {
       "type": "string",
-      "enum": [
-        "initial-load",
-        "post-interaction",
-        "assertion",
-        "manual"
-      ]
+      "enum": ["initial-load", "post-interaction", "assertion", "manual"]
     },
     "pageSnapshotRef": {
       "$ref": "./common.schema.json#/$defs/artifactRef"
@@ -46,4 +36,3 @@
   },
   "additionalProperties": false
 }
-

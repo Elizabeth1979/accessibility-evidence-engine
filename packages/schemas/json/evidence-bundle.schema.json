@@ -1,15 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/evidence-bundle.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/evidence-bundle.schema.json",
   "title": "AEE Evidence Bundle",
   "type": "object",
-  "required": [
-    "runId",
-    "interaction",
-    "records",
-    "artifacts",
-    "correlation"
-  ],
+  "required": ["runId", "interaction", "records", "artifacts", "correlation"],
   "properties": {
     "runId": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -34,10 +28,7 @@
     },
     "correlation": {
       "type": "object",
-      "required": [
-        "strategy",
-        "participatingObserverIds"
-      ],
+      "required": ["strategy", "participatingObserverIds"],
       "properties": {
         "strategy": {
           "type": "string"

@@ -36,7 +36,13 @@
   "bugs": {
     "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
   },
-  "keywords": ["accessibility", "evidence", "json-schema", "validation", "testing"],
+  "keywords": [
+    "accessibility",
+    "evidence",
+    "json-schema",
+    "validation",
+    "testing"
+  ],
   "publishConfig": {
     "access": "public"
   },

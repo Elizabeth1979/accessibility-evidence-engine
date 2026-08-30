@@ -1,14 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/run.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/run.schema.json",
   "title": "AEE Run",
   "type": "object",
-  "required": [
-    "id",
-    "version",
-    "startedAt",
-    "status"
-  ],
+  "required": ["id", "version", "startedAt", "status"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -24,13 +19,7 @@
     },
     "status": {
       "type": "string",
-      "enum": [
-        "pending",
-        "running",
-        "completed",
-        "failed",
-        "cancelled"
-      ]
+      "enum": ["pending", "running", "completed", "failed", "cancelled"]
     },
     "checkpoints": {
       "type": "array",
@@ -71,4 +60,3 @@
   },
   "additionalProperties": false
 }
-

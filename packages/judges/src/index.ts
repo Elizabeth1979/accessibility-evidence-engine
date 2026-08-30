@@ -14,7 +14,7 @@ export const defaultJudgeManifests = [
     displayName: "Structure Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: ["landmarks", "headings", "reading-order"]
+    capabilities: ["evidence-completeness"]
   },
   {
     id: "keyboard",
@@ -28,28 +28,28 @@ export const defaultJudgeManifests = [
     displayName: "Interaction Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: ["state-change", "response-validation"]
+    capabilities: []
   },
   {
     id: "screen-reader",
     displayName: "Screen Reader Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: ["announcement-quality", "control-discoverability"]
+    capabilities: []
   },
   {
     id: "visual",
     displayName: "Visual Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: ["visual-regression", "target-size"]
+    capabilities: []
   },
   {
     id: "change-response",
     displayName: "Change Response Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: ["change-classification", "focus-expectation", "announcement-expectation"]
+    capabilities: ["observable-change-detection"]
   },
   {
     id: "release",
@@ -121,7 +121,9 @@ function createStructureJudge(): JudgePlugin {
   return {
     manifest,
     async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
-      const domOk = bundle.records.some((record) => record.observerId === "dom" && record.status === "ok");
+      const domOk = bundle.records.some(
+        (record) => record.observerId === "dom" && record.status === "ok"
+      );
       const accessibilityOk = bundle.records.some(
         (record) => record.observerId === "accessibility-tree" && record.status === "ok"
       );
@@ -205,7 +207,8 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
   const beforeOrderIndex = getNumericField(beforeTarget, "focusOrderIndex");
   const afterOrderIndex = getNumericField(afterTarget, "focusOrderIndex");
   const focusableCount =
-    getNumericField(beforeTarget, "focusableCount") ?? getNumericField(afterTarget, "focusableCount");
+    getNumericField(beforeTarget, "focusableCount") ??
+    getNumericField(afterTarget, "focusableCount");
 
   if (afterTarget === null) {
     const finding: Finding = {
@@ -364,7 +367,8 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
       ruleId: "keyboard-activation-focus-presence",
       evidenceRecordIds: [beforeRecord.id, afterRecord.id],
       artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-      suggestedFix: "Keep focus on the activated control or move it intentionally to the resulting UI."
+      suggestedFix:
+        "Keep focus on the activated control or move it intentionally to the resulting UI."
     };
 
     return [
@@ -385,7 +389,13 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  const activationSignals = collectActivationSignals(bundle.records, beforeRecord, afterRecord, beforeKey, afterKey);
+  const activationSignals = collectActivationSignals(
+    bundle.records,
+    beforeRecord,
+    afterRecord,
+    beforeKey,
+    afterKey
+  );
 
   if (activationSignals.length === 0) {
     const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
@@ -423,9 +433,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
   const evidenceRecordIds = [
     ...new Set(activationSignals.flatMap((signal) => signal.evidenceRecordIds))
   ];
-  const artifactIds = [
-    ...new Set(activationSignals.flatMap((signal) => signal.artifactIds))
-  ];
+  const artifactIds = [...new Set(activationSignals.flatMap((signal) => signal.artifactIds))];
   const focusOutcome =
     beforeKey === afterKey
       ? `Focus stayed on ${describeFocusTarget(afterTarget)}.`
@@ -480,7 +488,11 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  const compositeRole = getCompositeNavigationRole(bundle.interaction.target, beforeTarget, afterTarget);
+  const compositeRole = getCompositeNavigationRole(
+    bundle.interaction.target,
+    beforeTarget,
+    afterTarget
+  );
   if (!compositeRole) {
     return [
       buildKeyboardUnknownJudgment(
@@ -501,7 +513,8 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
       ruleId: "keyboard-composite-focus-presence",
       evidenceRecordIds: [beforeRecord.id, afterRecord.id],
       artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-      suggestedFix: "Keep focus within the composite widget while arrow-key navigation is in progress."
+      suggestedFix:
+        "Keep focus within the composite widget while arrow-key navigation is in progress."
     };
 
     return [
@@ -584,7 +597,8 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     arrowKey,
     getNumericField(beforeTarget, "compositeItemIndex"),
     getNumericField(afterTarget, "compositeItemIndex"),
-    getNumericField(beforeTarget, "compositeItemCount") ?? getNumericField(afterTarget, "compositeItemCount")
+    getNumericField(beforeTarget, "compositeItemCount") ??
+      getNumericField(afterTarget, "compositeItemCount")
   );
 
   if (directionVerdict === "wrong-direction") {
@@ -657,7 +671,8 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "unknown",
-            summary: "Change-response judge currently evaluates click, enter, space, and submit interactions only.",
+            summary:
+              "Change-response judge currently evaluates click, enter, space, and submit interactions only.",
             severity: "info",
             confidence: 0.5,
             evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -673,7 +688,8 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "unknown",
-            summary: "Change-response judge could not determine whether this interaction was expected to trigger a visible or network response.",
+            summary:
+              "Change-response judge could not determine whether this interaction was expected to trigger a visible or network response.",
             severity: "info",
             confidence: 0.6,
             evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -695,7 +711,8 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "unknown",
-            summary: "Change-response judge requires DOM, network, or focus evidence to evaluate the interaction outcome.",
+            summary:
+              "Change-response judge requires DOM, network, or focus evidence to evaluate the interaction outcome.",
             severity: "medium",
             confidence: 0.7,
             evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -746,10 +763,10 @@ function createChangeResponseJudge(): JudgePlugin {
           summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).`,
           severity: "info",
           confidence: 0.9,
-          evidenceRecordIds: [...new Set(observedSignals.flatMap((signal) => signal.evidenceRecordIds))],
-          artifactIds: [
-            ...new Set(observedSignals.flatMap((signal) => signal.artifactIds))
-          ]
+          evidenceRecordIds: [
+            ...new Set(observedSignals.flatMap((signal) => signal.evidenceRecordIds))
+          ],
+          artifactIds: [...new Set(observedSignals.flatMap((signal) => signal.artifactIds))]
         }
       ];
     }
@@ -778,7 +795,9 @@ function createReleaseJudge(): JudgePlugin {
           typeof judgment.severity === "string" &&
           releasePolicy.failOnSeverities.includes(judgment.severity)
       );
-      const unresolvedUnknowns = priorJudgments.filter((judgment) => judgment.verdict === "unknown");
+      const unresolvedUnknowns = priorJudgments.filter(
+        (judgment) => judgment.verdict === "unknown"
+      );
       let verdict: Judgment["verdict"] = "pass";
       let summary = "Release gate passed. No blocking judgments met the current policy threshold.";
       let severity: Judgment["severity"] = "info";
@@ -790,29 +809,36 @@ function createReleaseJudge(): JudgePlugin {
         verdict = "fail";
         summary = `Release gate failed because ${describeObserverCount(observerErrors.length, "observer error")} blocked evidence capture.`;
         severity = "high";
-        suggestedFix = "Stabilize or replace the observers that errored before relying on this release gate.";
+        suggestedFix =
+          "Stabilize or replace the observers that errored before relying on this release gate.";
         evidenceRecordIds = observerErrors.map((record) => record.id);
         artifactIds = collectArtifactIds(observerErrors);
       } else if (blockingFailures.length > 0) {
         verdict = "fail";
         summary = `Release gate failed because ${describeJudgmentCount(blockingFailures.length, "blocking judgment")} met the current policy threshold.`;
         severity = "high";
-        suggestedFix = "Resolve the blocking accessibility judgments or relax the release policy intentionally.";
+        suggestedFix =
+          "Resolve the blocking accessibility judgments or relax the release policy intentionally.";
         evidenceRecordIds = collectJudgmentEvidenceIds(blockingFailures);
         artifactIds = collectJudgmentArtifactIds(blockingFailures);
       } else if (unsupported.length > 0 || unresolvedUnknowns.length > 0) {
-        const unresolvedSummary = describeUnresolvedSignals(unsupported.length, unresolvedUnknowns.length);
+        const unresolvedSummary = describeUnresolvedSignals(
+          unsupported.length,
+          unresolvedUnknowns.length
+        );
 
         if (releasePolicy.unknownBehavior === "fail") {
           verdict = "fail";
           summary = `Release gate failed because ${unresolvedSummary} remain unresolved under the current policy.`;
           severity = "high";
-          suggestedFix = "Resolve the unsupported observers or unknown judgments, or relax the release policy intentionally.";
+          suggestedFix =
+            "Resolve the unsupported observers or unknown judgments, or relax the release policy intentionally.";
         } else if (releasePolicy.unknownBehavior === "warn") {
           verdict = "unknown";
           summary = `Release gate is unknown because ${unresolvedSummary} remain unresolved.`;
           severity = "medium";
-          suggestedFix = "Review the unsupported observers or unknown judgments before promoting this run.";
+          suggestedFix =
+            "Review the unsupported observers or unknown judgments before promoting this run.";
         } else {
           summary = `Release gate passed, but ${unresolvedSummary} were ignored by policy.`;
           severity = "info";
@@ -895,7 +921,11 @@ function collectActivationSignals(
   }
 
   const domRecords = records.filter(
-    (record) => record.observerId === "dom" && record.phase === "after" && record.status === "ok" && hasDomChange(record)
+    (record) =>
+      record.observerId === "dom" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      hasDomChange(record)
   );
 
   if (domRecords.length > 0) {
@@ -928,7 +958,11 @@ function collectActivationSignals(
 function collectChangeResponseSignals(records: EvidenceRecord[]): ActivationSignal[] {
   const signals: ActivationSignal[] = [];
   const domRecords = records.filter(
-    (record) => record.observerId === "dom" && record.phase === "after" && record.status === "ok" && hasDomChange(record)
+    (record) =>
+      record.observerId === "dom" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      hasDomChange(record)
   );
   const networkRecords = records.filter(
     (record) =>
@@ -978,11 +1012,14 @@ function hasDomChange(record: EvidenceRecord): boolean {
   }
 
   return (
-    record.changes?.some((change) => change.path === "dom.html" && change.impact !== "none") ?? false
+    record.changes?.some((change) => change.path === "dom.html" && change.impact !== "none") ??
+    false
   );
 }
 
-function supportsChangeResponseInteraction(interactionKind: EvidenceBundle["interaction"]["kind"]): boolean {
+function supportsChangeResponseInteraction(
+  interactionKind: EvidenceBundle["interaction"]["kind"]
+): boolean {
   return (
     interactionKind === "click" ||
     interactionKind === "enter" ||
@@ -1030,7 +1067,9 @@ function isActionableTargetRole(role: string | undefined): boolean {
   return Boolean(role && actionableRoles.has(role));
 }
 
-function buildChangeResponseSuggestedFix(interactionKind: EvidenceBundle["interaction"]["kind"]): string {
+function buildChangeResponseSuggestedFix(
+  interactionKind: EvidenceBundle["interaction"]["kind"]
+): string {
   if (interactionKind === "submit") {
     return "Ensure form submission produces an observable response such as DOM, focus, or network activity.";
   }
@@ -1054,7 +1093,10 @@ function describeTarget(target: TargetDescriptor | undefined): string {
   return parts.length > 0 ? parts.join(" ") : "the target";
 }
 
-function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focusTarget: unknown): boolean {
+function isActivatableKeyboardTarget(
+  target: TargetDescriptor | undefined,
+  focusTarget: unknown
+): boolean {
   const activatableRoles = new Set([
     "button",
     "link",
@@ -1067,7 +1109,14 @@ function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focus
     "option",
     "tab"
   ]);
-  const activatableInputTypes = new Set(["button", "submit", "reset", "checkbox", "radio", "image"]);
+  const activatableInputTypes = new Set([
+    "button",
+    "submit",
+    "reset",
+    "checkbox",
+    "radio",
+    "image"
+  ]);
 
   if (target?.role && activatableRoles.has(target.role)) {
     return true;
@@ -1095,7 +1144,9 @@ function isActivatableKeyboardTarget(target: TargetDescriptor | undefined, focus
   return false;
 }
 
-function getArrowKey(bundle: EvidenceBundle): "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | undefined {
+function getArrowKey(
+  bundle: EvidenceBundle
+): "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | undefined {
   const candidates = [
     bundle.interaction.input,
     getStringMetaField(bundle.interaction.meta, "key"),
@@ -1193,12 +1244,16 @@ function evaluateCompositeArrowDirection(
   afterIndex: number | undefined,
   itemCount: number | undefined
 ): "correct-direction" | "wrong-direction" | "direction-unverified" {
-  if (beforeIndex === undefined || afterIndex === undefined || itemCount === undefined || itemCount < 2) {
+  if (
+    beforeIndex === undefined ||
+    afterIndex === undefined ||
+    itemCount === undefined ||
+    itemCount < 2
+  ) {
     return "direction-unverified";
   }
 
-  const movesForward =
-    arrowKey === "ArrowRight" || arrowKey === "ArrowDown";
+  const movesForward = arrowKey === "ArrowRight" || arrowKey === "ArrowDown";
   const movedForward =
     afterIndex > beforeIndex || (beforeIndex === itemCount - 1 && afterIndex === 0);
   const movedBackward =
@@ -1215,11 +1270,13 @@ function findFocusRecord(
   records: EvidenceRecord[],
   phase: EvidenceRecord["phase"]
 ): EvidenceRecord | undefined {
-  return records.find((record) => record.observerId === "focus" && record.phase === phase && record.status === "ok");
+  return records.find(
+    (record) => record.observerId === "focus" && record.phase === phase && record.status === "ok"
+  );
 }
 
 function getFocusTarget(record: EvidenceRecord): unknown {
-  return isRecord(record.meta) ? record.meta.focusTarget ?? null : null;
+  return isRecord(record.meta) ? (record.meta.focusTarget ?? null) : null;
 }
 
 function getCompositeNavigationTarget(record: EvidenceRecord): unknown {
@@ -1280,8 +1337,10 @@ function describeFocusTarget(target: unknown): string {
 
   const tagName = typeof target.tagName === "string" ? target.tagName : "unknown";
   const id = typeof target.id === "string" && target.id.length > 0 ? `#${target.id}` : undefined;
-  const role = typeof target.role === "string" && target.role.length > 0 ? `role=${target.role}` : undefined;
-  const name = typeof target.name === "string" && target.name.length > 0 ? `"${target.name}"` : undefined;
+  const role =
+    typeof target.role === "string" && target.role.length > 0 ? `role=${target.role}` : undefined;
+  const name =
+    typeof target.name === "string" && target.name.length > 0 ? `"${target.name}"` : undefined;
 
   return [tagName, id, role, name].filter(Boolean).join(" ");
 }
@@ -1318,7 +1377,10 @@ function getBooleanMetaField(record: EvidenceRecord, field: string): boolean | u
   return typeof record.meta[field] === "boolean" ? record.meta[field] : undefined;
 }
 
-function getStringMetaField(record: Record<string, unknown> | undefined, field: string): string | undefined {
+function getStringMetaField(
+  record: Record<string, unknown> | undefined,
+  field: string
+): string | undefined {
   const value = record?.[field];
   return typeof value === "string" ? value : undefined;
 }
@@ -1331,7 +1393,10 @@ function collectJudgmentArtifactIds(judgments: Judgment[]): string[] {
   return [...new Set(judgments.flatMap((judgment) => judgment.artifactIds ?? []))];
 }
 
-function meetsMinimumConfidence(judgment: Judgment, minimumConfidence: number | undefined): boolean {
+function meetsMinimumConfidence(
+  judgment: Judgment,
+  minimumConfidence: number | undefined
+): boolean {
   if (minimumConfidence === undefined) {
     return true;
   }

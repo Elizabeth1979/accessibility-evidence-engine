@@ -31,7 +31,12 @@
   "bugs": {
     "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
   },
-  "keywords": ["accessibility", "evidence", "testing", "typescript"],
+  "keywords": [
+    "accessibility",
+    "evidence",
+    "testing",
+    "typescript"
+  ],
   "publishConfig": {
     "access": "public"
   }

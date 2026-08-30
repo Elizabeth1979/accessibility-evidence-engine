@@ -145,6 +145,13 @@ test("createNetworkObserver redacts sensitive network data before writing artifa
               postData: JSON.stringify({ email: "private@example.com" }),
               body: "unrecognized-private-payload",
               timestamp: "2026-06-21T12:00:01.000Z"
+            },
+            {
+              kind: "request",
+              requestId: { secret: "nested-request-id" },
+              url: "not-a-url?nested-url-secret",
+              statusText: { secret: "nested-status-secret" },
+              ok: { secret: "nested-ok-secret" }
             }
           ];
         }
@@ -156,9 +163,12 @@ test("createNetworkObserver redacts sensitive network data before writing artifa
     assert.ok(artifactPath, "Expected a network artifact path.");
 
     const content = await readFile(artifactPath, "utf8");
-    assert.doesNotMatch(content, /top-secret|private-token|private-trace|private@example|password|private-payload/);
+    assert.doesNotMatch(
+      content,
+      /top-secret|private-token|private-trace|private@example|password|private-payload|nested-/
+    );
 
-    const [event] = JSON.parse(content) as Array<Record<string, unknown>>;
+    const [event, malformedEvent] = JSON.parse(content) as Array<Record<string, unknown>>;
     assert.equal(event.url, "https://aee.test/api/save?token=%5BREDACTED%5D");
     assert.deepEqual(event.headers, {
       authorization: "[REDACTED]",
@@ -166,6 +176,10 @@ test("createNetworkObserver redacts sensitive network data before writing artifa
     });
     assert.equal(event.postData, "[REDACTED]");
     assert.equal(event.body, undefined);
+    assert.deepEqual(malformedEvent, {
+      kind: "request",
+      url: "[REDACTED]"
+    });
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }

@@ -1,5 +1,12 @@
 import type { ReleasePolicy } from "./policy";
-import type { AeeRun, ArtifactRef, EvidenceBundle, EvidenceRecord, Finding, Judgment } from "./types";
+import type {
+  AeeRun,
+  ArtifactRef,
+  EvidenceBundle,
+  EvidenceRecord,
+  Finding,
+  Judgment
+} from "./types";
 
 export type PluginKind = "observer" | "judge" | "reporter" | "fix-provider";
 

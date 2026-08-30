@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.0.2
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
 
@@ -43,8 +43,17 @@ jobs:
       - name: Check TypeScript
         run: npm run check
 
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
       - name: Run unit tests
         run: npm run test:unit
+
+      - name: Enforce unit coverage
+        run: npm run test:coverage
 
       - name: Verify package tarballs
         run: npm run test:package

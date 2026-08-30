@@ -16,7 +16,7 @@ export const defaultObserverManifests = [
     displayName: "Accessibility Tree Observer",
     version: "0.1.0",
     kind: "observer" as const,
-    capabilities: ["accessibility-tree", "change-detection"]
+    capabilities: ["accessibility-tree"]
   },
   {
     id: "focus",
@@ -30,7 +30,7 @@ export const defaultObserverManifests = [
     displayName: "Visual Observer",
     version: "0.1.0",
     kind: "observer" as const,
-    capabilities: ["screenshot", "visual-diff"]
+    capabilities: ["screenshot"]
   },
   {
     id: "network",
@@ -44,14 +44,14 @@ export const defaultObserverManifests = [
     displayName: "Guidepup Screen Reader Observer",
     version: "0.1.0",
     kind: "observer" as const,
-    capabilities: ["screen-reader-log", "announcements"]
+    capabilities: []
   },
   {
     id: "axe",
     displayName: "axe Observer",
     version: "0.1.0",
     kind: "observer" as const,
-    capabilities: ["rule-scan", "axe-results"]
+    capabilities: []
   }
 ];
 
@@ -185,7 +185,9 @@ export function createUnsupportedObserver(observerId: string): ObserverPlugin {
   };
 }
 
-export function createDefaultObserverPlugins(observerIds: string[] = ["dom", "accessibility-tree"]): ObserverPlugin[] {
+export function createDefaultObserverPlugins(
+  observerIds: string[] = ["dom", "accessibility-tree"]
+): ObserverPlugin[] {
   return observerIds.map((observerId) => {
     if (observerId === "dom") {
       return createDomObserver();
@@ -238,7 +240,8 @@ async function captureDomRecord(
   const byteLength = Buffer.byteLength(html, "utf8");
   const previousHtml = phase === "after" ? context.runtimeState?.domBeforeHtml : undefined;
   const changed = previousHtml !== undefined ? previousHtml !== html : undefined;
-  const previousByteLength = previousHtml !== undefined ? Buffer.byteLength(previousHtml, "utf8") : undefined;
+  const previousByteLength =
+    previousHtml !== undefined ? Buffer.byteLength(previousHtml, "utf8") : undefined;
   const artifact = await maybeWriteArtifact(
     context,
     "dom",
@@ -580,8 +583,10 @@ async function captureNetworkRecord(
     content
   );
   const summary = summarizeNetworkLog(sanitizedNetworkLog);
-  const previousSummary = phase === "after" ? context.runtimeState?.networkBeforeSummary : undefined;
-  const deltaSummary = phase === "after" ? summarizeNetworkDelta(previousSummary, summary) : undefined;
+  const previousSummary =
+    phase === "after" ? context.runtimeState?.networkBeforeSummary : undefined;
+  const deltaSummary =
+    phase === "after" ? summarizeNetworkDelta(previousSummary, summary) : undefined;
 
   if (phase === "before") {
     context.runtimeState = {
@@ -666,23 +671,15 @@ function sanitizeNetworkEvent(event: unknown): Record<string, unknown> | undefin
   }
 
   const sanitized: Record<string, unknown> = {};
-  const copiedFields = [
-    "kind",
-    "requestId",
-    "method",
-    "resourceType",
-    "timestamp",
-    "status",
-    "statusText",
-    "ok",
-    "fromServiceWorker"
-  ];
-
-  for (const field of copiedFields) {
-    if (event[field] !== undefined) {
-      sanitized[field] = event[field];
-    }
-  }
+  copyStringField(event, sanitized, "kind");
+  copyStringOrNumberField(event, sanitized, "requestId");
+  copyStringField(event, sanitized, "method");
+  copyStringField(event, sanitized, "resourceType");
+  copyStringField(event, sanitized, "timestamp");
+  copyNumberField(event, sanitized, "status");
+  copyStringField(event, sanitized, "statusText");
+  copyBooleanField(event, sanitized, "ok");
+  copyBooleanField(event, sanitized, "fromServiceWorker");
 
   if (typeof event.url === "string") {
     sanitized.url = redactNetworkUrl(event.url);
@@ -701,6 +698,48 @@ function sanitizeNetworkEvent(event: unknown): Record<string, unknown> | undefin
   return sanitized;
 }
 
+function copyStringField(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  field: string
+): void {
+  if (typeof source[field] === "string") {
+    target[field] = source[field];
+  }
+}
+
+function copyNumberField(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  field: string
+): void {
+  if (typeof source[field] === "number" && Number.isFinite(source[field])) {
+    target[field] = source[field];
+  }
+}
+
+function copyStringOrNumberField(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  field: string
+): void {
+  if (typeof source[field] === "string") {
+    target[field] = source[field];
+  } else {
+    copyNumberField(source, target, field);
+  }
+}
+
+function copyBooleanField(
+  source: Record<string, unknown>,
+  target: Record<string, unknown>,
+  field: string
+): void {
+  if (typeof source[field] === "boolean") {
+    target[field] = source[field];
+  }
+}
+
 function redactNetworkUrl(value: string): string {
   try {
     const url = new URL(value);
@@ -714,7 +753,7 @@ function redactNetworkUrl(value: string): string {
 
     return url.toString();
   } catch {
-    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
+    return "[REDACTED]";
   }
 }
 
@@ -766,7 +805,9 @@ async function maybeWriteArtifact(
 
 function summarizeNetworkLog(networkLog: unknown): NetworkLogSummary {
   const events = Array.isArray(networkLog)
-    ? networkLog.map((event) => normalizeNetworkEvent(event)).filter((event): event is NetworkEventRecord => Boolean(event))
+    ? networkLog
+        .map((event) => normalizeNetworkEvent(event))
+        .filter((event): event is NetworkEventRecord => Boolean(event))
     : [];
 
   return summarizeNormalizedNetworkEvents(events);
@@ -823,7 +864,10 @@ function summarizeNormalizedNetworkEvents(events: NetworkEventRecord[]): Network
     }
   }
 
-  const unmatchedRequestCount = [...pendingRequests.values()].reduce((total, count) => total + count, 0);
+  const unmatchedRequestCount = [...pendingRequests.values()].reduce(
+    (total, count) => total + count,
+    0
+  );
 
   return {
     events,
@@ -888,7 +932,10 @@ function formatBeforeNetworkSummary(summary: NetworkLogSummary): string {
   return `Captured ${summary.eventCount} network events before state (${summary.interestingEventCount} interesting, ${summary.filteredNoiseCount} filtered as noise).`;
 }
 
-function formatAfterNetworkSummary(summary: NetworkLogSummary, deltaSummary: NetworkLogSummary | undefined): string {
+function formatAfterNetworkSummary(
+  summary: NetworkLogSummary,
+  deltaSummary: NetworkLogSummary | undefined
+): string {
   if (!deltaSummary) {
     return `Captured ${summary.eventCount} network events after state (${summary.interestingEventCount} interesting, ${summary.filteredNoiseCount} filtered as noise).`;
   }
@@ -910,7 +957,9 @@ function formatNetworkChangeSummary(deltaSummary: NetworkLogSummary): string {
 
 function formatNetworkDeltaSummary(deltaSummary: NetworkLogSummary): string {
   const urlSuffix =
-    deltaSummary.interestingUrls.length > 0 ? ` URLs: ${deltaSummary.interestingUrls.join(", ")}.` : "";
+    deltaSummary.interestingUrls.length > 0
+      ? ` URLs: ${deltaSummary.interestingUrls.join(", ")}.`
+      : "";
 
   return `Observed ${deltaSummary.interestingEventCount} new interesting network events (${deltaSummary.requestCount} request${deltaSummary.requestCount === 1 ? "" : "s"}, ${deltaSummary.responseCount} response${deltaSummary.responseCount === 1 ? "" : "s"}, ${deltaSummary.matchedResponseCount} matched pair${deltaSummary.matchedResponseCount === 1 ? "" : "s"}, ${deltaSummary.filteredNoiseCount} filtered).${urlSuffix}`;
 }
@@ -925,7 +974,10 @@ function describeFocusTarget(focusTarget: unknown): string {
   }
 
   const tagName = typeof focusTarget.tagName === "string" ? focusTarget.tagName : "unknown";
-  const id = typeof focusTarget.id === "string" && focusTarget.id.length > 0 ? `#${focusTarget.id}` : undefined;
+  const id =
+    typeof focusTarget.id === "string" && focusTarget.id.length > 0
+      ? `#${focusTarget.id}`
+      : undefined;
   const role =
     typeof focusTarget.role === "string" && focusTarget.role.length > 0
       ? `role=${focusTarget.role}`

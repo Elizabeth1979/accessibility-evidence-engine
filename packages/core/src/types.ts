@@ -75,12 +75,7 @@ export interface Checkpoint {
 
 export type ObserverPhase = "before" | "after" | "continuous";
 
-export type ObserverStatus =
-  | "ok"
-  | "unsupported"
-  | "no_signal"
-  | "observer_error"
-  | "timeout";
+export type ObserverStatus = "ok" | "unsupported" | "no_signal" | "observer_error" | "timeout";
 
 export interface EvidenceChange {
   path: string;
@@ -179,4 +174,3 @@ export interface AeeRun {
   environment?: Record<string, unknown>;
   config?: Record<string, unknown>;
 }
-

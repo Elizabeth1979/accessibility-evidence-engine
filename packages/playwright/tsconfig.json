@@ -22,7 +22,5 @@
       "path": "../reporter"
     }
   ],
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }

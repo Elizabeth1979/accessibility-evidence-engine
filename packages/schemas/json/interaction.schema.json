@@ -1,15 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://aee.dev/schemas/interaction.schema.json",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/interaction.schema.json",
   "title": "AEE Interaction",
   "type": "object",
-  "required": [
-    "id",
-    "runId",
-    "timestamp",
-    "actor",
-    "kind"
-  ],
+  "required": ["id", "runId", "timestamp", "actor", "kind"],
   "properties": {
     "id": {
       "$ref": "./common.schema.json#/$defs/uid"
@@ -25,11 +19,7 @@
     },
     "actor": {
       "type": "string",
-      "enum": [
-        "test",
-        "engine",
-        "user-script"
-      ]
+      "enum": ["test", "engine", "user-script"]
     },
     "kind": {
       "type": "string"
@@ -46,4 +36,3 @@
   },
   "additionalProperties": false
 }
-

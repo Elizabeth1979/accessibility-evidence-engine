@@ -13,8 +13,5 @@
       "path": "../schemas"
     }
   ],
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts"]
 }
-

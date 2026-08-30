@@ -12,10 +12,7 @@ import {
   type ReporterArtifact
 } from "@aee/core";
 import { createDefaultJudgePlugins, defaultJudgeManifests } from "@aee/judges";
-import {
-  createDefaultObserverPlugins,
-  type RuntimeObserverContext
-} from "@aee/observers";
+import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
 import {
   buildCheckpoint,
   buildInteraction,
@@ -25,7 +22,12 @@ import {
   type VirtualPageFixture
 } from "@aee/playwright";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
-import { assertValidSchema, CURRENT_SCHEMA_VERSION, schemaCatalog, type SchemaName } from "@aee/schemas";
+import {
+  assertValidSchema,
+  CURRENT_SCHEMA_VERSION,
+  schemaCatalog,
+  type SchemaName
+} from "@aee/schemas";
 
 export interface AeeCliConfig {
   version?: string;
@@ -70,7 +72,7 @@ async function loadJsonFile<T>(
     parsed = JSON.parse(raw) as unknown;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid JSON in ${label} at ${filePath}: ${message}`);
+    throw new Error(`Invalid JSON in ${label} at ${filePath}: ${message}`, { cause: error });
   }
 
   assertValidSchema(schemaName, parsed, `${label} at ${filePath} (${schemaCatalog[schemaName]})`);
@@ -82,12 +84,19 @@ export async function loadConfig(configPath: string): Promise<AeeCliConfig> {
 }
 
 export async function loadFixture(fixturePath: string): Promise<VirtualPageFixture> {
-  return loadJsonFile<VirtualPageFixture>(fixturePath, "virtualPageFixture", "AEE virtual page fixture");
+  return loadJsonFile<VirtualPageFixture>(
+    fixturePath,
+    "virtualPageFixture",
+    "AEE virtual page fixture"
+  );
 }
 
 export function createBootstrapPlan(config: AeeCliConfig) {
   const resolvedPolicy = resolvePolicyConfig(config.policy);
-  const selectedObservers = resolveObserverIdsForCapturePolicy(config.observers, resolvedPolicy.capture);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(
+    config.observers,
+    resolvedPolicy.capture
+  );
 
   return {
     projectRoot: config.projectRoot,
@@ -102,9 +111,15 @@ export async function runWithPage(
   page: PlaywrightPageLike,
   configPathForResolution: string
 ): Promise<RunCommandResult> {
-  const resolvedProjectRoot = path.resolve(path.dirname(configPathForResolution), config.projectRoot);
+  const resolvedProjectRoot = path.resolve(
+    path.dirname(configPathForResolution),
+    config.projectRoot
+  );
   const resolvedPolicy = resolvePolicyConfig(config.policy);
-  const selectedObservers = resolveObserverIdsForCapturePolicy(config.observers, resolvedPolicy.capture);
+  const selectedObservers = resolveObserverIdsForCapturePolicy(
+    config.observers,
+    resolvedPolicy.capture
+  );
   const runId = `run-${Date.now()}`;
   const outputBaseDir = config.outputDir ?? "aee-output";
   const outputDir = path.join(resolvedProjectRoot, outputBaseDir, runId);
@@ -156,7 +171,9 @@ export async function runWithPage(
     interaction,
     observerContext,
     observerPlugins: createDefaultObserverPlugins(selectedObservers),
-    judgePlugins: createDefaultJudgePlugins(config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id)),
+    judgePlugins: createDefaultJudgePlugins(
+      config.judges ?? defaultJudgeManifests.map((manifest) => manifest.id)
+    ),
     policyName: resolvedPolicy.name,
     releasePolicy: resolvedPolicy.release
   });
@@ -177,7 +194,11 @@ export async function runWithPage(
   assertValidSchema("run", execution.run, "AEE run output");
   assertValidSchema("evidenceBundle", execution.bundles[0], "AEE evidence bundle output");
   await writeFile(path.join(outputDir, "run.json"), JSON.stringify(execution.run, null, 2), "utf8");
-  await writeFile(path.join(outputDir, "bundle.json"), JSON.stringify(execution.bundles[0], null, 2), "utf8");
+  await writeFile(
+    path.join(outputDir, "bundle.json"),
+    JSON.stringify(execution.bundles[0], null, 2),
+    "utf8"
+  );
 
   return {
     runId,
@@ -207,7 +228,10 @@ async function renderReports(input: ReporterInput) {
   return batches.flat();
 }
 
-async function writeReporterArtifacts(outputDir: string, artifacts: ReporterArtifact[]): Promise<string[]> {
+async function writeReporterArtifacts(
+  outputDir: string,
+  artifacts: ReporterArtifact[]
+): Promise<string[]> {
   await mkdir(outputDir, { recursive: true });
 
   const writes = artifacts.map(async (artifact) => {

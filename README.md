@@ -5,6 +5,8 @@ Accessibility Evidence Engine (AEE) is an experimental, evidence-first framework
 > [!IMPORTANT]
 > AEE is an early public-preview project, not a complete WCAG conformance scanner. A passing AEE report means that the selected judges passed with the evidence captured for that interaction; it does not certify that a page or product is accessible.
 
+Explore the [public interactive demonstration](https://elizabeth1979.github.io/accessibility-evidence-engine/) or continue below to run AEE locally.
+
 ## Why AEE
 
 Many automated checks report a rule result without preserving enough context to explain what happened during an interaction. AEE keeps evidence collection, correlation, judgment, and reporting separate so a result can be traced back to the captured DOM, accessibility tree, focus state, screenshot, or network activity.
@@ -46,6 +48,9 @@ The command reads [the example config](examples/basic-run-config.json) and [fixt
 Run the automated checks:
 
 ```bash
+npm run format:check
+npm run lint
+npm run test:coverage
 npm run test:unit
 npm run playwright:install
 npm run test:playwright
@@ -95,29 +100,29 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 ## Current capabilities
 
-| Area | Implemented | Current scope |
-| --- | --- | --- |
-| Observers | DOM, accessibility tree, focus, screenshot, network | Before/after capture with artifacts and simple change summaries |
-| Keyboard judge | Tab, shift-tab, arrow-key composites, enter, space | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation |
-| Change-response judge | Click, enter, space, submit | Detects observable DOM, focus, or network outcomes |
-| Structure judge | Evidence completeness | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
-| Release judge | Policy gate | Applies severity, confidence, and unknown-result policy to prior judgments |
-| Validation | JSON Schema | Validates CLI inputs and emitted run, bundle, and report payloads |
-| Reporting | JSON and Markdown | Includes triage, observer coverage, judgments, findings, and artifact summaries |
+| Area                  | Implemented                                         | Current scope                                                                                               |
+| --------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Observers             | DOM, accessibility tree, focus, screenshot, network | Before/after capture with artifacts; DOM and network change summaries                                       |
+| Keyboard judge        | Tab, shift-tab, arrow-key composites, enter, space  | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                    |
+| Change-response judge | Click, enter, space, submit                         | Detects observable DOM, focus, or network outcomes                                                          |
+| Structure judge       | Evidence completeness                               | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
+| Release judge         | Policy gate                                         | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
+| Validation            | JSON Schema                                         | Validates supported CLI configuration and emitted run, bundle, and report payloads                          |
+| Reporting             | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
 
 The Guidepup screen-reader and axe observers, plus the interaction, screen-reader, and visual judges, are declared extension points but currently return unsupported or unknown results. They should not be presented as implemented checks.
 
 ## Package layout
 
-| Package | Responsibility |
-| --- | --- |
-| `@aee/core` | Domain types, policies, orchestration, correlation, and plugin contracts |
-| `@aee/schemas` | JSON Schemas and runtime validation |
-| `@aee/playwright` | Real and virtual page adapters plus `runAeeOnPage(...)` |
-| `@aee/observers` | Built-in evidence observers and observer manifests |
-| `@aee/judges` | Built-in judges, release gating, and judge manifests |
-| `@aee/reporter` | JSON and Markdown reporters |
-| `@aee/cli` | Fixture configuration, execution, and artifact output |
+| Package           | Responsibility                                                           |
+| ----------------- | ------------------------------------------------------------------------ |
+| `@aee/core`       | Domain types, policies, orchestration, correlation, and plugin contracts |
+| `@aee/schemas`    | JSON Schemas and runtime validation                                      |
+| `@aee/playwright` | Real and virtual page adapters plus `runAeeOnPage(...)`                  |
+| `@aee/observers`  | Built-in evidence observers and observer manifests                       |
+| `@aee/judges`     | Built-in judges, release gating, and judge manifests                     |
+| `@aee/reporter`   | JSON and Markdown reporters                                              |
+| `@aee/cli`        | Fixture configuration, execution, and artifact output                    |
 
 ## Evidence privacy
 

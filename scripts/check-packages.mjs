@@ -32,7 +32,11 @@ try {
     }
   );
   const packages = JSON.parse(packOutput);
-  assert.equal(packages.length, expectedPackages.length, "Expected one tarball per workspace package.");
+  assert.equal(
+    packages.length,
+    expectedPackages.length,
+    "Expected one tarball per workspace package."
+  );
   assert.deepEqual(
     packages.map((entry) => entry.name).sort(),
     [...expectedPackages].sort(),
@@ -70,14 +74,7 @@ try {
   const tarballs = packages.map((entry) => path.join(packDirectory, entry.filename));
   execFileSync(
     "npm",
-    [
-      "install",
-      "--ignore-scripts",
-      "--no-audit",
-      "--no-fund",
-      "--package-lock=false",
-      ...tarballs
-    ],
+    ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...tarballs],
     {
       cwd: installDirectory,
       stdio: "pipe"
@@ -92,9 +89,16 @@ try {
     );
     assert.equal(manifest.license, "Apache-2.0", `${packageName} has incorrect license metadata.`);
     assert.equal(manifest.engines?.node, ">=22", `${packageName} has an incorrect Node.js range.`);
-    assert.equal(manifest.publishConfig?.access, "public", `${packageName} is not configured as public.`);
+    assert.equal(
+      manifest.publishConfig?.access,
+      "public",
+      `${packageName} is not configured as public.`
+    );
     assert.ok(manifest.exports?.["."], `${packageName} does not define its public entry point.`);
-    assert.ok(requireFromConsumer(packageName), `${packageName} could not be required after installation.`);
+    assert.ok(
+      requireFromConsumer(packageName),
+      `${packageName} could not be required after installation.`
+    );
   }
 
   const runSchema = requireFromConsumer("@aee/schemas/json/run.schema.json");
