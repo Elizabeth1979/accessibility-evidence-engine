@@ -226,3 +226,16 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
   );
   assert.match(artifact.content, /\/tmp\/after\.png/);
 });
+
+test("createMarkdownReporter safely escapes table control characters", async () => {
+  const reporter = createMarkdownReporter();
+  const input = structuredClone(sampleInput);
+  input.run.config = {
+    ...input.run.config,
+    policyName: "strict\\mode|review\nnext"
+  };
+
+  const [artifact] = await reporter.render(input);
+
+  assert.ok(artifact.content.includes("| Policy | strict\\\\mode\\|review next |"));
+});

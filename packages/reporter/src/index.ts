@@ -566,7 +566,7 @@ function renderTable(headers: string[], rows: string[][]): string[] {
 }
 
 function escapeMarkdownCell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
 function formatConfidence(value?: number): string {

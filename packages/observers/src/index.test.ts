@@ -16,6 +16,18 @@ test("createNetworkObserver summarizes per-interaction network deltas and filter
       url: "data:text/plain,bootstrap",
       method: "GET",
       timestamp: "2026-06-21T12:00:00.000Z"
+    },
+    {
+      kind: "request",
+      url: "  JAVASCRIPT:void(0)",
+      method: "GET",
+      timestamp: "2026-06-21T12:00:00.100Z"
+    },
+    {
+      kind: "request",
+      url: "vbscript:msgbox(1)",
+      method: "GET",
+      timestamp: "2026-06-21T12:00:00.200Z"
     }
   ];
 
@@ -79,9 +91,9 @@ test("createNetworkObserver summarizes per-interaction network deltas and filter
 
   assert.equal(beforeRecord.status, "ok");
   assert.deepEqual(beforeRecord.meta, {
-    eventCount: 1,
+    eventCount: 3,
     interestingEventCount: 0,
-    filteredNoiseCount: 1,
+    filteredNoiseCount: 3,
     requestCount: 0,
     responseCount: 0,
     matchedResponseCount: 0,
@@ -95,9 +107,9 @@ test("createNetworkObserver summarizes per-interaction network deltas and filter
   assert.equal(afterRecord.changes?.[0]?.impact, "major");
   assert.match(afterRecord.changes?.[0]?.summary ?? "", /matched pair/);
   assert.deepEqual(afterRecord.meta, {
-    eventCount: 4,
+    eventCount: 6,
     interestingEventCount: 3,
-    filteredNoiseCount: 1,
+    filteredNoiseCount: 3,
     requestCount: 1,
     responseCount: 2,
     matchedResponseCount: 1,

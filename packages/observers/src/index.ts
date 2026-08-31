@@ -909,14 +909,17 @@ function normalizeNetworkEvent(event: unknown): NetworkEventRecord | undefined {
 }
 
 function isNetworkNoiseUrl(url: string): boolean {
+  const normalizedUrl = url.trimStart().toLowerCase();
+
   return (
-    url.startsWith("data:") ||
-    url.startsWith("about:") ||
-    url.startsWith("blob:") ||
-    url.startsWith("javascript:") ||
-    url.startsWith("chrome:") ||
-    url.startsWith("chrome-extension:") ||
-    url.startsWith("devtools:")
+    normalizedUrl.startsWith("data:") ||
+    normalizedUrl.startsWith("about:") ||
+    normalizedUrl.startsWith("blob:") ||
+    normalizedUrl.startsWith("javascript:") ||
+    normalizedUrl.startsWith("vbscript:") ||
+    normalizedUrl.startsWith("chrome:") ||
+    normalizedUrl.startsWith("chrome-extension:") ||
+    normalizedUrl.startsWith("devtools:")
   );
 }
 
