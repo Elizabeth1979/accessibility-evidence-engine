@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc -b packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
     "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "demo:record": "npm run build && node scripts/record-public-demo.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",

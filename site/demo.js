@@ -23,6 +23,10 @@ const scenarios = {
   }
 };
 
+if (new URLSearchParams(window.location.search).has("recording")) {
+  document.body.classList.add("recording");
+}
+
 const buttons = document.querySelectorAll("[data-scenario]");
 const afterFocus = document.querySelector("#after-focus");
 const afterStatus = document.querySelector("#after-status");
@@ -31,6 +35,8 @@ const verdict = document.querySelector("#verdict");
 const summary = document.querySelector("#summary");
 const evidenceIds = document.querySelector("#evidence-ids");
 const jsonOutput = document.querySelector("#json-output");
+const realSave = document.querySelector("#real-save");
+const realStatus = document.querySelector("#real-status");
 
 function selectScenario(name) {
   const scenario = scenarios[name];
@@ -64,3 +70,8 @@ for (const button of buttons) {
 }
 
 selectScenario("pass");
+
+realSave.addEventListener("click", () => {
+  realStatus.textContent = "Saved";
+  realSave.classList.add("saved");
+});

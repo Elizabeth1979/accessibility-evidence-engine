@@ -2,6 +2,12 @@
 
 All notable changes to Accessibility Evidence Engine are documented here. The project follows [Semantic Versioning](https://semver.org/) while its public APIs remain experimental.
 
+## [Unreleased]
+
+### Added
+
+- A reproducible Playwright recording on the public site with generated AEE reports, before/after screenshots, and a text transcript.
+
 ## [0.1.0] - 2026-08-30
 
 ### Added
@@ -20,3 +26,4 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Nested CLI policy values are validated before execution.
 
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.1.0...HEAD

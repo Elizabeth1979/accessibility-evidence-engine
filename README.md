@@ -98,6 +98,14 @@ test("collect keyboard evidence", async ({ page }) => {
 
 The `@aee/*` packages currently work as local npm workspaces in this repository; they have not yet been published to a package registry. See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
 
+### Recorded demonstration
+
+The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) includes a real recorded Playwright interaction, its generated AEE report, and before/after screenshots. Rebuild those public artifacts locally with:
+
+```bash
+npm run demo:record
+```
+
 ## Current capabilities
 
 | Area                  | Implemented                                         | Current scope                                                                                               |
@@ -137,7 +145,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 - Stabilization is currently a fixed post-interaction delay, not network-idle, animation, or mutation detection.
 - Observer timeout and continue-on-error policy fields exist, but engine-level enforcement is not implemented yet.
 - Several declared observers and judges remain extension scaffolds, as listed above.
-- Public npm packaging and a hosted user interface are not available yet.
+- Public npm packaging and a hosted engine runner are not available yet; the public site is a static demonstration with artifacts from a recorded run.
 
 ## Roadmap
 

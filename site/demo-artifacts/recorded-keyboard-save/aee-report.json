@@ -1,0 +1,745 @@
+{
+  "schemaVersion": "0.1.0",
+  "run": {
+    "id": "recorded-keyboard-save",
+    "version": "0.1.0",
+    "startedAt": "2026-08-31T17:25:26.417Z",
+    "status": "completed",
+    "environment": {
+      "mode": "playwright-page"
+    },
+    "config": {
+      "writeReports": true,
+      "policyName": "public-demo",
+      "capturePolicy": {
+        "includeScreenshots": true,
+        "includeAccessibilityTree": true,
+        "includeDomSnapshot": true,
+        "stabilizeAfterInteractionMs": 700
+      },
+      "selectedObservers": [
+        "dom",
+        "accessibility-tree",
+        "focus",
+        "visual"
+      ]
+    },
+    "checkpoints": [
+      {
+        "id": "checkpoint:manual:1788197126416",
+        "runId": "recorded-keyboard-save",
+        "name": "public-demo-save",
+        "url": "http://127.0.0.1:4173/?recording=1",
+        "timestamp": "2026-08-31T17:25:26.416Z",
+        "trigger": "manual"
+      }
+    ],
+    "interactions": [
+      {
+        "id": "interaction:enter:1788197126416",
+        "runId": "recorded-keyboard-save",
+        "timestamp": "2026-08-31T17:25:26.416Z",
+        "actor": "test",
+        "kind": "enter",
+        "target": {
+          "role": "button",
+          "name": "Save changes"
+        },
+        "input": "Enter"
+      }
+    ],
+    "finishedAt": "2026-08-31T17:25:27.209Z",
+    "results": {
+      "pass": 3,
+      "fail": 0,
+      "unknown": 0
+    }
+  },
+  "bundles": [
+    {
+      "runId": "recorded-keyboard-save",
+      "interaction": {
+        "id": "interaction:enter:1788197126416",
+        "runId": "recorded-keyboard-save",
+        "timestamp": "2026-08-31T17:25:26.416Z",
+        "actor": "test",
+        "kind": "enter",
+        "target": {
+          "role": "button",
+          "name": "Save changes"
+        },
+        "input": "Enter"
+      },
+      "checkpoint": {
+        "id": "checkpoint:manual:1788197126416",
+        "runId": "recorded-keyboard-save",
+        "name": "public-demo-save",
+        "url": "http://127.0.0.1:4173/?recording=1",
+        "timestamp": "2026-08-31T17:25:26.416Z",
+        "trigger": "manual"
+      },
+      "records": [
+        {
+          "id": "dom:before:1788197126426",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "dom",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:26.426Z",
+          "summary": "Captured DOM before state.",
+          "beforeStateRef": {
+            "id": "dom:before:artifact",
+            "kind": "dom-snapshot",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+            "mediaType": "text/html"
+          },
+          "artifacts": [
+            {
+              "id": "dom:before:artifact",
+              "kind": "dom-snapshot",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+              "mediaType": "text/html"
+            }
+          ],
+          "meta": {
+            "byteLength": 12075
+          }
+        },
+        {
+          "id": "focus:before:1788197126426",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "focus",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:26.426Z",
+          "summary": "Captured focus before state (button #real-save \"Save changes\").",
+          "artifacts": [
+            {
+              "id": "focus:before:artifact",
+              "kind": "custom",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-before.json",
+              "mediaType": "application/json"
+            }
+          ],
+          "meta": {
+            "focusTarget": {
+              "tagName": "button",
+              "id": "real-save",
+              "name": "Save changes",
+              "type": "button",
+              "tabIndex": 0,
+              "disabled": false,
+              "focusOrderIndex": 9,
+              "focusableCount": 20
+            }
+          }
+        },
+        {
+          "id": "accessibility-tree:before:1788197126439",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "accessibility-tree",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:26.439Z",
+          "summary": "Captured accessibility tree before state.",
+          "beforeStateRef": {
+            "id": "accessibility-tree:before:artifact",
+            "kind": "accessibility-tree",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+            "mediaType": "application/json"
+          },
+          "artifacts": [
+            {
+              "id": "accessibility-tree:before:artifact",
+              "kind": "accessibility-tree",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+              "mediaType": "application/json"
+            }
+          ]
+        },
+        {
+          "id": "visual:before:1788197126457",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "visual",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:26.457Z",
+          "summary": "Captured screenshot before state.",
+          "beforeStateRef": {
+            "id": "visual:before:artifact",
+            "kind": "screenshot",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+            "mediaType": "image/png"
+          },
+          "artifacts": [
+            {
+              "id": "visual:before:artifact",
+              "kind": "screenshot",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+              "mediaType": "image/png"
+            }
+          ],
+          "meta": {
+            "byteLength": 88522
+          }
+        },
+        {
+          "id": "dom:after:1788197127169",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "dom",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:27.169Z",
+          "summary": "Captured DOM after state with observable markup changes.",
+          "afterStateRef": {
+            "id": "dom:after:artifact",
+            "kind": "dom-snapshot",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+            "mediaType": "text/html"
+          },
+          "artifacts": [
+            {
+              "id": "dom:after:artifact",
+              "kind": "dom-snapshot",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+              "mediaType": "text/html"
+            }
+          ],
+          "changes": [
+            {
+              "path": "dom.html",
+              "summary": "DOM markup changed after the interaction.",
+              "before": {
+                "byteLength": 12075
+              },
+              "after": {
+                "byteLength": 12090
+              },
+              "impact": "major"
+            }
+          ],
+          "meta": {
+            "byteLength": 12090,
+            "changed": true,
+            "previousByteLength": 12075
+          }
+        },
+        {
+          "id": "focus:after:1788197127169",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "focus",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:27.169Z",
+          "summary": "Captured focus after state (button #real-save \"Save changes\").",
+          "artifacts": [
+            {
+              "id": "focus:after:artifact",
+              "kind": "custom",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-after.json",
+              "mediaType": "application/json"
+            }
+          ],
+          "meta": {
+            "focusTarget": {
+              "tagName": "button",
+              "id": "real-save",
+              "name": "Save changes",
+              "type": "button",
+              "tabIndex": 0,
+              "disabled": false,
+              "focusOrderIndex": 9,
+              "focusableCount": 20
+            }
+          }
+        },
+        {
+          "id": "accessibility-tree:after:1788197127181",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "accessibility-tree",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:27.181Z",
+          "summary": "Captured accessibility tree after state.",
+          "afterStateRef": {
+            "id": "accessibility-tree:after:artifact",
+            "kind": "accessibility-tree",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+            "mediaType": "application/json"
+          },
+          "artifacts": [
+            {
+              "id": "accessibility-tree:after:artifact",
+              "kind": "accessibility-tree",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+              "mediaType": "application/json"
+            }
+          ]
+        },
+        {
+          "id": "visual:after:1788197127201",
+          "runId": "recorded-keyboard-save",
+          "checkpointId": "checkpoint:manual:1788197126416",
+          "interactionId": "interaction:enter:1788197126416",
+          "observerId": "visual",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-08-31T17:25:27.201Z",
+          "summary": "Captured screenshot after state.",
+          "afterStateRef": {
+            "id": "visual:after:artifact",
+            "kind": "screenshot",
+            "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+            "mediaType": "image/png"
+          },
+          "artifacts": [
+            {
+              "id": "visual:after:artifact",
+              "kind": "screenshot",
+              "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+              "mediaType": "image/png"
+            }
+          ],
+          "meta": {
+            "byteLength": 89253
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "dom:before:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+          "mediaType": "text/html"
+        },
+        {
+          "id": "focus:before:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-before.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "accessibility-tree:before:artifact",
+          "kind": "accessibility-tree",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "visual:before:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+          "mediaType": "image/png"
+        },
+        {
+          "id": "dom:after:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+          "mediaType": "text/html"
+        },
+        {
+          "id": "focus:after:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-after.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "accessibility-tree:after:artifact",
+          "kind": "accessibility-tree",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "visual:after:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "correlation": {
+        "strategy": "observer-record-grouping",
+        "participatingObserverIds": [
+          "dom",
+          "focus",
+          "accessibility-tree",
+          "visual"
+        ]
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "dom:before:1788197126426",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:26.426Z",
+      "summary": "Captured DOM before state.",
+      "beforeStateRef": {
+        "id": "dom:before:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:before:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "meta": {
+        "byteLength": 12075
+      }
+    },
+    {
+      "id": "accessibility-tree:before:1788197126439",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "accessibility-tree",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:26.439Z",
+      "summary": "Captured accessibility tree before state.",
+      "beforeStateRef": {
+        "id": "accessibility-tree:before:artifact",
+        "kind": "accessibility-tree",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+        "mediaType": "application/json"
+      },
+      "artifacts": [
+        {
+          "id": "accessibility-tree:before:artifact",
+          "kind": "accessibility-tree",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "id": "focus:before:1788197126426",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:26.426Z",
+      "summary": "Captured focus before state (button #real-save \"Save changes\").",
+      "artifacts": [
+        {
+          "id": "focus:before:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-before.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "real-save",
+          "name": "Save changes",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 20
+        }
+      }
+    },
+    {
+      "id": "visual:before:1788197126457",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:26.457Z",
+      "summary": "Captured screenshot before state.",
+      "beforeStateRef": {
+        "id": "visual:before:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:before:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 88522
+      }
+    },
+    {
+      "id": "dom:after:1788197127169",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:27.169Z",
+      "summary": "Captured DOM after state with observable markup changes.",
+      "afterStateRef": {
+        "id": "dom:after:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:after:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "changes": [
+        {
+          "path": "dom.html",
+          "summary": "DOM markup changed after the interaction.",
+          "before": {
+            "byteLength": 12075
+          },
+          "after": {
+            "byteLength": 12090
+          },
+          "impact": "major"
+        }
+      ],
+      "meta": {
+        "byteLength": 12090,
+        "changed": true,
+        "previousByteLength": 12075
+      }
+    },
+    {
+      "id": "accessibility-tree:after:1788197127181",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "accessibility-tree",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:27.181Z",
+      "summary": "Captured accessibility tree after state.",
+      "afterStateRef": {
+        "id": "accessibility-tree:after:artifact",
+        "kind": "accessibility-tree",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+        "mediaType": "application/json"
+      },
+      "artifacts": [
+        {
+          "id": "accessibility-tree:after:artifact",
+          "kind": "accessibility-tree",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+          "mediaType": "application/json"
+        }
+      ]
+    },
+    {
+      "id": "focus:after:1788197127169",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:27.169Z",
+      "summary": "Captured focus after state (button #real-save \"Save changes\").",
+      "artifacts": [
+        {
+          "id": "focus:after:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-after.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "real-save",
+          "name": "Save changes",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 20
+        }
+      }
+    },
+    {
+      "id": "visual:after:1788197127201",
+      "runId": "recorded-keyboard-save",
+      "checkpointId": "checkpoint:manual:1788197126416",
+      "interactionId": "interaction:enter:1788197126416",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T17:25:27.201Z",
+      "summary": "Captured screenshot after state.",
+      "afterStateRef": {
+        "id": "visual:after:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:after:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 89253
+      }
+    }
+  ],
+  "judgments": [
+    {
+      "id": "keyboard:interaction:enter:1788197126416",
+      "judgeId": "keyboard",
+      "judgeVersion": "0.1.0",
+      "scope": "interaction",
+      "verdict": "pass",
+      "summary": "Keyboard enter produced observable activation signals (DOM changed). Focus stayed on button #real-save \"Save changes\".",
+      "severity": "info",
+      "confidence": 0.9,
+      "evidenceRecordIds": [
+        "dom:after:1788197127169"
+      ],
+      "artifactIds": [
+        "dom:after:artifact"
+      ]
+    },
+    {
+      "id": "change-response:interaction:enter:1788197126416",
+      "judgeId": "change-response",
+      "judgeVersion": "0.1.0",
+      "scope": "interaction",
+      "verdict": "pass",
+      "summary": "Observed response signals after the enter interaction (DOM changed).",
+      "severity": "info",
+      "confidence": 0.9,
+      "evidenceRecordIds": [
+        "dom:after:1788197127169"
+      ],
+      "artifactIds": [
+        "dom:after:artifact"
+      ]
+    },
+    {
+      "id": "release:interaction:enter:1788197126416",
+      "judgeId": "release",
+      "judgeVersion": "0.1.0",
+      "scope": "run",
+      "verdict": "pass",
+      "summary": "Release gate passed. No blocking judgments met the current policy threshold.",
+      "severity": "info",
+      "confidence": 0.75,
+      "evidenceRecordIds": [
+        "dom:before:1788197126426",
+        "focus:before:1788197126426",
+        "accessibility-tree:before:1788197126439",
+        "visual:before:1788197126457",
+        "dom:after:1788197127169",
+        "focus:after:1788197127169",
+        "accessibility-tree:after:1788197127181",
+        "visual:after:1788197127201"
+      ]
+    }
+  ],
+  "findings": [],
+  "artifacts": [
+    {
+      "id": "dom:before:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-before.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:before:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-before.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "accessibility-tree:before:artifact",
+      "kind": "accessibility-tree",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-before.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:before:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-before.png",
+      "mediaType": "image/png"
+    },
+    {
+      "id": "dom:after:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/dom-after.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:after:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/focus-after.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "accessibility-tree:after:artifact",
+      "kind": "accessibility-tree",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/accessibility-tree-after.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:after:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save/artifacts/visual-after.png",
+      "mediaType": "image/png"
+    }
+  ]
+}

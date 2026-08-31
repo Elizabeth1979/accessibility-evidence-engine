@@ -1,0 +1,55 @@
+{
+  "id": "recorded-keyboard-save",
+  "version": "0.1.0",
+  "startedAt": "2026-08-31T17:25:26.417Z",
+  "status": "completed",
+  "environment": {
+    "mode": "playwright-page"
+  },
+  "config": {
+    "writeReports": true,
+    "policyName": "public-demo",
+    "capturePolicy": {
+      "includeScreenshots": true,
+      "includeAccessibilityTree": true,
+      "includeDomSnapshot": true,
+      "stabilizeAfterInteractionMs": 700
+    },
+    "selectedObservers": [
+      "dom",
+      "accessibility-tree",
+      "focus",
+      "visual"
+    ]
+  },
+  "checkpoints": [
+    {
+      "id": "checkpoint:manual:1788197126416",
+      "runId": "recorded-keyboard-save",
+      "name": "public-demo-save",
+      "url": "http://127.0.0.1:4173/?recording=1",
+      "timestamp": "2026-08-31T17:25:26.416Z",
+      "trigger": "manual"
+    }
+  ],
+  "interactions": [
+    {
+      "id": "interaction:enter:1788197126416",
+      "runId": "recorded-keyboard-save",
+      "timestamp": "2026-08-31T17:25:26.416Z",
+      "actor": "test",
+      "kind": "enter",
+      "target": {
+        "role": "button",
+        "name": "Save changes"
+      },
+      "input": "Enter"
+    }
+  ],
+  "finishedAt": "2026-08-31T17:25:27.209Z",
+  "results": {
+    "pass": 3,
+    "fail": 0,
+    "unknown": 0
+  }
+}

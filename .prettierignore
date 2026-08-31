@@ -4,4 +4,5 @@ aee-output/
 coverage/
 package-lock.json
 playwright-report/
+site/demo-artifacts/
 test-results/
