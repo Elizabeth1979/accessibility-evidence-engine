@@ -23,7 +23,9 @@ const scenarios = {
   }
 };
 
-if (new URLSearchParams(window.location.search).has("recording")) {
+const pageParameters = new URLSearchParams(window.location.search);
+
+if (pageParameters.has("recording")) {
   document.body.classList.add("recording");
 }
 
@@ -71,7 +73,9 @@ for (const button of buttons) {
 
 selectScenario("pass");
 
-realSave.addEventListener("click", () => {
-  realStatus.textContent = "Saved";
-  realSave.classList.add("saved");
-});
+if (pageParameters.get("implementation") !== "broken") {
+  realSave.addEventListener("click", () => {
+    realStatus.textContent = "Saved";
+    realSave.classList.add("saved");
+  });
+}

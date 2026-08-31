@@ -1,0 +1,266 @@
+{
+  "runId": "recorded-keyboard-save-issue",
+  "interaction": {
+    "id": "interaction:enter:1788202778482",
+    "runId": "recorded-keyboard-save-issue",
+    "timestamp": "2026-08-31T18:59:38.482Z",
+    "actor": "test",
+    "kind": "enter",
+    "target": {
+      "role": "button",
+      "name": "Save changes"
+    },
+    "input": "Enter"
+  },
+  "checkpoint": {
+    "id": "checkpoint:manual:1788202778482",
+    "runId": "recorded-keyboard-save-issue",
+    "name": "public-demo-broken",
+    "url": "http://127.0.0.1:4173/?recording=1&implementation=broken",
+    "timestamp": "2026-08-31T18:59:38.482Z",
+    "trigger": "manual"
+  },
+  "records": [
+    {
+      "id": "dom:before:1788202778485",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:38.485Z",
+      "summary": "Captured DOM before state.",
+      "beforeStateRef": {
+        "id": "dom:before:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-before.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:before:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-before.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "meta": {
+        "byteLength": 14053
+      }
+    },
+    {
+      "id": "focus:before:1788202778486",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:38.486Z",
+      "summary": "Captured focus before state (button #real-save \"Save changes\").",
+      "artifacts": [
+        {
+          "id": "focus:before:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/focus-before.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "real-save",
+          "name": "Save changes",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 16
+        }
+      }
+    },
+    {
+      "id": "visual:before:1788202778525",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:38.525Z",
+      "summary": "Captured screenshot before state.",
+      "beforeStateRef": {
+        "id": "visual:before:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:before:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 81669
+      }
+    },
+    {
+      "id": "dom:after:1788202779032",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:39.032Z",
+      "summary": "Captured DOM after state with no observable markup changes.",
+      "afterStateRef": {
+        "id": "dom:after:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-after.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:after:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-after.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "changes": [
+        {
+          "path": "dom.html",
+          "summary": "DOM markup did not change after the interaction.",
+          "before": {
+            "byteLength": 14053
+          },
+          "after": {
+            "byteLength": 14053
+          },
+          "impact": "none"
+        }
+      ],
+      "meta": {
+        "byteLength": 14053,
+        "changed": false,
+        "previousByteLength": 14053
+      }
+    },
+    {
+      "id": "focus:after:1788202779033",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:39.033Z",
+      "summary": "Captured focus after state (button #real-save \"Save changes\").",
+      "artifacts": [
+        {
+          "id": "focus:after:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/focus-after.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "real-save",
+          "name": "Save changes",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 16
+        }
+      }
+    },
+    {
+      "id": "visual:after:1788202779069",
+      "runId": "recorded-keyboard-save-issue",
+      "checkpointId": "checkpoint:manual:1788202778482",
+      "interactionId": "interaction:enter:1788202778482",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-08-31T18:59:39.069Z",
+      "summary": "Captured screenshot after state.",
+      "afterStateRef": {
+        "id": "visual:after:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-after.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:after:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-after.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 81993
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "dom:before:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-before.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:before:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/focus-before.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:before:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png",
+      "mediaType": "image/png"
+    },
+    {
+      "id": "dom:after:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/dom-after.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:after:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/focus-after.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:after:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-after.png",
+      "mediaType": "image/png"
+    }
+  ],
+  "correlation": {
+    "strategy": "observer-record-grouping",
+    "participatingObserverIds": [
+      "dom",
+      "focus",
+      "visual"
+    ]
+  }
+}

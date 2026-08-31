@@ -100,7 +100,7 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 ### Recorded demonstration
 
-The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) includes a real recorded Playwright interaction, its generated AEE report, and before/after screenshots. Rebuild those public artifacts locally with:
+The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) shows a real Playwright interaction fail, applies the missing response handler, and verifies that the fixed rerun passes. It includes both generated AEE reports and their before/after screenshots. Rebuild those public artifacts locally with:
 
 ```bash
 npm run demo:record

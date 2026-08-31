@@ -1,18 +1,13 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="An interactive demonstration of evidence-first accessibility investigations with Accessibility Evidence Engine."
-    />
+<!DOCTYPE html><html lang="en" style="scroll-behavior: auto;"><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="An interactive demonstration of evidence-first accessibility investigations with Accessibility Evidence Engine.">
     <title>Accessibility Evidence Engine</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css" />
-    <script src="demo.js" defer></script>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+    <script src="demo.js" defer=""></script>
   </head>
-  <body>
+  <body class="recording">
     <a class="skip-link" href="#main">Skip to content</a>
 
     <header class="site-header">
@@ -40,11 +35,7 @@
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#demo">Explore the example</a>
-            <a
-              class="button secondary"
-              href="https://github.com/Elizabeth1979/accessibility-evidence-engine#quick-start"
-              >Read the quick start</a
-            >
+            <a class="button secondary" href="https://github.com/Elizabeth1979/accessibility-evidence-engine#quick-start">Read the quick start</a>
           </div>
           <p class="preview-note">
             AEE is a public preview, not a complete WCAG scanner or accessibility certification.
@@ -81,20 +72,16 @@
         <h2 id="how-title">From interaction to reviewable result</h2>
         <ol class="pipeline">
           <li>
-            <span>1</span><strong>Capture before</strong
-            ><small>DOM, accessibility tree, focus, screenshot, or network</small>
+            <span>1</span><strong>Capture before</strong><small>DOM, accessibility tree, focus, screenshot, or network</small>
           </li>
           <li>
-            <span>2</span><strong>Perform action</strong
-            ><small>Bracket a real Playwright interaction</small>
+            <span>2</span><strong>Perform action</strong><small>Bracket a real Playwright interaction</small>
           </li>
           <li>
-            <span>3</span><strong>Capture after</strong
-            ><small>Preserve the observable response</small>
+            <span>3</span><strong>Capture after</strong><small>Preserve the observable response</small>
           </li>
           <li>
-            <span>4</span><strong>Judge and report</strong
-            ><small>Trace each result to evidence identifiers</small>
+            <span>4</span><strong>Judge and report</strong><small>Trace each result to evidence identifiers</small>
           </li>
         </ol>
       </section>
@@ -123,14 +110,9 @@
 
         <div class="recorded-layout">
           <div class="video-frame">
-            <video
-              controls
-              preload="metadata"
-              poster="demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png?v=3"
-              aria-label="Recorded Playwright demonstration of AEE finding and verifying a keyboard interaction fix"
-            >
-              <source src="demo-artifacts/playwright-aee-demo.mp4?v=3" type="video/mp4" />
-              <source src="demo-artifacts/playwright-aee-demo.webm?v=3" type="video/webm" />
+            <video controls="" preload="metadata" poster="demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png?v=3" aria-label="Recorded Playwright demonstration of AEE finding and verifying a keyboard interaction fix">
+              <source src="demo-artifacts/playwright-aee-demo.mp4?v=3" type="video/mp4">
+              <source src="demo-artifacts/playwright-aee-demo.webm?v=3" type="video/webm">
               <p>
                 Your browser cannot play the recording. Read the transcript or download the
                 <a href="demo-artifacts/playwright-aee-demo.webm">WebM video</a>.
@@ -186,24 +168,16 @@
           </div>
           <ul class="artifact-links" aria-label="Generated demonstration artifacts">
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.md"
-                >Failing Markdown report</a
-              >
+              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.md">Failing Markdown report</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.json"
-                >Failing JSON report</a
-              >
+              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.json">Failing JSON report</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.md"
-                >Fixed Markdown report</a
-              >
+              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.md">Fixed Markdown report</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.json"
-                >Fixed JSON report</a
-              >
+              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.json">Fixed JSON report</a>
             </li>
           </ul>
         </div>
@@ -296,7 +270,15 @@
 
         <details class="json-details">
           <summary>Inspect the normalized judgment</summary>
-          <pre tabindex="0"><code id="json-output"></code></pre>
+          <pre tabindex="0"><code id="json-output">{
+  "judgeId": "change-response",
+  "verdict": "pass",
+  "summary": "Observed a DOM response after keyboard activation.",
+  "evidenceRecordIds": [
+    "dom:before",
+    "dom:after"
+  ]
+}</code></pre>
         </details>
       </section>
 
@@ -330,27 +312,18 @@
           <p class="eyebrow">Apache 2.0 · Open source</p>
           <h2 id="cta-title">Inspect the implementation and run the fixture.</h2>
         </div>
-        <a
-          class="button primary"
-          href="https://github.com/Elizabeth1979/accessibility-evidence-engine"
-          >View the repository</a
-        >
+        <a class="button primary" href="https://github.com/Elizabeth1979/accessibility-evidence-engine">View the repository</a>
       </section>
     </main>
 
     <footer>
       <p>Accessibility Evidence Engine · Public preview</p>
       <p>
-        <a
-          href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/privacy.md"
-          >Evidence privacy</a
-        >
+        <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/privacy.md">Evidence privacy</a>
         ·
-        <a
-          href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/SECURITY.md"
-          >Security</a
-        >
+        <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/SECURITY.md">Security</a>
       </p>
     </footer>
-  </body>
-</html>
+  
+
+</body></html>

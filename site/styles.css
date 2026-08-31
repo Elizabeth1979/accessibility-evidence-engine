@@ -458,6 +458,8 @@ footer {
 
 .video-frame,
 .real-interaction,
+.issue-fix-summary article,
+.recording-result,
 .recorded-output,
 .transcript {
   border: 1px solid var(--line);
@@ -573,12 +575,12 @@ footer {
   display: none;
 }
 
-.recording .recorded-layout {
-  grid-template-columns: 1fr;
+.recording .issue-fix-summary {
+  display: none;
 }
 
-.recording .real-interaction {
-  min-height: 12rem;
+.recording .recorded-layout {
+  grid-template-columns: 1fr;
 }
 
 .recording .recorded-layout {
@@ -586,22 +588,18 @@ footer {
 }
 
 .recording .recorded-output {
-  opacity: 0.22;
-  transform: translateY(0.4rem);
-  transition:
-    opacity 220ms ease,
-    transform 220ms ease;
-}
-
-.recording[data-recording-stage="complete"] .recorded-output {
-  opacity: 1;
-  transform: none;
+  display: none;
 }
 
 .real-interaction {
-  display: grid;
+  display: none;
   align-content: center;
   padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.recording .real-interaction {
+  display: grid;
+  min-height: 12rem;
 }
 
 .real-interaction button {
@@ -627,6 +625,79 @@ footer {
 
 .live-status strong {
   color: var(--text);
+}
+
+.fix-code {
+  display: none;
+  margin: 1rem 0 0;
+  padding: 0.75rem;
+  border: 1px solid rgba(112, 240, 180, 0.45);
+  border-radius: 0.45rem;
+  background: #050b09;
+  font-size: 0.78rem;
+}
+
+.recording[data-recording-stage="fix"] .fix-code,
+.recording[data-recording-stage="rerun"] .fix-code,
+.recording[data-recording-stage="complete"] .fix-code {
+  display: block;
+}
+
+.issue-fix-summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.issue-fix-summary article {
+  padding: 1.25rem;
+}
+
+.issue-fix-summary h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.5rem;
+}
+
+.issue-fix-summary p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.issue-card {
+  border-color: rgba(255, 141, 141, 0.45) !important;
+  background: var(--danger-dark) !important;
+}
+
+.fix-card {
+  border-color: rgba(112, 240, 180, 0.45) !important;
+  background: var(--accent-dark) !important;
+}
+
+.recording-result {
+  display: none;
+}
+
+.recording .recording-result {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.recording-result h3,
+.recording-result p {
+  margin: 0;
+}
+
+.recording-result p {
+  color: var(--muted);
+}
+
+.verdict.pending {
+  background: var(--surface-strong);
+  color: var(--muted);
 }
 
 .recorded-output {

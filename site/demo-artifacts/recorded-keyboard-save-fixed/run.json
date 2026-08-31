@@ -1,7 +1,7 @@
 {
-  "id": "recorded-keyboard-save",
+  "id": "recorded-keyboard-save-fixed",
   "version": "0.1.0",
-  "startedAt": "2026-08-31T18:22:21.908Z",
+  "startedAt": "2026-08-31T18:59:39.170Z",
   "status": "completed",
   "environment": {
     "mode": "playwright-page"
@@ -13,30 +13,29 @@
       "includeScreenshots": true,
       "includeAccessibilityTree": true,
       "includeDomSnapshot": true,
-      "stabilizeAfterInteractionMs": 700
+      "stabilizeAfterInteractionMs": 500
     },
     "selectedObservers": [
       "dom",
-      "accessibility-tree",
       "focus",
       "visual"
     ]
   },
   "checkpoints": [
     {
-      "id": "checkpoint:manual:1788200541908",
-      "runId": "recorded-keyboard-save",
-      "name": "public-demo-save",
-      "url": "http://127.0.0.1:4173/?recording=1",
-      "timestamp": "2026-08-31T18:22:21.908Z",
+      "id": "checkpoint:manual:1788202779170",
+      "runId": "recorded-keyboard-save-fixed",
+      "name": "public-demo-fixed",
+      "url": "http://127.0.0.1:4173/?recording=1&implementation=fixed",
+      "timestamp": "2026-08-31T18:59:39.170Z",
       "trigger": "manual"
     }
   ],
   "interactions": [
     {
-      "id": "interaction:enter:1788200541908",
-      "runId": "recorded-keyboard-save",
-      "timestamp": "2026-08-31T18:22:21.908Z",
+      "id": "interaction:enter:1788202779170",
+      "runId": "recorded-keyboard-save-fixed",
+      "timestamp": "2026-08-31T18:59:39.170Z",
       "actor": "test",
       "kind": "enter",
       "target": {
@@ -46,7 +45,7 @@
       "input": "Enter"
     }
   ],
-  "finishedAt": "2026-08-31T18:22:22.704Z",
+  "finishedAt": "2026-08-31T18:59:39.741Z",
   "results": {
     "pass": 3,
     "fail": 0,

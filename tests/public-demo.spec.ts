@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -33,22 +34,32 @@ test("public demo lets keyboard users compare pass and fail evidence", async ({ 
   await expect(page.locator("#json-output")).toContainText('"verdict": "fail"');
 });
 
-test("public demo includes a real keyboard interaction and recorded evidence", async ({ page }) => {
+test("public demo shows a real failure, fix, and verified rerun", async ({ page }) => {
   await page.goto(demoUrl);
 
-  const saveButton = page.getByRole("button", { name: "Save changes" });
-  await saveButton.focus();
-  await page.keyboard.press("Enter");
-
-  await expect(page.locator("#real-status")).toHaveText("Saved");
-  await expect(page.getByText("3 evidence-linked judgments")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Generated Markdown report" })).toHaveAttribute(
+  await expect(page.getByText("Enter does nothing")).toBeVisible();
+  await expect(page.getByText("Response observed")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Failing Markdown report" })).toHaveAttribute(
     "href",
-    "demo-artifacts/recorded-keyboard-save/aee-report.md"
+    "demo-artifacts/recorded-keyboard-save-issue/aee-report.md"
+  );
+  await expect(page.getByRole("link", { name: "Fixed JSON report" })).toHaveAttribute(
+    "href",
+    "demo-artifacts/recorded-keyboard-save-fixed/aee-report.json"
   );
   await expect(page.locator("video")).toHaveAttribute("controls", "");
-  await expect(page.getByText("Press play to watch each stage.")).toBeVisible();
+  await expect(page.getByText("Press play to watch the complete story.")).toBeVisible();
   await expect(page.getByText("Read the recording transcript")).toBeVisible();
+
+  const [issueReport, fixedReport] = await Promise.all(
+    ["recorded-keyboard-save-issue", "recorded-keyboard-save-fixed"].map(async (runId) =>
+      JSON.parse(
+        await readFile(path.resolve(`site/demo-artifacts/${runId}/aee-report.json`), "utf8")
+      )
+    )
+  );
+  expect(issueReport.run.results).toEqual({ pass: 0, fail: 3, unknown: 0 });
+  expect(fixedReport.run.results).toEqual({ pass: 3, fail: 0, unknown: 0 });
 
   const duration = await page.locator("video").evaluate(async (element) => {
     const video = element as HTMLVideoElement;

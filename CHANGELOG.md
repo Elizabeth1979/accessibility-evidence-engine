@@ -6,7 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
-- A reproducible Playwright recording on the public site with generated AEE reports, before/after screenshots, and a text transcript.
+- A reproducible failure-to-fix Playwright recording on the public site with paired failing and passing AEE reports, screenshots, and a text transcript.
 
 ## [0.1.0] - 2026-08-30
 
