@@ -47,6 +47,7 @@ test("public demo includes a real keyboard interaction and recorded evidence", a
     "demo-artifacts/recorded-keyboard-save/aee-report.md"
   );
   await expect(page.locator("video")).toHaveAttribute("controls", "");
+  await expect(page.getByText("Press play to watch each stage.")).toBeVisible();
   await expect(page.getByText("Read the recording transcript")).toBeVisible();
 
   const duration = await page.locator("video").evaluate(async (element) => {
@@ -64,4 +65,5 @@ test("public demo includes a real keyboard interaction and recorded evidence", a
     return video.duration;
   });
   expect(duration).toBeGreaterThan(1);
+  expect(duration).toBeLessThan(10);
 });

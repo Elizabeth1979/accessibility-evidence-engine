@@ -59,33 +59,18 @@ let browser;
 
 try {
   browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
+  const evidenceContext = await browser.newContext({
     colorScheme: "dark",
-    recordVideo: {
-      dir: videoTempDir,
-      size: { width: 1280, height: 720 }
-    },
     viewport: { width: 1280, height: 720 }
   });
-  const page = await context.newPage();
-  const video = page.video();
+  const evidencePage = await evidenceContext.newPage();
 
-  await page.goto(`http://127.0.0.1:${port}/?recording=1`, { waitUntil: "networkidle" });
-  await page.waitForTimeout(900);
-  await page.locator("#recorded-title").evaluate((heading) => {
-    const activeWindow = heading.ownerDocument.defaultView;
-    activeWindow?.scrollTo({
-      top: heading.getBoundingClientRect().top + (activeWindow.scrollY ?? 0) - 40
-    });
-  });
-  await page.waitForTimeout(900);
-
-  const saveButton = page.getByRole("button", { name: "Save changes" });
-  await saveButton.focus();
-  await page.waitForTimeout(700);
+  await prepareRecordingPage(evidencePage);
+  await setRecordingStage(evidencePage, "capture-before", "Capturing the before state");
+  await evidencePage.getByRole("button", { name: "Save changes" }).focus();
 
   const result = await runAeeOnPage({
-    page,
+    page: evidencePage,
     projectRoot,
     outputDir: "site/demo-artifacts",
     runId,
@@ -108,14 +93,62 @@ try {
       }
     },
     async performInteraction({ page: activePage }) {
+      await setRecordingStage(activePage, "action", "Playwright presses Enter");
       await activePage.keyboard.press("Enter");
+      await setRecordingStage(activePage, "capture-after", "Capturing the observed response");
     }
   });
+  await evidenceContext.close();
 
-  await page.waitForTimeout(1100);
-  await page.locator("#recorded-output").scrollIntoViewIfNeeded();
-  await page.waitForTimeout(1400);
-  await context.close();
+  await normalizePublishedPaths([
+    ...result.reporterFiles,
+    path.join(runOutput, "bundle.json"),
+    path.join(runOutput, "run.json")
+  ]);
+
+  const report = JSON.parse(await readFile(path.join(runOutput, "aee-report.json"), "utf8"));
+  const verdicts = Object.fromEntries(
+    report.judgments.map((judgment) => [judgment.judgeId, judgment.verdict])
+  );
+
+  if (
+    report.run.status !== "completed" ||
+    verdicts.keyboard !== "pass" ||
+    verdicts["change-response"] !== "pass" ||
+    verdicts.release !== "pass"
+  ) {
+    throw new Error(`Unexpected public demo verdicts: ${JSON.stringify(verdicts)}`);
+  }
+
+  const playbackContext = await browser.newContext({
+    colorScheme: "dark",
+    recordVideo: {
+      dir: videoTempDir,
+      size: { width: 1280, height: 720 }
+    },
+    viewport: { width: 1280, height: 720 }
+  });
+  const playbackPage = await playbackContext.newPage();
+  const video = playbackPage.video();
+
+  await prepareRecordingPage(playbackPage);
+  await setRecordingStage(playbackPage, "capture-before", "Capturing the before state");
+  await playbackPage.waitForTimeout(900);
+
+  const saveButton = playbackPage.getByRole("button", { name: "Save changes" });
+  await saveButton.focus();
+  await playbackPage.waitForTimeout(500);
+  await setRecordingStage(playbackPage, "action", "Playwright presses Enter");
+  await playbackPage.waitForTimeout(650);
+  await playbackPage.keyboard.press("Enter");
+  await playbackPage.waitForTimeout(700);
+  await setRecordingStage(playbackPage, "capture-after", "Capturing the observed response");
+  await playbackPage.waitForTimeout(900);
+  await setRecordingStage(playbackPage, "judge", "Linking evidence to three judgments");
+  await playbackPage.waitForTimeout(900);
+  await setRecordingStage(playbackPage, "complete", "Run complete: three judgments passed");
+  await playbackPage.waitForTimeout(1400);
+  await playbackContext.close();
 
   if (!video) {
     throw new Error("Playwright did not create a video for the public demo.");
@@ -150,26 +183,6 @@ try {
     console.warn("ffmpeg is unavailable; the WebM recording was still generated.");
   }
 
-  await normalizePublishedPaths([
-    ...result.reporterFiles,
-    path.join(runOutput, "bundle.json"),
-    path.join(runOutput, "run.json")
-  ]);
-
-  const report = JSON.parse(await readFile(path.join(runOutput, "aee-report.json"), "utf8"));
-  const verdicts = Object.fromEntries(
-    report.judgments.map((judgment) => [judgment.judgeId, judgment.verdict])
-  );
-
-  if (
-    report.run.status !== "completed" ||
-    verdicts.keyboard !== "pass" ||
-    verdicts["change-response"] !== "pass" ||
-    verdicts.release !== "pass"
-  ) {
-    throw new Error(`Unexpected public demo verdicts: ${JSON.stringify(verdicts)}`);
-  }
-
   console.log(
     `Recorded public demo and AEE evidence in ${path.relative(projectRoot, outputRoot)}.`
   );
@@ -177,6 +190,41 @@ try {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
   await rm(videoTempDir, { recursive: true, force: true });
+}
+
+async function prepareRecordingPage(page) {
+  await page.goto(`http://127.0.0.1:${port}/?recording=1`, { waitUntil: "domcontentloaded" });
+  await page.locator("#recorded-title").evaluate((heading) => {
+    const activeWindow = heading.ownerDocument.defaultView;
+    heading.ownerDocument.documentElement.style.scrollBehavior = "auto";
+    activeWindow?.scrollTo({
+      top: heading.getBoundingClientRect().top + (activeWindow.scrollY ?? 0) - 24
+    });
+  });
+}
+
+async function setRecordingStage(page, stage, message) {
+  await page.locator("#recording-progress").evaluate(
+    (progress, { activeStage, activeMessage }) => {
+      const orderedStages = ["capture-before", "action", "capture-after", "judge"];
+      const activeIndex =
+        activeStage === "complete" ? orderedStages.length : orderedStages.indexOf(activeStage);
+      const activeDocument = progress.ownerDocument;
+      activeDocument.body.dataset.recordingStage = activeStage;
+
+      const messageNode = progress.querySelector("#recording-message");
+      if (messageNode) {
+        messageNode.textContent = activeMessage;
+      }
+
+      for (const step of progress.querySelectorAll("[data-recording-step]")) {
+        const stepIndex = orderedStages.indexOf(step.dataset.recordingStep ?? "");
+        step.dataset.state =
+          stepIndex < activeIndex ? "complete" : stepIndex === activeIndex ? "active" : "pending";
+      }
+    },
+    { activeStage: stage, activeMessage: message }
+  );
 }
 
 async function normalizePublishedPaths(filePaths) {

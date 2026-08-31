@@ -479,6 +479,96 @@ footer {
   background: #000000;
 }
 
+.video-caption {
+  margin: 0;
+  padding: 0.7rem 0.6rem 0.35rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.video-caption strong {
+  color: var(--text);
+}
+
+.recording-progress {
+  display: none;
+}
+
+.recording .recording-progress {
+  display: block;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.recording-progress p {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 0.8rem;
+  color: var(--text);
+}
+
+.recording-progress p span {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(112, 240, 180, 0.5);
+  animation: recording-pulse 1.2s infinite;
+}
+
+.recording-progress ol {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recording-progress li {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 720;
+  text-align: center;
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    opacity 180ms ease;
+}
+
+.recording-progress li[data-state="pending"] {
+  opacity: 0.5;
+}
+
+.recording-progress li[data-state="active"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #04120d;
+}
+
+.recording-progress li[data-state="complete"] {
+  border-color: rgba(112, 240, 180, 0.45);
+  background: var(--accent-dark);
+  color: var(--accent);
+}
+
+@keyframes recording-pulse {
+  70% {
+    box-shadow: 0 0 0 0.6rem rgba(112, 240, 180, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(112, 240, 180, 0);
+  }
+}
+
 .recording .video-frame {
   display: none;
 }
@@ -488,7 +578,24 @@ footer {
 }
 
 .recording .real-interaction {
-  min-height: 18rem;
+  min-height: 12rem;
+}
+
+.recording .recorded-layout {
+  margin-top: 0.75rem;
+}
+
+.recording .recorded-output {
+  opacity: 0.22;
+  transform: translateY(0.4rem);
+  transition:
+    opacity 220ms ease,
+    transform 220ms ease;
+}
+
+.recording[data-recording-stage="complete"] .recorded-output {
+  opacity: 1;
+  transform: none;
 }
 
 .real-interaction {
@@ -653,5 +760,9 @@ footer {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .recording-progress p span {
+    animation: none;
   }
 }

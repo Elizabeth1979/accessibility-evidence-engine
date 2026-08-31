@@ -7,8 +7,8 @@
 | Schema version | 0.1.0 |
 | Run ID | recorded-keyboard-save |
 | Status | completed |
-| Started | 2026-08-31T17:25:26.417Z |
-| Finished | 2026-08-31T17:25:27.209Z |
+| Started | 2026-08-31T18:22:21.908Z |
+| Finished | 2026-08-31T18:22:22.704Z |
 | Environment mode | playwright-page |
 | Policy | public-demo |
 | Bundles | 1 |
@@ -52,7 +52,7 @@ No explicit suggested fixes were emitted.
 
 | Field | Value |
 | --- | --- |
-| Interaction ID | interaction:enter:1788197126416 |
+| Interaction ID | interaction:enter:1788200541908 |
 | Interaction | enter |
 | Target | button "Save changes" |
 | Checkpoint | public-demo-save |
@@ -69,22 +69,22 @@ No explicit suggested fixes were emitted.
 
 | ID | Phase | Observer | Status | Confidence | Artifacts | Changes | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| dom:before:1788197126426 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
-| focus:before:1788197126426 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #real-save "Save changes"). |
-| accessibility-tree:before:1788197126439 | before | accessibility-tree | ok | n/a | 1 | 0 | Captured accessibility tree before state. |
-| visual:before:1788197126457 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
-| dom:after:1788197127169 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
-| focus:after:1788197127169 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #real-save "Save changes"). |
-| accessibility-tree:after:1788197127181 | after | accessibility-tree | ok | n/a | 1 | 0 | Captured accessibility tree after state. |
-| visual:after:1788197127201 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
+| dom:before:1788200541910 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
+| focus:before:1788200541911 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #real-save "Save changes"). |
+| accessibility-tree:before:1788200541917 | before | accessibility-tree | ok | n/a | 1 | 0 | Captured accessibility tree before state. |
+| visual:before:1788200541938 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
+| dom:after:1788200542654 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
+| focus:after:1788200542654 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #real-save "Save changes"). |
+| accessibility-tree:after:1788200542665 | after | accessibility-tree | ok | n/a | 1 | 0 | Captured accessibility tree after state. |
+| visual:after:1788200542695 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
 
 ### Judgments
 
 | ID | Verdict | Judge | Severity | Confidence | Evidence | Artifacts | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| keyboard:interaction:enter:1788197126416 | pass | keyboard | info | 0.9 | 1 | 1 | Keyboard enter produced observable activation signals (DOM changed). Focus stayed on button #real-save "Save changes". |
-| change-response:interaction:enter:1788197126416 | pass | change-response | info | 0.9 | 1 | 1 | Observed response signals after the enter interaction (DOM changed). |
-| release:interaction:enter:1788197126416 | pass | release | info | 0.75 | 8 | 0 | Release gate passed. No blocking judgments met the current policy threshold. |
+| keyboard:interaction:enter:1788200541908 | pass | keyboard | info | 0.9 | 1 | 1 | Keyboard enter produced observable activation signals (DOM changed). Focus stayed on button #real-save "Save changes". |
+| change-response:interaction:enter:1788200541908 | pass | change-response | info | 0.9 | 1 | 1 | Observed response signals after the enter interaction (DOM changed). |
+| release:interaction:enter:1788200541908 | pass | release | info | 0.75 | 8 | 0 | Release gate passed. No blocking judgments met the current policy threshold. |
 
 ### Findings
 

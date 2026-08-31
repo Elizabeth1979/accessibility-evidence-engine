@@ -3,7 +3,7 @@
   "run": {
     "id": "recorded-keyboard-save",
     "version": "0.1.0",
-    "startedAt": "2026-08-31T17:25:26.417Z",
+    "startedAt": "2026-08-31T18:22:21.908Z",
     "status": "completed",
     "environment": {
       "mode": "playwright-page"
@@ -26,19 +26,19 @@
     },
     "checkpoints": [
       {
-        "id": "checkpoint:manual:1788197126416",
+        "id": "checkpoint:manual:1788200541908",
         "runId": "recorded-keyboard-save",
         "name": "public-demo-save",
         "url": "http://127.0.0.1:4173/?recording=1",
-        "timestamp": "2026-08-31T17:25:26.416Z",
+        "timestamp": "2026-08-31T18:22:21.908Z",
         "trigger": "manual"
       }
     ],
     "interactions": [
       {
-        "id": "interaction:enter:1788197126416",
+        "id": "interaction:enter:1788200541908",
         "runId": "recorded-keyboard-save",
-        "timestamp": "2026-08-31T17:25:26.416Z",
+        "timestamp": "2026-08-31T18:22:21.908Z",
         "actor": "test",
         "kind": "enter",
         "target": {
@@ -48,7 +48,7 @@
         "input": "Enter"
       }
     ],
-    "finishedAt": "2026-08-31T17:25:27.209Z",
+    "finishedAt": "2026-08-31T18:22:22.704Z",
     "results": {
       "pass": 3,
       "fail": 0,
@@ -59,9 +59,9 @@
     {
       "runId": "recorded-keyboard-save",
       "interaction": {
-        "id": "interaction:enter:1788197126416",
+        "id": "interaction:enter:1788200541908",
         "runId": "recorded-keyboard-save",
-        "timestamp": "2026-08-31T17:25:26.416Z",
+        "timestamp": "2026-08-31T18:22:21.908Z",
         "actor": "test",
         "kind": "enter",
         "target": {
@@ -71,24 +71,24 @@
         "input": "Enter"
       },
       "checkpoint": {
-        "id": "checkpoint:manual:1788197126416",
+        "id": "checkpoint:manual:1788200541908",
         "runId": "recorded-keyboard-save",
         "name": "public-demo-save",
         "url": "http://127.0.0.1:4173/?recording=1",
-        "timestamp": "2026-08-31T17:25:26.416Z",
+        "timestamp": "2026-08-31T18:22:21.908Z",
         "trigger": "manual"
       },
       "records": [
         {
-          "id": "dom:before:1788197126426",
+          "id": "dom:before:1788200541910",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:26.426Z",
+          "timestamp": "2026-08-31T18:22:21.910Z",
           "summary": "Captured DOM before state.",
           "beforeStateRef": {
             "id": "dom:before:artifact",
@@ -105,19 +105,19 @@
             }
           ],
           "meta": {
-            "byteLength": 12075
+            "byteLength": 12805
           }
         },
         {
-          "id": "focus:before:1788197126426",
+          "id": "focus:before:1788200541911",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:26.426Z",
+          "timestamp": "2026-08-31T18:22:21.911Z",
           "summary": "Captured focus before state (button #real-save \"Save changes\").",
           "artifacts": [
             {
@@ -141,15 +141,15 @@
           }
         },
         {
-          "id": "accessibility-tree:before:1788197126439",
+          "id": "accessibility-tree:before:1788200541917",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "accessibility-tree",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:26.439Z",
+          "timestamp": "2026-08-31T18:22:21.917Z",
           "summary": "Captured accessibility tree before state.",
           "beforeStateRef": {
             "id": "accessibility-tree:before:artifact",
@@ -167,15 +167,15 @@
           ]
         },
         {
-          "id": "visual:before:1788197126457",
+          "id": "visual:before:1788200541938",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:26.457Z",
+          "timestamp": "2026-08-31T18:22:21.938Z",
           "summary": "Captured screenshot before state.",
           "beforeStateRef": {
             "id": "visual:before:artifact",
@@ -192,19 +192,19 @@
             }
           ],
           "meta": {
-            "byteLength": 88522
+            "byteLength": 88902
           }
         },
         {
-          "id": "dom:after:1788197127169",
+          "id": "dom:after:1788200542654",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:27.169Z",
+          "timestamp": "2026-08-31T18:22:22.654Z",
           "summary": "Captured DOM after state with observable markup changes.",
           "afterStateRef": {
             "id": "dom:after:artifact",
@@ -225,30 +225,30 @@
               "path": "dom.html",
               "summary": "DOM markup changed after the interaction.",
               "before": {
-                "byteLength": 12075
+                "byteLength": 12805
               },
               "after": {
-                "byteLength": 12090
+                "byteLength": 12826
               },
               "impact": "major"
             }
           ],
           "meta": {
-            "byteLength": 12090,
+            "byteLength": 12826,
             "changed": true,
-            "previousByteLength": 12075
+            "previousByteLength": 12805
           }
         },
         {
-          "id": "focus:after:1788197127169",
+          "id": "focus:after:1788200542654",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:27.169Z",
+          "timestamp": "2026-08-31T18:22:22.654Z",
           "summary": "Captured focus after state (button #real-save \"Save changes\").",
           "artifacts": [
             {
@@ -272,15 +272,15 @@
           }
         },
         {
-          "id": "accessibility-tree:after:1788197127181",
+          "id": "accessibility-tree:after:1788200542665",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "accessibility-tree",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:27.181Z",
+          "timestamp": "2026-08-31T18:22:22.665Z",
           "summary": "Captured accessibility tree after state.",
           "afterStateRef": {
             "id": "accessibility-tree:after:artifact",
@@ -298,15 +298,15 @@
           ]
         },
         {
-          "id": "visual:after:1788197127201",
+          "id": "visual:after:1788200542695",
           "runId": "recorded-keyboard-save",
-          "checkpointId": "checkpoint:manual:1788197126416",
-          "interactionId": "interaction:enter:1788197126416",
+          "checkpointId": "checkpoint:manual:1788200541908",
+          "interactionId": "interaction:enter:1788200541908",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T17:25:27.201Z",
+          "timestamp": "2026-08-31T18:22:22.695Z",
           "summary": "Captured screenshot after state.",
           "afterStateRef": {
             "id": "visual:after:artifact",
@@ -323,7 +323,7 @@
             }
           ],
           "meta": {
-            "byteLength": 89253
+            "byteLength": 84455
           }
         }
       ],
@@ -390,15 +390,15 @@
   ],
   "records": [
     {
-      "id": "dom:before:1788197126426",
+      "id": "dom:before:1788200541910",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:26.426Z",
+      "timestamp": "2026-08-31T18:22:21.910Z",
       "summary": "Captured DOM before state.",
       "beforeStateRef": {
         "id": "dom:before:artifact",
@@ -415,19 +415,19 @@
         }
       ],
       "meta": {
-        "byteLength": 12075
+        "byteLength": 12805
       }
     },
     {
-      "id": "accessibility-tree:before:1788197126439",
+      "id": "accessibility-tree:before:1788200541917",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "accessibility-tree",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:26.439Z",
+      "timestamp": "2026-08-31T18:22:21.917Z",
       "summary": "Captured accessibility tree before state.",
       "beforeStateRef": {
         "id": "accessibility-tree:before:artifact",
@@ -445,15 +445,15 @@
       ]
     },
     {
-      "id": "focus:before:1788197126426",
+      "id": "focus:before:1788200541911",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:26.426Z",
+      "timestamp": "2026-08-31T18:22:21.911Z",
       "summary": "Captured focus before state (button #real-save \"Save changes\").",
       "artifacts": [
         {
@@ -477,15 +477,15 @@
       }
     },
     {
-      "id": "visual:before:1788197126457",
+      "id": "visual:before:1788200541938",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:26.457Z",
+      "timestamp": "2026-08-31T18:22:21.938Z",
       "summary": "Captured screenshot before state.",
       "beforeStateRef": {
         "id": "visual:before:artifact",
@@ -502,19 +502,19 @@
         }
       ],
       "meta": {
-        "byteLength": 88522
+        "byteLength": 88902
       }
     },
     {
-      "id": "dom:after:1788197127169",
+      "id": "dom:after:1788200542654",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:27.169Z",
+      "timestamp": "2026-08-31T18:22:22.654Z",
       "summary": "Captured DOM after state with observable markup changes.",
       "afterStateRef": {
         "id": "dom:after:artifact",
@@ -535,30 +535,30 @@
           "path": "dom.html",
           "summary": "DOM markup changed after the interaction.",
           "before": {
-            "byteLength": 12075
+            "byteLength": 12805
           },
           "after": {
-            "byteLength": 12090
+            "byteLength": 12826
           },
           "impact": "major"
         }
       ],
       "meta": {
-        "byteLength": 12090,
+        "byteLength": 12826,
         "changed": true,
-        "previousByteLength": 12075
+        "previousByteLength": 12805
       }
     },
     {
-      "id": "accessibility-tree:after:1788197127181",
+      "id": "accessibility-tree:after:1788200542665",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "accessibility-tree",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:27.181Z",
+      "timestamp": "2026-08-31T18:22:22.665Z",
       "summary": "Captured accessibility tree after state.",
       "afterStateRef": {
         "id": "accessibility-tree:after:artifact",
@@ -576,15 +576,15 @@
       ]
     },
     {
-      "id": "focus:after:1788197127169",
+      "id": "focus:after:1788200542654",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:27.169Z",
+      "timestamp": "2026-08-31T18:22:22.654Z",
       "summary": "Captured focus after state (button #real-save \"Save changes\").",
       "artifacts": [
         {
@@ -608,15 +608,15 @@
       }
     },
     {
-      "id": "visual:after:1788197127201",
+      "id": "visual:after:1788200542695",
       "runId": "recorded-keyboard-save",
-      "checkpointId": "checkpoint:manual:1788197126416",
-      "interactionId": "interaction:enter:1788197126416",
+      "checkpointId": "checkpoint:manual:1788200541908",
+      "interactionId": "interaction:enter:1788200541908",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T17:25:27.201Z",
+      "timestamp": "2026-08-31T18:22:22.695Z",
       "summary": "Captured screenshot after state.",
       "afterStateRef": {
         "id": "visual:after:artifact",
@@ -633,13 +633,13 @@
         }
       ],
       "meta": {
-        "byteLength": 89253
+        "byteLength": 84455
       }
     }
   ],
   "judgments": [
     {
-      "id": "keyboard:interaction:enter:1788197126416",
+      "id": "keyboard:interaction:enter:1788200541908",
       "judgeId": "keyboard",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
@@ -648,14 +648,14 @@
       "severity": "info",
       "confidence": 0.9,
       "evidenceRecordIds": [
-        "dom:after:1788197127169"
+        "dom:after:1788200542654"
       ],
       "artifactIds": [
         "dom:after:artifact"
       ]
     },
     {
-      "id": "change-response:interaction:enter:1788197126416",
+      "id": "change-response:interaction:enter:1788200541908",
       "judgeId": "change-response",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
@@ -664,14 +664,14 @@
       "severity": "info",
       "confidence": 0.9,
       "evidenceRecordIds": [
-        "dom:after:1788197127169"
+        "dom:after:1788200542654"
       ],
       "artifactIds": [
         "dom:after:artifact"
       ]
     },
     {
-      "id": "release:interaction:enter:1788197126416",
+      "id": "release:interaction:enter:1788200541908",
       "judgeId": "release",
       "judgeVersion": "0.1.0",
       "scope": "run",
@@ -680,14 +680,14 @@
       "severity": "info",
       "confidence": 0.75,
       "evidenceRecordIds": [
-        "dom:before:1788197126426",
-        "focus:before:1788197126426",
-        "accessibility-tree:before:1788197126439",
-        "visual:before:1788197126457",
-        "dom:after:1788197127169",
-        "focus:after:1788197127169",
-        "accessibility-tree:after:1788197127181",
-        "visual:after:1788197127201"
+        "dom:before:1788200541910",
+        "focus:before:1788200541911",
+        "accessibility-tree:before:1788200541917",
+        "visual:before:1788200541938",
+        "dom:after:1788200542654",
+        "focus:after:1788200542654",
+        "accessibility-tree:after:1788200542665",
+        "visual:after:1788200542695"
       ]
     }
   ],

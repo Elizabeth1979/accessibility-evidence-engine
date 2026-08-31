@@ -1,7 +1,7 @@
 {
   "id": "recorded-keyboard-save",
   "version": "0.1.0",
-  "startedAt": "2026-08-31T17:25:26.417Z",
+  "startedAt": "2026-08-31T18:22:21.908Z",
   "status": "completed",
   "environment": {
     "mode": "playwright-page"
@@ -24,19 +24,19 @@
   },
   "checkpoints": [
     {
-      "id": "checkpoint:manual:1788197126416",
+      "id": "checkpoint:manual:1788200541908",
       "runId": "recorded-keyboard-save",
       "name": "public-demo-save",
       "url": "http://127.0.0.1:4173/?recording=1",
-      "timestamp": "2026-08-31T17:25:26.416Z",
+      "timestamp": "2026-08-31T18:22:21.908Z",
       "trigger": "manual"
     }
   ],
   "interactions": [
     {
-      "id": "interaction:enter:1788197126416",
+      "id": "interaction:enter:1788200541908",
       "runId": "recorded-keyboard-save",
-      "timestamp": "2026-08-31T17:25:26.416Z",
+      "timestamp": "2026-08-31T18:22:21.908Z",
       "actor": "test",
       "kind": "enter",
       "target": {
@@ -46,7 +46,7 @@
       "input": "Enter"
     }
   ],
-  "finishedAt": "2026-08-31T17:25:27.209Z",
+  "finishedAt": "2026-08-31T18:22:22.704Z",
   "results": {
     "pass": 3,
     "fail": 0,
