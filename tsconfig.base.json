@@ -17,6 +17,7 @@
     "baseUrl": ".",
     "paths": {
       "@aee/core": ["packages/core/src/index.ts"],
+      "@aee/ai-fixes": ["packages/ai-fixes/src/index.ts"],
       "@aee/schemas": ["packages/schemas/src/index.ts"],
       "@aee/playwright": ["packages/playwright/src/index.ts"],
       "@aee/observers": ["packages/observers/src/index.ts"],

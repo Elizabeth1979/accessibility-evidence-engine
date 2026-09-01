@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.1.0",
+  "generation": {
+    "mode": "reviewed-demo-example",
+    "liveModelCall": false,
+    "note": "This checked-in proposal was authored with Codex and reviewed for the public demo. CI does not receive API credentials. The @aee/ai-fixes package supports live, injected model providers."
+  },
+  "context": {
+    "selector": "#delete-project",
+    "role": "button",
+    "iconDescription": "trash can",
+    "nearbyHeading": "Project Alpha",
+    "nearbyText": "Production workspace",
+    "destinationText": "Delete Project Alpha? This action cannot be undone."
+  },
+  "proposal": {
+    "providerId": "codex-reviewed-demo-suggestion",
+    "summary": "Propose accessible name \"Delete Project Alpha\" for #delete-project.",
+    "rationale": "The trash icon, Project Alpha heading, and matching destructive confirmation copy establish the control's purpose and object. Model confidence: 0.96. This proposal requires human review and a verified rerun.",
+    "safety": "review",
+    "patches": [
+      "#delete-project: add aria-label=\"Delete Project Alpha\""
+    ]
+  },
+  "verificationRequired": true
+}

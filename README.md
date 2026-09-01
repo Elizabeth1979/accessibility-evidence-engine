@@ -11,6 +11,10 @@ Explore the [public interactive demonstration](https://elizabeth1979.github.io/a
 
 Many automated checks report a rule result without preserving enough context to explain what happened during an interaction. AEE keeps evidence collection, correlation, judgment, and reporting separate so a result can be traced back to the captured DOM, accessibility tree, focus state, screenshot, or network activity.
 
+AEE complements rule engines such as axe rather than replacing them. Static rules are excellent at defects such as an icon button without an accessible name. AEE adds value after that scan: an optional model provider can propose a context-specific label for review, and the interaction pipeline can verify stateful behavior such as whether focus actually enters an opened modal. The public demo publishes the selected axe results, the reviewed proposal, and the before/after AEE evidence separately.
+
+This comparison does not claim that axe cannot be scripted around interactions. Its own API guidance recommends activating hidden UI before analyzing it. The distinction is that AEE normalizes the interaction boundary, before/after artifacts, explicit behavioral expectation, judgment, and release decision into one traceable report. See axe's [`button-name` rule](https://dequeuniversity.com/rules/axe/4.13/button-name), [axe API notes](https://github.com/dequelabs/axe-core/blob/develop/doc/API.md), and the W3C [modal-dialog focus pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
+
 ## How it works
 
 For each interaction, AEE:
@@ -100,7 +104,9 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 ### Recorded demonstration
 
-The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) shows a real Playwright interaction fail, applies the missing response handler, and verifies that the fixed rerun passes. It includes both generated AEE reports and their before/after screenshots. Rebuild those public artifacts locally with:
+The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) compares three layers: axe detects an unnamed trash-icon button, a reviewed AI proposal suggests `Delete Project Alpha` from surrounding context, and AEE finds that focus remains behind the modal after the static name fix. The identical interaction passes after focus is moved inside the dialog. The checked-in label proposal clearly records that it is a reviewed demo example rather than a live CI model call.
+
+Rebuild the axe and AEE evidence plus the public recording locally with:
 
 ```bash
 npm run demo:record
@@ -108,15 +114,17 @@ npm run demo:record
 
 ## Current capabilities
 
-| Area                  | Implemented                                         | Current scope                                                                                               |
-| --------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Observers             | DOM, accessibility tree, focus, screenshot, network | Before/after capture with artifacts; DOM and network change summaries                                       |
-| Keyboard judge        | Tab, shift-tab, arrow-key composites, enter, space  | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                    |
-| Change-response judge | Click, enter, space, submit                         | Detects observable DOM, focus, or network outcomes                                                          |
-| Structure judge       | Evidence completeness                               | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
-| Release judge         | Policy gate                                         | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
-| Validation            | JSON Schema                                         | Validates supported CLI configuration and emitted run, bundle, and report payloads                          |
-| Reporting             | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
+| Area                   | Implemented                                         | Current scope                                                                                               |
+| ---------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Observers              | DOM, accessibility tree, focus, screenshot, network | Before/after capture with artifacts; DOM and network change summaries                                       |
+| Keyboard judge         | Tab, shift-tab, arrow-key composites, enter, space  | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                    |
+| Focus-management judge | Modal opening                                       | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                    |
+| Change-response judge  | Click, enter, space, submit                         | Detects observable DOM, focus, or network outcomes                                                          |
+| Structure judge        | Evidence completeness                               | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
+| Release judge          | Policy gate                                         | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
+| Validation             | JSON Schema                                         | Validates supported CLI configuration and emitted run, bundle, and report payloads                          |
+| Reporting              | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
+| AI fix proposals       | Accessible names                                    | Injected provider proposes a contextual label; output is always review-only and requires a verified rerun   |
 
 The Guidepup screen-reader and axe observers, plus the interaction, screen-reader, and visual judges, are declared extension points but currently return unsupported or unknown results. They should not be presented as implemented checks.
 
@@ -125,6 +133,7 @@ The Guidepup screen-reader and axe observers, plus the interaction, screen-reade
 | Package           | Responsibility                                                           |
 | ----------------- | ------------------------------------------------------------------------ |
 | `@aee/core`       | Domain types, policies, orchestration, correlation, and plugin contracts |
+| `@aee/ai-fixes`   | Review-only contextual accessible-name proposals and model adapters      |
 | `@aee/schemas`    | JSON Schemas and runtime validation                                      |
 | `@aee/playwright` | Real and virtual page adapters plus `runAeeOnPage(...)`                  |
 | `@aee/observers`  | Built-in evidence observers and observer manifests                       |
@@ -146,6 +155,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 - Observer timeout and continue-on-error policy fields exist, but engine-level enforcement is not implemented yet.
 - Several declared observers and judges remain extension scaffolds, as listed above.
 - Public npm packaging and a hosted engine runner are not available yet; the public site is a static demonstration with artifacts from a recorded run.
+- AI proposals are not applied automatically and are not evidence of correctness. Callers must provide model credentials, review the suggested patch, and rerun appropriate judges.
 
 ## Roadmap
 
@@ -161,6 +171,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 - [Observer lifecycle](docs/observer-lifecycle.md)
 - [Playwright integration](docs/playwright-integration.md)
 - [Evidence privacy](docs/privacy.md)
+- [AI fix proposals](docs/ai-fixes.md)
 
 ## Contributing and security
 

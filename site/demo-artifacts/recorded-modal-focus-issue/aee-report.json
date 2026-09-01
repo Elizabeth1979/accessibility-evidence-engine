@@ -1,0 +1,677 @@
+{
+  "schemaVersion": "0.1.0",
+  "run": {
+    "id": "recorded-modal-focus-issue",
+    "version": "0.1.0",
+    "startedAt": "2026-09-01T05:41:44.527Z",
+    "status": "completed",
+    "environment": {
+      "mode": "playwright-page"
+    },
+    "config": {
+      "writeReports": true,
+      "policyName": "public-demo",
+      "capturePolicy": {
+        "includeScreenshots": true,
+        "includeAccessibilityTree": true,
+        "includeDomSnapshot": true,
+        "stabilizeAfterInteractionMs": 500
+      },
+      "selectedObservers": [
+        "dom",
+        "focus",
+        "visual"
+      ]
+    },
+    "checkpoints": [
+      {
+        "id": "checkpoint:manual:1788241304527",
+        "runId": "recorded-modal-focus-issue",
+        "name": "public-demo-modal-focus-broken",
+        "url": "./?recording=1&label=fixed&focus=broken",
+        "timestamp": "2026-09-01T05:41:44.527Z",
+        "trigger": "manual"
+      }
+    ],
+    "interactions": [
+      {
+        "id": "interaction:click:1788241304527",
+        "runId": "recorded-modal-focus-issue",
+        "timestamp": "2026-09-01T05:41:44.527Z",
+        "actor": "test",
+        "kind": "click",
+        "target": {
+          "role": "button",
+          "name": "Delete Project Alpha"
+        },
+        "meta": {
+          "focusExpectation": "inside-dialog"
+        }
+      }
+    ],
+    "finishedAt": "2026-09-01T05:41:45.137Z",
+    "results": {
+      "pass": 1,
+      "fail": 2,
+      "unknown": 0
+    }
+  },
+  "bundles": [
+    {
+      "runId": "recorded-modal-focus-issue",
+      "interaction": {
+        "id": "interaction:click:1788241304527",
+        "runId": "recorded-modal-focus-issue",
+        "timestamp": "2026-09-01T05:41:44.527Z",
+        "actor": "test",
+        "kind": "click",
+        "target": {
+          "role": "button",
+          "name": "Delete Project Alpha"
+        },
+        "meta": {
+          "focusExpectation": "inside-dialog"
+        }
+      },
+      "checkpoint": {
+        "id": "checkpoint:manual:1788241304527",
+        "runId": "recorded-modal-focus-issue",
+        "name": "public-demo-modal-focus-broken",
+        "url": "./?recording=1&label=fixed&focus=broken",
+        "timestamp": "2026-09-01T05:41:44.527Z",
+        "trigger": "manual"
+      },
+      "records": [
+        {
+          "id": "dom:before:1788241304531",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "dom",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:44.531Z",
+          "summary": "Captured DOM before state.",
+          "beforeStateRef": {
+            "id": "dom:before:artifact",
+            "kind": "dom-snapshot",
+            "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+            "mediaType": "text/html"
+          },
+          "artifacts": [
+            {
+              "id": "dom:before:artifact",
+              "kind": "dom-snapshot",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+              "mediaType": "text/html"
+            }
+          ],
+          "meta": {
+            "byteLength": 16635
+          }
+        },
+        {
+          "id": "focus:before:1788241304531",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "focus",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:44.531Z",
+          "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
+          "artifacts": [
+            {
+              "id": "focus:before:artifact",
+              "kind": "custom",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-before.json",
+              "mediaType": "application/json"
+            }
+          ],
+          "meta": {
+            "focusTarget": {
+              "tagName": "button",
+              "id": "delete-project",
+              "name": "Delete Project Alpha",
+              "type": "button",
+              "tabIndex": 0,
+              "disabled": false,
+              "focusOrderIndex": 9,
+              "focusableCount": 16
+            }
+          }
+        },
+        {
+          "id": "visual:before:1788241304567",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "visual",
+          "observerVersion": "0.1.0",
+          "phase": "before",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:44.567Z",
+          "summary": "Captured screenshot before state.",
+          "beforeStateRef": {
+            "id": "visual:before:artifact",
+            "kind": "screenshot",
+            "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+            "mediaType": "image/png"
+          },
+          "artifacts": [
+            {
+              "id": "visual:before:artifact",
+              "kind": "screenshot",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+              "mediaType": "image/png"
+            }
+          ],
+          "meta": {
+            "byteLength": 107428
+          }
+        },
+        {
+          "id": "dom:after:1788241305095",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "dom",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:45.095Z",
+          "summary": "Captured DOM after state with observable markup changes.",
+          "afterStateRef": {
+            "id": "dom:after:artifact",
+            "kind": "dom-snapshot",
+            "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+            "mediaType": "text/html"
+          },
+          "artifacts": [
+            {
+              "id": "dom:after:artifact",
+              "kind": "dom-snapshot",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+              "mediaType": "text/html"
+            }
+          ],
+          "changes": [
+            {
+              "path": "dom.html",
+              "summary": "DOM markup changed after the interaction.",
+              "before": {
+                "byteLength": 16635
+              },
+              "after": {
+                "byteLength": 16639
+              },
+              "impact": "major"
+            }
+          ],
+          "meta": {
+            "byteLength": 16639,
+            "changed": true,
+            "previousByteLength": 16635
+          }
+        },
+        {
+          "id": "focus:after:1788241305095",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "focus",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:45.095Z",
+          "summary": "Captured focus after state (button #delete-project \"Delete Project Alpha\").",
+          "artifacts": [
+            {
+              "id": "focus:after:artifact",
+              "kind": "custom",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-after.json",
+              "mediaType": "application/json"
+            }
+          ],
+          "meta": {
+            "focusTarget": {
+              "tagName": "button",
+              "id": "delete-project",
+              "name": "Delete Project Alpha",
+              "type": "button",
+              "tabIndex": 0,
+              "disabled": false,
+              "focusOrderIndex": 9,
+              "focusableCount": 18
+            }
+          }
+        },
+        {
+          "id": "visual:after:1788241305130",
+          "runId": "recorded-modal-focus-issue",
+          "checkpointId": "checkpoint:manual:1788241304527",
+          "interactionId": "interaction:click:1788241304527",
+          "observerId": "visual",
+          "observerVersion": "0.1.0",
+          "phase": "after",
+          "status": "ok",
+          "timestamp": "2026-09-01T05:41:45.130Z",
+          "summary": "Captured screenshot after state.",
+          "afterStateRef": {
+            "id": "visual:after:artifact",
+            "kind": "screenshot",
+            "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+            "mediaType": "image/png"
+          },
+          "artifacts": [
+            {
+              "id": "visual:after:artifact",
+              "kind": "screenshot",
+              "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+              "mediaType": "image/png"
+            }
+          ],
+          "meta": {
+            "byteLength": 98148
+          }
+        }
+      ],
+      "artifacts": [
+        {
+          "id": "dom:before:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+          "mediaType": "text/html"
+        },
+        {
+          "id": "focus:before:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-before.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "visual:before:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+          "mediaType": "image/png"
+        },
+        {
+          "id": "dom:after:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+          "mediaType": "text/html"
+        },
+        {
+          "id": "focus:after:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-after.json",
+          "mediaType": "application/json"
+        },
+        {
+          "id": "visual:after:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "correlation": {
+        "strategy": "observer-record-grouping",
+        "participatingObserverIds": [
+          "dom",
+          "focus",
+          "visual"
+        ]
+      }
+    }
+  ],
+  "records": [
+    {
+      "id": "dom:before:1788241304531",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:44.531Z",
+      "summary": "Captured DOM before state.",
+      "beforeStateRef": {
+        "id": "dom:before:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:before:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "meta": {
+        "byteLength": 16635
+      }
+    },
+    {
+      "id": "focus:before:1788241304531",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:44.531Z",
+      "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
+      "artifacts": [
+        {
+          "id": "focus:before:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-before.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "delete-project",
+          "name": "Delete Project Alpha",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 16
+        }
+      }
+    },
+    {
+      "id": "visual:before:1788241304567",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "before",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:44.567Z",
+      "summary": "Captured screenshot before state.",
+      "beforeStateRef": {
+        "id": "visual:before:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:before:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 107428
+      }
+    },
+    {
+      "id": "dom:after:1788241305095",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "dom",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:45.095Z",
+      "summary": "Captured DOM after state with observable markup changes.",
+      "afterStateRef": {
+        "id": "dom:after:artifact",
+        "kind": "dom-snapshot",
+        "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+        "mediaType": "text/html"
+      },
+      "artifacts": [
+        {
+          "id": "dom:after:artifact",
+          "kind": "dom-snapshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+          "mediaType": "text/html"
+        }
+      ],
+      "changes": [
+        {
+          "path": "dom.html",
+          "summary": "DOM markup changed after the interaction.",
+          "before": {
+            "byteLength": 16635
+          },
+          "after": {
+            "byteLength": 16639
+          },
+          "impact": "major"
+        }
+      ],
+      "meta": {
+        "byteLength": 16639,
+        "changed": true,
+        "previousByteLength": 16635
+      }
+    },
+    {
+      "id": "focus:after:1788241305095",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "focus",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:45.095Z",
+      "summary": "Captured focus after state (button #delete-project \"Delete Project Alpha\").",
+      "artifacts": [
+        {
+          "id": "focus:after:artifact",
+          "kind": "custom",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-after.json",
+          "mediaType": "application/json"
+        }
+      ],
+      "meta": {
+        "focusTarget": {
+          "tagName": "button",
+          "id": "delete-project",
+          "name": "Delete Project Alpha",
+          "type": "button",
+          "tabIndex": 0,
+          "disabled": false,
+          "focusOrderIndex": 9,
+          "focusableCount": 18
+        }
+      }
+    },
+    {
+      "id": "visual:after:1788241305130",
+      "runId": "recorded-modal-focus-issue",
+      "checkpointId": "checkpoint:manual:1788241304527",
+      "interactionId": "interaction:click:1788241304527",
+      "observerId": "visual",
+      "observerVersion": "0.1.0",
+      "phase": "after",
+      "status": "ok",
+      "timestamp": "2026-09-01T05:41:45.130Z",
+      "summary": "Captured screenshot after state.",
+      "afterStateRef": {
+        "id": "visual:after:artifact",
+        "kind": "screenshot",
+        "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+        "mediaType": "image/png"
+      },
+      "artifacts": [
+        {
+          "id": "visual:after:artifact",
+          "kind": "screenshot",
+          "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+          "mediaType": "image/png"
+        }
+      ],
+      "meta": {
+        "byteLength": 98148
+      }
+    }
+  ],
+  "judgments": [
+    {
+      "id": "focus-management:interaction:click:1788241304527",
+      "judgeId": "focus-management",
+      "judgeVersion": "0.1.0",
+      "scope": "interaction",
+      "verdict": "fail",
+      "summary": "Dialog opened, but focus remained outside it. Before: button #delete-project \"Delete Project Alpha\". After: button #delete-project \"Delete Project Alpha\".",
+      "severity": "high",
+      "confidence": 0.95,
+      "evidenceRecordIds": [
+        "focus:before:1788241304531",
+        "focus:after:1788241305095"
+      ],
+      "artifactIds": [
+        "focus:before:artifact",
+        "focus:after:artifact"
+      ],
+      "findings": [
+        {
+          "id": "focus-management:interaction:click:1788241304527:dialog-focus-not-moved",
+          "message": "The interaction opened a dialog but focus did not move inside it.",
+          "severity": "high",
+          "ruleId": "dialog-initial-focus",
+          "target": {
+            "role": "button",
+            "name": "Delete Project Alpha"
+          },
+          "evidenceRecordIds": [
+            "focus:before:1788241304531",
+            "focus:after:1788241305095"
+          ],
+          "artifactIds": [
+            "focus:before:artifact",
+            "focus:after:artifact"
+          ],
+          "suggestedFix": "When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action.",
+          "tags": [
+            "focus-management",
+            "dialog",
+            "interaction-state"
+          ]
+        }
+      ],
+      "suggestedFix": "When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action.",
+      "tags": [
+        "focus-management",
+        "dialog",
+        "interaction-state"
+      ]
+    },
+    {
+      "id": "change-response:interaction:click:1788241304527",
+      "judgeId": "change-response",
+      "judgeVersion": "0.1.0",
+      "scope": "interaction",
+      "verdict": "pass",
+      "summary": "Observed response signals after the click interaction (DOM changed).",
+      "severity": "info",
+      "confidence": 0.9,
+      "evidenceRecordIds": [
+        "dom:after:1788241305095"
+      ],
+      "artifactIds": [
+        "dom:after:artifact"
+      ]
+    },
+    {
+      "id": "release:interaction:click:1788241304527",
+      "judgeId": "release",
+      "judgeVersion": "0.1.0",
+      "scope": "run",
+      "verdict": "fail",
+      "summary": "Release gate failed because 1 blocking judgment met the current policy threshold.",
+      "severity": "high",
+      "confidence": 0.75,
+      "evidenceRecordIds": [
+        "focus:before:1788241304531",
+        "focus:after:1788241305095"
+      ],
+      "artifactIds": [
+        "focus:before:artifact",
+        "focus:after:artifact"
+      ],
+      "suggestedFix": "Resolve the blocking accessibility judgments or relax the release policy intentionally."
+    }
+  ],
+  "findings": [
+    {
+      "id": "focus-management:interaction:click:1788241304527:dialog-focus-not-moved",
+      "message": "The interaction opened a dialog but focus did not move inside it.",
+      "severity": "high",
+      "ruleId": "dialog-initial-focus",
+      "target": {
+        "role": "button",
+        "name": "Delete Project Alpha"
+      },
+      "evidenceRecordIds": [
+        "focus:before:1788241304531",
+        "focus:after:1788241305095"
+      ],
+      "artifactIds": [
+        "focus:before:artifact",
+        "focus:after:artifact"
+      ],
+      "suggestedFix": "When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action.",
+      "tags": [
+        "focus-management",
+        "dialog",
+        "interaction-state"
+      ]
+    }
+  ],
+  "artifacts": [
+    {
+      "id": "dom:before:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-before.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:before:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-before.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:before:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png",
+      "mediaType": "image/png"
+    },
+    {
+      "id": "dom:after:artifact",
+      "kind": "dom-snapshot",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/dom-after.html",
+      "mediaType": "text/html"
+    },
+    {
+      "id": "focus:after:artifact",
+      "kind": "custom",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/focus-after.json",
+      "mediaType": "application/json"
+    },
+    {
+      "id": "visual:after:artifact",
+      "kind": "screenshot",
+      "path": "./site/demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png",
+      "mediaType": "image/png"
+    }
+  ]
+}

@@ -1,10 +1,10 @@
 {
   "tagName": "button",
-  "id": "real-save",
-  "name": "Save changes",
+  "id": "delete-project",
+  "name": "Delete Project Alpha",
   "type": "button",
   "tabIndex": 0,
   "disabled": false,
   "focusOrderIndex": 9,
-  "focusableCount": 16
+  "focusableCount": 18
 }

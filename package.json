@@ -12,8 +12,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
-    "check": "tsc -b --pretty false packages/core packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "build": "tsc -b packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "check": "tsc -b --pretty false packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
     "demo:record": "npm run build && node scripts/record-public-demo.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -21,12 +21,13 @@
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "playwright:install": "playwright install chromium",
     "test": "npm run test:unit && npm run test:playwright",
-    "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
+    "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test packages/ai-fixes/dist/index.test.js packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
     "test:package": "npm run build && node scripts/check-packages.mjs",
-    "test:unit": "npm run build && node --test packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
+    "test:unit": "npm run build && node --test packages/ai-fixes/dist/index.test.js packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js",
     "test:playwright": "npm run build && playwright test"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",

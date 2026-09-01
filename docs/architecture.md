@@ -27,6 +27,10 @@ The current engine produces one evidence bundle per execution. A longer user jou
 
 Owns the normalized domain model, policy types, orchestration, evidence correlation, and plugin contracts. It remains independent of Playwright and concrete observer implementations.
 
+### `@aee/ai-fixes`
+
+Owns review-only contextual repair helpers and model-provider adapters. AI proposals remain separate from judgments: accepting a suggestion does not produce a passing result, and callers must verify the change with a new evidence run.
+
 ### `@aee/schemas`
 
 Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas.
@@ -41,7 +45,7 @@ Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, and
 
 ### `@aee/judges`
 
-Owns judge manifests and the built-in structure, keyboard, change-response, and release judges. Interaction, screen-reader, and visual judges currently emit `unknown` judgments as extension scaffolds.
+Owns judge manifests and the built-in structure, keyboard, focus-management, change-response, and release judges. Interaction, screen-reader, and visual judges currently emit `unknown` judgments as extension scaffolds.
 
 ### `@aee/reporter`
 
@@ -57,6 +61,7 @@ Owns fixture configuration loading, path resolution, schema validation, virtual-
 graph TD
   schemas["@aee/schemas"]
   core["@aee/core"]
+  aiFixes["@aee/ai-fixes"]
   playwright["@aee/playwright"]
   observers["@aee/observers"]
   judges["@aee/judges"]
@@ -64,6 +69,7 @@ graph TD
   cli["@aee/cli"]
 
   observers --> core
+  aiFixes --> core
   judges --> core
   reporter --> core
   reporter --> schemas
@@ -95,6 +101,6 @@ graph TD
 - Stabilization is a configured timeout, not a browser-state condition.
 - Observer capture runs concurrently with `Promise.all` within each phase.
 - Setup, capture, or teardown failures are not yet governed by the declared observer timeout and continuation policy.
-- Fix providers and automated remediation plans are not implemented.
+- The AI fix package proposes contextual accessible names only. Core fix-provider orchestration and automatic remediation are not implemented.
 
 See [Evidence privacy](privacy.md) for the artifact trust boundary and [Observer lifecycle](observer-lifecycle.md) for phase-level behavior.

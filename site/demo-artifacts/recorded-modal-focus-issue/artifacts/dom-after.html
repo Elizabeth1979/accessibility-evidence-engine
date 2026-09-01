@@ -55,15 +55,15 @@
             </div>
             <div>
               <dt>Judgments</dt>
-              <dd>2</dd>
+              <dd>3</dd>
             </div>
             <div>
               <dt>Unresolved</dt>
               <dd>0</dd>
             </div>
           </dl>
-          <div class="trace-line"><span>interaction</span><strong>Enter on “Save”</strong></div>
-          <div class="trace-line"><span>evidence</span><strong>DOM + focus changed</strong></div>
+          <div class="trace-line"><span>interaction</span><strong>Open delete dialog</strong></div>
+          <div class="trace-line"><span>evidence</span><strong>Focus moved inside</strong></div>
         </div>
       </section>
 
@@ -93,59 +93,100 @@
             <h2 id="recorded-title">Watch the evidence engine in action</h2>
           </div>
           <p>
-            See a keyboard bug fail, apply the missing handler, and rerun the same interaction. Both
-            reports and every linked screenshot come from real AEE captures.
+            See axe catch a missing icon-button name, an AI provider propose a contextual label, and
+            AEE expose the focus bug that remains when the confirmation dialog opens.
           </p>
         </div>
 
         <div class="recording-progress" id="recording-progress" aria-hidden="true">
           <p><span></span><strong id="recording-message">Preparing the evidence run</strong></p>
           <ol>
-            <li data-recording-step="reproduce" data-state="pending">Reproduce issue</li>
-            <li data-recording-step="detected" data-state="pending">AEE detects it</li>
-            <li data-recording-step="fix" data-state="pending">Apply fix</li>
-            <li data-recording-step="rerun" data-state="pending">Rerun passes</li>
+            <li data-recording-step="scan" data-state="pending">axe scan</li>
+            <li data-recording-step="label" data-state="pending">AI label</li>
+            <li data-recording-step="interact" data-state="pending">Open dialog</li>
+            <li data-recording-step="focus-fix" data-state="pending">Fix focus</li>
+            <li data-recording-step="verify" data-state="pending">Verify</li>
           </ol>
         </div>
 
         <div class="recorded-layout">
           <div class="video-frame">
-            <video controls="" preload="metadata" poster="demo-artifacts/recorded-keyboard-save-issue/artifacts/visual-before.png?v=3" aria-label="Recorded Playwright demonstration of AEE finding and verifying a keyboard interaction fix">
-              <source src="demo-artifacts/playwright-aee-demo.mp4?v=3" type="video/mp4">
-              <source src="demo-artifacts/playwright-aee-demo.webm?v=3" type="video/webm">
+            <video controls="" preload="metadata" poster="demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png?v=4" aria-label="Recorded Playwright demonstration comparing axe scanning, AI repair, and AEE focus evidence">
+              <source src="demo-artifacts/playwright-aee-demo.mp4?v=4" type="video/mp4">
+              <source src="demo-artifacts/playwright-aee-demo.webm?v=4" type="video/webm">
               <p>
                 Your browser cannot play the recording. Read the transcript or download the
                 <a href="demo-artifacts/playwright-aee-demo.webm">WebM video</a>.
               </p>
             </video>
             <p class="video-caption">
-              <strong>Issue → fix → verified rerun.</strong> Press play to watch the complete story.
+              <strong>Scan → contextual repair → behavioral proof.</strong> Press play to watch the
+              complete story.
             </p>
           </div>
 
           <div class="real-interaction" aria-labelledby="interaction-title">
             <p class="card-label">Interaction under test</p>
-            <h3 id="interaction-title">Enter on “Save changes”</h3>
-            <p>
-              The broken version leaves the status at Idle. The fixed version changes it to Saved.
-            </p>
-            <button id="real-save" type="button">Save changes</button>
+            <h3 id="interaction-title">Delete action on “Project Alpha”</h3>
+            <p>The icon opens a modal confirmation. Focus must move into that new context.</p>
+            <div class="project-row">
+              <div>
+                <strong>Project Alpha</strong>
+                <span>Production workspace</span>
+              </div>
+              <button id="delete-project" type="button" aria-label="Delete Project Alpha">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"></path>
+                </svg>
+              </button>
+            </div>
             <p class="live-status">
-              Status: <strong id="real-status" aria-live="polite">Idle</strong>
+              Keyboard focus: <strong id="real-focus" aria-live="polite">Delete button behind dialog</strong>
             </p>
-            <pre class="fix-code"><code>saveButton.addEventListener("click", save);</code></pre>
+            <pre class="label-code"><code>aria-label="Delete Project Alpha"</code></pre>
+            <pre class="fix-code"><code>cancelButton.focus();</code></pre>
+            <div id="delete-dialog" class="demo-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+              <h4 id="delete-dialog-title">Delete Project Alpha?</h4>
+              <p>This action cannot be undone.</p>
+              <div>
+                <button id="cancel-delete" type="button">Cancel</button>
+                <button id="confirm-delete" class="danger-button" type="button">
+                  Delete project
+                </button>
+              </div>
+            </div>
           </div>
 
-          <div class="issue-fix-summary" aria-label="Issue and fix comparison">
+          <div class="issue-fix-summary" aria-label="Scanner, AI repair, and behavioral evidence comparison">
             <article class="issue-card">
-              <p class="card-label">Before fix</p>
-              <h3><span class="verdict fail">Fail</span> Enter does nothing</h3>
-              <p>The button receives focus, but the status stays “Idle”. AEE finds no response.</p>
+              <p class="card-label">Static scan · axe</p>
+              <h3><span class="verdict fail">Fail</span> Button has no name</h3>
+              <p>
+                axe finds the missing accessible name, but cannot infer the product-specific
+                wording.
+              </p>
+            </article>
+            <article class="ai-card">
+              <p class="card-label">Contextual repair · AI</p>
+              <h3><span class="verdict review">Review</span> “Delete Project Alpha”</h3>
+              <p>
+                The proposal is grounded in the trash icon, project heading, and confirmation copy.
+              </p>
+            </article>
+            <article class="issue-card">
+              <p class="card-label">Interaction evidence · AEE</p>
+              <h3><span class="verdict fail">Fail</span> Focus stays behind</h3>
+              <p>
+                The named button opens a valid dialog, but focus remains outside it until repaired.
+              </p>
             </article>
             <article class="fix-card">
-              <p class="card-label">After fix</p>
-              <h3><span class="verdict pass">Pass</span> Response observed</h3>
-              <p>A click handler updates the status to “Saved”. The same AEE run now passes.</p>
+              <p class="card-label">Verified rerun · AEE</p>
+              <h3><span class="verdict pass">Pass</span> Focus enters dialog</h3>
+              <p>
+                The same interaction moves focus to Cancel and the evidence-backed release gate
+                passes.
+              </p>
             </article>
           </div>
         </div>
@@ -155,7 +196,7 @@
           <div>
             <h3 id="recording-result-title">Waiting for evidence</h3>
             <p id="recording-result-summary">
-              Playwright is exercising the focused Save changes button with Enter.
+              Playwright is preparing the icon-button and dialog workflow.
             </p>
           </div>
         </div>
@@ -163,35 +204,42 @@
         <div class="recorded-output" id="recorded-output">
           <div>
             <p class="card-label">Real generated evidence</p>
-            <h3>Inspect the failure and the fixed rerun</h3>
-            <p>The reports expose the evidence and judgments behind each result.</p>
+            <h3>Inspect every layer of the comparison</h3>
+            <p>The axe results, reviewed AI proposal, and AEE reports are all published.</p>
           </div>
           <ul class="artifact-links" aria-label="Generated demonstration artifacts">
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.md">Failing Markdown report</a>
+              <a href="demo-artifacts/axe-unnamed-icon.json">axe unnamed-button result</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-issue/aee-report.json">Failing JSON report</a>
+              <a href="demo-artifacts/ai-label-suggestion.json">Reviewed AI label proposal</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.md">Fixed Markdown report</a>
+              <a href="demo-artifacts/recorded-modal-focus-issue/aee-report.md">AEE focus-failure report</a>
             </li>
             <li>
-              <a href="demo-artifacts/recorded-keyboard-save-fixed/aee-report.json">Fixed JSON report</a>
+              <a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.md">AEE verified-fix report</a>
             </li>
           </ul>
         </div>
 
+        <p class="comparison-note">
+          Fair comparison: axe can be rerun after UI state changes, and this demo does that. After
+          the label is applied, the selected <code>button-name</code> and
+          <code>aria-dialog-name</code> rules pass; AEE separately evaluates the explicit
+          <code>inside-dialog</code> focus expectation.
+        </p>
+
         <details class="transcript">
           <summary>Read the recording transcript</summary>
           <ol>
-            <li>Playwright focuses “Save changes” and presses Enter.</li>
-            <li>
-              The status remains “Idle”, so AEE reports a failure and blocks the release gate.
-            </li>
-            <li>The missing click handler is added.</li>
-            <li>Playwright focuses the same button and presses Enter again.</li>
-            <li>The status changes to “Saved”, and the fixed AEE rerun passes.</li>
+            <li>axe finds that the trash icon button has no accessible name.</li>
+            <li>An AI provider uses nearby UI context to propose “Delete Project Alpha”.</li>
+            <li>The reviewed label is applied and axe’s button-name rule passes.</li>
+            <li>Playwright activates the button. The dialog opens, but focus remains behind it.</li>
+            <li>AEE traces that focus-management failure to before-and-after focus evidence.</li>
+            <li>The implementation moves focus to Cancel when the modal opens.</li>
+            <li>The identical interaction reruns and AEE’s release gate passes.</li>
           </ol>
         </details>
       </section>
@@ -210,9 +258,11 @@
 
         <div class="scenario-picker" role="group" aria-label="Choose an example interaction">
           <button type="button" data-scenario="pass" aria-pressed="true">
-            Observable response
+            Correct focus transfer
           </button>
-          <button type="button" data-scenario="fail" aria-pressed="false">Missing response</button>
+          <button type="button" data-scenario="fail" aria-pressed="false">
+            Focus remains behind
+          </button>
         </div>
 
         <div class="evidence-grid">
@@ -222,15 +272,15 @@
             <dl>
               <div>
                 <dt>Focused element</dt>
-                <dd id="before-focus">button#save</dd>
+                <dd id="before-focus">button#delete-project</dd>
               </div>
               <div>
-                <dt>Status text</dt>
-                <dd id="before-status">Idle</dd>
+                <dt>Dialog state</dt>
+                <dd id="before-status">Closed</dd>
               </div>
               <div>
                 <dt>Interaction</dt>
-                <dd>Enter</dd>
+                <dd>Click</dd>
               </div>
             </dl>
           </article>
@@ -241,11 +291,11 @@
             <dl>
               <div>
                 <dt>Focused element</dt>
-                <dd id="after-focus">button#save</dd>
+                <dd id="after-focus">button#cancel-delete</dd>
               </div>
               <div>
-                <dt>Status text</dt>
-                <dd id="after-status">Saved</dd>
+                <dt>Dialog state</dt>
+                <dd id="after-status">Open</dd>
               </div>
               <div>
                 <dt>DOM changed</dt>
@@ -257,13 +307,13 @@
           <article class="result-card" aria-labelledby="result-title">
             <p class="card-label">AEE judgment</p>
             <div class="result-heading">
-              <h3 id="result-title">Change-response</h3>
+              <h3 id="result-title">Focus management</h3>
               <span id="verdict" class="verdict pass" aria-live="polite">Pass</span>
             </div>
-            <p id="summary">Observed a DOM response after keyboard activation.</p>
+            <p id="summary">Focus moved from the trigger into the opened dialog.</p>
             <p class="evidence-link">
               <span aria-hidden="true">↳</span> Evidence:
-              <code id="evidence-ids">dom:before, dom:after</code>
+              <code id="evidence-ids">focus:before, focus:after</code>
             </p>
           </article>
         </div>
@@ -271,12 +321,12 @@
         <details class="json-details">
           <summary>Inspect the normalized judgment</summary>
           <pre tabindex="0"><code id="json-output">{
-  "judgeId": "change-response",
+  "judgeId": "focus-management",
   "verdict": "pass",
-  "summary": "Observed a DOM response after keyboard activation.",
+  "summary": "Focus moved from the trigger into the opened dialog.",
   "evidenceRecordIds": [
-    "dom:before",
-    "dom:after"
+    "focus:before",
+    "focus:after"
   ]
 }</code></pre>
         </details>

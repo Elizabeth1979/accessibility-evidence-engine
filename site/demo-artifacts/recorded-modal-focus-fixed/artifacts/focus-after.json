@@ -1,0 +1,17 @@
+{
+  "tagName": "button",
+  "id": "cancel-delete",
+  "name": "Cancel",
+  "type": "button",
+  "tabIndex": 0,
+  "disabled": false,
+  "dialogContext": {
+    "tagName": "div",
+    "id": "delete-dialog",
+    "role": "dialog",
+    "name": "Delete Project Alpha?",
+    "ariaModal": true
+  },
+  "focusOrderIndex": 10,
+  "focusableCount": 18
+}

@@ -1,24 +1,24 @@
 const scenarios = {
   pass: {
-    afterFocus: "button#save",
-    afterStatus: "Saved",
+    afterFocus: "button#cancel-delete",
+    afterStatus: "Open",
     domChanged: "Yes",
     verdict: "Pass",
-    summary: "Observed a DOM response after keyboard activation.",
-    evidenceIds: ["dom:before", "dom:after"],
+    summary: "Focus moved from the trigger into the opened dialog.",
+    evidenceIds: ["focus:before", "focus:after"],
     finding: null
   },
   fail: {
-    afterFocus: "button#save",
-    afterStatus: "Idle",
-    domChanged: "No",
+    afterFocus: "button#delete-project",
+    afterStatus: "Open",
+    domChanged: "Yes",
     verdict: "Fail",
-    summary: "No observable response followed the Enter interaction on button “Save”.",
+    summary: "The dialog opened, but focus remained on the trigger behind it.",
     evidenceIds: ["dom:before", "dom:after", "focus:before", "focus:after"],
     finding: {
       severity: "high",
-      ruleId: "interaction-response-observable",
-      suggestedFix: "Ensure keyboard activation produces a visible, focus, or network response."
+      ruleId: "dialog-initial-focus",
+      suggestedFix: "Move focus to an appropriate element inside the opened dialog."
     }
   }
 };
@@ -37,8 +37,11 @@ const verdict = document.querySelector("#verdict");
 const summary = document.querySelector("#summary");
 const evidenceIds = document.querySelector("#evidence-ids");
 const jsonOutput = document.querySelector("#json-output");
-const realSave = document.querySelector("#real-save");
-const realStatus = document.querySelector("#real-status");
+const deleteProject = document.querySelector("#delete-project");
+const deleteDialog = document.querySelector("#delete-dialog");
+const cancelDelete = document.querySelector("#cancel-delete");
+const confirmDelete = document.querySelector("#confirm-delete");
+const realFocus = document.querySelector("#real-focus");
 
 function selectScenario(name) {
   const scenario = scenarios[name];
@@ -56,7 +59,7 @@ function selectScenario(name) {
   evidenceIds.textContent = scenario.evidenceIds.join(", ");
   jsonOutput.textContent = JSON.stringify(
     {
-      judgeId: "change-response",
+      judgeId: "focus-management",
       verdict: scenario.verdict.toLowerCase(),
       summary: scenario.summary,
       evidenceRecordIds: scenario.evidenceIds,
@@ -73,9 +76,38 @@ for (const button of buttons) {
 
 selectScenario("pass");
 
-if (pageParameters.get("implementation") !== "broken") {
-  realSave.addEventListener("click", () => {
-    realStatus.textContent = "Saved";
-    realSave.classList.add("saved");
-  });
+if (pageParameters.get("label") === "missing") {
+  deleteProject.removeAttribute("aria-label");
 }
+
+function updateFocusStatus() {
+  if (document.activeElement === cancelDelete) {
+    realFocus.textContent = "Cancel inside dialog";
+  } else if (document.activeElement === confirmDelete) {
+    realFocus.textContent = "Delete project inside dialog";
+  } else if (document.activeElement === deleteProject) {
+    realFocus.textContent = deleteDialog.hidden ? "Delete button" : "Delete button behind dialog";
+  } else {
+    realFocus.textContent = document.activeElement?.tagName.toLowerCase() ?? "None";
+  }
+}
+
+function closeDeleteDialog() {
+  deleteDialog.hidden = true;
+  deleteProject.focus();
+  updateFocusStatus();
+}
+
+deleteProject.addEventListener("click", () => {
+  deleteDialog.hidden = false;
+
+  if (pageParameters.get("focus") !== "broken") {
+    cancelDelete.focus();
+  }
+
+  updateFocusStatus();
+});
+
+cancelDelete.addEventListener("click", closeDeleteDialog);
+confirmDelete.addEventListener("click", closeDeleteDialog);
+document.addEventListener("focusin", updateFocusStatus);

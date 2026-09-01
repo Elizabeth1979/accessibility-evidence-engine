@@ -1,7 +1,7 @@
 {
-  "id": "recorded-keyboard-save-fixed",
+  "id": "recorded-modal-focus-fixed",
   "version": "0.1.0",
-  "startedAt": "2026-08-31T18:59:39.170Z",
+  "startedAt": "2026-09-01T05:41:45.237Z",
   "status": "completed",
   "environment": {
     "mode": "playwright-page"
@@ -23,29 +23,31 @@
   },
   "checkpoints": [
     {
-      "id": "checkpoint:manual:1788202779170",
-      "runId": "recorded-keyboard-save-fixed",
-      "name": "public-demo-fixed",
-      "url": "http://127.0.0.1:4173/?recording=1&implementation=fixed",
-      "timestamp": "2026-08-31T18:59:39.170Z",
+      "id": "checkpoint:manual:1788241305237",
+      "runId": "recorded-modal-focus-fixed",
+      "name": "public-demo-modal-focus-fixed",
+      "url": "./?recording=1&label=fixed&focus=fixed",
+      "timestamp": "2026-09-01T05:41:45.237Z",
       "trigger": "manual"
     }
   ],
   "interactions": [
     {
-      "id": "interaction:enter:1788202779170",
-      "runId": "recorded-keyboard-save-fixed",
-      "timestamp": "2026-08-31T18:59:39.170Z",
+      "id": "interaction:click:1788241305237",
+      "runId": "recorded-modal-focus-fixed",
+      "timestamp": "2026-09-01T05:41:45.237Z",
       "actor": "test",
-      "kind": "enter",
+      "kind": "click",
       "target": {
         "role": "button",
-        "name": "Save changes"
+        "name": "Delete Project Alpha"
       },
-      "input": "Enter"
+      "meta": {
+        "focusExpectation": "inside-dialog"
+      }
     }
   ],
-  "finishedAt": "2026-08-31T18:59:39.741Z",
+  "finishedAt": "2026-09-01T05:41:45.809Z",
   "results": {
     "pass": 3,
     "fail": 0,

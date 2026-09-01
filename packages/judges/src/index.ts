@@ -24,6 +24,13 @@ export const defaultJudgeManifests = [
     capabilities: ["focus-order", "tab-flow", "keyboard-activation"]
   },
   {
+    id: "focus-management",
+    displayName: "Focus Management Judge",
+    version: "0.1.0",
+    kind: "judge" as const,
+    capabilities: ["dialog-focus-transfer"]
+  },
+  {
     id: "interaction",
     displayName: "Interaction Judge",
     version: "0.1.0",
@@ -92,6 +99,10 @@ export function createBuiltinJudge(judgeId: string): JudgePlugin {
 
   if (judgeId === "keyboard") {
     return createKeyboardJudge();
+  }
+
+  if (judgeId === "focus-management") {
+    return createFocusManagementJudge();
   }
 
   if (judgeId === "change-response") {
@@ -180,6 +191,135 @@ function createKeyboardJudge(): JudgePlugin {
           "info",
           0.5
         )
+      ];
+    }
+  };
+}
+
+function createFocusManagementJudge(): JudgePlugin {
+  const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "focus-management");
+
+  if (!manifest) {
+    throw new Error("Missing focus-management judge manifest.");
+  }
+
+  return {
+    manifest,
+    async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
+      const expectation = getStringMetaField(bundle.interaction.meta, "focusExpectation");
+
+      if (expectation !== "inside-dialog") {
+        return [
+          {
+            id: `focus-management:${bundle.interaction.id}`,
+            judgeId: "focus-management",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary:
+              'Focus-management judge currently requires interaction.meta.focusExpectation to be "inside-dialog".',
+            severity: "info",
+            confidence: 0.5,
+            evidenceRecordIds: bundle.records.map((record) => record.id)
+          }
+        ];
+      }
+
+      const beforeRecord = findFocusRecord(bundle.records, "before");
+      const afterRecord = findFocusRecord(bundle.records, "after");
+
+      if (!beforeRecord || !afterRecord) {
+        return [
+          {
+            id: `focus-management:${bundle.interaction.id}`,
+            judgeId: "focus-management",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary:
+              "Focus-management judge requires focus observer evidence before and after the interaction.",
+            severity: "medium",
+            confidence: 0.75,
+            evidenceRecordIds: bundle.records.map((record) => record.id)
+          }
+        ];
+      }
+
+      const beforeTarget = getFocusTarget(beforeRecord);
+      const afterTarget = getFocusTarget(afterRecord);
+      const beforeDialog = isRecord(beforeTarget) ? beforeTarget.dialogContext : undefined;
+      const afterDialog = isRecord(afterTarget) ? afterTarget.dialogContext : undefined;
+      const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
+      const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
+
+      if (isRecord(beforeDialog)) {
+        return [
+          {
+            id: `focus-management:${bundle.interaction.id}`,
+            judgeId: "focus-management",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary:
+              "Focus was already inside a dialog before the interaction, so an initial dialog-focus transfer could not be evaluated.",
+            severity: "medium",
+            confidence: 0.85,
+            evidenceRecordIds,
+            artifactIds,
+            tags: ["focus-management", "dialog", "interaction-state"]
+          }
+        ];
+      }
+
+      if (!isRecord(afterDialog)) {
+        const suggestedFix =
+          "When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action.";
+        const finding: Finding = {
+          id: `focus-management:${bundle.interaction.id}:dialog-focus-not-moved`,
+          message: "The interaction opened a dialog but focus did not move inside it.",
+          severity: "high",
+          ruleId: "dialog-initial-focus",
+          target: bundle.interaction.target,
+          evidenceRecordIds,
+          artifactIds,
+          suggestedFix,
+          tags: ["focus-management", "dialog", "interaction-state"]
+        };
+
+        return [
+          {
+            id: `focus-management:${bundle.interaction.id}`,
+            judgeId: "focus-management",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `Dialog opened, but focus remained outside it. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+            severity: "high",
+            confidence: 0.95,
+            evidenceRecordIds,
+            artifactIds,
+            findings: [finding],
+            suggestedFix,
+            tags: ["focus-management", "dialog", "interaction-state"]
+          }
+        ];
+      }
+
+      const dialogName = getStringField(afterDialog, "name");
+      return [
+        {
+          id: `focus-management:${bundle.interaction.id}`,
+          judgeId: "focus-management",
+          judgeVersion: "0.1.0",
+          scope: "interaction",
+          verdict: "pass",
+          summary: `Focus moved from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)} inside the opened dialog${dialogName ? ` "${dialogName}"` : ""}.`,
+          severity: "info",
+          confidence: 0.95,
+          evidenceRecordIds,
+          artifactIds,
+          tags: ["focus-management", "dialog", "interaction-state"]
+        }
       ];
     }
   };

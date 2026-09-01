@@ -167,6 +167,32 @@ await runAeeOnPage({
 });
 ```
 
+## Modal focus-management example
+
+The focus-management judge evaluates an explicit behavioral expectation. For a modal-opening interaction, set `interaction.meta.focusExpectation` to `inside-dialog`; the focus observer records whether the active element moved into an element with `dialog` or `alertdialog` semantics.
+
+```ts
+await page.getByRole("button", { name: "Delete Project Alpha" }).focus();
+
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  observers: ["dom", "focus"],
+  judges: ["focus-management", "change-response", "release"],
+  interaction: {
+    kind: "click",
+    actor: "test",
+    target: { role: "button", name: "Delete Project Alpha" },
+    meta: { focusExpectation: "inside-dialog" }
+  },
+  async performInteraction({ page }) {
+    await page.getByRole("button", { name: "Delete Project Alpha" }).click();
+  }
+});
+```
+
+This expectation is intentionally explicit. AEE does not infer that every DOM change containing dialog markup is modal or that every interaction should transfer focus.
+
 ## Screenshot example
 
 The visual observer can capture PNG artifacts around an interaction.
@@ -248,6 +274,8 @@ await runAeeOnPage({
 - The DOM observer relies on `page.content()`.
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
 - The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
+- Focus snapshots include the containing dialog context when the active element is inside a native or ARIA dialog.
+- The focus-management judge currently supports the explicit `inside-dialog` expectation for modal-opening interactions.
 - The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.

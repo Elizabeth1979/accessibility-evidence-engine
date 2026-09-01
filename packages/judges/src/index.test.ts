@@ -60,6 +60,98 @@ function createJudgment(overrides: Partial<Judgment>): Judgment {
   };
 }
 
+test("focus-management judge fails when a dialog opens but focus stays on its trigger", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: { tagName: "button", id: "delete-project", name: "Delete project" }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: { tagName: "button", id: "delete-project", name: "Delete project" }
+        }
+      }
+    ],
+    {
+      kind: "click",
+      meta: { focusExpectation: "inside-dialog" },
+      target: { role: "button", name: "Delete project" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.equal(judgment?.findings?.[0]?.ruleId, "dialog-initial-focus");
+  assert.match(judgment?.summary ?? "", /focus remained outside/i);
+});
+
+test("focus-management judge passes when focus moves inside the opened dialog", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: {
+          focusTarget: { tagName: "button", id: "delete-project", name: "Delete project" }
+        }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            tagName: "button",
+            id: "cancel-delete",
+            name: "Cancel",
+            dialogContext: {
+              tagName: "div",
+              id: "delete-dialog",
+              role: "dialog",
+              name: "Delete project?",
+              ariaModal: true
+            }
+          }
+        }
+      }
+    ],
+    {
+      kind: "click",
+      meta: { focusExpectation: "inside-dialog" },
+      target: { role: "button", name: "Delete project" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /inside the opened dialog/i);
+});
+
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
   const releaseJudge = createDefaultJudgePlugins(["release"])[0];
   const bundle = createBundle([

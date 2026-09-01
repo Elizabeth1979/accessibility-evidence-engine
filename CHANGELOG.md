@@ -6,7 +6,9 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
-- A reproducible failure-to-fix Playwright recording on the public site with paired failing and passing AEE reports, screenshots, and a text transcript.
+- A reproducible axe → AI label proposal → AEE focus-management recording with published scanner output, paired AEE reports, screenshots, and a transcript.
+- A focus-management judge that verifies explicit focus transfer into an opened dialog.
+- `@aee/ai-fixes`, with an injectable contextual-label provider and an optional OpenAI Responses adapter using strict structured output.
 
 ## [0.1.0] - 2026-08-30
 

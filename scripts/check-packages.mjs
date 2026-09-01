@@ -6,6 +6,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const expectedPackages = [
+  "@aee/ai-fixes",
   "@aee/cli",
   "@aee/core",
   "@aee/judges",

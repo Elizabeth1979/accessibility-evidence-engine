@@ -1,0 +1,46 @@
+{
+  "name": "@aee/ai-fixes",
+  "version": "0.1.0",
+  "description": "Review-only AI fix proposals grounded in Accessibility Evidence Engine context.",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/index.js",
+    "dist/index.js.map",
+    "dist/index.d.ts"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elizabeth1979/accessibility-evidence-engine.git",
+    "directory": "packages/ai-fixes"
+  },
+  "homepage": "https://github.com/Elizabeth1979/accessibility-evidence-engine#readme",
+  "bugs": {
+    "url": "https://github.com/Elizabeth1979/accessibility-evidence-engine/issues"
+  },
+  "keywords": [
+    "accessibility",
+    "ai",
+    "fixes",
+    "accessible-name"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@aee/core": "0.1.0"
+  }
+}

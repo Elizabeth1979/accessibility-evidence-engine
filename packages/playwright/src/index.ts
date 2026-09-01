@@ -494,7 +494,7 @@ async function createObserverPage(
                   };
                 }
 
-                current = current.parentElement;
+                current = isElementLike(current.parentElement) ? current.parentElement : undefined;
               }
 
               return {
@@ -516,6 +516,61 @@ async function createObserverPage(
 
               if (value === "false") {
                 return false;
+              }
+
+              return undefined;
+            };
+            const getDialogContext = (
+              element:
+                | {
+                    tagName?: unknown;
+                    id?: unknown;
+                    textContent?: unknown;
+                    parentElement?: unknown;
+                    getAttribute?: (name: string) => string | null;
+                  }
+                | undefined
+            ) => {
+              let current = element;
+
+              while (isElementLike(current)) {
+                const currentRole = current.getAttribute?.("role");
+                const currentTagName =
+                  typeof current.tagName === "string" ? current.tagName.toLowerCase() : undefined;
+
+                if (
+                  currentTagName === "dialog" ||
+                  currentRole === "dialog" ||
+                  currentRole === "alertdialog"
+                ) {
+                  const labelledById = current.getAttribute?.("aria-labelledby");
+                  const labelledBy = labelledById
+                    ? documentRef?.getElementById?.(labelledById)
+                    : undefined;
+                  const labelledByText =
+                    isElementLike(labelledBy) && typeof labelledBy.textContent === "string"
+                      ? labelledBy.textContent.trim()
+                      : undefined;
+                  const ownText =
+                    typeof current.textContent === "string"
+                      ? current.textContent.trim().slice(0, 120)
+                      : undefined;
+
+                  return {
+                    tagName: currentTagName,
+                    id:
+                      typeof current.id === "string" && current.id.length > 0
+                        ? current.id
+                        : undefined,
+                    role: currentRole ?? (currentTagName === "dialog" ? "dialog" : undefined),
+                    name:
+                      current.getAttribute?.("aria-label") ??
+                      (labelledByText && labelledByText.length > 0 ? labelledByText : ownText),
+                    ariaModal: getBooleanAttribute(current, "aria-modal")
+                  };
+                }
+
+                current = isElementLike(current.parentElement) ? current.parentElement : undefined;
               }
 
               return undefined;
@@ -574,6 +629,7 @@ async function createObserverPage(
                 compositeRole: compositeContext.compositeRole,
                 compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
                 compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
+                dialogContext: getDialogContext(element),
                 focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
                 focusableCount: focusableElements.length
               };

@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1.0",
   "run": {
-    "id": "recorded-keyboard-save-fixed",
+    "id": "recorded-modal-focus-fixed",
     "version": "0.1.0",
-    "startedAt": "2026-08-31T18:59:39.170Z",
+    "startedAt": "2026-09-01T05:41:45.237Z",
     "status": "completed",
     "environment": {
       "mode": "playwright-page"
@@ -25,29 +25,31 @@
     },
     "checkpoints": [
       {
-        "id": "checkpoint:manual:1788202779170",
-        "runId": "recorded-keyboard-save-fixed",
-        "name": "public-demo-fixed",
-        "url": "http://127.0.0.1:4173/?recording=1&implementation=fixed",
-        "timestamp": "2026-08-31T18:59:39.170Z",
+        "id": "checkpoint:manual:1788241305237",
+        "runId": "recorded-modal-focus-fixed",
+        "name": "public-demo-modal-focus-fixed",
+        "url": "./?recording=1&label=fixed&focus=fixed",
+        "timestamp": "2026-09-01T05:41:45.237Z",
         "trigger": "manual"
       }
     ],
     "interactions": [
       {
-        "id": "interaction:enter:1788202779170",
-        "runId": "recorded-keyboard-save-fixed",
-        "timestamp": "2026-08-31T18:59:39.170Z",
+        "id": "interaction:click:1788241305237",
+        "runId": "recorded-modal-focus-fixed",
+        "timestamp": "2026-09-01T05:41:45.237Z",
         "actor": "test",
-        "kind": "enter",
+        "kind": "click",
         "target": {
           "role": "button",
-          "name": "Save changes"
+          "name": "Delete Project Alpha"
         },
-        "input": "Enter"
+        "meta": {
+          "focusExpectation": "inside-dialog"
+        }
       }
     ],
-    "finishedAt": "2026-08-31T18:59:39.741Z",
+    "finishedAt": "2026-09-01T05:41:45.809Z",
     "results": {
       "pass": 3,
       "fail": 0,
@@ -56,81 +58,83 @@
   },
   "bundles": [
     {
-      "runId": "recorded-keyboard-save-fixed",
+      "runId": "recorded-modal-focus-fixed",
       "interaction": {
-        "id": "interaction:enter:1788202779170",
-        "runId": "recorded-keyboard-save-fixed",
-        "timestamp": "2026-08-31T18:59:39.170Z",
+        "id": "interaction:click:1788241305237",
+        "runId": "recorded-modal-focus-fixed",
+        "timestamp": "2026-09-01T05:41:45.237Z",
         "actor": "test",
-        "kind": "enter",
+        "kind": "click",
         "target": {
           "role": "button",
-          "name": "Save changes"
+          "name": "Delete Project Alpha"
         },
-        "input": "Enter"
+        "meta": {
+          "focusExpectation": "inside-dialog"
+        }
       },
       "checkpoint": {
-        "id": "checkpoint:manual:1788202779170",
-        "runId": "recorded-keyboard-save-fixed",
-        "name": "public-demo-fixed",
-        "url": "http://127.0.0.1:4173/?recording=1&implementation=fixed",
-        "timestamp": "2026-08-31T18:59:39.170Z",
+        "id": "checkpoint:manual:1788241305237",
+        "runId": "recorded-modal-focus-fixed",
+        "name": "public-demo-modal-focus-fixed",
+        "url": "./?recording=1&label=fixed&focus=fixed",
+        "timestamp": "2026-09-01T05:41:45.237Z",
         "trigger": "manual"
       },
       "records": [
         {
-          "id": "dom:before:1788202779171",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "dom:before:1788241305239",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.171Z",
+          "timestamp": "2026-09-01T05:41:45.239Z",
           "summary": "Captured DOM before state.",
           "beforeStateRef": {
             "id": "dom:before:artifact",
             "kind": "dom-snapshot",
-            "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+            "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
             "mediaType": "text/html"
           },
           "artifacts": [
             {
               "id": "dom:before:artifact",
               "kind": "dom-snapshot",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
               "mediaType": "text/html"
             }
           ],
           "meta": {
-            "byteLength": 14053
+            "byteLength": 16635
           }
         },
         {
-          "id": "focus:before:1788202779172",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "focus:before:1788241305239",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.172Z",
-          "summary": "Captured focus before state (button #real-save \"Save changes\").",
+          "timestamp": "2026-09-01T05:41:45.239Z",
+          "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
           "artifacts": [
             {
               "id": "focus:before:artifact",
               "kind": "custom",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-before.json",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-before.json",
               "mediaType": "application/json"
             }
           ],
           "meta": {
             "focusTarget": {
               "tagName": "button",
-              "id": "real-save",
-              "name": "Save changes",
+              "id": "delete-project",
+              "name": "Delete Project Alpha",
               "type": "button",
               "tabIndex": 0,
               "disabled": false,
@@ -140,56 +144,56 @@
           }
         },
         {
-          "id": "visual:before:1788202779197",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "visual:before:1788241305266",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.197Z",
+          "timestamp": "2026-09-01T05:41:45.266Z",
           "summary": "Captured screenshot before state.",
           "beforeStateRef": {
             "id": "visual:before:artifact",
             "kind": "screenshot",
-            "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+            "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
             "mediaType": "image/png"
           },
           "artifacts": [
             {
               "id": "visual:before:artifact",
               "kind": "screenshot",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
               "mediaType": "image/png"
             }
           ],
           "meta": {
-            "byteLength": 81620
+            "byteLength": 107405
           }
         },
         {
-          "id": "dom:after:1788202779704",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "dom:after:1788241305783",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.704Z",
+          "timestamp": "2026-09-01T05:41:45.783Z",
           "summary": "Captured DOM after state with observable markup changes.",
           "afterStateRef": {
             "id": "dom:after:artifact",
             "kind": "dom-snapshot",
-            "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+            "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
             "mediaType": "text/html"
           },
           "artifacts": [
             {
               "id": "dom:after:artifact",
               "kind": "dom-snapshot",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
               "mediaType": "text/html"
             }
           ],
@@ -198,79 +202,86 @@
               "path": "dom.html",
               "summary": "DOM markup changed after the interaction.",
               "before": {
-                "byteLength": 14053
+                "byteLength": 16635
               },
               "after": {
-                "byteLength": 14068
+                "byteLength": 16632
               },
               "impact": "major"
             }
           ],
           "meta": {
-            "byteLength": 14068,
+            "byteLength": 16632,
             "changed": true,
-            "previousByteLength": 14053
+            "previousByteLength": 16635
           }
         },
         {
-          "id": "focus:after:1788202779704",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "focus:after:1788241305783",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.704Z",
-          "summary": "Captured focus after state (button #real-save \"Save changes\").",
+          "timestamp": "2026-09-01T05:41:45.783Z",
+          "summary": "Captured focus after state (button #cancel-delete \"Cancel\").",
           "artifacts": [
             {
               "id": "focus:after:artifact",
               "kind": "custom",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-after.json",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-after.json",
               "mediaType": "application/json"
             }
           ],
           "meta": {
             "focusTarget": {
               "tagName": "button",
-              "id": "real-save",
-              "name": "Save changes",
+              "id": "cancel-delete",
+              "name": "Cancel",
               "type": "button",
               "tabIndex": 0,
               "disabled": false,
-              "focusOrderIndex": 9,
-              "focusableCount": 16
+              "dialogContext": {
+                "tagName": "div",
+                "id": "delete-dialog",
+                "role": "dialog",
+                "name": "Delete Project Alpha?",
+                "ariaModal": true
+              },
+              "focusOrderIndex": 10,
+              "focusableCount": 18
             }
           }
         },
         {
-          "id": "visual:after:1788202779741",
-          "runId": "recorded-keyboard-save-fixed",
-          "checkpointId": "checkpoint:manual:1788202779170",
-          "interactionId": "interaction:enter:1788202779170",
+          "id": "visual:after:1788241305808",
+          "runId": "recorded-modal-focus-fixed",
+          "checkpointId": "checkpoint:manual:1788241305237",
+          "interactionId": "interaction:click:1788241305237",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-08-31T18:59:39.741Z",
+          "timestamp": "2026-09-01T05:41:45.808Z",
           "summary": "Captured screenshot after state.",
           "afterStateRef": {
             "id": "visual:after:artifact",
             "kind": "screenshot",
-            "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+            "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
             "mediaType": "image/png"
           },
           "artifacts": [
             {
               "id": "visual:after:artifact",
               "kind": "screenshot",
-              "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+              "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
               "mediaType": "image/png"
             }
           ],
           "meta": {
-            "byteLength": 82772
+            "byteLength": 99282
           }
         }
       ],
@@ -278,37 +289,37 @@
         {
           "id": "dom:before:artifact",
           "kind": "dom-snapshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
           "mediaType": "text/html"
         },
         {
           "id": "focus:before:artifact",
           "kind": "custom",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-before.json",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-before.json",
           "mediaType": "application/json"
         },
         {
           "id": "visual:before:artifact",
           "kind": "screenshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
           "mediaType": "image/png"
         },
         {
           "id": "dom:after:artifact",
           "kind": "dom-snapshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
           "mediaType": "text/html"
         },
         {
           "id": "focus:after:artifact",
           "kind": "custom",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-after.json",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-after.json",
           "mediaType": "application/json"
         },
         {
           "id": "visual:after:artifact",
           "kind": "screenshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
           "mediaType": "image/png"
         }
       ],
@@ -324,58 +335,58 @@
   ],
   "records": [
     {
-      "id": "dom:before:1788202779171",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "dom:before:1788241305239",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.171Z",
+      "timestamp": "2026-09-01T05:41:45.239Z",
       "summary": "Captured DOM before state.",
       "beforeStateRef": {
         "id": "dom:before:artifact",
         "kind": "dom-snapshot",
-        "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+        "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
         "mediaType": "text/html"
       },
       "artifacts": [
         {
           "id": "dom:before:artifact",
           "kind": "dom-snapshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
           "mediaType": "text/html"
         }
       ],
       "meta": {
-        "byteLength": 14053
+        "byteLength": 16635
       }
     },
     {
-      "id": "focus:before:1788202779172",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "focus:before:1788241305239",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.172Z",
-      "summary": "Captured focus before state (button #real-save \"Save changes\").",
+      "timestamp": "2026-09-01T05:41:45.239Z",
+      "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
       "artifacts": [
         {
           "id": "focus:before:artifact",
           "kind": "custom",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-before.json",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-before.json",
           "mediaType": "application/json"
         }
       ],
       "meta": {
         "focusTarget": {
           "tagName": "button",
-          "id": "real-save",
-          "name": "Save changes",
+          "id": "delete-project",
+          "name": "Delete Project Alpha",
           "type": "button",
           "tabIndex": 0,
           "disabled": false,
@@ -385,56 +396,56 @@
       }
     },
     {
-      "id": "visual:before:1788202779197",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "visual:before:1788241305266",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.197Z",
+      "timestamp": "2026-09-01T05:41:45.266Z",
       "summary": "Captured screenshot before state.",
       "beforeStateRef": {
         "id": "visual:before:artifact",
         "kind": "screenshot",
-        "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+        "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
         "mediaType": "image/png"
       },
       "artifacts": [
         {
           "id": "visual:before:artifact",
           "kind": "screenshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
           "mediaType": "image/png"
         }
       ],
       "meta": {
-        "byteLength": 81620
+        "byteLength": 107405
       }
     },
     {
-      "id": "dom:after:1788202779704",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "dom:after:1788241305783",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.704Z",
+      "timestamp": "2026-09-01T05:41:45.783Z",
       "summary": "Captured DOM after state with observable markup changes.",
       "afterStateRef": {
         "id": "dom:after:artifact",
         "kind": "dom-snapshot",
-        "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+        "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
         "mediaType": "text/html"
       },
       "artifacts": [
         {
           "id": "dom:after:artifact",
           "kind": "dom-snapshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
           "mediaType": "text/html"
         }
       ],
@@ -443,117 +454,135 @@
           "path": "dom.html",
           "summary": "DOM markup changed after the interaction.",
           "before": {
-            "byteLength": 14053
+            "byteLength": 16635
           },
           "after": {
-            "byteLength": 14068
+            "byteLength": 16632
           },
           "impact": "major"
         }
       ],
       "meta": {
-        "byteLength": 14068,
+        "byteLength": 16632,
         "changed": true,
-        "previousByteLength": 14053
+        "previousByteLength": 16635
       }
     },
     {
-      "id": "focus:after:1788202779704",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "focus:after:1788241305783",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.704Z",
-      "summary": "Captured focus after state (button #real-save \"Save changes\").",
+      "timestamp": "2026-09-01T05:41:45.783Z",
+      "summary": "Captured focus after state (button #cancel-delete \"Cancel\").",
       "artifacts": [
         {
           "id": "focus:after:artifact",
           "kind": "custom",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-after.json",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-after.json",
           "mediaType": "application/json"
         }
       ],
       "meta": {
         "focusTarget": {
           "tagName": "button",
-          "id": "real-save",
-          "name": "Save changes",
+          "id": "cancel-delete",
+          "name": "Cancel",
           "type": "button",
           "tabIndex": 0,
           "disabled": false,
-          "focusOrderIndex": 9,
-          "focusableCount": 16
+          "dialogContext": {
+            "tagName": "div",
+            "id": "delete-dialog",
+            "role": "dialog",
+            "name": "Delete Project Alpha?",
+            "ariaModal": true
+          },
+          "focusOrderIndex": 10,
+          "focusableCount": 18
         }
       }
     },
     {
-      "id": "visual:after:1788202779741",
-      "runId": "recorded-keyboard-save-fixed",
-      "checkpointId": "checkpoint:manual:1788202779170",
-      "interactionId": "interaction:enter:1788202779170",
+      "id": "visual:after:1788241305808",
+      "runId": "recorded-modal-focus-fixed",
+      "checkpointId": "checkpoint:manual:1788241305237",
+      "interactionId": "interaction:click:1788241305237",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-08-31T18:59:39.741Z",
+      "timestamp": "2026-09-01T05:41:45.808Z",
       "summary": "Captured screenshot after state.",
       "afterStateRef": {
         "id": "visual:after:artifact",
         "kind": "screenshot",
-        "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+        "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
         "mediaType": "image/png"
       },
       "artifacts": [
         {
           "id": "visual:after:artifact",
           "kind": "screenshot",
-          "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+          "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
           "mediaType": "image/png"
         }
       ],
       "meta": {
-        "byteLength": 82772
+        "byteLength": 99282
       }
     }
   ],
   "judgments": [
     {
-      "id": "keyboard:interaction:enter:1788202779170",
-      "judgeId": "keyboard",
+      "id": "focus-management:interaction:click:1788241305237",
+      "judgeId": "focus-management",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
       "verdict": "pass",
-      "summary": "Keyboard enter produced observable activation signals (DOM changed). Focus stayed on button #real-save \"Save changes\".",
+      "summary": "Focus moved from button #delete-project \"Delete Project Alpha\" to button #cancel-delete \"Cancel\" inside the opened dialog \"Delete Project Alpha?\".",
       "severity": "info",
-      "confidence": 0.9,
+      "confidence": 0.95,
       "evidenceRecordIds": [
-        "dom:after:1788202779704"
+        "focus:before:1788241305239",
+        "focus:after:1788241305783"
       ],
       "artifactIds": [
-        "dom:after:artifact"
+        "focus:before:artifact",
+        "focus:after:artifact"
+      ],
+      "tags": [
+        "focus-management",
+        "dialog",
+        "interaction-state"
       ]
     },
     {
-      "id": "change-response:interaction:enter:1788202779170",
+      "id": "change-response:interaction:click:1788241305237",
       "judgeId": "change-response",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
       "verdict": "pass",
-      "summary": "Observed response signals after the enter interaction (DOM changed).",
+      "summary": "Observed response signals after the click interaction (DOM changed, focus moved).",
       "severity": "info",
       "confidence": 0.9,
       "evidenceRecordIds": [
-        "dom:after:1788202779704"
+        "dom:after:1788241305783",
+        "focus:before:1788241305239",
+        "focus:after:1788241305783"
       ],
       "artifactIds": [
-        "dom:after:artifact"
+        "dom:after:artifact",
+        "focus:before:artifact",
+        "focus:after:artifact"
       ]
     },
     {
-      "id": "release:interaction:enter:1788202779170",
+      "id": "release:interaction:click:1788241305237",
       "judgeId": "release",
       "judgeVersion": "0.1.0",
       "scope": "run",
@@ -562,12 +591,12 @@
       "severity": "info",
       "confidence": 0.75,
       "evidenceRecordIds": [
-        "dom:before:1788202779171",
-        "focus:before:1788202779172",
-        "visual:before:1788202779197",
-        "dom:after:1788202779704",
-        "focus:after:1788202779704",
-        "visual:after:1788202779741"
+        "dom:before:1788241305239",
+        "focus:before:1788241305239",
+        "visual:before:1788241305266",
+        "dom:after:1788241305783",
+        "focus:after:1788241305783",
+        "visual:after:1788241305808"
       ]
     }
   ],
@@ -576,37 +605,37 @@
     {
       "id": "dom:before:artifact",
       "kind": "dom-snapshot",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-before.html",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-before.html",
       "mediaType": "text/html"
     },
     {
       "id": "focus:before:artifact",
       "kind": "custom",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-before.json",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-before.json",
       "mediaType": "application/json"
     },
     {
       "id": "visual:before:artifact",
       "kind": "screenshot",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-before.png",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-before.png",
       "mediaType": "image/png"
     },
     {
       "id": "dom:after:artifact",
       "kind": "dom-snapshot",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/dom-after.html",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/dom-after.html",
       "mediaType": "text/html"
     },
     {
       "id": "focus:after:artifact",
       "kind": "custom",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/focus-after.json",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/focus-after.json",
       "mediaType": "application/json"
     },
     {
       "id": "visual:after:artifact",
       "kind": "screenshot",
-      "path": "./site/demo-artifacts/recorded-keyboard-save-fixed/artifacts/visual-after.png",
+      "path": "./site/demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png",
       "mediaType": "image/png"
     }
   ]

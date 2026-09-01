@@ -1160,6 +1160,75 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
   );
 });
 
+test("runAeeOnPage verifies focus moves inside an opened dialog", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <button id="open-dialog" type="button">Delete Project Alpha</button>
+    <div id="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden>
+      <h2 id="dialog-title">Delete Project Alpha?</h2>
+      <button id="cancel" type="button">Cancel</button>
+      <button type="button">Delete project</button>
+    </div>
+    <script>
+      document.querySelector("#open-dialog").addEventListener("click", () => {
+        document.querySelector("#dialog").hidden = false;
+        document.querySelector("#cancel").focus();
+      });
+    </script>
+  `);
+  await page.focus("#open-dialog");
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-dialog-focus-output"),
+    observers: ["dom", "focus"],
+    judges: ["focus-management", "change-response", "release"],
+    checkpointName: "dialog-initial-focus",
+    interaction: {
+      kind: "click",
+      actor: "test",
+      target: { role: "button", name: "Delete Project Alpha" },
+      meta: { focusExpectation: "inside-dialog" }
+    },
+    async performInteraction({ page: interactionPage }) {
+      await interactionPage.getByRole("button", { name: "Delete Project Alpha" }).click();
+    }
+  });
+
+  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+
+  expect(report.run.results).toEqual({ pass: 3, fail: 0, unknown: 0 });
+  expect(report.records).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        observerId: "focus",
+        phase: "after",
+        meta: expect.objectContaining({
+          focusTarget: expect.objectContaining({
+            id: "cancel",
+            dialogContext: expect.objectContaining({
+              id: "dialog",
+              role: "dialog",
+              name: "Delete Project Alpha?",
+              ariaModal: true
+            })
+          })
+        })
+      })
+    ])
+  );
+  expect(report.judgments).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ judgeId: "focus-management", verdict: "pass" }),
+      expect.objectContaining({ judgeId: "release", verdict: "pass" })
+    ])
+  );
+});
+
 test("runAeeOnPage can capture backward focus movement around a shift-tab interaction", async ({
   page
 }, testInfo) => {

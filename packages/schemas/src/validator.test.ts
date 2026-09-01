@@ -72,7 +72,8 @@ const sampleJudgment = {
   verdict: "pass" as const,
   summary: "Sample judgment",
   evidenceRecordIds: ["record-1"],
-  findings: [sampleFinding]
+  findings: [sampleFinding],
+  tags: ["focus-management", "interaction-state"]
 };
 
 const sampleBundle = {

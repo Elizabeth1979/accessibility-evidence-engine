@@ -1,0 +1,166 @@
+{
+  "tool": {
+    "name": "axe-core",
+    "version": "4.13.0"
+  },
+  "url": "./?recording=1",
+  "timestamp": "2026-09-01T05:41:44.342Z",
+  "testEnvironment": {
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+    "windowWidth": 1280,
+    "windowHeight": 720,
+    "orientationAngle": 0,
+    "orientationType": "landscape-primary"
+  },
+  "testRunner": {
+    "name": "axe"
+  },
+  "passes": [
+    {
+      "id": "aria-dialog-name",
+      "impact": null,
+      "tags": [
+        "cat.aria",
+        "best-practice"
+      ],
+      "description": "Ensure every ARIA dialog and alertdialog node has an accessible name",
+      "help": "ARIA dialog and alertdialog nodes should have an accessible name",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/aria-dialog-name?application=playwright",
+      "nodes": [
+        {
+          "any": [
+            {
+              "id": "aria-labelledby",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "serious",
+              "message": "aria-labelledby attribute exists and references elements that are visible to screen readers"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<div id=\"delete-dialog\" class=\"demo-dialog\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"delete-dialog-title\">",
+          "target": [
+            "#delete-dialog"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "button-name",
+      "impact": null,
+      "tags": [
+        "cat.name-role-value",
+        "wcag2a",
+        "wcag412",
+        "section508",
+        "section508.22.a",
+        "TTv5",
+        "TT6.a",
+        "EN-301-549",
+        "EN-9.4.1.2",
+        "ACT",
+        "RGAAv4",
+        "RGAA-11.9.1"
+      ],
+      "description": "Ensure buttons have discernible text",
+      "help": "Buttons must have discernible text",
+      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/button-name?application=playwright",
+      "nodes": [
+        {
+          "any": [
+            {
+              "id": "aria-label",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "aria-label attribute exists and is not empty"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button id=\"delete-project\" type=\"button\" aria-label=\"Delete Project Alpha\">\n                <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\">\n                  <path d=\"M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5\"></path>\n                </svg>\n              </button>",
+          "target": [
+            "#delete-project"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "button-has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has inner text that is visible to screen readers"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button id=\"cancel-delete\" type=\"button\">Cancel</button>",
+          "target": [
+            "#cancel-delete"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "button-has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has inner text that is visible to screen readers"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button id=\"confirm-delete\" class=\"danger-button\" type=\"button\">\n                  Delete project\n                </button>",
+          "target": [
+            "#confirm-delete"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "button-has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has inner text that is visible to screen readers"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" data-scenario=\"pass\" aria-pressed=\"true\">\n            Correct focus transfer\n          </button>",
+          "target": [
+            "button[data-scenario=\"pass\"]"
+          ]
+        },
+        {
+          "any": [
+            {
+              "id": "button-has-visible-text",
+              "data": null,
+              "relatedNodes": [],
+              "impact": "critical",
+              "message": "Element has inner text that is visible to screen readers"
+            }
+          ],
+          "all": [],
+          "none": [],
+          "impact": null,
+          "html": "<button type=\"button\" data-scenario=\"fail\" aria-pressed=\"false\">\n            Focus remains behind\n          </button>",
+          "target": [
+            "button[data-scenario=\"fail\"]"
+          ]
+        }
+      ]
+    }
+  ],
+  "incomplete": [],
+  "violations": []
+}
