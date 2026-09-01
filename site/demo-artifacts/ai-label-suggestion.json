@@ -5,6 +5,10 @@
     "liveModelCall": false,
     "note": "This checked-in proposal was authored with Codex and reviewed for the public demo. CI does not receive API credentials. The @aee/ai-fixes package supports live, injected model providers."
   },
+  "routing": {
+    "route": "ai-review",
+    "reason": "The icon-only control needs a product-specific name inferred from surrounding UI context."
+  },
   "context": {
     "selector": "#delete-project",
     "role": "button",
@@ -16,7 +20,7 @@
   "proposal": {
     "providerId": "codex-reviewed-demo-suggestion",
     "summary": "Propose accessible name \"Delete Project Alpha\" for #delete-project.",
-    "rationale": "The trash icon, Project Alpha heading, and matching destructive confirmation copy establish the control's purpose and object. Model confidence: 0.96. This proposal requires human review and a verified rerun.",
+    "rationale": "The icon-only control needs a product-specific name inferred from surrounding UI context. The trash icon, Project Alpha heading, and matching destructive confirmation copy establish the control's purpose and object. Model confidence: 0.96. This proposal requires human review and a verified rerun.",
     "safety": "review",
     "patches": [
       "#delete-project: add aria-label=\"Delete Project Alpha\""

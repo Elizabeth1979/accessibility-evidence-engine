@@ -6,7 +6,7 @@ import path from "node:path";
 
 import AxeBuilder from "@axe-core/playwright";
 import { chromium } from "@playwright/test";
-import { proposeAccessibleLabelFix } from "@aee/ai-fixes";
+import { proposeAccessibleLabelFix, routeContextualReview } from "@aee/ai-fixes";
 import { runAeeOnPage } from "@aee/playwright";
 
 const projectRoot = process.cwd();
@@ -106,7 +106,7 @@ try {
   await setRecordingStage(playbackPage, "scan", "axe: icon button has no accessible name");
   await setRecordingOutcome(playbackPage, "axe-fail");
   await playbackPage.waitForTimeout(1200);
-  await setRecordingStage(playbackPage, "label", "AI proposal: “Delete Project Alpha”");
+  await setRecordingStage(playbackPage, "label", "AI gate: icon meaning requires context");
   await applyPlaybackLabelFix(playbackPage);
   await setRecordingOutcome(playbackPage, "label-review");
   await playbackPage.waitForTimeout(1400);
@@ -229,6 +229,12 @@ async function generateReviewedAiSuggestion() {
     nearbyText: "Production workspace",
     destinationText: "Delete Project Alpha? This action cannot be undone."
   };
+  const routing = routeContextualReview({
+    kind: "icon-label",
+    hasAccessibleName: false,
+    isIconOnly: true,
+    contextSignals: ["trash can icon", "Project Alpha heading", "destructive dialog copy"]
+  });
   const fix = await proposeAccessibleLabelFix(labelContext, {
     id: "codex-reviewed-demo-suggestion",
     async suggestLabel() {
@@ -251,6 +257,7 @@ async function generateReviewedAiSuggestion() {
           liveModelCall: false,
           note: "This checked-in proposal was authored with Codex and reviewed for the public demo. CI does not receive API credentials. The @aee/ai-fixes package supports live, injected model providers."
         },
+        routing,
         context: labelContext,
         proposal: fix,
         verificationRequired: true
@@ -397,7 +404,7 @@ async function setRecordingOutcome(page, outcome) {
         className: "verdict review",
         title: "Contextual label proposed",
         summary:
-          "AI used the project heading, trash icon, and dialog copy to suggest “Delete Project Alpha”."
+          "Escalated: this icon-only control needs the project heading and dialog copy. AI suggests “Delete Project Alpha”."
       },
       "focus-fail": {
         verdict: "Fail",

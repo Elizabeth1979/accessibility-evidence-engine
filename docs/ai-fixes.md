@@ -1,15 +1,26 @@
 # AI Fix Proposals
 
-`@aee/ai-fixes` turns captured UI context into a review-only accessible-name proposal. It is intentionally separate from accessibility judgment and release gating.
+`@aee/ai-fixes` provides deterministic routing for bounded, context-dependent accessibility questions and a review-only accessible-label proposal workflow. It is intentionally separate from accessibility judgment and release gating.
+
+## When AI is allowed
+
+The default is deterministic. A rule failure alone does not justify a model call. The current allowlist is:
+
+- **Heading structure:** only when the intended semantic outline requires full-page content context. A missing `h1` or skipped level remains a deterministic finding.
+- **Icon-only labels:** only when an unnamed control has no visible text and its product-specific purpose must be inferred from nearby UI or destination state.
+- **Decorative classification:** only when deciding whether a visual adds unique meaning or merely reinforces adjacent content requires interpreting their visual relationship.
+
+Use `routeContextualReview(...)` before any custom provider workflow. `proposeAccessibleLabelFix(...)` enforces the icon-label gate itself and does not call the provider when the case is routine or lacks bounded context.
 
 ## Trust model
 
-1. A scanner or reviewer identifies an unnamed control.
-2. The caller supplies bounded UI context to a model provider.
-3. The provider returns a label, rationale, and confidence as structured data.
-4. AEE emits a proposed patch with `safety: "review"`.
-5. A person reviews and applies or rejects it.
-6. A new scanner and interaction run verify the accepted change.
+1. A scanner or reviewer identifies an objective defect or ambiguous content decision.
+2. The deterministic router confirms that visual meaning or broader page context is required.
+3. The caller supplies only bounded UI context to a model provider.
+4. The provider returns a suggestion, rationale, and confidence as structured data.
+5. AEE emits a proposed patch with `safety: "review"`.
+6. A person reviews and applies or rejects it.
+7. A new scanner and interaction run verify the accepted change.
 
 An AI suggestion never counts as proof and is never applied automatically.
 

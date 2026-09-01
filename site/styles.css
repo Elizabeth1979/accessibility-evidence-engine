@@ -752,7 +752,8 @@ footer {
   padding: 1.25rem;
 }
 
-.issue-fix-summary h3 {
+.issue-fix-summary h3,
+.issue-fix-summary h4 {
   display: flex;
   align-items: center;
   gap: 0.65rem;

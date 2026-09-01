@@ -11,7 +11,7 @@ Explore the [public interactive demonstration](https://elizabeth1979.github.io/a
 
 Many automated checks report a rule result without preserving enough context to explain what happened during an interaction. AEE keeps evidence collection, correlation, judgment, and reporting separate so a result can be traced back to the captured DOM, accessibility tree, focus state, screenshot, or network activity.
 
-AEE complements rule engines such as axe rather than replacing them. Static rules are excellent at defects such as an icon button without an accessible name. AEE adds value after that scan: an optional model provider can propose a context-specific label for review, and the interaction pipeline can verify stateful behavior such as whether focus actually enters an opened modal. The public demo publishes the selected axe results, the reviewed proposal, and the before/after AEE evidence separately.
+AEE complements rule engines such as axe rather than replacing them. Static rules are excellent at objective defects such as an icon button without an accessible name. AEE adds value only when remediation depends on meaning: a deterministic router can escalate full-page heading structure, icon-only naming, and decorative-versus-informative classification for contextual review. Routine failures never call a model. The interaction pipeline separately verifies stateful behavior such as whether focus actually enters an opened modal.
 
 This comparison does not claim that axe cannot be scripted around interactions. Its own API guidance recommends activating hidden UI before analyzing it. The distinction is that AEE normalizes the interaction boundary, before/after artifacts, explicit behavioral expectation, judgment, and release decision into one traceable report. See axe's [`button-name` rule](https://dequeuniversity.com/rules/axe/4.13/button-name), [axe API notes](https://github.com/dequelabs/axe-core/blob/develop/doc/API.md), and the W3C [modal-dialog focus pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
 
@@ -104,7 +104,7 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 ### Recorded demonstration
 
-The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) compares three layers: axe detects an unnamed trash-icon button, a reviewed AI proposal suggests `Delete Project Alpha` from surrounding context, and AEE finds that focus remains behind the modal after the static name fix. The identical interaction passes after focus is moved inside the dialog. The checked-in label proposal clearly records that it is a reviewed demo example rather than a live CI model call.
+The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) compares three layers: axe detects an unnamed trash-icon button, the deterministic router explains why this icon-only case requires context, and a reviewed AI proposal suggests `Delete Project Alpha`. AEE then finds that focus remains behind the modal after the name fix. The identical interaction passes after focus is moved inside the dialog. The checked-in proposal is a reviewed demo example rather than a live CI model call.
 
 Rebuild the axe and AEE evidence plus the public recording locally with:
 
@@ -124,7 +124,8 @@ npm run demo:record
 | Release judge          | Policy gate                                         | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
 | Validation             | JSON Schema                                         | Validates supported CLI configuration and emitted run, bundle, and report payloads                          |
 | Reporting              | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
-| AI fix proposals       | Accessible names                                    | Injected provider proposes a contextual label; output is always review-only and requires a verified rerun   |
+| AI review routing      | Headings, icon labels, decorative classification    | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model         |
+| AI fix proposals       | Contextual accessible names                         | Injected provider proposes a label; output is always review-only and requires a verified rerun              |
 
 The Guidepup screen-reader and axe observers, plus the interaction, screen-reader, and visual judges, are declared extension points but currently return unsupported or unknown results. They should not be presented as implemented checks.
 

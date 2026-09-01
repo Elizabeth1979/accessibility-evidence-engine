@@ -81,6 +81,8 @@ test("public demo distinguishes static scanning, contextual repair, and behavior
   expect(axeNamed.violations).toEqual([]);
   expect(axeOpenDialog.violations).toEqual([]);
   expect(aiSuggestion.proposal.safety).toBe("review");
+  expect(aiSuggestion.routing.route).toBe("ai-review");
+  expect(aiSuggestion.routing.reason).toMatch(/icon-only.*surrounding UI context/i);
   expect(aiSuggestion.proposal.patches).toContain(
     '#delete-project: add aria-label="Delete Project Alpha"'
   );

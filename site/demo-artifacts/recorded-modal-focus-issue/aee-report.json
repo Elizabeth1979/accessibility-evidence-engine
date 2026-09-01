@@ -3,7 +3,7 @@
   "run": {
     "id": "recorded-modal-focus-issue",
     "version": "0.1.0",
-    "startedAt": "2026-09-01T05:41:44.527Z",
+    "startedAt": "2026-09-01T05:58:23.022Z",
     "status": "completed",
     "environment": {
       "mode": "playwright-page"
@@ -25,19 +25,19 @@
     },
     "checkpoints": [
       {
-        "id": "checkpoint:manual:1788241304527",
+        "id": "checkpoint:manual:1788242303022",
         "runId": "recorded-modal-focus-issue",
         "name": "public-demo-modal-focus-broken",
         "url": "./?recording=1&label=fixed&focus=broken",
-        "timestamp": "2026-09-01T05:41:44.527Z",
+        "timestamp": "2026-09-01T05:58:23.022Z",
         "trigger": "manual"
       }
     ],
     "interactions": [
       {
-        "id": "interaction:click:1788241304527",
+        "id": "interaction:click:1788242303022",
         "runId": "recorded-modal-focus-issue",
-        "timestamp": "2026-09-01T05:41:44.527Z",
+        "timestamp": "2026-09-01T05:58:23.022Z",
         "actor": "test",
         "kind": "click",
         "target": {
@@ -49,7 +49,7 @@
         }
       }
     ],
-    "finishedAt": "2026-09-01T05:41:45.137Z",
+    "finishedAt": "2026-09-01T05:58:23.643Z",
     "results": {
       "pass": 1,
       "fail": 2,
@@ -60,9 +60,9 @@
     {
       "runId": "recorded-modal-focus-issue",
       "interaction": {
-        "id": "interaction:click:1788241304527",
+        "id": "interaction:click:1788242303022",
         "runId": "recorded-modal-focus-issue",
-        "timestamp": "2026-09-01T05:41:44.527Z",
+        "timestamp": "2026-09-01T05:58:23.022Z",
         "actor": "test",
         "kind": "click",
         "target": {
@@ -74,24 +74,24 @@
         }
       },
       "checkpoint": {
-        "id": "checkpoint:manual:1788241304527",
+        "id": "checkpoint:manual:1788242303022",
         "runId": "recorded-modal-focus-issue",
         "name": "public-demo-modal-focus-broken",
         "url": "./?recording=1&label=fixed&focus=broken",
-        "timestamp": "2026-09-01T05:41:44.527Z",
+        "timestamp": "2026-09-01T05:58:23.022Z",
         "trigger": "manual"
       },
       "records": [
         {
-          "id": "dom:before:1788241304531",
+          "id": "dom:before:1788242303024",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:44.531Z",
+          "timestamp": "2026-09-01T05:58:23.024Z",
           "summary": "Captured DOM before state.",
           "beforeStateRef": {
             "id": "dom:before:artifact",
@@ -108,19 +108,19 @@
             }
           ],
           "meta": {
-            "byteLength": 16635
+            "byteLength": 18554
           }
         },
         {
-          "id": "focus:before:1788241304531",
+          "id": "focus:before:1788242303025",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:44.531Z",
+          "timestamp": "2026-09-01T05:58:23.025Z",
           "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
           "artifacts": [
             {
@@ -144,15 +144,15 @@
           }
         },
         {
-          "id": "visual:before:1788241304567",
+          "id": "visual:before:1788242303066",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "before",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:44.567Z",
+          "timestamp": "2026-09-01T05:58:23.066Z",
           "summary": "Captured screenshot before state.",
           "beforeStateRef": {
             "id": "visual:before:artifact",
@@ -169,19 +169,19 @@
             }
           ],
           "meta": {
-            "byteLength": 107428
+            "byteLength": 108522
           }
         },
         {
-          "id": "dom:after:1788241305095",
+          "id": "dom:after:1788242303594",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "dom",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:45.095Z",
+          "timestamp": "2026-09-01T05:58:23.594Z",
           "summary": "Captured DOM after state with observable markup changes.",
           "afterStateRef": {
             "id": "dom:after:artifact",
@@ -202,30 +202,30 @@
               "path": "dom.html",
               "summary": "DOM markup changed after the interaction.",
               "before": {
-                "byteLength": 16635
+                "byteLength": 18554
               },
               "after": {
-                "byteLength": 16639
+                "byteLength": 18558
               },
               "impact": "major"
             }
           ],
           "meta": {
-            "byteLength": 16639,
+            "byteLength": 18558,
             "changed": true,
-            "previousByteLength": 16635
+            "previousByteLength": 18554
           }
         },
         {
-          "id": "focus:after:1788241305095",
+          "id": "focus:after:1788242303594",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "focus",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:45.095Z",
+          "timestamp": "2026-09-01T05:58:23.594Z",
           "summary": "Captured focus after state (button #delete-project \"Delete Project Alpha\").",
           "artifacts": [
             {
@@ -249,15 +249,15 @@
           }
         },
         {
-          "id": "visual:after:1788241305130",
+          "id": "visual:after:1788242303636",
           "runId": "recorded-modal-focus-issue",
-          "checkpointId": "checkpoint:manual:1788241304527",
-          "interactionId": "interaction:click:1788241304527",
+          "checkpointId": "checkpoint:manual:1788242303022",
+          "interactionId": "interaction:click:1788242303022",
           "observerId": "visual",
           "observerVersion": "0.1.0",
           "phase": "after",
           "status": "ok",
-          "timestamp": "2026-09-01T05:41:45.130Z",
+          "timestamp": "2026-09-01T05:58:23.636Z",
           "summary": "Captured screenshot after state.",
           "afterStateRef": {
             "id": "visual:after:artifact",
@@ -274,7 +274,7 @@
             }
           ],
           "meta": {
-            "byteLength": 98148
+            "byteLength": 99292
           }
         }
       ],
@@ -328,15 +328,15 @@
   ],
   "records": [
     {
-      "id": "dom:before:1788241304531",
+      "id": "dom:before:1788242303024",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:44.531Z",
+      "timestamp": "2026-09-01T05:58:23.024Z",
       "summary": "Captured DOM before state.",
       "beforeStateRef": {
         "id": "dom:before:artifact",
@@ -353,19 +353,19 @@
         }
       ],
       "meta": {
-        "byteLength": 16635
+        "byteLength": 18554
       }
     },
     {
-      "id": "focus:before:1788241304531",
+      "id": "focus:before:1788242303025",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:44.531Z",
+      "timestamp": "2026-09-01T05:58:23.025Z",
       "summary": "Captured focus before state (button #delete-project \"Delete Project Alpha\").",
       "artifacts": [
         {
@@ -389,15 +389,15 @@
       }
     },
     {
-      "id": "visual:before:1788241304567",
+      "id": "visual:before:1788242303066",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "before",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:44.567Z",
+      "timestamp": "2026-09-01T05:58:23.066Z",
       "summary": "Captured screenshot before state.",
       "beforeStateRef": {
         "id": "visual:before:artifact",
@@ -414,19 +414,19 @@
         }
       ],
       "meta": {
-        "byteLength": 107428
+        "byteLength": 108522
       }
     },
     {
-      "id": "dom:after:1788241305095",
+      "id": "dom:after:1788242303594",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "dom",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:45.095Z",
+      "timestamp": "2026-09-01T05:58:23.594Z",
       "summary": "Captured DOM after state with observable markup changes.",
       "afterStateRef": {
         "id": "dom:after:artifact",
@@ -447,30 +447,30 @@
           "path": "dom.html",
           "summary": "DOM markup changed after the interaction.",
           "before": {
-            "byteLength": 16635
+            "byteLength": 18554
           },
           "after": {
-            "byteLength": 16639
+            "byteLength": 18558
           },
           "impact": "major"
         }
       ],
       "meta": {
-        "byteLength": 16639,
+        "byteLength": 18558,
         "changed": true,
-        "previousByteLength": 16635
+        "previousByteLength": 18554
       }
     },
     {
-      "id": "focus:after:1788241305095",
+      "id": "focus:after:1788242303594",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "focus",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:45.095Z",
+      "timestamp": "2026-09-01T05:58:23.594Z",
       "summary": "Captured focus after state (button #delete-project \"Delete Project Alpha\").",
       "artifacts": [
         {
@@ -494,15 +494,15 @@
       }
     },
     {
-      "id": "visual:after:1788241305130",
+      "id": "visual:after:1788242303636",
       "runId": "recorded-modal-focus-issue",
-      "checkpointId": "checkpoint:manual:1788241304527",
-      "interactionId": "interaction:click:1788241304527",
+      "checkpointId": "checkpoint:manual:1788242303022",
+      "interactionId": "interaction:click:1788242303022",
       "observerId": "visual",
       "observerVersion": "0.1.0",
       "phase": "after",
       "status": "ok",
-      "timestamp": "2026-09-01T05:41:45.130Z",
+      "timestamp": "2026-09-01T05:58:23.636Z",
       "summary": "Captured screenshot after state.",
       "afterStateRef": {
         "id": "visual:after:artifact",
@@ -519,13 +519,13 @@
         }
       ],
       "meta": {
-        "byteLength": 98148
+        "byteLength": 99292
       }
     }
   ],
   "judgments": [
     {
-      "id": "focus-management:interaction:click:1788241304527",
+      "id": "focus-management:interaction:click:1788242303022",
       "judgeId": "focus-management",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
@@ -534,8 +534,8 @@
       "severity": "high",
       "confidence": 0.95,
       "evidenceRecordIds": [
-        "focus:before:1788241304531",
-        "focus:after:1788241305095"
+        "focus:before:1788242303025",
+        "focus:after:1788242303594"
       ],
       "artifactIds": [
         "focus:before:artifact",
@@ -543,7 +543,7 @@
       ],
       "findings": [
         {
-          "id": "focus-management:interaction:click:1788241304527:dialog-focus-not-moved",
+          "id": "focus-management:interaction:click:1788242303022:dialog-focus-not-moved",
           "message": "The interaction opened a dialog but focus did not move inside it.",
           "severity": "high",
           "ruleId": "dialog-initial-focus",
@@ -552,8 +552,8 @@
             "name": "Delete Project Alpha"
           },
           "evidenceRecordIds": [
-            "focus:before:1788241304531",
-            "focus:after:1788241305095"
+            "focus:before:1788242303025",
+            "focus:after:1788242303594"
           ],
           "artifactIds": [
             "focus:before:artifact",
@@ -575,7 +575,7 @@
       ]
     },
     {
-      "id": "change-response:interaction:click:1788241304527",
+      "id": "change-response:interaction:click:1788242303022",
       "judgeId": "change-response",
       "judgeVersion": "0.1.0",
       "scope": "interaction",
@@ -584,14 +584,14 @@
       "severity": "info",
       "confidence": 0.9,
       "evidenceRecordIds": [
-        "dom:after:1788241305095"
+        "dom:after:1788242303594"
       ],
       "artifactIds": [
         "dom:after:artifact"
       ]
     },
     {
-      "id": "release:interaction:click:1788241304527",
+      "id": "release:interaction:click:1788242303022",
       "judgeId": "release",
       "judgeVersion": "0.1.0",
       "scope": "run",
@@ -600,8 +600,8 @@
       "severity": "high",
       "confidence": 0.75,
       "evidenceRecordIds": [
-        "focus:before:1788241304531",
-        "focus:after:1788241305095"
+        "focus:before:1788242303025",
+        "focus:after:1788242303594"
       ],
       "artifactIds": [
         "focus:before:artifact",
@@ -612,7 +612,7 @@
   ],
   "findings": [
     {
-      "id": "focus-management:interaction:click:1788241304527:dialog-focus-not-moved",
+      "id": "focus-management:interaction:click:1788242303022:dialog-focus-not-moved",
       "message": "The interaction opened a dialog but focus did not move inside it.",
       "severity": "high",
       "ruleId": "dialog-initial-focus",
@@ -621,8 +621,8 @@
         "name": "Delete Project Alpha"
       },
       "evidenceRecordIds": [
-        "focus:before:1788241304531",
-        "focus:after:1788241305095"
+        "focus:before:1788242303025",
+        "focus:after:1788242303594"
       ],
       "artifactIds": [
         "focus:before:artifact",

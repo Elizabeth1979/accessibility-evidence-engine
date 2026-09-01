@@ -1,7 +1,7 @@
 {
   "id": "recorded-modal-focus-issue",
   "version": "0.1.0",
-  "startedAt": "2026-09-01T05:41:44.527Z",
+  "startedAt": "2026-09-01T05:58:23.022Z",
   "status": "completed",
   "environment": {
     "mode": "playwright-page"
@@ -23,19 +23,19 @@
   },
   "checkpoints": [
     {
-      "id": "checkpoint:manual:1788241304527",
+      "id": "checkpoint:manual:1788242303022",
       "runId": "recorded-modal-focus-issue",
       "name": "public-demo-modal-focus-broken",
       "url": "./?recording=1&label=fixed&focus=broken",
-      "timestamp": "2026-09-01T05:41:44.527Z",
+      "timestamp": "2026-09-01T05:58:23.022Z",
       "trigger": "manual"
     }
   ],
   "interactions": [
     {
-      "id": "interaction:click:1788241304527",
+      "id": "interaction:click:1788242303022",
       "runId": "recorded-modal-focus-issue",
-      "timestamp": "2026-09-01T05:41:44.527Z",
+      "timestamp": "2026-09-01T05:58:23.022Z",
       "actor": "test",
       "kind": "click",
       "target": {
@@ -47,7 +47,7 @@
       }
     }
   ],
-  "finishedAt": "2026-09-01T05:41:45.137Z",
+  "finishedAt": "2026-09-01T05:58:23.643Z",
   "results": {
     "pass": 1,
     "fail": 2,

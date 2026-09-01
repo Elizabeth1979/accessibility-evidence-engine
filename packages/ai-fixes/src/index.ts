@@ -21,6 +21,33 @@ export interface AccessibleLabelModelProvider {
   suggestLabel(context: AccessibleLabelContext): Promise<AccessibleLabelSuggestion>;
 }
 
+export type ContextualReviewCandidate =
+  | {
+      kind: "icon-label";
+      hasAccessibleName: boolean;
+      isIconOnly: boolean;
+      contextSignals: string[];
+    }
+  | {
+      kind: "heading-structure";
+      hasFullPageContext: boolean;
+      needsSemanticOutline: boolean;
+    }
+  | {
+      kind: "decorative-classification";
+      hasVisualContext: boolean;
+      meaningDependsOnRelationship: boolean;
+    }
+  | {
+      kind: "deterministic-rule";
+      ruleId: string;
+    };
+
+export interface AiReviewDecision {
+  route: "ai-review" | "deterministic";
+  reason: string;
+}
+
 export interface OpenAiResponsesProviderOptions {
   apiKey: string;
   model: string;
@@ -28,17 +55,89 @@ export interface OpenAiResponsesProviderOptions {
   fetch?: typeof globalThis.fetch;
 }
 
+/** Keeps model calls behind an explicit allowlist of context-dependent cases. */
+export function routeContextualReview(candidate: ContextualReviewCandidate): AiReviewDecision {
+  if (candidate.kind === "deterministic-rule") {
+    return {
+      route: "deterministic",
+      reason: `${candidate.ruleId} can be evaluated without interpreting visual or page context.`
+    };
+  }
+
+  if (candidate.kind === "icon-label") {
+    if (candidate.hasAccessibleName) {
+      return { route: "deterministic", reason: "The control already has an accessible name." };
+    }
+    if (!candidate.isIconOnly) {
+      return {
+        route: "deterministic",
+        reason: "The control is not icon-only, so its visible text should supply the name."
+      };
+    }
+    if (!candidate.contextSignals.some((signal) => signal.trim())) {
+      return {
+        route: "deterministic",
+        reason: "No bounded UI context is available from which to infer the icon's purpose."
+      };
+    }
+    return {
+      route: "ai-review",
+      reason:
+        "The icon-only control needs a product-specific name inferred from surrounding UI context."
+    };
+  }
+
+  if (candidate.kind === "heading-structure") {
+    if (candidate.hasFullPageContext && candidate.needsSemanticOutline) {
+      return {
+        route: "ai-review",
+        reason:
+          "The intended heading hierarchy depends on the meaning and organization of the full page."
+      };
+    }
+    return {
+      route: "deterministic",
+      reason:
+        "A mechanical heading defect can be reported without asking a model to redesign the outline."
+    };
+  }
+
+  if (candidate.hasVisualContext && candidate.meaningDependsOnRelationship) {
+    return {
+      route: "ai-review",
+      reason: "Decorative status depends on whether the visual adds meaning beyond nearby content."
+    };
+  }
+  return {
+    route: "deterministic",
+    reason: "The available evidence does not require visual relationship interpretation."
+  };
+}
+
 export async function proposeAccessibleLabelFix(
   context: AccessibleLabelContext,
   provider: AccessibleLabelModelProvider
 ): Promise<ProposedFix> {
+  const decision = routeContextualReview({
+    kind: "icon-label",
+    hasAccessibleName: Boolean(context.currentAccessibleName?.trim()),
+    isIconOnly: Boolean(context.iconDescription?.trim()),
+    contextSignals: [context.nearbyHeading, context.nearbyText, context.destinationText].filter(
+      (value): value is string => Boolean(value?.trim())
+    )
+  });
+
+  if (decision.route !== "ai-review") {
+    throw new Error(`AI review was not triggered: ${decision.reason}`);
+  }
+
   const suggestion = validateSuggestion(await provider.suggestLabel(context));
   const escapedLabel = escapeHtmlAttribute(suggestion.label);
 
   return {
     providerId: provider.id,
     summary: `Propose accessible name "${suggestion.label}" for ${context.selector}.`,
-    rationale: `${suggestion.rationale} Model confidence: ${suggestion.confidence.toFixed(2)}. This proposal requires human review and a verified rerun.`,
+    rationale: `${decision.reason} ${suggestion.rationale} Model confidence: ${suggestion.confidence.toFixed(2)}. This proposal requires human review and a verified rerun.`,
     safety: "review",
     patches: [`${context.selector}: add aria-label="${escapedLabel}"`]
   };

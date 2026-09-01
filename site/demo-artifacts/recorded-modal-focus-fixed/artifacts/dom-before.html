@@ -93,8 +93,8 @@
             <h2 id="recorded-title">Watch the evidence engine in action</h2>
           </div>
           <p>
-            See axe catch a missing icon-button name, an AI provider propose a contextual label, and
-            AEE expose the focus bug that remains when the confirmation dialog opens.
+            See axe catch a missing icon-button name, AEE explain why context-dependent AI review is
+            warranted, and then expose the focus bug that remains when the dialog opens.
           </p>
         </div>
 
@@ -102,7 +102,7 @@
           <p><span></span><strong id="recording-message">Preparing the evidence run</strong></p>
           <ol>
             <li data-recording-step="scan" data-state="pending">axe scan</li>
-            <li data-recording-step="label" data-state="pending">AI label</li>
+            <li data-recording-step="label" data-state="pending">AI review</li>
             <li data-recording-step="interact" data-state="pending">Open dialog</li>
             <li data-recording-step="focus-fix" data-state="pending">Fix focus</li>
             <li data-recording-step="verify" data-state="pending">Verify</li>
@@ -167,10 +167,11 @@
               </p>
             </article>
             <article class="ai-card">
-              <p class="card-label">Contextual repair · AI</p>
+              <p class="card-label">Escalated review · AI</p>
               <h3><span class="verdict review">Review</span> “Delete Project Alpha”</h3>
               <p>
-                The proposal is grounded in the trash icon, project heading, and confirmation copy.
+                This case crossed the AI gate because the icon has no text and its product-specific
+                purpose depends on the project heading and confirmation copy.
               </p>
             </article>
             <article class="issue-card">
@@ -230,11 +231,53 @@
           <code>inside-dialog</code> focus expectation.
         </p>
 
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Deterministic first</p>
+            <h3>AI is reserved for meaning, not easy rule failures</h3>
+          </div>
+          <p>
+            AEE routes only bounded, context-dependent questions to review. Ordinary failures stay
+            in fast, repeatable rules and never call a model.
+          </p>
+        </div>
+        <div class="issue-fix-summary" aria-label="Contextual AI review boundary">
+          <article class="ai-card">
+            <p class="card-label">Full-page relationship</p>
+            <h4>Heading structure</h4>
+            <p>Interpret the intended content outline, not merely whether a level was skipped.</p>
+          </article>
+          <article class="ai-card">
+            <p class="card-label">Surrounding UI meaning</p>
+            <h4>Icon-only labels</h4>
+            <p>Suggest the control’s specific purpose from nearby content and destination state.</p>
+          </article>
+          <article class="ai-card">
+            <p class="card-label">Visual relationship</p>
+            <h4>Decorative or informative?</h4>
+            <p>
+              Decide whether a visual adds meaning or only repeats adjacent text and should be
+              hidden from assistive technology.
+            </p>
+          </article>
+          <article class="issue-card">
+            <p class="card-label">No model call</p>
+            <h4>Mechanical defects</h4>
+            <p>
+              Missing attributes, invalid markup, and objective rule failures remain deterministic.
+            </p>
+          </article>
+        </div>
+
         <details class="transcript">
           <summary>Read the recording transcript</summary>
           <ol>
             <li>axe finds that the trash icon button has no accessible name.</li>
-            <li>An AI provider uses nearby UI context to propose “Delete Project Alpha”.</li>
+            <li>
+              The router escalates because this is an icon-only control whose meaning depends on
+              nearby UI context; easy cases do not invoke AI.
+            </li>
+            <li>An AI provider uses that bounded context to propose “Delete Project Alpha”.</li>
             <li>The reviewed label is applied and axe’s button-name rule passes.</li>
             <li>Playwright activates the button. The dialog opens, but focus remains behind it.</li>
             <li>AEE traces that focus-management failure to before-and-after focus evidence.</li>
