@@ -7,8 +7,8 @@
 | Schema version | 0.1.0 |
 | Run ID | recorded-modal-focus-issue |
 | Status | completed |
-| Started | 2026-09-01T05:58:23.022Z |
-| Finished | 2026-09-01T05:58:23.643Z |
+| Started | 2026-09-01T06:02:13.234Z |
+| Finished | 2026-09-01T06:02:13.825Z |
 | Environment mode | playwright-page |
 | Policy | public-demo |
 | Bundles | 1 |
@@ -56,7 +56,7 @@ No unresolved judgments or observer gaps were detected.
 
 | Field | Value |
 | --- | --- |
-| Interaction ID | interaction:click:1788242303022 |
+| Interaction ID | interaction:click:1788242533234 |
 | Interaction | click |
 | Target | button "Delete Project Alpha" |
 | Checkpoint | public-demo-modal-focus-broken |
@@ -73,26 +73,26 @@ No unresolved judgments or observer gaps were detected.
 
 | ID | Phase | Observer | Status | Confidence | Artifacts | Changes | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| dom:before:1788242303024 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
-| focus:before:1788242303025 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #delete-project "Delete Project Alpha"). |
-| visual:before:1788242303066 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
-| dom:after:1788242303594 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
-| focus:after:1788242303594 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #delete-project "Delete Project Alpha"). |
-| visual:after:1788242303636 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
+| dom:before:1788242533236 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
+| focus:before:1788242533237 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #delete-project "Delete Project Alpha"). |
+| visual:before:1788242533269 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
+| dom:after:1788242533794 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
+| focus:after:1788242533794 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #delete-project "Delete Project Alpha"). |
+| visual:after:1788242533819 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
 
 ### Judgments
 
 | ID | Verdict | Judge | Severity | Confidence | Evidence | Artifacts | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| focus-management:interaction:click:1788242303022 | fail | focus-management | high | 0.95 | 2 | 2 | Dialog opened, but focus remained outside it. Before: button #delete-project "Delete Project Alpha". After: button #delete-project "Delete Project Alpha". |
-| change-response:interaction:click:1788242303022 | pass | change-response | info | 0.9 | 1 | 1 | Observed response signals after the click interaction (DOM changed). |
-| release:interaction:click:1788242303022 | fail | release | high | 0.75 | 2 | 2 | Release gate failed because 1 blocking judgment met the current policy threshold. |
+| focus-management:interaction:click:1788242533234 | fail | focus-management | high | 0.95 | 2 | 2 | Dialog opened, but focus remained outside it. Before: button #delete-project "Delete Project Alpha". After: button #delete-project "Delete Project Alpha". |
+| change-response:interaction:click:1788242533234 | pass | change-response | info | 0.9 | 1 | 1 | Observed response signals after the click interaction (DOM changed). |
+| release:interaction:click:1788242533234 | fail | release | high | 0.75 | 2 | 2 | Release gate failed because 1 blocking judgment met the current policy threshold. |
 
 ### Findings
 
 | ID | Severity | Rule | Evidence | Artifacts | Message | Suggested Fix |
 | --- | --- | --- | --- | --- | --- | --- |
-| focus-management:interaction:click:1788242303022:dialog-focus-not-moved | high | dialog-initial-focus | 2 | 2 | The interaction opened a dialog but focus did not move inside it. | When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action. |
+| focus-management:interaction:click:1788242533234:dialog-focus-not-moved | high | dialog-initial-focus | 2 | 2 | The interaction opened a dialog but focus did not move inside it. | When the modal opens, move focus to an appropriate element inside it, such as its heading or least-destructive action. |
 
 ### Artifacts
 

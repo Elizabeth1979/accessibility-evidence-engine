@@ -53,7 +53,7 @@ test("public demo distinguishes static scanning, contextual repair, and behavior
   );
   await expect(page.locator("video")).toHaveAttribute("controls", "");
   await expect(page.locator(".video-caption")).toContainText(
-    "Press play to watch the complete story"
+    "Before (fail) → reviewed fixes → After (pass)"
   );
   await expect(page.getByText("Read the recording transcript")).toBeVisible();
 
@@ -102,8 +102,8 @@ test("public demo distinguishes static scanning, contextual repair, and behavior
 
     return video.duration;
   });
-  expect(duration).toBeGreaterThan(1);
-  expect(duration).toBeLessThan(15);
+  expect(duration).toBeGreaterThan(15);
+  expect(duration).toBeLessThan(25);
 });
 
 test("public interaction moves focus inside the dialog", async ({ page }) => {

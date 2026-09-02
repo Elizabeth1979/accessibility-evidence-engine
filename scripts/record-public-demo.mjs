@@ -103,33 +103,34 @@ try {
   await prepareRecordingPage(playbackPage, { label: "missing", focus: "broken" });
   const deleteButton = playbackPage.locator("#delete-project");
   await deleteButton.focus();
-  await setRecordingStage(playbackPage, "scan", "axe: icon button has no accessible name");
+  await setRecordingStage(playbackPage, "scan", "BEFORE — icon button has no accessible name");
   await setRecordingOutcome(playbackPage, "axe-fail");
-  await playbackPage.waitForTimeout(1200);
-  await setRecordingStage(playbackPage, "label", "AI gate: icon meaning requires context");
+  await playbackPage.waitForTimeout(2500);
+  await setRecordingStage(playbackPage, "label", "REVIEW — icon meaning requires context");
   await applyPlaybackLabelFix(playbackPage);
   await setRecordingOutcome(playbackPage, "label-review");
-  await playbackPage.waitForTimeout(1400);
-  await setRecordingStage(playbackPage, "interact", "AEE: open the confirmation dialog");
-  await setRecordingOutcome(playbackPage, "pending");
+  await playbackPage.waitForTimeout(3000);
+  await setRecordingStage(playbackPage, "interact", "BEFORE — test the broken focus behavior");
+  await setRecordingOutcome(playbackPage, "before-run");
   await deleteButton.focus();
-  await playbackPage.waitForTimeout(350);
+  await playbackPage.waitForTimeout(600);
   await deleteButton.click();
-  await playbackPage.waitForTimeout(650);
+  await playbackPage.waitForTimeout(900);
   await setRecordingOutcome(playbackPage, "focus-fail");
-  await playbackPage.waitForTimeout(1300);
-  await setRecordingStage(playbackPage, "focus-fix", "Fix: move focus into the modal");
+  await playbackPage.waitForTimeout(3200);
+  await setRecordingStage(playbackPage, "focus-fix", "FIX — move focus into the modal");
   await applyPlaybackFocusFix(playbackPage);
-  await playbackPage.waitForTimeout(1100);
-  await setRecordingStage(playbackPage, "verify", "Rerun the identical interaction");
-  await setRecordingOutcome(playbackPage, "pending");
+  await setRecordingOutcome(playbackPage, "fix-review");
+  await playbackPage.waitForTimeout(2600);
+  await setRecordingStage(playbackPage, "verify", "AFTER — rerun the identical interaction");
+  await setRecordingOutcome(playbackPage, "after-run");
   await deleteButton.focus();
-  await playbackPage.waitForTimeout(350);
+  await playbackPage.waitForTimeout(600);
   await deleteButton.click();
-  await playbackPage.waitForTimeout(650);
+  await playbackPage.waitForTimeout(900);
   await setRecordingOutcome(playbackPage, "pass");
-  await setRecordingStage(playbackPage, "complete", "Verified: focus moved inside the dialog");
-  await playbackPage.waitForTimeout(1400);
+  await setRecordingStage(playbackPage, "complete", "AFTER — focus moved inside the dialog");
+  await playbackPage.waitForTimeout(3200);
   await playbackContext.close();
 
   if (!video) {
@@ -393,6 +394,12 @@ async function setRecordingOutcome(page, outcome) {
         title: "Waiting for evidence",
         summary: "Playwright is exercising the icon-button and modal workflow."
       },
+      "before-run": {
+        verdict: "Before",
+        className: "verdict fail",
+        title: "Opening the dialog before the focus fix",
+        summary: "Watch the focus indicator: it should enter the dialog, but remains on Delete."
+      },
       "axe-fail": {
         verdict: "Fail",
         className: "verdict fail",
@@ -409,14 +416,26 @@ async function setRecordingOutcome(page, outcome) {
       "focus-fail": {
         verdict: "Fail",
         className: "verdict fail",
-        title: "AEE: focus remained behind",
+        title: "Before: focus remained behind",
         summary:
           "Dialog opened. Active element: #delete-project — outside the dialog. Release blocked."
+      },
+      "fix-review": {
+        verdict: "Fix",
+        className: "verdict review",
+        title: "Move focus when the dialog opens",
+        summary: "Applied: cancelButton.focus(). Now rerun the identical click to verify it."
+      },
+      "after-run": {
+        verdict: "After",
+        className: "verdict pending",
+        title: "Rerunning after the focus fix",
+        summary: "The same Delete action opens the same dialog with the repaired implementation."
       },
       pass: {
         verdict: "Pass",
         className: "verdict pass",
-        title: "Verified rerun passed",
+        title: "After: focus enters the dialog",
         summary:
           "Same click. Active element: #cancel-delete — inside the dialog. Release gate passed."
       }

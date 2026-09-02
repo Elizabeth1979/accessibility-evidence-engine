@@ -101,17 +101,17 @@
         <div class="recording-progress" id="recording-progress" aria-hidden="true">
           <p><span></span><strong id="recording-message">Preparing the evidence run</strong></p>
           <ol>
-            <li data-recording-step="scan" data-state="pending">axe scan</li>
-            <li data-recording-step="label" data-state="pending">AI review</li>
-            <li data-recording-step="interact" data-state="pending">Open dialog</li>
-            <li data-recording-step="focus-fix" data-state="pending">Fix focus</li>
-            <li data-recording-step="verify" data-state="pending">Verify</li>
+            <li data-recording-step="scan" data-state="pending">Before: scan</li>
+            <li data-recording-step="label" data-state="pending">Review label</li>
+            <li data-recording-step="interact" data-state="pending">Before: focus</li>
+            <li data-recording-step="focus-fix" data-state="pending">Apply fix</li>
+            <li data-recording-step="verify" data-state="pending">After: verify</li>
           </ol>
         </div>
 
         <div class="recorded-layout">
           <div class="video-frame">
-            <video controls="" preload="metadata" poster="demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png?v=4" aria-label="Recorded Playwright demonstration comparing axe scanning, AI repair, and AEE focus evidence">
+            <video controls="" preload="metadata" poster="demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png?v=4" aria-label="Recorded Playwright before-and-after demonstration of an icon-label review and modal focus repair">
               <source src="demo-artifacts/playwright-aee-demo.mp4?v=4" type="video/mp4">
               <source src="demo-artifacts/playwright-aee-demo.webm?v=4" type="video/webm">
               <p>
@@ -120,8 +120,8 @@
               </p>
             </video>
             <p class="video-caption">
-              <strong>Scan → contextual repair → behavioral proof.</strong> Press play to watch the
-              complete story.
+              <strong>Before (fail) → reviewed fixes → After (pass).</strong> The slower recording
+              holds each result on screen so you can compare them.
             </p>
           </div>
 
