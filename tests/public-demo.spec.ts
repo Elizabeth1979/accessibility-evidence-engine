@@ -114,3 +114,39 @@ test("public interaction moves focus inside the dialog", async ({ page }) => {
   await expect(page.getByRole("dialog", { name: "Delete Project Alpha?" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
 });
+
+test("heading demo separates the axe result from contextual review", async ({ page }) => {
+  await page.goto(demoUrl);
+
+  await expect(
+    page.getByRole("heading", { name: "When valid levels still describe the wrong structure" })
+  ).toBeVisible();
+  await expect(page.getByText("See what axe reports")).toBeVisible();
+  await expect(page.getByText("Review AEE’s contextual suggestion")).toBeVisible();
+  await expect(page.getByRole("link", { name: "axe heading result" })).toHaveAttribute(
+    "href",
+    "demo-artifacts/axe-heading-structure.json"
+  );
+
+  const [axeResult, headingSuggestion] = await Promise.all(
+    ["axe-heading-structure.json", "ai-heading-suggestion.json"].map(async (fileName) =>
+      JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
+    )
+  );
+  expect(axeResult.violations).toEqual([]);
+  expect(headingSuggestion.routing.route).toBe("ai-review");
+  expect(headingSuggestion.proposal.safety).toBe("review");
+  expect(headingSuggestion.proposal.before).toEqual([
+    "h1 Project Alpha",
+    "h2 General",
+    "h2 Members",
+    "h2 Danger zone"
+  ]);
+  expect(headingSuggestion.proposal.after).toContain("  h2 Settings");
+
+  for (const imageName of ["01-visual-page.png", "02-axe-result.png", "03-aee-suggestion.png"]) {
+    const image = page.locator(`img[src$="${imageName}"]`);
+    await expect(image).toHaveAttribute("alt", /.+/);
+    await expect(image).toHaveJSProperty("complete", true);
+  }
+});

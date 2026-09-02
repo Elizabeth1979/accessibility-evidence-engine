@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "0.1.0",
+  "generation": {
+    "mode": "reviewed-demo-example",
+    "liveModelCall": false,
+    "note": "This checked-in contextual outline was authored with Codex and reviewed for the public demo. It is not an automated conformance verdict."
+  },
+  "routing": {
+    "route": "ai-review",
+    "reason": "The intended heading hierarchy depends on the meaning and organization of the full page."
+  },
+  "context": {
+    "pageTitle": "Project Alpha",
+    "visualParent": "Settings",
+    "visualChildren": [
+      "General",
+      "Members",
+      "Danger zone"
+    ],
+    "domOutline": [
+      "h1 Project Alpha",
+      "h2 General",
+      "h2 Members",
+      "h2 Danger zone"
+    ]
+  },
+  "proposal": {
+    "safety": "review",
+    "summary": "Promote the visual Settings label to h2 and nest its three sections at h3.",
+    "rationale": "The full-page layout presents Settings as the parent of General, Members, and Danger zone. The existing DOM outline omits that relationship.",
+    "before": [
+      "h1 Project Alpha",
+      "h2 General",
+      "h2 Members",
+      "h2 Danger zone"
+    ],
+    "after": [
+      "h1 Project Alpha",
+      "  h2 Settings",
+      "    h3 General",
+      "    h3 Members",
+      "    h3 Danger zone"
+    ],
+    "verificationRequired": true
+  }
+}

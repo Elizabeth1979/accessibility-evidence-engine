@@ -287,6 +287,73 @@
         </details>
       </section>
 
+      <section class="section heading-story-section" id="heading-demo" aria-labelledby="heading-demo-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Contextual heading review</p>
+            <h2 id="heading-demo-title">When valid levels still describe the wrong structure</h2>
+          </div>
+          <p>
+            axe checks objective heading rules. AEE adds a review step when the full-page visual
+            hierarchy conveys a relationship that the DOM outline misses.
+          </p>
+        </div>
+
+        <div class="heading-story" aria-label="Three-step heading structure comparison">
+          <details class="story-step" open="">
+            <summary><span>1</span> See the visual relationship</summary>
+            <p>
+              “Settings” visually contains General, Members, and Danger zone—but it is only a styled
+              <code>div</code>.
+            </p>
+            <img src="demo-artifacts/heading-structure/01-visual-page.png" alt="Project Alpha settings page. The word Settings is visually emphasized as a parent above three cards titled General, Members, and Danger zone, but an annotation identifies Settings as a styled div rather than a heading." width="1080" height="620">
+          </details>
+
+          <details class="story-step">
+            <summary><span>2</span> See what axe reports</summary>
+            <p>
+              The selected automatic rules pass: the page has an <code>h1</code>, its headings are
+              non-empty, and the sequence never skips a level.
+            </p>
+            <img src="demo-artifacts/heading-structure/02-axe-result.png" alt="The same page beside an axe-core pass result. The DOM outline lists H1 Project Alpha followed by three H2 headings: General, Members, and Danger zone." width="1080" height="620">
+          </details>
+
+          <details class="story-step">
+            <summary><span>3</span> Review AEE’s contextual suggestion</summary>
+            <p>
+              Full-page context supports adding “Settings” at level two and nesting its three
+              sections at level three. This remains a human-reviewed proposal, not proof.
+            </p>
+            <img src="demo-artifacts/heading-structure/03-aee-suggestion.png" alt="The same page beside an AEE review-required proposal. The suggested outline is H1 Project Alpha, H2 Settings, with General, Members, and Danger zone nested as H3 headings." width="1080" height="620">
+          </details>
+        </div>
+
+        <div class="recorded-output">
+          <div>
+            <p class="card-label">Inspect the comparison</p>
+            <h3>Real axe output, explicit review boundary</h3>
+            <p>
+              The axe artifact records the passing rule result. The AEE artifact records why this
+              example crossed the contextual-review gate.
+            </p>
+          </div>
+          <ul class="artifact-links" aria-label="Heading demonstration artifacts">
+            <li><a href="demo-artifacts/axe-heading-structure.json">axe heading result</a></li>
+            <li>
+              <a href="demo-artifacts/ai-heading-suggestion.json">Reviewed AEE heading proposal</a>
+            </li>
+          </ul>
+        </div>
+
+        <p class="comparison-note">
+          Fair comparison: axe-core also includes <code>heading-order</code>,
+          <code>page-has-heading-one</code>, <code>empty-heading</code>, and an experimental
+          <code>p-as-heading</code> rule. This example passes the selected automatic rules because
+          its levels are valid; the missing information is the relationship between visual grouping
+          and the semantic outline.
+        </p>
+      </section>
+
       <section class="section demo-section" id="demo" aria-labelledby="demo-title">
         <div class="section-heading">
           <div>

@@ -106,6 +106,8 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#recorded-run) compares three layers: axe detects an unnamed trash-icon button, the deterministic router explains why this icon-only case requires context, and a reviewed AI proposal suggests `Delete Project Alpha`. AEE then finds that focus remains behind the modal after the name fix. The identical interaction passes after focus is moved inside the dialog. The checked-in proposal is a reviewed demo example rather than a live CI model call.
 
+The separate [heading-structure demonstration](https://elizabeth1979.github.io/accessibility-evidence-engine/#heading-demo) uses three learner-controlled images. Its fixture passes axe's selected automatic heading rules because the DOM sequence is technically valid, then shows how full-page visual context can support a review-only proposal that restores a missing parent section in the semantic outline.
+
 Rebuild the axe and AEE evidence plus the public recording locally with:
 
 ```bash
