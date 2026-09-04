@@ -1,7 +1,7 @@
 {
   "id": "recorded-modal-focus-fixed",
   "version": "0.1.0",
-  "startedAt": "2026-09-02T18:01:38.276Z",
+  "startedAt": "2026-09-04T11:48:17.732Z",
   "status": "completed",
   "environment": {
     "mode": "playwright-page"
@@ -23,19 +23,19 @@
   },
   "checkpoints": [
     {
-      "id": "checkpoint:manual:1788372098276",
+      "id": "checkpoint:manual:1788522497732",
       "runId": "recorded-modal-focus-fixed",
       "name": "public-demo-modal-focus-fixed",
-      "url": "./?recording=1&label=fixed&focus=fixed",
-      "timestamp": "2026-09-02T18:01:38.276Z",
+      "url": "./demo-fixture.html?label=fixed&focus=fixed",
+      "timestamp": "2026-09-04T11:48:17.732Z",
       "trigger": "manual"
     }
   ],
   "interactions": [
     {
-      "id": "interaction:click:1788372098276",
+      "id": "interaction:click:1788522497732",
       "runId": "recorded-modal-focus-fixed",
-      "timestamp": "2026-09-02T18:01:38.276Z",
+      "timestamp": "2026-09-04T11:48:17.732Z",
       "actor": "test",
       "kind": "click",
       "target": {
@@ -47,7 +47,7 @@
       }
     }
   ],
-  "finishedAt": "2026-09-02T18:01:38.897Z",
+  "finishedAt": "2026-09-04T11:48:18.292Z",
   "results": {
     "pass": 3,
     "fail": 0,

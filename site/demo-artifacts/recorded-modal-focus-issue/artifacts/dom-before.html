@@ -1,489 +1,151 @@
-<!DOCTYPE html><html lang="en" style="scroll-behavior: auto;"><head>
+<!DOCTYPE html><html lang="en"><head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="An interactive demonstration of evidence-first accessibility investigations with Accessibility Evidence Engine.">
-    <title>Accessibility Evidence Engine</title>
-    <link rel="icon" href="favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="styles.css">
-    <script src="demo.js" defer=""></script>
+    <title>AEE modal-focus fixture</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #07110e;
+        color: #f5fbf8;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      }
+      main {
+        position: relative;
+        width: min(920px, calc(100% - 48px));
+        min-height: 480px;
+        padding: 42px;
+        border: 1px solid #315247;
+        border-radius: 20px;
+        background: #0d1d18;
+      }
+      h1 {
+        margin: 0 0 10px;
+        font-size: 38px;
+      }
+      .lede {
+        margin: 0 0 50px;
+        color: #a9bbb4;
+      }
+      .project {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 24px;
+        border: 1px solid #36584d;
+        border-radius: 14px;
+        background: #132a23;
+      }
+      .project strong {
+        display: block;
+        font-size: 22px;
+      }
+      .project span {
+        color: #a9bbb4;
+      }
+      button {
+        min-height: 48px;
+        padding: 10px 16px;
+        border: 1px solid #527265;
+        border-radius: 10px;
+        background: #17372d;
+        color: #f5fbf8;
+        font: 750 16px inherit;
+      }
+      button:focus {
+        outline: 4px solid #fff;
+        outline-offset: 4px;
+      }
+      #delete-project {
+        display: grid;
+        width: 58px;
+        padding: 0;
+        place-items: center;
+        border-color: #a74b4b;
+        background: #3d1616;
+        color: #ff9999;
+      }
+      #delete-project svg {
+        width: 28px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+      }
+      .dialog {
+        position: absolute;
+        inset: 54px;
+        z-index: 2;
+        display: grid;
+        align-content: center;
+        padding: 36px;
+        border: 1px solid #557a6d;
+        border-radius: 16px;
+        background: #101e19;
+        color: #f5fbf8;
+        box-shadow: 0 24px 80px #000;
+      }
+      .dialog[hidden] {
+        display: none;
+      }
+      .dialog h2 {
+        margin-top: 0;
+        font-size: 30px;
+      }
+      .dialog p {
+        color: #b2c2bc;
+      }
+      .dialog div {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        margin-top: 34px;
+      }
+      .danger {
+        border-color: #a74b4b;
+        background: #3d1616;
+        color: #ff9999;
+      }
+    </style>
   </head>
-  <body class="recording">
-    <a class="skip-link" href="#main">Skip to content</a>
-
-    <header class="site-header">
-      <a class="brand" href="#top" aria-label="Accessibility Evidence Engine home">
-        <span class="brand-mark" aria-hidden="true">AEE</span>
-        <span>Accessibility Evidence Engine</span>
-      </a>
-      <nav aria-label="Primary navigation">
-        <a href="#how-it-works">How it works</a>
-        <a href="#demo">Demo</a>
-        <a href="#recorded-run">Recorded run</a>
-        <a href="#boundaries">Boundaries</a>
-        <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine">GitHub</a>
-      </nav>
-    </header>
-
-    <main id="main">
-      <section class="hero" id="top" aria-labelledby="hero-title">
-        <div class="hero-copy">
-          <p class="eyebrow">Experimental open-source developer tool</p>
-          <h1 id="hero-title">Accessibility results with the evidence attached.</h1>
-          <p class="lede">
-            AEE captures what happened before and after a Playwright interaction, connects the
-            evidence to focused judgments, and produces reports people can inspect.
-          </p>
-          <div class="hero-actions">
-            <a class="button primary" href="#demo">Explore the example</a>
-            <a class="button secondary" href="https://github.com/Elizabeth1979/accessibility-evidence-engine#quick-start">Read the quick start</a>
-          </div>
-          <p class="preview-note">
-            AEE is a public preview, not a complete WCAG scanner or accessibility certification.
-          </p>
-        </div>
-
-        <div class="report-preview" aria-label="Example AEE report summary">
-          <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-          <p class="mono muted">aee-report.md</p>
-          <div class="preview-verdict pass">
-            <span aria-hidden="true">✓</span> Release gate passed
-          </div>
-          <dl class="metrics">
-            <div>
-              <dt>Evidence records</dt>
-              <dd>4</dd>
-            </div>
-            <div>
-              <dt>Judgments</dt>
-              <dd>3</dd>
-            </div>
-            <div>
-              <dt>Unresolved</dt>
-              <dd>0</dd>
-            </div>
-          </dl>
-          <div class="trace-line"><span>interaction</span><strong>Open delete dialog</strong></div>
-          <div class="trace-line"><span>evidence</span><strong>Focus moved inside</strong></div>
-        </div>
-      </section>
-
-      <section class="section" id="how-it-works" aria-labelledby="how-title">
-        <p class="eyebrow">The investigation path</p>
-        <h2 id="how-title">From interaction to reviewable result</h2>
-        <ol class="pipeline">
-          <li>
-            <span>1</span><strong>Capture before</strong><small>DOM, accessibility tree, focus, screenshot, or network</small>
-          </li>
-          <li>
-            <span>2</span><strong>Perform action</strong><small>Bracket a real Playwright interaction</small>
-          </li>
-          <li>
-            <span>3</span><strong>Capture after</strong><small>Preserve the observable response</small>
-          </li>
-          <li>
-            <span>4</span><strong>Judge and report</strong><small>Trace each result to evidence identifiers</small>
-          </li>
-        </ol>
-      </section>
-
-      <section class="section recorded-section" id="recorded-run" aria-labelledby="recorded-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Real Playwright + AEE run</p>
-            <h2 id="recorded-title">Watch the evidence engine in action</h2>
-          </div>
-          <p>
-            See axe catch a missing icon-button name, AEE explain why context-dependent AI review is
-            warranted, and then expose the focus bug that remains when the dialog opens.
-          </p>
-        </div>
-
-        <div class="recording-progress" id="recording-progress" aria-hidden="true">
-          <p><span></span><strong id="recording-message">Preparing the evidence run</strong></p>
-          <ol>
-            <li data-recording-step="scan" data-state="pending">Before: scan</li>
-            <li data-recording-step="label" data-state="pending">Review label</li>
-            <li data-recording-step="interact" data-state="pending">Before: focus</li>
-            <li data-recording-step="focus-fix" data-state="pending">Apply fix</li>
-            <li data-recording-step="verify" data-state="pending">After: verify</li>
-          </ol>
-        </div>
-
-        <div class="recorded-layout">
-          <div class="video-frame">
-            <video controls="" preload="metadata" poster="demo-artifacts/recorded-modal-focus-issue/artifacts/visual-before.png?v=4" aria-label="Recorded Playwright before-and-after demonstration of an icon-label review and modal focus repair">
-              <source src="demo-artifacts/playwright-aee-demo.mp4?v=4" type="video/mp4">
-              <source src="demo-artifacts/playwright-aee-demo.webm?v=4" type="video/webm">
-              <p>
-                Your browser cannot play the recording. Read the transcript or download the
-                <a href="demo-artifacts/playwright-aee-demo.webm">WebM video</a>.
-              </p>
-            </video>
-            <p class="video-caption">
-              <strong>Before (fail) → reviewed fixes → After (pass).</strong> The slower recording
-              holds each result on screen so you can compare them.
-            </p>
-          </div>
-
-          <div class="real-interaction" aria-labelledby="interaction-title">
-            <p class="card-label">Interaction under test</p>
-            <h3 id="interaction-title">Delete action on “Project Alpha”</h3>
-            <p>The icon opens a modal confirmation. Focus must move into that new context.</p>
-            <div class="project-row">
-              <div>
-                <strong>Project Alpha</strong>
-                <span>Production workspace</span>
-              </div>
-              <button id="delete-project" type="button" aria-label="Delete Project Alpha">
-                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                  <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"></path>
-                </svg>
-              </button>
-            </div>
-            <p class="live-status">
-              Keyboard focus: <strong id="real-focus" aria-live="polite">Delete button</strong>
-            </p>
-            <pre class="label-code"><code>aria-label="Delete Project Alpha"</code></pre>
-            <pre class="fix-code"><code>cancelButton.focus();</code></pre>
-            <div id="delete-dialog" class="demo-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" hidden="">
-              <h4 id="delete-dialog-title">Delete Project Alpha?</h4>
-              <p>This action cannot be undone.</p>
-              <div>
-                <button id="cancel-delete" type="button">Cancel</button>
-                <button id="confirm-delete" class="danger-button" type="button">
-                  Delete project
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div class="issue-fix-summary" aria-label="Scanner, AI repair, and behavioral evidence comparison">
-            <article class="issue-card">
-              <p class="card-label">Static scan · axe</p>
-              <h3><span class="verdict fail">Fail</span> Button has no name</h3>
-              <p>
-                axe finds the missing accessible name, but cannot infer the product-specific
-                wording.
-              </p>
-            </article>
-            <article class="ai-card">
-              <p class="card-label">Escalated review · AI</p>
-              <h3><span class="verdict review">Review</span> “Delete Project Alpha”</h3>
-              <p>
-                This case crossed the AI gate because the icon has no text and its product-specific
-                purpose depends on the project heading and confirmation copy.
-              </p>
-            </article>
-            <article class="issue-card">
-              <p class="card-label">Interaction evidence · AEE</p>
-              <h3><span class="verdict fail">Fail</span> Focus stays behind</h3>
-              <p>
-                The named button opens a valid dialog, but focus remains outside it until repaired.
-              </p>
-            </article>
-            <article class="fix-card">
-              <p class="card-label">Verified rerun · AEE</p>
-              <h3><span class="verdict pass">Pass</span> Focus enters dialog</h3>
-              <p>
-                The same interaction moves focus to Cancel and the evidence-backed release gate
-                passes.
-              </p>
-            </article>
-          </div>
-        </div>
-
-        <div class="recording-result" id="recording-result" aria-hidden="true">
-          <span class="verdict pending" id="recording-verdict">Running</span>
-          <div>
-            <h3 id="recording-result-title">Waiting for evidence</h3>
-            <p id="recording-result-summary">
-              Playwright is preparing the icon-button and dialog workflow.
-            </p>
-          </div>
-        </div>
-
-        <div class="recorded-output" id="recorded-output">
-          <div>
-            <p class="card-label">Real generated evidence</p>
-            <h3>Inspect every layer of the comparison</h3>
-            <p>The axe results, reviewed AI proposal, and AEE reports are all published.</p>
-          </div>
-          <ul class="artifact-links" aria-label="Generated demonstration artifacts">
-            <li>
-              <a href="demo-artifacts/axe-unnamed-icon.json">axe unnamed-button result</a>
-            </li>
-            <li>
-              <a href="demo-artifacts/ai-label-suggestion.json">Reviewed AI label proposal</a>
-            </li>
-            <li>
-              <a href="demo-artifacts/recorded-modal-focus-issue/aee-report.md">AEE focus-failure report</a>
-            </li>
-            <li>
-              <a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.md">AEE verified-fix report</a>
-            </li>
-          </ul>
-        </div>
-
-        <p class="comparison-note">
-          Fair comparison: axe can be rerun after UI state changes, and this demo does that. After
-          the label is applied, the selected <code>button-name</code> and
-          <code>aria-dialog-name</code> rules pass; AEE separately evaluates the explicit
-          <code>inside-dialog</code> focus expectation.
-        </p>
-
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Deterministic first</p>
-            <h3>AI is reserved for meaning, not easy rule failures</h3>
-          </div>
-          <p>
-            AEE routes only bounded, context-dependent questions to review. Ordinary failures stay
-            in fast, repeatable rules and never call a model.
-          </p>
-        </div>
-        <div class="issue-fix-summary" aria-label="Contextual AI review boundary">
-          <article class="ai-card">
-            <p class="card-label">Full-page relationship</p>
-            <h4>Heading structure</h4>
-            <p>Interpret the intended content outline, not merely whether a level was skipped.</p>
-          </article>
-          <article class="ai-card">
-            <p class="card-label">Surrounding UI meaning</p>
-            <h4>Icon-only labels</h4>
-            <p>Suggest the control’s specific purpose from nearby content and destination state.</p>
-          </article>
-          <article class="ai-card">
-            <p class="card-label">Visual relationship</p>
-            <h4>Decorative or informative?</h4>
-            <p>
-              Decide whether a visual adds meaning or only repeats adjacent text and should be
-              hidden from assistive technology.
-            </p>
-          </article>
-          <article class="issue-card">
-            <p class="card-label">No model call</p>
-            <h4>Mechanical defects</h4>
-            <p>
-              Missing attributes, invalid markup, and objective rule failures remain deterministic.
-            </p>
-          </article>
-        </div>
-
-        <details class="transcript">
-          <summary>Read the recording transcript</summary>
-          <ol>
-            <li>axe finds that the trash icon button has no accessible name.</li>
-            <li>
-              The router escalates because this is an icon-only control whose meaning depends on
-              nearby UI context; easy cases do not invoke AI.
-            </li>
-            <li>An AI provider uses that bounded context to propose “Delete Project Alpha”.</li>
-            <li>The reviewed label is applied and axe’s button-name rule passes.</li>
-            <li>Playwright activates the button. The dialog opens, but focus remains behind it.</li>
-            <li>AEE traces that focus-management failure to before-and-after focus evidence.</li>
-            <li>The implementation moves focus to Cancel when the modal opens.</li>
-            <li>The identical interaction reruns and AEE’s release gate passes.</li>
-          </ol>
-        </details>
-      </section>
-
-      <section class="section heading-story-section" id="heading-demo" aria-labelledby="heading-demo-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Contextual heading review</p>
-            <h2 id="heading-demo-title">When valid levels still describe the wrong structure</h2>
-          </div>
-          <p>
-            axe checks objective heading rules. AEE adds a review step when the full-page visual
-            hierarchy conveys a relationship that the DOM outline misses.
-          </p>
-        </div>
-
-        <div class="heading-story" aria-label="Three-step heading structure comparison">
-          <details class="story-step" open="">
-            <summary><span>1</span> See the visual relationship</summary>
-            <p>
-              “Settings” visually contains General, Members, and Danger zone—but it is only a styled
-              <code>div</code>.
-            </p>
-            <img src="demo-artifacts/heading-structure/01-visual-page.png" alt="Project Alpha settings page. The word Settings is visually emphasized as a parent above three cards titled General, Members, and Danger zone, but an annotation identifies Settings as a styled div rather than a heading." width="1080" height="620">
-          </details>
-
-          <details class="story-step">
-            <summary><span>2</span> See what axe reports</summary>
-            <p>
-              The selected automatic rules pass: the page has an <code>h1</code>, its headings are
-              non-empty, and the sequence never skips a level.
-            </p>
-            <img src="demo-artifacts/heading-structure/02-axe-result.png" alt="The same page beside an axe-core pass result. The DOM outline lists H1 Project Alpha followed by three H2 headings: General, Members, and Danger zone." width="1080" height="620">
-          </details>
-
-          <details class="story-step">
-            <summary><span>3</span> Review AEE’s contextual suggestion</summary>
-            <p>
-              Full-page context supports adding “Settings” at level two and nesting its three
-              sections at level three. This remains a human-reviewed proposal, not proof.
-            </p>
-            <img src="demo-artifacts/heading-structure/03-aee-suggestion.png" alt="The same page beside an AEE review-required proposal. The suggested outline is H1 Project Alpha, H2 Settings, with General, Members, and Danger zone nested as H3 headings." width="1080" height="620">
-          </details>
-        </div>
-
-        <div class="recorded-output">
-          <div>
-            <p class="card-label">Inspect the comparison</p>
-            <h3>Real axe output, explicit review boundary</h3>
-            <p>
-              The axe artifact records the passing rule result. The AEE artifact records why this
-              example crossed the contextual-review gate.
-            </p>
-          </div>
-          <ul class="artifact-links" aria-label="Heading demonstration artifacts">
-            <li><a href="demo-artifacts/axe-heading-structure.json">axe heading result</a></li>
-            <li>
-              <a href="demo-artifacts/ai-heading-suggestion.json">Reviewed AEE heading proposal</a>
-            </li>
-          </ul>
-        </div>
-
-        <p class="comparison-note">
-          Fair comparison: axe-core also includes <code>heading-order</code>,
-          <code>page-has-heading-one</code>, <code>empty-heading</code>, and an experimental
-          <code>p-as-heading</code> rule. This example passes the selected automatic rules because
-          its levels are valid; the missing information is the relationship between visual grouping
-          and the semantic outline.
-        </p>
-      </section>
-
-      <section class="section demo-section" id="demo" aria-labelledby="demo-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Interactive report walkthrough</p>
-            <h2 id="demo-title">Compare the evidence, then inspect the verdict</h2>
-          </div>
-          <p>
-            This browser demonstration is illustrative. The actual engine runs in Node.js with
-            Playwright.
-          </p>
-        </div>
-
-        <div class="scenario-picker" role="group" aria-label="Choose an example interaction">
-          <button type="button" data-scenario="pass" aria-pressed="true">
-            Correct focus transfer
-          </button>
-          <button type="button" data-scenario="fail" aria-pressed="false">
-            Focus remains behind
-          </button>
-        </div>
-
-        <div class="evidence-grid">
-          <article class="evidence-card">
-            <p class="card-label">Before interaction</p>
-            <h3>Focus and DOM state</h3>
-            <dl>
-              <div>
-                <dt>Focused element</dt>
-                <dd id="before-focus">button#delete-project</dd>
-              </div>
-              <div>
-                <dt>Dialog state</dt>
-                <dd id="before-status">Closed</dd>
-              </div>
-              <div>
-                <dt>Interaction</dt>
-                <dd>Click</dd>
-              </div>
-            </dl>
-          </article>
-
-          <article class="evidence-card after-card">
-            <p class="card-label">After interaction</p>
-            <h3>Observed response</h3>
-            <dl>
-              <div>
-                <dt>Focused element</dt>
-                <dd id="after-focus">button#cancel-delete</dd>
-              </div>
-              <div>
-                <dt>Dialog state</dt>
-                <dd id="after-status">Open</dd>
-              </div>
-              <div>
-                <dt>DOM changed</dt>
-                <dd id="dom-changed">Yes</dd>
-              </div>
-            </dl>
-          </article>
-
-          <article class="result-card" aria-labelledby="result-title">
-            <p class="card-label">AEE judgment</p>
-            <div class="result-heading">
-              <h3 id="result-title">Focus management</h3>
-              <span id="verdict" class="verdict pass" aria-live="polite">Pass</span>
-            </div>
-            <p id="summary">Focus moved from the trigger into the opened dialog.</p>
-            <p class="evidence-link">
-              <span aria-hidden="true">↳</span> Evidence:
-              <code id="evidence-ids">focus:before, focus:after</code>
-            </p>
-          </article>
-        </div>
-
-        <details class="json-details">
-          <summary>Inspect the normalized judgment</summary>
-          <pre tabindex="0"><code id="json-output">{
-  "judgeId": "focus-management",
-  "verdict": "pass",
-  "summary": "Focus moved from the trigger into the opened dialog.",
-  "evidenceRecordIds": [
-    "focus:before",
-    "focus:after"
-  ]
-}</code></pre>
-        </details>
-      </section>
-
-      <section class="section boundaries" id="boundaries" aria-labelledby="boundaries-title">
+  <body>
+    <main>
+      <h1>Projects</h1>
+      <p class="lede">Manage your production workspaces.</p>
+      <div class="project">
+        <div><strong>Project Alpha</strong><span>Production workspace</span></div>
+        <button id="delete-project" type="button" aria-label="Delete Project Alpha">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="delete-dialog" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" hidden="">
+        <h2 id="dialog-title">Delete Project Alpha?</h2>
+        <p>This action cannot be undone.</p>
         <div>
-          <p class="eyebrow">Trust requires boundaries</p>
-          <h2 id="boundaries-title">What a passing report does—and does not—mean</h2>
+          <button id="cancel-delete" type="button">Cancel</button>
+          <button id="confirm-delete" class="danger" type="button">Delete project</button>
         </div>
-        <div class="boundary-grid">
-          <article>
-            <h3>AEE can support</h3>
-            <ul>
-              <li>Repeatable investigation around selected interactions</li>
-              <li>Evidence-linked triage and release-policy decisions</li>
-              <li>Explicit unknown and unsupported results</li>
-            </ul>
-          </article>
-          <article>
-            <h3>AEE cannot certify</h3>
-            <ul>
-              <li>Complete WCAG conformance</li>
-              <li>All assistive-technology experiences</li>
-              <li>That captured artifacts are safe to share without review</li>
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section class="cta" aria-labelledby="cta-title">
-        <div>
-          <p class="eyebrow">Apache 2.0 · Open source</p>
-          <h2 id="cta-title">Inspect the implementation and run the fixture.</h2>
-        </div>
-        <a class="button primary" href="https://github.com/Elizabeth1979/accessibility-evidence-engine">View the repository</a>
-      </section>
+      </div>
     </main>
+    <script>
+      const parameters = new URLSearchParams(location.search);
+      const trigger = document.querySelector("#delete-project");
+      const dialog = document.querySelector("#delete-dialog");
+      const cancel = document.querySelector("#cancel-delete");
 
-    <footer>
-      <p>Accessibility Evidence Engine · Public preview</p>
-      <p>
-        <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/privacy.md">Evidence privacy</a>
-        ·
-        <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/SECURITY.md">Security</a>
-      </p>
-    </footer>
+      if (parameters.get("label") === "missing") trigger.removeAttribute("aria-label");
+      trigger.addEventListener("click", () => {
+        dialog.hidden = false;
+        if (parameters.get("focus") !== "broken") cancel.focus();
+      });
+      cancel.addEventListener("click", () => (dialog.hidden = true));
+    </script>
   
 
 </body></html>

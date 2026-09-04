@@ -1,7 +1,5 @@
-import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import AxeBuilder from "@axe-core/playwright";
@@ -14,7 +12,6 @@ const siteRoot = path.join(projectRoot, "site");
 const issueRunId = "recorded-modal-focus-issue";
 const fixedRunId = "recorded-modal-focus-fixed";
 const outputRoot = path.join(siteRoot, "demo-artifacts");
-const videoTempDir = await mkdtemp(path.join(tmpdir(), "aee-demo-video-"));
 const port = Number.parseInt(process.env.AEE_DEMO_PORT ?? "4173", 10);
 
 const contentTypes = new Map([
@@ -41,7 +38,10 @@ await Promise.all([
   rm(path.join(outputRoot, "ai-label-suggestion.json"), { force: true }),
   rm(path.join(outputRoot, "heading-structure"), { recursive: true, force: true }),
   rm(path.join(outputRoot, "axe-heading-structure.json"), { force: true }),
-  rm(path.join(outputRoot, "ai-heading-suggestion.json"), { force: true })
+  rm(path.join(outputRoot, "ai-heading-suggestion.json"), { force: true }),
+  rm(path.join(outputRoot, "icon-label"), { recursive: true, force: true }),
+  rm(path.join(outputRoot, "playwright-aee-demo.mp4"), { force: true }),
+  rm(path.join(outputRoot, "playwright-aee-demo.webm"), { force: true })
 ]);
 
 const server = createServer(async (request, response) => {
@@ -76,6 +76,7 @@ try {
   browser = await chromium.launch({ headless: true });
   await generateAxeEvidence(browser);
   await generateReviewedAiSuggestion();
+  await generateIconLabelStory(browser);
   await generateHeadingStructureStory(browser);
   const issueResult = await runEvidenceScenario(browser, {
     focusImplementation: "broken",
@@ -93,90 +94,12 @@ try {
   await assertRunVerdicts(issueRunId, "fail");
   await assertRunVerdicts(fixedRunId, "pass");
 
-  const playbackContext = await browser.newContext({
-    colorScheme: "dark",
-    recordVideo: {
-      dir: videoTempDir,
-      size: { width: 1280, height: 720 }
-    },
-    viewport: { width: 1280, height: 720 }
-  });
-  const playbackPage = await playbackContext.newPage();
-  const video = playbackPage.video();
-
-  await prepareRecordingPage(playbackPage, { label: "missing", focus: "broken" });
-  const deleteButton = playbackPage.locator("#delete-project");
-  await deleteButton.focus();
-  await setRecordingStage(playbackPage, "scan", "BEFORE — icon button has no accessible name");
-  await setRecordingOutcome(playbackPage, "axe-fail");
-  await playbackPage.waitForTimeout(2500);
-  await setRecordingStage(playbackPage, "label", "REVIEW — icon meaning requires context");
-  await applyPlaybackLabelFix(playbackPage);
-  await setRecordingOutcome(playbackPage, "label-review");
-  await playbackPage.waitForTimeout(3000);
-  await setRecordingStage(playbackPage, "interact", "BEFORE — test the broken focus behavior");
-  await setRecordingOutcome(playbackPage, "before-run");
-  await deleteButton.focus();
-  await playbackPage.waitForTimeout(600);
-  await deleteButton.click();
-  await playbackPage.waitForTimeout(900);
-  await setRecordingOutcome(playbackPage, "focus-fail");
-  await playbackPage.waitForTimeout(3200);
-  await setRecordingStage(playbackPage, "focus-fix", "FIX — move focus into the modal");
-  await applyPlaybackFocusFix(playbackPage);
-  await setRecordingOutcome(playbackPage, "fix-review");
-  await playbackPage.waitForTimeout(2600);
-  await setRecordingStage(playbackPage, "verify", "AFTER — rerun the identical interaction");
-  await setRecordingOutcome(playbackPage, "after-run");
-  await deleteButton.focus();
-  await playbackPage.waitForTimeout(600);
-  await deleteButton.click();
-  await playbackPage.waitForTimeout(900);
-  await setRecordingOutcome(playbackPage, "pass");
-  await setRecordingStage(playbackPage, "complete", "AFTER — focus moved inside the dialog");
-  await playbackPage.waitForTimeout(3200);
-  await playbackContext.close();
-
-  if (!video) {
-    throw new Error("Playwright did not create a video for the public demo.");
-  }
-
-  const recordedVideoPath = await video.path();
-  const webmPath = path.join(outputRoot, "playwright-aee-demo.webm");
-  const mp4Path = path.join(outputRoot, "playwright-aee-demo.mp4");
-  await writeFile(webmPath, await readFile(recordedVideoPath));
-  await rm(mp4Path, { force: true });
-
-  try {
-    execFileSync(
-      "ffmpeg",
-      [
-        "-y",
-        "-loglevel",
-        "error",
-        "-i",
-        webmPath,
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        mp4Path
-      ],
-      { stdio: "inherit" }
-    );
-  } catch {
-    console.warn("ffmpeg is unavailable; the WebM recording was still generated.");
-  }
-
   console.log(
-    `Recorded public demo and AEE evidence in ${path.relative(projectRoot, outputRoot)}.`
+    `Generated public demo images and AEE evidence in ${path.relative(projectRoot, outputRoot)}.`
   );
 } finally {
   await browser?.close();
   await new Promise((resolve) => server.close(resolve));
-  await rm(videoTempDir, { recursive: true, force: true });
 }
 
 async function generateAxeEvidence(activeBrowser) {
@@ -274,6 +197,45 @@ async function generateReviewedAiSuggestion() {
   );
 }
 
+async function generateIconLabelStory(activeBrowser) {
+  const context = await activeBrowser.newContext({
+    colorScheme: "dark",
+    viewport: { width: 1120, height: 660 },
+    deviceScaleFactor: 1
+  });
+  const iconOutput = path.join(outputRoot, "icon-label");
+  await mkdir(iconOutput, { recursive: true });
+
+  try {
+    const page = await context.newPage();
+    await page.setContent(iconLabelStoryMarkup("before"));
+    await page.locator("#story-frame").screenshot({ path: path.join(iconOutput, "before.png") });
+    await page.setContent(iconLabelStoryMarkup("after"));
+    await page.locator("#story-frame").screenshot({ path: path.join(iconOutput, "after.png") });
+  } finally {
+    await context.close();
+  }
+}
+
+function iconLabelStoryMarkup(stage) {
+  const isBefore = stage === "before";
+  const analysis = isBefore
+    ? `<div class="badge fail">axe-core · Fail</div><h2>The button has no name</h2><div class="tree"><code>button</code><strong>accessible name: ""</strong></div><p>axe detects the objective defect. The trash symbol alone does not provide a name to assistive technology.</p>`
+    : `<div class="badge review">AEE · Review</div><h2>“Delete Project Alpha”</h2><div class="signals"><span>trash icon</span><span>Project Alpha</span><span>delete confirmation</span></div><div class="tree pass"><code>button</code><strong>accessible name: "Delete Project Alpha"</strong></div><p>Context supplies the specific action and object. The reviewed label is applied, then axe passes on rerun.</p>`;
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+    * { box-sizing: border-box; } body { margin:0; padding:20px; background:#07110e; color:#f5fbf8; font-family:Inter,ui-sans-serif,system-ui,sans-serif; }
+    #story-frame { width:1080px; height:620px; display:grid; grid-template-columns:1.08fr .92fr; gap:20px; padding:26px; border:1px solid #29463d; border-radius:20px; background:linear-gradient(145deg,#0d1d18,#09130f); }
+    .browser { overflow:hidden; border:1px solid #36584d; border-radius:14px; background:#f6f2e9; color:#1b2824; } .chrome { display:flex; gap:7px; height:34px; padding:13px; background:#d9d4ca; } .chrome i { width:8px; height:8px; border-radius:50%; background:#8e8a82; }
+    .page { padding:34px 28px; } .page h1 { margin:0 0 8px; font-size:30px; } .lede { margin:0 0 42px; color:#65706b; } .project { display:flex; align-items:center; justify-content:space-between; padding:24px; border:1px solid #d6d1c7; border-radius:14px; background:#fff; } .project strong { display:block; font-size:21px; } .project span { color:#68736e; }
+    button { position:relative; display:grid; width:64px; height:64px; place-items:center; border:3px solid ${isBefore ? "#d84d4d" : "#2aa772"}; border-radius:14px; background:${isBefore ? "#fff0f0" : "#edfff6"}; color:${isBefore ? "#a52222" : "#126b49"}; } button svg { width:30px; fill:none; stroke:currentColor; stroke-width:2; } button::after { content:"${isBefore ? "no name" : "named"}"; position:absolute; top:72px; padding:5px 8px; border-radius:20px; background:${isBefore ? "#591b1b" : "#0b3a29"}; color:white; font:800 11px system-ui; white-space:nowrap; }
+    .analysis { display:flex; flex-direction:column; justify-content:center; padding:8px 12px; } .analysis h2 { margin:16px 0 12px; font-size:31px; line-height:1.12; } .analysis p { color:#a9bbb4; line-height:1.48; }
+    .badge { align-self:flex-start; padding:7px 10px; border-radius:999px; font-size:12px; font-weight:850; letter-spacing:.08em; text-transform:uppercase; } .fail { background:#4a1515; color:#ff9999; } .review { background:#3b2c08; color:#ffd76a; }
+    .tree { display:grid; gap:7px; margin:8px 0; padding:16px; border:1px solid #723333; border-radius:11px; background:#190b0b; } .tree.pass { border-color:#237252; background:#071a12; } .tree code { color:#91a69e; font-weight:800; } .tree strong { font:700 15px ui-monospace,SFMono-Regular,monospace; }
+    .signals { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:8px; } .signals span { padding:6px 9px; border:1px solid #7c651e; border-radius:999px; color:#ffe18a; font-size:12px; }
+  </style></head><body><div id="story-frame"><div class="browser"><div class="chrome"><i></i><i></i><i></i></div><main class="page"><h1>Projects</h1><p class="lede">Manage your production workspaces.</p><div class="project"><div><strong>Project Alpha</strong><span>Production workspace</span></div><button ${isBefore ? "" : 'aria-label="Delete Project Alpha"'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></main></div><section class="analysis">${analysis}</section></div></body></html>`;
+}
+
 async function generateHeadingStructureStory(activeBrowser) {
   const context = await activeBrowser.newContext({
     colorScheme: "dark",
@@ -296,7 +258,7 @@ async function generateHeadingStructureStory(activeBrowser) {
       );
     }
 
-    await writeAxeArtifact("axe-heading-structure.json", axeResult, "./#heading-demo");
+    await writeAxeArtifact("axe-heading-structure.json", axeResult, "./#examples");
     await page.locator("#story-frame").screenshot({
       path: path.join(headingOutput, "01-visual-page.png")
     });
@@ -427,7 +389,7 @@ function headingStoryMarkup(stage) {
     </body></html>`;
 }
 
-async function writeAxeArtifact(fileName, result, artifactUrl = "./?recording=1") {
+async function writeAxeArtifact(fileName, result, artifactUrl = "./demo-fixture.html") {
   await writeFile(
     path.join(outputRoot, fileName),
     `${JSON.stringify(
@@ -498,135 +460,11 @@ async function runEvidenceScenario(activeBrowser, options) {
 
 async function prepareRecordingPage(page, options) {
   const parameters = new URLSearchParams({
-    recording: "1",
     label: options.label,
     focus: options.focus
   });
-  await page.goto(`http://127.0.0.1:${port}/?${parameters}`, {
+  await page.goto(`http://127.0.0.1:${port}/demo-fixture.html?${parameters}`, {
     waitUntil: "domcontentloaded"
-  });
-  await page.locator("#recorded-title").evaluate((heading) => {
-    const activeWindow = heading.ownerDocument.defaultView;
-    heading.ownerDocument.documentElement.style.scrollBehavior = "auto";
-    activeWindow?.scrollTo({
-      top: heading.getBoundingClientRect().top + (activeWindow.scrollY ?? 0) - 24
-    });
-  });
-}
-
-async function setRecordingStage(page, stage, message) {
-  await page.locator("#recording-progress").evaluate(
-    (progress, { activeStage, activeMessage }) => {
-      const orderedStages = ["scan", "label", "interact", "focus-fix", "verify"];
-      const activeIndex =
-        activeStage === "complete" ? orderedStages.length : orderedStages.indexOf(activeStage);
-      const activeDocument = progress.ownerDocument;
-      activeDocument.body.dataset.recordingStage = activeStage;
-
-      const messageNode = progress.querySelector("#recording-message");
-      if (messageNode) {
-        messageNode.textContent = activeMessage;
-      }
-
-      for (const step of progress.querySelectorAll("[data-recording-step]")) {
-        const stepIndex = orderedStages.indexOf(step.dataset.recordingStep ?? "");
-        step.dataset.state =
-          stepIndex < activeIndex ? "complete" : stepIndex === activeIndex ? "active" : "pending";
-      }
-    },
-    { activeStage: stage, activeMessage: message }
-  );
-}
-
-async function setRecordingOutcome(page, outcome) {
-  await page.locator("#recording-result").evaluate((result, activeOutcome) => {
-    const verdict = result.querySelector("#recording-verdict");
-    const title = result.querySelector("#recording-result-title");
-    const summary = result.querySelector("#recording-result-summary");
-
-    const outcomes = {
-      pending: {
-        verdict: "Running",
-        className: "verdict pending",
-        title: "Waiting for evidence",
-        summary: "Playwright is exercising the icon-button and modal workflow."
-      },
-      "before-run": {
-        verdict: "Before",
-        className: "verdict fail",
-        title: "Opening the dialog before the focus fix",
-        summary: "Watch the focus indicator: it should enter the dialog, but remains on Delete."
-      },
-      "axe-fail": {
-        verdict: "Fail",
-        className: "verdict fail",
-        title: "axe: button-name",
-        summary: "The trash icon button has no accessible name. Static detection is the baseline."
-      },
-      "label-review": {
-        verdict: "Review",
-        className: "verdict review",
-        title: "Contextual label proposed",
-        summary:
-          "Escalated: this icon-only control needs the project heading and dialog copy. AI suggests “Delete Project Alpha”."
-      },
-      "focus-fail": {
-        verdict: "Fail",
-        className: "verdict fail",
-        title: "Before: focus remained behind",
-        summary:
-          "Dialog opened. Active element: #delete-project — outside the dialog. Release blocked."
-      },
-      "fix-review": {
-        verdict: "Fix",
-        className: "verdict review",
-        title: "Move focus when the dialog opens",
-        summary: "Applied: cancelButton.focus(). Now rerun the identical click to verify it."
-      },
-      "after-run": {
-        verdict: "After",
-        className: "verdict pending",
-        title: "Rerunning after the focus fix",
-        summary: "The same Delete action opens the same dialog with the repaired implementation."
-      },
-      pass: {
-        verdict: "Pass",
-        className: "verdict pass",
-        title: "After: focus enters the dialog",
-        summary:
-          "Same click. Active element: #cancel-delete — inside the dialog. Release gate passed."
-      }
-    };
-    const selected = outcomes[activeOutcome];
-
-    if (verdict && title && summary && selected) {
-      verdict.textContent = selected.verdict;
-      verdict.className = selected.className;
-      title.textContent = selected.title;
-      summary.textContent = selected.summary;
-    }
-  }, outcome);
-}
-
-async function applyPlaybackLabelFix(page) {
-  await page.locator("#delete-project").evaluate((button) => {
-    button.setAttribute("aria-label", "Delete Project Alpha");
-  });
-}
-
-async function applyPlaybackFocusFix(page) {
-  await page.locator("#delete-project").evaluate((button) => {
-    const activeDocument = button.ownerDocument;
-    const dialog = activeDocument.querySelector("#delete-dialog");
-    const cancelButton = activeDocument.querySelector("#cancel-delete");
-    const focusStatus = activeDocument.querySelector("#real-focus");
-    dialog.hidden = true;
-    button.focus();
-    focusStatus.textContent = "Delete button";
-    button.addEventListener("click", () => {
-      cancelButton.focus();
-      focusStatus.textContent = "Cancel inside dialog";
-    });
   });
 }
 

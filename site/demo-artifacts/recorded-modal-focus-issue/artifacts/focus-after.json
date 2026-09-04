@@ -5,6 +5,6 @@
   "type": "button",
   "tabIndex": 0,
   "disabled": false,
-  "focusOrderIndex": 9,
-  "focusableCount": 18
+  "focusOrderIndex": 0,
+  "focusableCount": 3
 }

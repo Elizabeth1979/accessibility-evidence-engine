@@ -3,8 +3,8 @@
     "name": "axe-core",
     "version": "4.13.0"
   },
-  "url": "./?recording=1",
-  "timestamp": "2026-09-02T18:01:36.726Z",
+  "url": "./demo-fixture.html",
+  "timestamp": "2026-09-04T11:48:16.010Z",
   "testEnvironment": {
     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
     "windowWidth": 1280,
@@ -15,67 +15,7 @@
   "testRunner": {
     "name": "axe"
   },
-  "passes": [
-    {
-      "id": "button-name",
-      "impact": "critical",
-      "tags": [
-        "cat.name-role-value",
-        "wcag2a",
-        "wcag412",
-        "section508",
-        "section508.22.a",
-        "TTv5",
-        "TT6.a",
-        "EN-301-549",
-        "EN-9.4.1.2",
-        "ACT",
-        "RGAAv4",
-        "RGAA-11.9.1"
-      ],
-      "description": "Ensure buttons have discernible text",
-      "help": "Buttons must have discernible text",
-      "helpUrl": "https://dequeuniversity.com/rules/axe/4.13/button-name?application=playwright",
-      "nodes": [
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has inner text that is visible to screen readers"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" data-scenario=\"pass\" aria-pressed=\"true\">\n            Correct focus transfer\n          </button>",
-          "target": [
-            "button[data-scenario=\"pass\"]"
-          ]
-        },
-        {
-          "any": [
-            {
-              "id": "button-has-visible-text",
-              "data": null,
-              "relatedNodes": [],
-              "impact": "critical",
-              "message": "Element has inner text that is visible to screen readers"
-            }
-          ],
-          "all": [],
-          "none": [],
-          "impact": null,
-          "html": "<button type=\"button\" data-scenario=\"fail\" aria-pressed=\"false\">\n            Focus remains behind\n          </button>",
-          "target": [
-            "button[data-scenario=\"fail\"]"
-          ]
-        }
-      ]
-    }
-  ],
+  "passes": [],
   "incomplete": [],
   "violations": [
     {
@@ -156,7 +96,7 @@
           "all": [],
           "none": [],
           "impact": "critical",
-          "html": "<button id=\"delete-project\" type=\"button\">\n                <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\">\n                  <path d=\"M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5\"></path>\n                </svg>\n              </button>",
+          "html": "<button id=\"delete-project\" type=\"button\">\n          <svg viewBox=\"0 0 24 24\" aria-hidden=\"true\">\n            <path d=\"M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5\"></path>\n          </svg>\n        </button>",
           "target": [
             "#delete-project"
           ],

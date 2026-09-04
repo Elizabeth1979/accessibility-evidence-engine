@@ -6,12 +6,11 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
-- A reproducible axe → AI label proposal → AEE focus-management recording with published scanner output, paired AEE reports, screenshots, and a transcript.
+- A learner-controlled before-and-after slideshow for icon naming, heading structure, and modal focus, backed by published scanner output and paired AEE reports.
 - A focus-management judge that verifies explicit focus transfer into an opened dialog.
 - `@aee/ai-fixes`, with an injectable contextual-label provider and an optional OpenAI Responses adapter using strict structured output.
 - Deterministic-first AI review routing for semantic heading structure, icon-only labels, and decorative-versus-informative classification; routine findings cannot invoke the label provider.
-- A slower public recording with explicit before, fix, and after states for the modal-focus repair.
-- A three-image heading-structure demonstration with a real passing axe artifact and a separate, reviewed full-page outline proposal.
+- Static contextual-review images, including a real passing axe heading artifact and a separate reviewed full-page outline proposal.
 
 ## [0.1.0] - 2026-08-30
 

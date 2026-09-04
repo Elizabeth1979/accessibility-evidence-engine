@@ -1,113 +1,40 @@
-const scenarios = {
-  pass: {
-    afterFocus: "button#cancel-delete",
-    afterStatus: "Open",
-    domChanged: "Yes",
-    verdict: "Pass",
-    summary: "Focus moved from the trigger into the opened dialog.",
-    evidenceIds: ["focus:before", "focus:after"],
-    finding: null
-  },
-  fail: {
-    afterFocus: "button#delete-project",
-    afterStatus: "Open",
-    domChanged: "Yes",
-    verdict: "Fail",
-    summary: "The dialog opened, but focus remained on the trigger behind it.",
-    evidenceIds: ["dom:before", "dom:after", "focus:before", "focus:after"],
-    finding: {
-      severity: "high",
-      ruleId: "dialog-initial-focus",
-      suggestedFix: "Move focus to an appropriate element inside the opened dialog."
-    }
-  }
-};
+const slides = [...document.querySelectorAll("[data-slide]")];
+const slideButtons = [...document.querySelectorAll("[data-slide-target]")];
+const previousButton = document.querySelector("#previous-example");
+const nextButton = document.querySelector("#next-example");
+const status = document.querySelector("#slideshow-status");
+const labels = ["Icon label", "Headings", "Modal focus"];
+let activeIndex = 0;
 
-const pageParameters = new URLSearchParams(window.location.search);
+function showSlide(index, { announce = true } = {}) {
+  activeIndex = (index + slides.length) % slides.length;
 
-if (pageParameters.has("recording")) {
-  document.body.classList.add("recording");
-}
-
-const buttons = document.querySelectorAll("[data-scenario]");
-const afterFocus = document.querySelector("#after-focus");
-const afterStatus = document.querySelector("#after-status");
-const domChanged = document.querySelector("#dom-changed");
-const verdict = document.querySelector("#verdict");
-const summary = document.querySelector("#summary");
-const evidenceIds = document.querySelector("#evidence-ids");
-const jsonOutput = document.querySelector("#json-output");
-const deleteProject = document.querySelector("#delete-project");
-const deleteDialog = document.querySelector("#delete-dialog");
-const cancelDelete = document.querySelector("#cancel-delete");
-const confirmDelete = document.querySelector("#confirm-delete");
-const realFocus = document.querySelector("#real-focus");
-
-function selectScenario(name) {
-  const scenario = scenarios[name];
-
-  for (const button of buttons) {
-    button.setAttribute("aria-pressed", String(button.dataset.scenario === name));
+  for (const [slideIndex, slide] of slides.entries()) {
+    slide.hidden = slideIndex !== activeIndex;
   }
 
-  afterFocus.textContent = scenario.afterFocus;
-  afterStatus.textContent = scenario.afterStatus;
-  domChanged.textContent = scenario.domChanged;
-  verdict.textContent = scenario.verdict;
-  verdict.className = `verdict ${scenario.verdict.toLowerCase()}`;
-  summary.textContent = scenario.summary;
-  evidenceIds.textContent = scenario.evidenceIds.join(", ");
-  jsonOutput.textContent = JSON.stringify(
-    {
-      judgeId: "focus-management",
-      verdict: scenario.verdict.toLowerCase(),
-      summary: scenario.summary,
-      evidenceRecordIds: scenario.evidenceIds,
-      ...(scenario.finding ? { findings: [scenario.finding] } : {})
-    },
-    null,
-    2
-  );
-}
-
-for (const button of buttons) {
-  button.addEventListener("click", () => selectScenario(button.dataset.scenario));
-}
-
-selectScenario("pass");
-
-if (pageParameters.get("label") === "missing") {
-  deleteProject.removeAttribute("aria-label");
-}
-
-function updateFocusStatus() {
-  if (document.activeElement === cancelDelete) {
-    realFocus.textContent = "Cancel inside dialog";
-  } else if (document.activeElement === confirmDelete) {
-    realFocus.textContent = "Delete project inside dialog";
-  } else if (document.activeElement === deleteProject) {
-    realFocus.textContent = deleteDialog.hidden ? "Delete button" : "Delete button behind dialog";
-  } else {
-    realFocus.textContent = document.activeElement?.tagName.toLowerCase() ?? "None";
-  }
-}
-
-function closeDeleteDialog() {
-  deleteDialog.hidden = true;
-  deleteProject.focus();
-  updateFocusStatus();
-}
-
-deleteProject.addEventListener("click", () => {
-  deleteDialog.hidden = false;
-
-  if (pageParameters.get("focus") !== "broken") {
-    cancelDelete.focus();
+  for (const [buttonIndex, button] of slideButtons.entries()) {
+    button.setAttribute("aria-pressed", String(buttonIndex === activeIndex));
   }
 
-  updateFocusStatus();
+  const message = `Example ${activeIndex + 1} of ${slides.length}: ${labels[activeIndex]}`;
+  status.textContent = announce ? message : "";
+  if (!announce) requestAnimationFrame(() => (status.textContent = message));
+}
+
+for (const button of slideButtons) {
+  button.addEventListener("click", () => showSlide(Number(button.dataset.slideTarget)));
+}
+
+previousButton.addEventListener("click", () => showSlide(activeIndex - 1));
+nextButton.addEventListener("click", () => showSlide(activeIndex + 1));
+
+document.querySelector(".example-slideshow").addEventListener("keydown", (event) => {
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    event.preventDefault();
+    showSlide(activeIndex + (event.key === "ArrowRight" ? 1 : -1), { announce: false });
+    slideButtons[activeIndex].focus();
+  }
 });
 
-cancelDelete.addEventListener("click", closeDeleteDialog);
-confirmDelete.addEventListener("click", closeDeleteDialog);
-document.addEventListener("focusin", updateFocusStatus);
+showSlide(0);

@@ -21,131 +21,86 @@ test("public demo exposes its purpose and limitations", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeAttached();
 });
 
-test("public demo lets keyboard users compare pass and fail evidence", async ({ page }) => {
-  await page.goto(demoUrl);
-
-  const focusFailure = page.getByRole("button", { name: "Focus remains behind" });
-  await focusFailure.focus();
-  await page.keyboard.press("Enter");
-
-  await expect(focusFailure).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("#verdict")).toHaveText("Fail");
-  await expect(page.locator("#dom-changed")).toHaveText("Yes");
-  await expect(page.locator("#after-focus")).toHaveText("button#delete-project");
-  await expect(page.locator("#json-output")).toContainText('"verdict": "fail"');
-});
-
-test("public demo distinguishes static scanning, contextual repair, and behavioral evidence", async ({
-  page
-}) => {
-  await page.goto(demoUrl);
-
-  await expect(page.getByText("Button has no name")).toBeVisible();
-  await expect(page.getByText("Focus stays behind")).toBeVisible();
-  await expect(page.getByText("Focus enters dialog")).toBeVisible();
-  await expect(page.getByRole("link", { name: "axe unnamed-button result" })).toHaveAttribute(
-    "href",
-    "demo-artifacts/axe-unnamed-icon.json"
-  );
-  await expect(page.getByRole("link", { name: "Reviewed AI label proposal" })).toHaveAttribute(
-    "href",
-    "demo-artifacts/ai-label-suggestion.json"
-  );
-  await expect(page.locator("video")).toHaveAttribute("controls", "");
-  await expect(page.locator(".video-caption")).toContainText(
-    "Before (fail) → reviewed fixes → After (pass)"
-  );
-  await expect(page.getByText("Read the recording transcript")).toBeVisible();
-
-  const [issueReport, fixedReport] = await Promise.all(
-    ["recorded-modal-focus-issue", "recorded-modal-focus-fixed"].map(async (runId) =>
-      JSON.parse(
-        await readFile(path.resolve(`site/demo-artifacts/${runId}/aee-report.json`), "utf8")
-      )
-    )
-  );
-  expect(issueReport.run.results).toEqual({ pass: 1, fail: 2, unknown: 0 });
-  expect(fixedReport.run.results).toEqual({ pass: 3, fail: 0, unknown: 0 });
-
-  const [axeUnnamed, axeNamed, axeOpenDialog, aiSuggestion] = await Promise.all(
-    [
-      "axe-unnamed-icon.json",
-      "axe-named-icon.json",
-      "axe-open-dialog.json",
-      "ai-label-suggestion.json"
-    ].map(async (fileName) =>
-      JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
-    )
-  );
-  expect(axeUnnamed.violations.some((violation) => violation.id === "button-name")).toBe(true);
-  expect(axeNamed.violations).toEqual([]);
-  expect(axeOpenDialog.violations).toEqual([]);
-  expect(aiSuggestion.proposal.safety).toBe("review");
-  expect(aiSuggestion.routing.route).toBe("ai-review");
-  expect(aiSuggestion.routing.reason).toMatch(/icon-only.*surrounding UI context/i);
-  expect(aiSuggestion.proposal.patches).toContain(
-    '#delete-project: add aria-label="Delete Project Alpha"'
-  );
-  expect(aiSuggestion.verificationRequired).toBe(true);
-
-  const duration = await page.locator("video").evaluate(async (element) => {
-    const video = element as HTMLVideoElement;
-
-    if (video.readyState < 1) {
-      await new Promise<void>((resolve, reject) => {
-        video.addEventListener("loadedmetadata", () => resolve(), { once: true });
-        video.addEventListener("error", () => reject(new Error("Demo video failed to load.")), {
-          once: true
-        });
-      });
-    }
-
-    return video.duration;
-  });
-  expect(duration).toBeGreaterThan(15);
-  expect(duration).toBeLessThan(25);
-});
-
-test("public interaction moves focus inside the dialog", async ({ page }) => {
-  await page.goto(demoUrl);
-
-  await page.getByRole("button", { name: "Delete Project Alpha" }).click();
-
-  await expect(page.getByRole("dialog", { name: "Delete Project Alpha?" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Cancel" })).toBeFocused();
-});
-
-test("heading demo separates the axe result from contextual review", async ({ page }) => {
+test("slideshow shows only one focused before-and-after example", async ({ page }) => {
   await page.goto(demoUrl);
 
   await expect(
-    page.getByRole("heading", { name: "When valid levels still describe the wrong structure" })
+    page.getByRole("heading", { name: "One issue. One before. One after." })
   ).toBeVisible();
-  await expect(page.getByText("See what axe reports")).toBeVisible();
-  await expect(page.getByText("Review AEE’s contextual suggestion")).toBeVisible();
-  await expect(page.getByRole("link", { name: "axe heading result" })).toHaveAttribute(
-    "href",
-    "demo-artifacts/axe-heading-structure.json"
-  );
+  await expect(
+    page.getByRole("heading", { name: "Give an icon-only button a useful name" })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Make the semantic outline match the visual structure" })
+  ).toBeHidden();
+  await expect(page.locator("video")).toHaveCount(0);
+  await expect(page.locator(".issue-fix-summary, .evidence-grid")).toHaveCount(0);
 
-  const [axeResult, headingSuggestion] = await Promise.all(
-    ["axe-heading-structure.json", "ai-heading-suggestion.json"].map(async (fileName) =>
-      JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
-    )
-  );
-  expect(axeResult.violations).toEqual([]);
-  expect(headingSuggestion.routing.route).toBe("ai-review");
-  expect(headingSuggestion.proposal.safety).toBe("review");
-  expect(headingSuggestion.proposal.before).toEqual([
-    "h1 Project Alpha",
-    "h2 General",
-    "h2 Members",
-    "h2 Danger zone"
-  ]);
-  expect(headingSuggestion.proposal.after).toContain("  h2 Settings");
+  await page.getByRole("button", { name: "Headings", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Give an icon-only button a useful name" })
+  ).toBeHidden();
+  await expect(
+    page.getByRole("heading", { name: "Make the semantic outline match the visual structure" })
+  ).toBeVisible();
+  await expect(page.locator("#slideshow-status")).toHaveText("Example 2 of 3: Headings");
+});
 
-  for (const imageName of ["01-visual-page.png", "02-axe-result.png", "03-aee-suggestion.png"]) {
-    const image = page.locator(`img[src$="${imageName}"]`);
+test("slideshow supports buttons and arrow-key navigation", async ({ page }) => {
+  await page.goto(demoUrl);
+
+  const next = page.getByRole("button", { name: "Show next example" });
+  await next.click();
+  await next.click();
+  await expect(
+    page.getByRole("heading", { name: "Move focus into an opened modal" })
+  ).toBeVisible();
+
+  const modalPicker = page.getByRole("button", { name: "Modal focus", exact: true });
+  await modalPicker.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page.getByRole("heading", { name: "Give an icon-only button a useful name" })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Icon label", exact: true })).toBeFocused();
+
+  await page.getByRole("button", { name: "Show previous example" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Move focus into an opened modal" })
+  ).toBeVisible();
+});
+
+test("slideshow images and generated evidence agree", async ({ page }) => {
+  await page.goto(demoUrl);
+
+  const [axeUnnamed, axeNamed, axeHeading, aiLabel, aiHeading, issueReport, fixedReport] =
+    await Promise.all(
+      [
+        "axe-unnamed-icon.json",
+        "axe-named-icon.json",
+        "axe-heading-structure.json",
+        "ai-label-suggestion.json",
+        "ai-heading-suggestion.json",
+        "recorded-modal-focus-issue/aee-report.json",
+        "recorded-modal-focus-fixed/aee-report.json"
+      ].map(async (fileName) =>
+        JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
+      )
+    );
+
+  expect(axeUnnamed.violations.some((violation) => violation.id === "button-name")).toBe(true);
+  expect(axeNamed.violations).toEqual([]);
+  expect(aiLabel.routing.route).toBe("ai-review");
+  expect(aiLabel.proposal.patches).toContain(
+    '#delete-project: add aria-label="Delete Project Alpha"'
+  );
+  expect(axeHeading.violations).toEqual([]);
+  expect(aiHeading.routing.route).toBe("ai-review");
+  expect(aiHeading.proposal.after).toContain("  h2 Settings");
+  expect(issueReport.run.results).toEqual({ pass: 1, fail: 2, unknown: 0 });
+  expect(fixedReport.run.results).toEqual({ pass: 3, fail: 0, unknown: 0 });
+
+  for (const image of await page.locator(".before-after img").all()) {
     await expect(image).toHaveAttribute("alt", /.+/);
     await expect(image).toHaveJSProperty("complete", true);
   }
