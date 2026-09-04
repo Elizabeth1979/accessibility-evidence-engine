@@ -105,3 +105,24 @@ test("slideshow images and generated evidence agree", async ({ page }) => {
     await expect(image).toHaveJSProperty("complete", true);
   }
 });
+
+test("evidence is readable in place and raw artifacts are downloads", async ({ page }) => {
+  await page.goto(demoUrl);
+
+  await page.getByText("Read the evidence behind these examples").click();
+
+  await expect(page.getByRole("heading", { name: "Icon label" })).toBeVisible();
+  await expect(page.getByText('aria-label="Delete Project Alpha"')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Heading hierarchy" })).toBeVisible();
+  await expect(
+    page.getByText(/missing relationship, not an invalid heading sequence/i)
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Modal focus" })).toBeVisible();
+  await expect(page.getByText(/focused element is still its trigger/i)).toBeVisible();
+
+  const rawLinks = page.locator(".raw-downloads a");
+  await expect(rawLinks).toHaveCount(7);
+  for (const link of await rawLinks.all()) {
+    await expect(link).toHaveAttribute("download", "");
+  }
+});

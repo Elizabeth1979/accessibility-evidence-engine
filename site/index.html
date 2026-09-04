@@ -234,17 +234,108 @@
         </div>
 
         <details class="evidence-library">
-          <summary>Inspect the generated evidence</summary>
-          <div>
-            <a href="demo-artifacts/axe-unnamed-icon.json">axe unnamed-button result</a
-            ><a href="demo-artifacts/ai-label-suggestion.json">Reviewed icon-label proposal</a>
-            <a href="demo-artifacts/axe-heading-structure.json">axe heading result</a
-            ><a href="demo-artifacts/ai-heading-suggestion.json">Reviewed heading proposal</a>
-            <a href="demo-artifacts/recorded-modal-focus-issue/aee-report.md"
-              >Focus failure report</a
-            ><a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.md"
-              >Verified focus report</a
-            >
+          <summary>Read the evidence behind these examples</summary>
+          <div class="evidence-summaries">
+            <section aria-labelledby="icon-evidence-title">
+              <p class="evidence-number">Example 1</p>
+              <h3 id="icon-evidence-title">Icon label</h3>
+              <dl>
+                <div>
+                  <dt>Automatic check</dt>
+                  <dd><span class="evidence-state fail">Fail</span> Button has no name.</dd>
+                </div>
+                <div>
+                  <dt>Contextual review</dt>
+                  <dd>The trash icon and “Project Alpha” identify the action and its object.</dd>
+                </div>
+                <div>
+                  <dt>Reviewed change</dt>
+                  <dd><code>aria-label="Delete Project Alpha"</code></dd>
+                </div>
+                <div>
+                  <dt>Verified rerun</dt>
+                  <dd><span class="evidence-state pass">Pass</span> Button has a specific name.</dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/axe-unnamed-icon.json" download
+                  >axe result before fix (.json)</a
+                >
+                <a href="demo-artifacts/ai-label-suggestion.json" download
+                  >Reviewed proposal (.json)</a
+                >
+                <a href="demo-artifacts/axe-named-icon.json" download
+                  >axe verification after fix (.json)</a
+                >
+              </details>
+            </section>
+
+            <section aria-labelledby="heading-evidence-title">
+              <p class="evidence-number">Example 2</p>
+              <h3 id="heading-evidence-title">Heading hierarchy</h3>
+              <dl>
+                <div>
+                  <dt>Automatic check</dt>
+                  <dd><span class="evidence-state pass">Pass</span> Heading levels do not skip.</dd>
+                </div>
+                <div>
+                  <dt>Contextual review</dt>
+                  <dd>“Settings” visually groups General, Members, and Danger zone.</dd>
+                </div>
+                <div>
+                  <dt>Reviewed change</dt>
+                  <dd>Make Settings an <code>h2</code> and its three sections <code>h3</code>s.</dd>
+                </div>
+                <div>
+                  <dt>Why AEE adds value</dt>
+                  <dd>The issue is the missing relationship, not an invalid heading sequence.</dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/axe-heading-structure.json" download
+                  >axe heading result (.json)</a
+                >
+                <a href="demo-artifacts/ai-heading-suggestion.json" download
+                  >Reviewed proposal (.json)</a
+                >
+              </details>
+            </section>
+
+            <section aria-labelledby="focus-evidence-title">
+              <p class="evidence-number">Example 3</p>
+              <h3 id="focus-evidence-title">Modal focus</h3>
+              <dl>
+                <div>
+                  <dt>Before</dt>
+                  <dd>
+                    <span class="evidence-state fail">Fail</span> Focus remains behind the dialog.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Observed evidence</dt>
+                  <dd>The modal opens, but the focused element is still its trigger.</dd>
+                </div>
+                <div>
+                  <dt>Fix</dt>
+                  <dd>Move focus to the Cancel button when the modal opens.</dd>
+                </div>
+                <div>
+                  <dt>Verified rerun</dt>
+                  <dd><span class="evidence-state pass">Pass</span> Focus enters the dialog.</dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/recorded-modal-focus-issue/aee-report.json" download
+                  >Failure report (.json)</a
+                >
+                <a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.json" download
+                  >Verified report (.json)</a
+                >
+              </details>
+            </section>
           </div>
         </details>
       </section>

@@ -11,6 +11,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - `@aee/ai-fixes`, with an injectable contextual-label provider and an optional OpenAI Responses adapter using strict structured output.
 - Deterministic-first AI review routing for semantic heading structure, icon-only labels, and decorative-versus-informative classification; routine findings cannot invoke the label provider.
 - Static contextual-review images, including a real passing axe heading artifact and a separate reviewed full-page outline proposal.
+- Human-readable evidence summaries on the public demo, with machine-readable artifacts offered as explicit downloads instead of raw browser pages.
 
 ## [0.1.0] - 2026-08-30
 
