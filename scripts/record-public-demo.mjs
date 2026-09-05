@@ -4,8 +4,16 @@ import path from "node:path";
 
 import AxeBuilder from "@axe-core/playwright";
 import { chromium } from "@playwright/test";
-import { proposeAccessibleLabelFix, routeContextualReview } from "@aee/ai-fixes";
-import { runAeeOnPage } from "@aee/playwright";
+import {
+  proposeAccessibleLabelFix,
+  routeContextualReview,
+  suggestPaletteContrastFix
+} from "@aee/ai-fixes";
+import {
+  comparePointerAndKeyboardOutcomes,
+  runAeeOnPage,
+  verifyMotionControl
+} from "@aee/playwright";
 
 const projectRoot = process.cwd();
 const siteRoot = path.join(projectRoot, "site");
@@ -40,6 +48,9 @@ await Promise.all([
   rm(path.join(outputRoot, "axe-heading-structure.json"), { force: true }),
   rm(path.join(outputRoot, "ai-heading-suggestion.json"), { force: true }),
   rm(path.join(outputRoot, "icon-label"), { recursive: true, force: true }),
+  rm(path.join(outputRoot, "palette-contrast"), { recursive: true, force: true }),
+  rm(path.join(outputRoot, "hover-keyboard"), { recursive: true, force: true }),
+  rm(path.join(outputRoot, "motion-control"), { recursive: true, force: true }),
   rm(path.join(outputRoot, "playwright-aee-demo.mp4"), { force: true }),
   rm(path.join(outputRoot, "playwright-aee-demo.webm"), { force: true })
 ]);
@@ -78,6 +89,9 @@ try {
   await generateReviewedAiSuggestion();
   await generateIconLabelStory(browser);
   await generateHeadingStructureStory(browser);
+  await generatePaletteContrastStory(browser);
+  await generateHoverKeyboardStory(browser);
+  await generateMotionControlStory(browser);
   const issueResult = await runEvidenceScenario(browser, {
     focusImplementation: "broken",
     runId: issueRunId,
@@ -234,6 +248,203 @@ function iconLabelStoryMarkup(stage) {
     .tree { display:grid; gap:7px; margin:8px 0; padding:16px; border:1px solid #723333; border-radius:11px; background:#190b0b; } .tree.pass { border-color:#237252; background:#071a12; } .tree code { color:#91a69e; font-weight:800; } .tree strong { font:700 15px ui-monospace,SFMono-Regular,monospace; }
     .signals { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:8px; } .signals span { padding:6px 9px; border:1px solid #7c651e; border-radius:999px; color:#ffe18a; font-size:12px; }
   </style></head><body><div id="story-frame"><div class="browser"><div class="chrome"><i></i><i></i><i></i></div><main class="page"><h1>Projects</h1><p class="lede">Manage your production workspaces.</p><div class="project"><div><strong>Project Alpha</strong><span>Production workspace</span></div><button ${isBefore ? "" : 'aria-label="Delete Project Alpha"'}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg></button></div></main></div><section class="analysis">${analysis}</section></div></body></html>`;
+}
+
+async function generatePaletteContrastStory(activeBrowser) {
+  const directory = path.join(outputRoot, "palette-contrast");
+  await mkdir(directory, { recursive: true });
+  const result = suggestPaletteContrastFix({
+    selector: ".dashboard-card .secondary-copy",
+    foreground: "#607a71",
+    background: "#07110f",
+    palette: [
+      { name: "Muted", value: "#607a71" },
+      { name: "Text subtle", value: "#91aaa2" },
+      { name: "Accent", value: "#70f0b4" },
+      { name: "Primary text", value: "#f1f8f5" }
+    ]
+  });
+  await writeFile(
+    path.join(directory, "evidence.json"),
+    `${JSON.stringify({ schemaVersion: "0.1.0", kind: "palette-contrast", ...result }, null, 2)}\n`
+  );
+
+  const context = await activeBrowser.newContext({ viewport: { width: 1080, height: 620 } });
+  try {
+    const page = await context.newPage();
+    for (const stage of ["before", "after"]) {
+      await page.setContent(paletteStoryMarkup(stage, result));
+      await page.locator("#story-frame").screenshot({ path: path.join(directory, `${stage}.png`) });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+function paletteStoryMarkup(stage, result) {
+  const fixed = stage === "after";
+  const color = fixed ? result.selected.value : "#607a71";
+  const ratio = fixed ? result.selectedRatio : result.currentRatio;
+  return advancedStoryShell(`
+    <div class="sample palette-sample">
+      <p class="sample-label">Quarterly overview</p>
+      <h1>Revenue grew 18%</h1>
+      <p class="secondary" style="color:${color}">Compared with the previous quarter</p>
+      <div class="swatches"><i style="background:#607a71"></i><i style="background:#91aaa2"></i><i style="background:#70f0b4"></i><i style="background:#f1f8f5"></i></div>
+    </div>
+    <div class="analysis">
+      <span class="badge ${fixed ? "pass" : "fail"}">${fixed ? "AEE · VERIFIED" : "CONTRAST · FAIL"}</span>
+      <h2>${fixed ? "Closest passing palette color" : "Brand color does not contrast"}</h2>
+      <div class="metric"><span>Foreground</span><strong>${color}</strong></div>
+      <div class="metric"><span>Measured contrast</span><strong>${ratio.toFixed(2)}:1</strong></div>
+      <div class="metric"><span>Required</span><strong>4.50:1</strong></div>
+      <p>${fixed ? "AEE checks existing tokens and proposes Text subtle—not an invented color—for human review." : "The failure is objective. Choosing a compatible repair requires awareness of the product palette."}</p>
+    </div>`);
+}
+
+async function generateHoverKeyboardStory(activeBrowser) {
+  const directory = path.join(outputRoot, "hover-keyboard");
+  await mkdir(directory, { recursive: true });
+  const context = await activeBrowser.newContext({ viewport: { width: 1080, height: 620 } });
+  try {
+    const page = await context.newPage();
+    const before = await measureHoverKeyboard(page, false);
+    const after = await measureHoverKeyboard(page, true);
+    await writeFile(
+      path.join(directory, "evidence.json"),
+      `${JSON.stringify({ schemaVersion: "0.1.0", kind: "pointer-keyboard-equivalence", before, after }, null, 2)}\n`
+    );
+    for (const [stage, result] of [
+      ["before", before],
+      ["after", after]
+    ]) {
+      await page.setContent(hoverStoryMarkup(stage, result));
+      await page.locator("#story-frame").screenshot({ path: path.join(directory, `${stage}.png`) });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+async function measureHoverKeyboard(page, fixed) {
+  const markup = `<!doctype html><style>
+    #tip { display:none } #point:hover + #tip${fixed ? ", #point:focus + #tip" : ""} { display:block }
+  </style><main><${fixed ? "button" : "div"} id="point">Q3</${fixed ? "button" : "div"}><p id="tip">Revenue increased 18 percent</p></main>`;
+  await page.setContent(markup);
+  return comparePointerAndKeyboardOutcomes({
+    async reset() {
+      await page.evaluate(() => {
+        const activeElement = globalThis.document.activeElement;
+        if (activeElement instanceof globalThis.HTMLElement) activeElement.blur();
+      });
+      await page.mouse.move(1000, 580);
+    },
+    async performPointerInteraction() {
+      await page.locator("#point").hover();
+    },
+    async performKeyboardInteraction() {
+      await page.keyboard.press("Tab");
+    },
+    async captureOutcome() {
+      return page.locator("#tip").evaluate((element) => ({
+        visible: globalThis.getComputedStyle(element).display !== "none",
+        text: element.textContent?.trim() ?? ""
+      }));
+    }
+  });
+}
+
+function hoverStoryMarkup(stage, result) {
+  const fixed = stage === "after";
+  return advancedStoryShell(`
+    <div class="sample chart-sample">
+      <p class="sample-label">Quarterly revenue</p><h1>$2.4M</h1>
+      <div class="chart"><i></i><i></i><i class="active"></i><i></i></div>
+      <div class="outcome"><span>Mouse hover</span><strong class="good">Tooltip shown</strong></div>
+      <div class="outcome"><span>Keyboard focus</span><strong class="${fixed ? "good" : "bad"}">${fixed ? "Same tooltip shown" : "Nothing happens"}</strong></div>
+    </div>
+    <div class="analysis">
+      <span class="badge ${fixed ? "pass" : "fail"}">AEE · ${result.verdict.toUpperCase()}</span>
+      <h2>${fixed ? "Equivalent outcome verified" : "Hover-only information found"}</h2>
+      <p>${fixed ? "The reset hover and keyboard paths reveal the same text." : "The same reset state produces different outcomes for mouse and keyboard."}</p>
+      <div class="code">${fixed ? "button:hover + .tooltip\nbutton:focus + .tooltip" : ".point:hover + .tooltip"}</div>
+    </div>`);
+}
+
+async function generateMotionControlStory(activeBrowser) {
+  const directory = path.join(outputRoot, "motion-control");
+  await mkdir(directory, { recursive: true });
+  const context = await activeBrowser.newContext({ viewport: { width: 1080, height: 620 } });
+  try {
+    const page = await context.newPage();
+    const before = await measureMotionControl(page, false);
+    const after = await measureMotionControl(page, true);
+    await writeFile(
+      path.join(directory, "evidence.json"),
+      `${JSON.stringify({ schemaVersion: "0.1.0", kind: "motion-control", before, after }, null, 2)}\n`
+    );
+    for (const [stage, result] of [
+      ["before", before],
+      ["after", after]
+    ]) {
+      await page.setContent(motionStoryMarkup(stage, result));
+      await page.locator("#story-frame").screenshot({ path: path.join(directory, `${stage}.png`) });
+    }
+  } finally {
+    await context.close();
+  }
+}
+
+async function measureMotionControl(page, fixed) {
+  await page.setContent(`<!doctype html><style>
+    #ticker { width:120px; animation:travel .35s linear infinite } @keyframes travel { to { transform:translateX(160px) } }
+  </style><div id="ticker">Breaking news</div><button id="pause">Pause animation</button>
+  <script>document.querySelector('#pause').addEventListener('click', () => { ${fixed ? "document.querySelector('#ticker').getAnimations().forEach(animation => animation.cancel())" : "void 0"} })</script>`);
+  return verifyMotionControl({
+    settleMs: 70,
+    async sample() {
+      return page.locator("#ticker").evaluate((element) => ({
+        activeAnimations: element
+          .getAnimations()
+          .filter((animation) => animation.playState === "running").length,
+        signature: globalThis.getComputedStyle(element).transform
+      }));
+    },
+    async requestStop() {
+      await page.locator("#pause").click();
+    }
+  });
+}
+
+function motionStoryMarkup(stage, result) {
+  const fixed = stage === "after";
+  return advancedStoryShell(`
+    <div class="sample motion-sample">
+      <p class="sample-label">Live updates</p><h1>Breaking news</h1>
+      <div class="ticker"><span>Product launch</span><span>Market update</span><span>New release</span></div>
+      <button>Pause animation</button>
+      <div class="outcome"><span>After Pause</span><strong class="${fixed ? "good" : "bad"}">${fixed ? "Stable" : "Still moving"}</strong></div>
+    </div>
+    <div class="analysis">
+      <span class="badge ${fixed ? "pass" : "fail"}">AEE · ${result.verdict.toUpperCase()}</span>
+      <h2>${fixed ? "Motion stopped and stayed still" : "Pause control has no effect"}</h2>
+      <div class="metric"><span>Active animations</span><strong>${result.settled.activeAnimations}</strong></div>
+      <div class="metric"><span>Two samples stable</span><strong>${result.after.signature === result.settled.signature ? "Yes" : "No"}</strong></div>
+      <p>AEE samples after the stop request twice, so a single frozen screenshot cannot create a false pass.</p>
+    </div>`);
+}
+
+function advancedStoryShell(content) {
+  return `<!doctype html><html><head><style>
+    *{box-sizing:border-box}body{margin:0;padding:20px;background:#07110e;color:#f5fbf8;font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+    #story-frame{display:grid;grid-template-columns:1.05fr .95fr;width:1080px;height:620px;overflow:hidden;border:1px solid #36584d;border-radius:18px;background:#0b1815}
+    .sample{padding:46px;background:#f6f2e9;color:#1b2824}.palette-sample{background:#07110f;color:#f1f8f5}.palette-sample .sample-label{color:#91aaa2}.sample-label{margin:0;color:#66746f;font-weight:750;text-transform:uppercase;letter-spacing:.08em}.sample h1{margin:10px 0 8px;font-size:38px}.secondary{font-size:21px}
+    .analysis{display:flex;flex-direction:column;justify-content:center;padding:42px}.analysis h2{margin:16px 0 12px;font-size:31px;line-height:1.12}.analysis p{color:#a9bbb4;font-size:17px;line-height:1.45}
+    .badge{align-self:flex-start;padding:7px 10px;border-radius:999px;font-size:12px;font-weight:850;letter-spacing:.08em}.fail{background:#4a1515;color:#ff9999}.pass{background:#0b3a29;color:#70f0b4}
+    .metric,.outcome{display:flex;justify-content:space-between;gap:20px;margin-top:10px;padding:12px 0;border-bottom:1px solid #345149}.sample .outcome{border-color:#d4cec2}.metric span,.outcome span{color:#98ada5}.sample .outcome span{color:#64706b}.good{color:#13734e}.bad{color:#a52222}
+    .swatches{display:flex;gap:12px;margin-top:54px}.swatches i{width:62px;height:62px;border:3px solid white;border-radius:12px;box-shadow:0 2px 12px #0003}.chart{display:flex;align-items:end;gap:22px;height:190px;margin:18px 0}.chart i{display:block;width:72px;height:42%;border-radius:8px 8px 0 0;background:#7bcbaa}.chart i:nth-child(2){height:68%}.chart i:nth-child(3){height:88%;background:#167651;outline:5px solid #bcebd8}.chart i:nth-child(4){height:74%}
+    .code{margin-top:22px;padding:18px;border:1px solid #345149;border-radius:10px;background:#06100d;color:#d6f6e8;font:700 15px/1.6 ui-monospace,monospace;white-space:pre}.ticker{display:flex;gap:14px;margin:48px -46px 28px;padding:20px;background:#142824;color:white;transform:translateX(18px)}.ticker span{flex:none;padding:10px 16px;border-radius:999px;background:#245245}.sample button{padding:12px 18px;border:0;border-radius:8px;background:#173f32;color:white;font:700 16px system-ui}
+  </style></head><body><main id="story-frame">${content}</main></body></html>`;
 }
 
 async function generateHeadingStructureStory(activeBrowser) {

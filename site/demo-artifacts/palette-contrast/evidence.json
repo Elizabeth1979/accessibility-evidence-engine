@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "kind": "palette-contrast",
+  "currentRatio": 4.12,
+  "minimumRatio": 4.5,
+  "selected": {
+    "name": "Text subtle",
+    "value": "#91aaa2"
+  },
+  "selectedRatio": 7.73,
+  "colorDistance": 0.1604,
+  "proposal": {
+    "providerId": "aee-palette-contrast",
+    "summary": "Use Text subtle (#91aaa2) for .dashboard-card .secondary-copy.",
+    "rationale": "It is the perceptually closest supplied palette color to #607a71 that meets the 4.50:1 requirement against #07110f. The measured ratio changes from 4.12:1 to 7.73:1.",
+    "safety": "review",
+    "patches": [
+      ".dashboard-card .secondary-copy: set color: #91aaa2"
+    ]
+  }
+}

@@ -4,7 +4,8 @@ import test from "node:test";
 import {
   createOpenAiResponsesLabelProvider,
   proposeAccessibleLabelFix,
-  routeContextualReview
+  routeContextualReview,
+  suggestPaletteContrastFix
 } from "./index";
 
 const context = {
@@ -144,5 +145,48 @@ test("OpenAI Responses provider requests strict structured output", async () => 
   assert.equal(
     ((requestBody?.text as Record<string, unknown>)?.format as Record<string, unknown>)?.type,
     "json_schema"
+  );
+});
+
+test("palette contrast fix selects the closest passing project color", () => {
+  const suggestion = suggestPaletteContrastFix({
+    selector: ".secondary-copy",
+    foreground: "#607a71",
+    background: "#07110f",
+    palette: [
+      { name: "Muted", value: "#607a71" },
+      { name: "Text subtle", value: "#91aaa2" },
+      { name: "Accent", value: "#70f0b4" },
+      { name: "White", value: "#ffffff" }
+    ]
+  });
+
+  assert.equal(suggestion.selected.name, "Text subtle");
+  assert.ok(suggestion.currentRatio < 4.5);
+  assert.ok(suggestion.selectedRatio >= 4.5);
+  assert.equal(suggestion.proposal.safety, "review");
+  assert.deepEqual(suggestion.proposal.patches, [".secondary-copy: set color: #91aaa2"]);
+});
+
+test("palette contrast fix refuses unnecessary or impossible proposals", () => {
+  assert.throws(
+    () =>
+      suggestPaletteContrastFix({
+        selector: "p",
+        foreground: "#ffffff",
+        background: "#000000",
+        palette: [{ name: "White", value: "#ffffff" }]
+      }),
+    /already meets/i
+  );
+  assert.throws(
+    () =>
+      suggestPaletteContrastFix({
+        selector: "p",
+        foreground: "#777777",
+        background: "#ffffff",
+        palette: [{ name: "Still low", value: "#888888" }]
+      }),
+    /No supplied palette color/i
   );
 });

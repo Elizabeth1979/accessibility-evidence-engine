@@ -94,7 +94,7 @@
       <section class="section examples-section" id="examples" aria-labelledby="examples-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Three focused examples</p>
+            <p class="eyebrow">Six focused examples</p>
             <h2 id="examples-title">One issue. One before. One after.</h2>
           </div>
           <p>
@@ -109,7 +109,7 @@
         >
           <article class="example-slide" data-slide="0" aria-labelledby="slide-icon-title">
             <div class="slide-intro">
-              <p class="slide-count">Example 1 of 3 · Contextual AI review</p>
+              <p class="slide-count">Example 1 of 6 · Contextual AI review</p>
               <h3 id="slide-icon-title">Give an icon-only button a useful name</h3>
               <p>
                 axe detects the missing name. AEE uses the icon, project heading, and destination
@@ -149,7 +149,7 @@
             hidden
           >
             <div class="slide-intro">
-              <p class="slide-count">Example 2 of 3 · Full-page hierarchy</p>
+              <p class="slide-count">Example 2 of 6 · Full-page hierarchy</p>
               <h3 id="slide-heading-title">Make the semantic outline match the visual structure</h3>
               <p>
                 axe passes the valid heading sequence. AEE sees that “Settings” visually groups
@@ -184,7 +184,7 @@
 
           <article class="example-slide" data-slide="2" aria-labelledby="slide-focus-title" hidden>
             <div class="slide-intro">
-              <p class="slide-count">Example 3 of 3 · Behavioral evidence</p>
+              <p class="slide-count">Example 3 of 6 · Behavioral evidence</p>
               <h3 id="slide-focus-title">Move focus into an opened modal</h3>
               <p>
                 The same Playwright interaction runs twice. Before, focus remains on the trigger
@@ -217,6 +217,111 @@
             </div>
           </article>
 
+          <article class="example-slide" data-slide="3" aria-labelledby="slide-color-title" hidden>
+            <div class="slide-intro">
+              <p class="slide-count">Example 4 of 6 · Palette-aware repair</p>
+              <h3 id="slide-color-title">
+                Choose the closest passing color already in the palette
+              </h3>
+              <p>
+                The contrast failure is objective. AEE measures the existing design tokens and
+                proposes the perceptually closest one that passes—without inventing a new color.
+              </p>
+            </div>
+            <div class="before-after">
+              <figure>
+                <figcaption>
+                  <strong>Before</strong><span>brand color measures 4.12:1</span>
+                </figcaption>
+                <img
+                  src="demo-artifacts/palette-contrast/before.png"
+                  alt="Before: secondary dashboard text uses the brand color 607a71, which measures 4.12 to 1 against the dark background and fails the 4.5 to 1 requirement."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+              <figure>
+                <figcaption>
+                  <strong>After review</strong><span>nearest passing token measures 7.73:1</span>
+                </figcaption>
+                <img
+                  src="demo-artifacts/palette-contrast/after.png"
+                  alt="After review: AEE selects the existing Text subtle token 91aaa2, the closest supplied palette color that passes at 7.73 to 1."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+            </div>
+          </article>
+
+          <article class="example-slide" data-slide="4" aria-labelledby="slide-hover-title" hidden>
+            <div class="slide-intro">
+              <p class="slide-count">Example 5 of 6 · Interaction equivalence</p>
+              <h3 id="slide-hover-title">Expose hover information to keyboard users</h3>
+              <p>
+                AEE runs the pointer and keyboard paths from the same reset state, then compares
+                their observable outcomes instead of assuming equivalent CSS means equivalent use.
+              </p>
+            </div>
+            <div class="before-after">
+              <figure>
+                <figcaption>
+                  <strong>Before</strong><span>tooltip appears only on hover</span>
+                </figcaption>
+                <img
+                  src="demo-artifacts/hover-keyboard/before.png"
+                  alt="Before: hovering over a revenue chart point reveals a tooltip, while keyboard focus reveals nothing; AEE marks the outcomes different."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+              <figure>
+                <figcaption>
+                  <strong>After fix</strong><span>hover and focus reveal the same information</span>
+                </figcaption>
+                <img
+                  src="demo-artifacts/hover-keyboard/after.png"
+                  alt="After fix: both mouse hover and keyboard focus reveal the same revenue tooltip, and AEE verifies equivalent outcomes."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+            </div>
+          </article>
+
+          <article class="example-slide" data-slide="5" aria-labelledby="slide-motion-title" hidden>
+            <div class="slide-intro">
+              <p class="slide-count">Example 6 of 6 · Time-based verification</p>
+              <h3 id="slide-motion-title">Verify that a Pause control really stops animation</h3>
+              <p>
+                AEE samples after the stop request twice. That distinguishes lasting stillness from
+                a single screenshot that merely caught the animation between frames.
+              </p>
+            </div>
+            <div class="before-after">
+              <figure>
+                <figcaption><strong>Before</strong><span>Pause has no effect</span></figcaption>
+                <img
+                  src="demo-artifacts/motion-control/before.png"
+                  alt="Before: a live-updates ticker continues moving after the Pause animation button is pressed; AEE observes one active animation and changing samples."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+              <figure>
+                <figcaption>
+                  <strong>After fix</strong><span>motion stops and remains stable</span>
+                </figcaption>
+                <img
+                  src="demo-artifacts/motion-control/after.png"
+                  alt="After fix: pressing Pause leaves zero active animations and two stable samples, so AEE verifies that motion stopped."
+                  width="1080"
+                  height="620"
+                />
+              </figure>
+            </div>
+          </article>
+
           <div class="slideshow-controls">
             <button type="button" id="previous-example" aria-label="Show previous example">
               ← Previous
@@ -225,11 +330,14 @@
               <button type="button" data-slide-target="0" aria-pressed="true">Icon label</button>
               <button type="button" data-slide-target="1" aria-pressed="false">Headings</button>
               <button type="button" data-slide-target="2" aria-pressed="false">Modal focus</button>
+              <button type="button" data-slide-target="3" aria-pressed="false">Color</button>
+              <button type="button" data-slide-target="4" aria-pressed="false">Hover</button>
+              <button type="button" data-slide-target="5" aria-pressed="false">Animation</button>
             </div>
             <button type="button" id="next-example" aria-label="Show next example">Next →</button>
           </div>
           <p class="slideshow-status" id="slideshow-status" aria-live="polite">
-            Example 1 of 3: Icon label
+            Example 1 of 6: Icon label
           </p>
         </div>
 
@@ -333,6 +441,104 @@
                 >
                 <a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.json" download
                   >Verified report (.json)</a
+                >
+              </details>
+            </section>
+
+            <section aria-labelledby="color-evidence-title">
+              <p class="evidence-number">Example 4</p>
+              <h3 id="color-evidence-title">Palette-aware contrast</h3>
+              <dl>
+                <div>
+                  <dt>Measured failure</dt>
+                  <dd><span class="evidence-state fail">Fail</span> 4.12:1 instead of 4.50:1.</dd>
+                </div>
+                <div>
+                  <dt>Bounded candidates</dt>
+                  <dd>AEE considers only colors supplied from the project palette.</dd>
+                </div>
+                <div>
+                  <dt>Reviewed change</dt>
+                  <dd>Select <code>Text subtle #91aaa2</code>, measured at 7.73:1.</dd>
+                </div>
+                <div>
+                  <dt>Why no LLM?</dt>
+                  <dd>Contrast and perceptual distance are deterministic calculations.</dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/palette-contrast/evidence.json" download
+                  >Palette contrast evidence (.json)</a
+                >
+              </details>
+            </section>
+
+            <section aria-labelledby="hover-evidence-title">
+              <p class="evidence-number">Example 5</p>
+              <h3 id="hover-evidence-title">Hover and keyboard</h3>
+              <dl>
+                <div>
+                  <dt>Pointer path</dt>
+                  <dd>Hover reveals “Revenue increased 18 percent.”</dd>
+                </div>
+                <div>
+                  <dt>Keyboard path</dt>
+                  <dd>
+                    <span class="evidence-state fail">Fail</span> The broken version reveals
+                    nothing.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Fix</dt>
+                  <dd>Use a focusable control and expose the tooltip on focus.</dd>
+                </div>
+                <div>
+                  <dt>Verified rerun</dt>
+                  <dd>
+                    <span class="evidence-state pass">Pass</span> Both paths return the same
+                    outcome.
+                  </dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/hover-keyboard/evidence.json" download
+                  >Interaction comparison (.json)</a
+                >
+              </details>
+            </section>
+
+            <section aria-labelledby="motion-evidence-title">
+              <p class="evidence-number">Example 6</p>
+              <h3 id="motion-evidence-title">Animation control</h3>
+              <dl>
+                <div>
+                  <dt>Before</dt>
+                  <dd>
+                    <span class="evidence-state fail">Fail</span> One animation remains active.
+                  </dd>
+                </div>
+                <div>
+                  <dt>Verification method</dt>
+                  <dd>Request Pause, wait, sample, wait again, and sample again.</dd>
+                </div>
+                <div>
+                  <dt>Fix</dt>
+                  <dd>Connect the Pause control to the running animation.</dd>
+                </div>
+                <div>
+                  <dt>Verified rerun</dt>
+                  <dd>
+                    <span class="evidence-state pass">Pass</span> Zero active animations; state
+                    stays stable.
+                  </dd>
+                </div>
+              </dl>
+              <details class="raw-downloads">
+                <summary>Download raw developer files</summary>
+                <a href="demo-artifacts/motion-control/evidence.json" download
+                  >Motion verification (.json)</a
                 >
               </details>
             </section>

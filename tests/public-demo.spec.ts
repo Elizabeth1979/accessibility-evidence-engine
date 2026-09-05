@@ -43,7 +43,7 @@ test("slideshow shows only one focused before-and-after example", async ({ page 
   await expect(
     page.getByRole("heading", { name: "Make the semantic outline match the visual structure" })
   ).toBeVisible();
-  await expect(page.locator("#slideshow-status")).toHaveText("Example 2 of 3: Headings");
+  await expect(page.locator("#slideshow-status")).toHaveText("Example 2 of 6: Headings");
 });
 
 test("slideshow supports buttons and arrow-key navigation", async ({ page }) => {
@@ -56,8 +56,9 @@ test("slideshow supports buttons and arrow-key navigation", async ({ page }) => 
     page.getByRole("heading", { name: "Move focus into an opened modal" })
   ).toBeVisible();
 
-  const modalPicker = page.getByRole("button", { name: "Modal focus", exact: true });
-  await modalPicker.focus();
+  const animationPicker = page.getByRole("button", { name: "Animation", exact: true });
+  await animationPicker.click();
+  await animationPicker.focus();
   await page.keyboard.press("ArrowRight");
   await expect(
     page.getByRole("heading", { name: "Give an icon-only button a useful name" })
@@ -66,27 +67,40 @@ test("slideshow supports buttons and arrow-key navigation", async ({ page }) => 
 
   await page.getByRole("button", { name: "Show previous example" }).click();
   await expect(
-    page.getByRole("heading", { name: "Move focus into an opened modal" })
+    page.getByRole("heading", { name: "Verify that a Pause control really stops animation" })
   ).toBeVisible();
 });
 
 test("slideshow images and generated evidence agree", async ({ page }) => {
   await page.goto(demoUrl);
 
-  const [axeUnnamed, axeNamed, axeHeading, aiLabel, aiHeading, issueReport, fixedReport] =
-    await Promise.all(
-      [
-        "axe-unnamed-icon.json",
-        "axe-named-icon.json",
-        "axe-heading-structure.json",
-        "ai-label-suggestion.json",
-        "ai-heading-suggestion.json",
-        "recorded-modal-focus-issue/aee-report.json",
-        "recorded-modal-focus-fixed/aee-report.json"
-      ].map(async (fileName) =>
-        JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
-      )
-    );
+  const [
+    axeUnnamed,
+    axeNamed,
+    axeHeading,
+    aiLabel,
+    aiHeading,
+    issueReport,
+    fixedReport,
+    paletteEvidence,
+    hoverEvidence,
+    motionEvidence
+  ] = await Promise.all(
+    [
+      "axe-unnamed-icon.json",
+      "axe-named-icon.json",
+      "axe-heading-structure.json",
+      "ai-label-suggestion.json",
+      "ai-heading-suggestion.json",
+      "recorded-modal-focus-issue/aee-report.json",
+      "recorded-modal-focus-fixed/aee-report.json",
+      "palette-contrast/evidence.json",
+      "hover-keyboard/evidence.json",
+      "motion-control/evidence.json"
+    ].map(async (fileName) =>
+      JSON.parse(await readFile(path.resolve(`site/demo-artifacts/${fileName}`), "utf8"))
+    )
+  );
 
   expect(axeUnnamed.violations.some((violation) => violation.id === "button-name")).toBe(true);
   expect(axeNamed.violations).toEqual([]);
@@ -99,6 +113,13 @@ test("slideshow images and generated evidence agree", async ({ page }) => {
   expect(aiHeading.proposal.after).toContain("  h2 Settings");
   expect(issueReport.run.results).toEqual({ pass: 1, fail: 2, unknown: 0 });
   expect(fixedReport.run.results).toEqual({ pass: 3, fail: 0, unknown: 0 });
+  expect(paletteEvidence.currentRatio).toBeLessThan(4.5);
+  expect(paletteEvidence.selectedRatio).toBeGreaterThanOrEqual(4.5);
+  expect(paletteEvidence.selected.name).toBe("Text subtle");
+  expect(hoverEvidence.before.verdict).toBe("fail");
+  expect(hoverEvidence.after.verdict).toBe("pass");
+  expect(motionEvidence.before.verdict).toBe("fail");
+  expect(motionEvidence.after.verdict).toBe("pass");
 
   for (const image of await page.locator(".before-after img").all()) {
     await expect(image).toHaveAttribute("alt", /.+/);
@@ -121,7 +142,7 @@ test("evidence is readable in place and raw artifacts are downloads", async ({ p
   await expect(page.getByText(/focused element is still its trigger/i)).toBeVisible();
 
   const rawLinks = page.locator(".raw-downloads a");
-  await expect(rawLinks).toHaveCount(7);
+  await expect(rawLinks).toHaveCount(10);
   for (const link of await rawLinks.all()) {
     await expect(link).toHaveAttribute("download", "");
   }

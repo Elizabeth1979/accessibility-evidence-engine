@@ -104,7 +104,7 @@ The `@aee/*` packages currently work as local npm workspaces in this repository;
 
 ### Before-and-after examples
 
-The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#examples) is a learner-controlled slideshow with three focused comparisons: an icon-only label, a heading hierarchy that passes axe's selected automatic rules, and modal focus management. Each slide shows one Before and one After image. Nothing autoplays, and detailed artifacts stay collapsed until requested.
+The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#examples) is a learner-controlled slideshow with six focused comparisons: an icon-only label, a heading hierarchy that passes axe's selected automatic rules, modal focus management, palette-aware contrast repair, hover-versus-keyboard equivalence, and animation stopping. Each slide shows one Before and one After image. Nothing autoplays, and detailed artifacts stay collapsed until requested.
 
 Rebuild the axe and AEE evidence plus the public images locally with:
 
@@ -126,6 +126,8 @@ npm run demo:record
 | Reporting              | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
 | AI review routing      | Headings, icon labels, decorative classification    | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model         |
 | AI fix proposals       | Contextual accessible names                         | Injected provider proposes a label; output is always review-only and requires a verified rerun              |
+| Palette contrast       | Existing-token selection                            | Selects the perceptually closest supplied palette color that clears a requested contrast ratio              |
+| Interaction probes     | Pointer/keyboard equivalence, motion stopping       | Compares reset interaction outcomes and verifies stopped motion across two post-action samples              |
 
 The Guidepup screen-reader and axe observers, plus the interaction, screen-reader, and visual judges, are declared extension points but currently return unsupported or unknown results. They should not be presented as implemented checks.
 

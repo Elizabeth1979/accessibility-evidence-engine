@@ -24,6 +24,26 @@ Use `routeContextualReview(...)` before any custom provider workflow. `proposeAc
 
 An AI suggestion never counts as proof and is never applied automatically.
 
+## Palette-aware contrast repair
+
+Contrast measurement and nearest-color selection do not require an LLM. `suggestPaletteContrastFix(...)` accepts a foreground, background, minimum ratio, and the project's existing named colors. It filters for passing colors, compares the remainder in OKLab space, and returns the closest token as a review-only proposal.
+
+```ts
+import { suggestPaletteContrastFix } from "@aee/ai-fixes";
+
+const suggestion = suggestPaletteContrastFix({
+  selector: ".secondary-copy",
+  foreground: "#607a71",
+  background: "#07110f",
+  palette: [
+    { name: "Text subtle", value: "#91aaa2" },
+    { name: "Accent", value: "#70f0b4" }
+  ]
+});
+```
+
+The caller remains responsible for selecting the correct contrast threshold and reviewing the token in all component states.
+
 ## Provider-neutral usage
 
 ```ts

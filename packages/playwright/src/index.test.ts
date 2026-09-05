@@ -3,7 +3,13 @@ import test from "node:test";
 
 import type { EvidenceRecord, Judgment } from "@aee/core";
 
-import { resolveObserverIdsForCapturePolicy, runAeeOnPage, type PlaywrightPageLike } from "./index";
+import {
+  comparePointerAndKeyboardOutcomes,
+  resolveObserverIdsForCapturePolicy,
+  runAeeOnPage,
+  verifyMotionControl,
+  type PlaywrightPageLike
+} from "./index";
 
 interface JsonReport {
   run: {
@@ -46,6 +52,75 @@ function getReporterContent(result: Awaited<ReturnType<typeof runAeeOnPage>>): J
   assert.ok(artifact, "Expected a JSON reporter artifact.");
   return getJsonReport(artifact.content);
 }
+
+test("comparePointerAndKeyboardOutcomes detects inaccessible hover-only behavior", async () => {
+  let visibleText = "";
+  const comparison = await comparePointerAndKeyboardOutcomes({
+    async reset() {
+      visibleText = "";
+    },
+    async performPointerInteraction() {
+      visibleText = "Revenue increased 18 percent";
+    },
+    async performKeyboardInteraction() {},
+    async captureOutcome() {
+      return { visibleText };
+    }
+  });
+
+  assert.equal(comparison.verdict, "fail");
+  assert.deepEqual(comparison.pointerOutcome, {
+    visibleText: "Revenue increased 18 percent"
+  });
+  assert.deepEqual(comparison.keyboardOutcome, { visibleText: "" });
+});
+
+test("comparePointerAndKeyboardOutcomes passes equivalent interaction outcomes", async () => {
+  let expanded = false;
+  const comparison = await comparePointerAndKeyboardOutcomes({
+    async reset() {
+      expanded = false;
+    },
+    async performPointerInteraction() {
+      expanded = true;
+    },
+    async performKeyboardInteraction() {
+      expanded = true;
+    },
+    async captureOutcome() {
+      return { expanded };
+    }
+  });
+
+  assert.equal(comparison.verdict, "pass");
+});
+
+test("verifyMotionControl distinguishes stopped and continuing motion", async () => {
+  let stopped = false;
+  const passing = await verifyMotionControl({
+    settleMs: 0,
+    async sample() {
+      return { activeAnimations: stopped ? 0 : 1, signature: stopped ? "paused" : "moving" };
+    },
+    async requestStop() {
+      stopped = true;
+    }
+  });
+
+  assert.equal(passing.verdict, "pass");
+
+  let frame = 0;
+  const failing = await verifyMotionControl({
+    settleMs: 0,
+    async sample() {
+      frame += 1;
+      return { activeAnimations: 1, signature: `frame-${frame}` };
+    },
+    async requestStop() {}
+  });
+
+  assert.equal(failing.verdict, "fail");
+});
 
 test("resolveObserverIdsForCapturePolicy filters disabled capture observers", () => {
   const selectedObservers = resolveObserverIdsForCapturePolicy(

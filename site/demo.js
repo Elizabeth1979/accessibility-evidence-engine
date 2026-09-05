@@ -3,7 +3,7 @@ const slideButtons = [...document.querySelectorAll("[data-slide-target]")];
 const previousButton = document.querySelector("#previous-example");
 const nextButton = document.querySelector("#next-example");
 const status = document.querySelector("#slideshow-status");
-const labels = ["Icon label", "Headings", "Modal focus"];
+const labels = ["Icon label", "Headings", "Modal focus", "Color", "Hover", "Animation"];
 let activeIndex = 0;
 
 function showSlide(index, { announce = true } = {}) {

@@ -265,6 +265,33 @@ await runAeeOnPage({
 });
 ```
 
+## Pointer and keyboard outcome comparison
+
+`comparePointerAndKeyboardOutcomes(...)` runs both paths from the same reset state. The caller defines what observable outcome matters, such as tooltip visibility and text.
+
+```ts
+const result = await comparePointerAndKeyboardOutcomes({
+  reset: () => resetChart(),
+  performPointerInteraction: () => point.hover(),
+  performKeyboardInteraction: () => point.focus(),
+  captureOutcome: () => readTooltipState()
+});
+```
+
+## Motion-control verification
+
+`verifyMotionControl(...)` samples motion, requests the stop action, then takes two later samples. A pass requires zero active animations and the same caller-defined visual signature in both later samples.
+
+```ts
+const result = await verifyMotionControl({
+  sample: () => readTickerMotion(),
+  requestStop: () => pauseButton.click(),
+  settleMs: 100
+});
+```
+
+These helpers are explicit probes rather than universal WCAG judgments. The test author chooses the relevant controls, outcomes, animation scope, timing, and expected equivalence.
+
 ## Notes
 
 - `outputDir` is optional. When provided, AEE writes reports and captured artifacts into `outputDir/<run-id>/`.

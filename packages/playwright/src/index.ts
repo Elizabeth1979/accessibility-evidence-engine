@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   executeRun,
@@ -74,6 +75,88 @@ export interface RunAeeOnPageResult {
   reporterFiles: string[];
   artifactFiles: string[];
   reportArtifacts: ReporterArtifact[];
+}
+
+export interface InteractionOutcomeComparison<T> {
+  verdict: "pass" | "fail";
+  pointerOutcome: T;
+  keyboardOutcome: T;
+  summary: string;
+}
+
+export interface ComparePointerAndKeyboardOptions<T> {
+  reset(): Promise<void>;
+  performPointerInteraction(): Promise<void>;
+  performKeyboardInteraction(): Promise<void>;
+  captureOutcome(): Promise<T>;
+  equals?: (pointerOutcome: T, keyboardOutcome: T) => boolean;
+}
+
+/** Runs equivalent pointer and keyboard paths from the same reset state and compares outcomes. */
+export async function comparePointerAndKeyboardOutcomes<T>(
+  options: ComparePointerAndKeyboardOptions<T>
+): Promise<InteractionOutcomeComparison<T>> {
+  await options.reset();
+  await options.performPointerInteraction();
+  const pointerOutcome = await options.captureOutcome();
+  await options.reset();
+  await options.performKeyboardInteraction();
+  const keyboardOutcome = await options.captureOutcome();
+  const equivalent = (options.equals ?? isDeepStrictEqual)(pointerOutcome, keyboardOutcome);
+
+  return {
+    verdict: equivalent ? "pass" : "fail",
+    pointerOutcome,
+    keyboardOutcome,
+    summary: equivalent
+      ? "Pointer and keyboard interactions produced equivalent observable outcomes."
+      : "Pointer and keyboard interactions produced different observable outcomes."
+  };
+}
+
+export interface MotionSample {
+  activeAnimations: number;
+  signature: string;
+}
+
+export interface MotionControlVerification {
+  verdict: "pass" | "fail";
+  before: MotionSample;
+  after: MotionSample;
+  settled: MotionSample;
+  summary: string;
+}
+
+export interface VerifyMotionControlOptions {
+  sample(): Promise<MotionSample>;
+  requestStop(): Promise<void>;
+  settleMs?: number;
+}
+
+/** Verifies that a stop action removes active motion and leaves a stable observable state. */
+export async function verifyMotionControl(
+  options: VerifyMotionControlOptions
+): Promise<MotionControlVerification> {
+  const before = await options.sample();
+  await options.requestStop();
+  await waitFor(options.settleMs ?? 100);
+  const after = await options.sample();
+  await waitFor(options.settleMs ?? 100);
+  const settled = await options.sample();
+  const stopped =
+    after.activeAnimations === 0 &&
+    settled.activeAnimations === 0 &&
+    after.signature === settled.signature;
+
+  return {
+    verdict: stopped ? "pass" : "fail",
+    before,
+    after,
+    settled,
+    summary: stopped
+      ? "The requested control stopped the observed motion and the visual state remained stable."
+      : "Motion continued, remained active, or changed again after the stop request."
+  };
 }
 
 export interface AeePlaywrightOptions {

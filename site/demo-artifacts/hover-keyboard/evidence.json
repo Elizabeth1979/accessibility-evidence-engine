@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "kind": "pointer-keyboard-equivalence",
+  "before": {
+    "verdict": "fail",
+    "pointerOutcome": {
+      "visible": true,
+      "text": "Revenue increased 18 percent"
+    },
+    "keyboardOutcome": {
+      "visible": false,
+      "text": "Revenue increased 18 percent"
+    },
+    "summary": "Pointer and keyboard interactions produced different observable outcomes."
+  },
+  "after": {
+    "verdict": "pass",
+    "pointerOutcome": {
+      "visible": true,
+      "text": "Revenue increased 18 percent"
+    },
+    "keyboardOutcome": {
+      "visible": true,
+      "text": "Revenue increased 18 percent"
+    },
+    "summary": "Pointer and keyboard interactions produced equivalent observable outcomes."
+  }
+}

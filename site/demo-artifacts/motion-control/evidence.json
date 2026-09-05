@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "0.1.0",
+  "kind": "motion-control",
+  "before": {
+    "verdict": "fail",
+    "before": {
+      "activeAnimations": 1,
+      "signature": "matrix(1, 0, 0, 1, 3.83863, 0)"
+    },
+    "after": {
+      "activeAnimations": 1,
+      "signature": "matrix(1, 0, 0, 1, 45.7129, 0)"
+    },
+    "settled": {
+      "activeAnimations": 1,
+      "signature": "matrix(1, 0, 0, 1, 79.9529, 0)"
+    },
+    "summary": "Motion continued, remained active, or changed again after the stop request."
+  },
+  "after": {
+    "verdict": "pass",
+    "before": {
+      "activeAnimations": 1,
+      "signature": "matrix(1, 0, 0, 1, 0, 0)"
+    },
+    "after": {
+      "activeAnimations": 0,
+      "signature": "none"
+    },
+    "settled": {
+      "activeAnimations": 0,
+      "signature": "none"
+    },
+    "summary": "The requested control stopped the observed motion and the visual state remained stable."
+  }
+}

@@ -7,8 +7,8 @@
 | Schema version | 0.1.0 |
 | Run ID | recorded-modal-focus-fixed |
 | Status | completed |
-| Started | 2026-09-04T11:48:17.732Z |
-| Finished | 2026-09-04T11:48:18.292Z |
+| Started | 2026-09-05T06:04:43.440Z |
+| Finished | 2026-09-05T06:04:43.990Z |
 | Environment mode | playwright-page |
 | Policy | public-demo |
 | Bundles | 1 |
@@ -50,7 +50,7 @@ No explicit suggested fixes were emitted.
 
 | Field | Value |
 | --- | --- |
-| Interaction ID | interaction:click:1788522497732 |
+| Interaction ID | interaction:click:1788588283440 |
 | Interaction | click |
 | Target | button "Delete Project Alpha" |
 | Checkpoint | public-demo-modal-focus-fixed |
@@ -67,20 +67,20 @@ No explicit suggested fixes were emitted.
 
 | ID | Phase | Observer | Status | Confidence | Artifacts | Changes | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| dom:before:1788522497733 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
-| focus:before:1788522497734 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #delete-project "Delete Project Alpha"). |
-| visual:before:1788522497755 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
-| dom:after:1788522498270 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
-| focus:after:1788522498270 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #cancel-delete "Cancel"). |
-| visual:after:1788522498292 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
+| dom:before:1788588283441 | before | dom | ok | n/a | 1 | 0 | Captured DOM before state. |
+| focus:before:1788588283442 | before | focus | ok | n/a | 1 | 0 | Captured focus before state (button #delete-project "Delete Project Alpha"). |
+| visual:before:1788588283456 | before | visual | ok | n/a | 1 | 0 | Captured screenshot before state. |
+| dom:after:1788588283976 | after | dom | ok | n/a | 1 | 1 | Captured DOM after state with observable markup changes. |
+| focus:after:1788588283976 | after | focus | ok | n/a | 1 | 0 | Captured focus after state (button #cancel-delete "Cancel"). |
+| visual:after:1788588283989 | after | visual | ok | n/a | 1 | 0 | Captured screenshot after state. |
 
 ### Judgments
 
 | ID | Verdict | Judge | Severity | Confidence | Evidence | Artifacts | Summary |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| focus-management:interaction:click:1788522497732 | pass | focus-management | info | 0.95 | 2 | 2 | Focus moved from button #delete-project "Delete Project Alpha" to button #cancel-delete "Cancel" inside the opened dialog "Delete Project Alpha?". |
-| change-response:interaction:click:1788522497732 | pass | change-response | info | 0.9 | 3 | 3 | Observed response signals after the click interaction (DOM changed, focus moved). |
-| release:interaction:click:1788522497732 | pass | release | info | 0.75 | 6 | 0 | Release gate passed. No blocking judgments met the current policy threshold. |
+| focus-management:interaction:click:1788588283440 | pass | focus-management | info | 0.95 | 2 | 2 | Focus moved from button #delete-project "Delete Project Alpha" to button #cancel-delete "Cancel" inside the opened dialog "Delete Project Alpha?". |
+| change-response:interaction:click:1788588283440 | pass | change-response | info | 0.9 | 3 | 3 | Observed response signals after the click interaction (DOM changed, focus moved). |
+| release:interaction:click:1788588283440 | pass | release | info | 0.75 | 6 | 0 | Release gate passed. No blocking judgments met the current policy threshold. |
 
 ### Findings
 

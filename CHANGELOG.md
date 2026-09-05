@@ -12,6 +12,9 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Deterministic-first AI review routing for semantic heading structure, icon-only labels, and decorative-versus-informative classification; routine findings cannot invoke the label provider.
 - Static contextual-review images, including a real passing axe heading artifact and a separate reviewed full-page outline proposal.
 - Human-readable evidence summaries on the public demo, with machine-readable artifacts offered as explicit downloads instead of raw browser pages.
+- Reusable probes for pointer-versus-keyboard outcome equivalence and motion-control verification across stable post-action samples.
+- Deterministic palette-aware contrast proposals using measured contrast and OKLab distance between supplied design tokens.
+- Three generated public examples backed by those APIs: palette contrast, hover accessibility, and animation stopping.
 
 ## [0.1.0] - 2026-08-30
 
