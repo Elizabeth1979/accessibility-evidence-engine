@@ -1,0 +1,62 @@
+---
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#0d1c19"
+    primaryTextColor: "#f1f8f5"
+    primaryBorderColor: "#70f0b4"
+    lineColor: "#70f0b4"
+    secondaryColor: "#142824"
+    tertiaryColor: "#342b10"
+---
+flowchart TD
+  start(["1. Define a user journey"]) --> run["2. Playwright runs the interaction"]
+  run --> before["Capture before state"]
+  before --> action["Perform keyboard-first action"]
+  action --> after["Capture stable after state"]
+
+  after --> fanout{"3. Collect evidence in parallel"}
+
+  subgraph workers["Focused evidence workers"]
+    direction LR
+    keyboard["Keyboard and focus\nAvailable"]
+    structure["DOM, accessibility tree, network\nAvailable"]
+    visual["Screenshots\nAvailable"]
+    axe["axe rules\nPlanned"]
+    virtual["Virtual screen reader transcript\nPlanned"]
+    guidepup["Guidepup VoiceOver or NVDA transcript\nPlanned"]
+    video["Interaction video\nPlanned"]
+  end
+
+  fanout --> keyboard
+  fanout --> structure
+  fanout --> visual
+  fanout --> axe
+  fanout --> virtual
+  fanout --> guidepup
+  fanout --> video
+
+  keyboard --> correlate["4. Correlate records into one evidence bundle"]
+  structure --> correlate
+  visual --> correlate
+  axe --> correlate
+  virtual --> correlate
+  guidepup --> correlate
+  video --> correlate
+
+  correlate --> judge["5. Run deterministic judges"]
+  judge --> contextual{"Meaning depends on context?"}
+  contextual -->|"No"| policy["Apply release policy"]
+  contextual -->|"Yes"| ai["Optional review-only AI analysis"]
+  ai --> human["Human reviews proposal"]
+  human --> rerun["Rerun the same scenario"]
+  rerun --> run
+  policy --> report["6. Publish manifest, JSON, Markdown, and linked artifacts"]
+
+  classDef available fill:#06291d,stroke:#70f0b4,color:#f1f8f5,stroke-width:2px
+  classDef planned fill:#342b10,stroke:#ffd86b,color:#f1f8f5,stroke-width:2px
+  classDef decision fill:#142824,stroke:#70f0b4,color:#f1f8f5,stroke-width:2px
+
+  class keyboard,structure,visual available
+  class axe,virtual,guidepup,video planned
+  class fanout,contextual decision

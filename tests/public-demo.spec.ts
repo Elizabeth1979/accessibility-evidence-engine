@@ -21,6 +21,28 @@ test("public demo exposes its purpose and limitations", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeAttached();
 });
 
+test("evidence flow documents every capture lane and its implementation status", async ({
+  page
+}) => {
+  await page.goto(demoUrl);
+
+  const flow = page.getByLabel("Accessibility Evidence Engine processing flow");
+  await expect(flow.getByRole("heading", { name: "Describe one user journey" })).toBeVisible();
+  await expect(
+    flow.getByRole("heading", { name: "Playwright performs the interaction" })
+  ).toBeVisible();
+  await expect(flow.getByText("Keyboard + focus", { exact: true })).toBeVisible();
+  await expect(flow.getByText("axe", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Virtual screen reader", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Guidepup screen reader", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Interaction video", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Available", { exact: true })).toHaveCount(3);
+  await expect(flow.getByText("Planned", { exact: true })).toHaveCount(4);
+  await expect(
+    page.getByRole("link", { name: /artifact contract and Mermaid source/i })
+  ).toHaveAttribute("href", /docs\/evidence-run-layout\.md$/);
+});
+
 test("slideshow shows only one focused before-and-after example", async ({ page }) => {
   await page.goto(demoUrl);
 

@@ -6,6 +6,8 @@ AEE separates raw collection, evidence correlation, judgment, policy gating, and
 
 The current implementation is a tested vertical slice. Some observer and judge manifests intentionally remain extension points; see the capability table in the [README](../README.md#current-capabilities).
 
+For the proposed axe, virtual screen-reader, Guidepup, video, manifest, and report layout, see the [target evidence pipeline and artifact layout](evidence-run-layout.md).
+
 ## Execution model
 
 1. A run starts with a versioned configuration and environment snapshot.

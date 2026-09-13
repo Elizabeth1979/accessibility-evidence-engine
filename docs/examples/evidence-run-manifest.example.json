@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "0.2.0-proposal",
+  "runId": "run-example",
+  "scenarioId": "pay-bill-keyboard-flow",
+  "status": "completed",
+  "createdAt": "2026-09-13T00:00:00.000Z",
+  "entrypoints": {
+    "jsonReport": "report/aee-report.json",
+    "markdownReport": "report/aee-report.md"
+  },
+  "artifacts": [
+    {
+      "id": "focus-before",
+      "observerId": "focus",
+      "phase": "before",
+      "kind": "focus-state",
+      "path": "evidence/checkpoints/open-bill/before/focus.json",
+      "mediaType": "application/json",
+      "integrity": null
+    },
+    {
+      "id": "axe-after",
+      "observerId": "axe",
+      "phase": "after",
+      "kind": "axe-result",
+      "path": "evidence/checkpoints/open-bill/after/axe.json",
+      "mediaType": "application/json",
+      "integrity": null
+    },
+    {
+      "id": "virtual-screen-reader-transcript",
+      "observerId": "virtual-screen-reader",
+      "phase": "interaction",
+      "kind": "screen-reader-transcript",
+      "path": "evidence/interactions/open-bill/virtual-screen-reader.json",
+      "mediaType": "application/json",
+      "integrity": null
+    },
+    {
+      "id": "interaction-video",
+      "observerId": "video",
+      "phase": "interaction",
+      "kind": "video",
+      "path": "evidence/interactions/open-bill/video.webm",
+      "metadataPath": "evidence/interactions/open-bill/video.json",
+      "captionPath": "evidence/interactions/open-bill/video.vtt",
+      "mediaType": "video/webm",
+      "integrity": null
+    }
+  ],
+  "judgmentFiles": [
+    "judgments/keyboard.json",
+    "judgments/screen-reader.json",
+    "judgments/release.json"
+  ],
+  "findingFiles": ["findings/finding-001.json"],
+  "privacy": {
+    "classification": "review-required",
+    "redactionPolicy": "default",
+    "reviewedForSharing": false
+  }
+}

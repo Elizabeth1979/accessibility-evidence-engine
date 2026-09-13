@@ -20,7 +20,7 @@
         ><span>Accessibility Evidence Engine</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a href="#how-it-works">How it works</a><a href="#examples">Examples</a>
+        <a href="#how-it-works">Evidence flow</a><a href="#examples">Examples</a>
         <a href="#boundaries">Boundaries</a
         ><a href="https://github.com/Elizabeth1979/accessibility-evidence-engine">GitHub</a>
       </nav>
@@ -75,20 +75,152 @@
       </section>
 
       <section class="section" id="how-it-works" aria-labelledby="how-title">
-        <p class="eyebrow">Deterministic first</p>
-        <h2 id="how-title">Use AI only when meaning depends on context</h2>
-        <ol class="pipeline">
-          <li>
-            <span>1</span><strong>Detect</strong><small>Keep objective rules deterministic</small>
-          </li>
-          <li>
-            <span>2</span><strong>Review</strong><small>Escalate only contextual ambiguity</small>
-          </li>
-          <li>
-            <span>3</span><strong>Fix</strong><small>Require a person to accept the proposal</small>
-          </li>
-          <li><span>4</span><strong>Verify</strong><small>Rerun and attach new evidence</small></li>
-        </ol>
+        <div class="flow-heading">
+          <div>
+            <p class="eyebrow">One interaction, evidence from every lane</p>
+            <h2 id="how-title">See exactly how an accessibility result is produced</h2>
+          </div>
+          <p>
+            A deterministic orchestrator runs the same scenario through focused evidence workers. AI
+            is optional and receives only questions that require contextual judgment.
+          </p>
+        </div>
+
+        <div class="workflow-map" aria-label="Accessibility Evidence Engine processing flow">
+          <ol class="workflow-stages">
+            <li class="workflow-stage">
+              <div class="stage-marker" aria-hidden="true">1</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Define</p>
+                <h3>Describe one user journey</h3>
+                <p>
+                  Set the URL, initial state, interaction, expected behavior, browser, and evidence
+                  policy.
+                </p>
+                <code>scenario.json</code>
+              </div>
+            </li>
+
+            <li class="workflow-stage">
+              <div class="stage-marker" aria-hidden="true">2</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Exercise</p>
+                <h3>Playwright performs the interaction</h3>
+                <p>
+                  Capture the before state, use keyboard-first input, wait for a stable outcome,
+                  then capture the after state.
+                </p>
+                <code>interaction.json</code>
+              </div>
+            </li>
+
+            <li class="workflow-stage collector-stage">
+              <div class="stage-marker" aria-hidden="true">3</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Observe in parallel</p>
+                <h3>Specialized workers preserve independent evidence</h3>
+                <p>
+                  Each worker writes its own JSON record. Images, transcripts, and video remain
+                  linked artifacts rather than being flattened into a single result.
+                </p>
+                <ul class="collector-grid" aria-label="Evidence collection workers">
+                  <li>
+                    <span class="collector-status available">Available</span>
+                    <strong>Keyboard + focus</strong>
+                    <small>Tab order, activation, composites, focus changes</small>
+                    <code>keyboard.json</code>
+                  </li>
+                  <li>
+                    <span class="collector-status available">Available</span>
+                    <strong>Page structure</strong>
+                    <small>DOM, accessibility tree, focus, and network</small>
+                    <code>dom.json</code>
+                  </li>
+                  <li>
+                    <span class="collector-status available">Available</span>
+                    <strong>Visual evidence</strong>
+                    <small>Before-and-after screenshots</small>
+                    <code>screenshot.json + .png</code>
+                  </li>
+                  <li>
+                    <span class="collector-status planned">Planned</span>
+                    <strong>axe</strong>
+                    <small>Automatic rule results at meaningful states</small>
+                    <code>axe.json</code>
+                  </li>
+                  <li>
+                    <span class="collector-status planned">Planned</span>
+                    <strong>Virtual screen reader</strong>
+                    <small>Portable semantic navigation and spoken phrase log</small>
+                    <code>virtual-screen-reader.json</code>
+                  </li>
+                  <li>
+                    <span class="collector-status planned">Planned</span>
+                    <strong>Guidepup screen reader</strong>
+                    <small>VoiceOver or NVDA commands and transcript where supported</small>
+                    <code>guidepup.json</code>
+                  </li>
+                  <li>
+                    <span class="collector-status planned">Planned</span>
+                    <strong>Interaction video</strong>
+                    <small>Playwright recording with a metadata sidecar</small>
+                    <code>video.json + .webm</code>
+                  </li>
+                </ul>
+              </div>
+            </li>
+
+            <li class="workflow-stage">
+              <div class="stage-marker" aria-hidden="true">4</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Correlate</p>
+                <h3>Join evidence by checkpoint and interaction</h3>
+                <p>
+                  Normalize timestamps, connect before and after records, and preserve provenance
+                  for every artifact.
+                </p>
+                <code>bundle.json</code>
+              </div>
+            </li>
+
+            <li class="workflow-stage">
+              <div class="stage-marker" aria-hidden="true">5</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Judge and route</p>
+                <h3>Apply deterministic judges first</h3>
+                <p>
+                  Objective failures go directly to policy. Only meaning-dependent questions may be
+                  routed to review-only AI, followed by human review and a verified rerun.
+                </p>
+                <code>judgments/*.json</code>
+              </div>
+            </li>
+
+            <li class="workflow-stage output-stage">
+              <div class="stage-marker" aria-hidden="true">6</div>
+              <div class="stage-copy">
+                <p class="stage-kind">Publish</p>
+                <h3>Package one reviewable evidence bundle</h3>
+                <p>
+                  The report links every finding to raw JSON, screenshots, video, axe output, and
+                  screen-reader transcripts. A manifest records paths, media types, and checksums.
+                </p>
+                <div class="output-files" aria-label="Report outputs">
+                  <code>manifest.json</code><code>aee-report.json</code><code>aee-report.md</code>
+                </div>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <p class="flow-note">
+          This is the target evidence architecture. The status labels above distinguish current
+          capture from planned integrations.
+          <a
+            href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/evidence-run-layout.md"
+            >Read the artifact contract and Mermaid source on GitHub</a
+          >.
+        </p>
       </section>
 
       <section class="section examples-section" id="examples" aria-labelledby="examples-title">
