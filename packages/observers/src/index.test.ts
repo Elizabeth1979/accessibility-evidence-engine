@@ -4,7 +4,113 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createNetworkObserver, type RuntimeObserverContext } from "./index";
+import {
+  createAxeObserver,
+  createNetworkObserver,
+  createVisualObserver,
+  type RuntimeObserverContext
+} from "./index";
+
+test("createVisualObserver captures separate viewport and full-page artifacts", async () => {
+  const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-visual-"));
+  const requestedFullPageValues: Array<boolean | undefined> = [];
+
+  try {
+    const observer = createVisualObserver();
+    const context: RuntimeObserverContext = {
+      runId: "run-visual",
+      checkpointId: "checkpoint-visual",
+      interactionId: "interaction-visual",
+      artifactDir,
+      page: {
+        async content() {
+          return "<main></main>";
+        },
+        async snapshotScreenshot(options) {
+          requestedFullPageValues.push(options?.fullPage);
+          return Uint8Array.from(options?.fullPage ? [2] : [1]);
+        }
+      }
+    };
+
+    const [record] = await observer.captureBefore!(context);
+
+    assert.deepEqual(requestedFullPageValues.sort(), [false, true]);
+    assert.equal(record.status, "ok");
+    assert.deepEqual(record.meta, { viewportByteLength: 1, fullPageByteLength: 1 });
+    assert.deepEqual(
+      record.artifacts?.map(({ path: artifactPath }) => path.basename(artifactPath)).sort(),
+      ["visual-full-page-before.png", "visual-viewport-before.png"]
+    );
+  } finally {
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+test("createAxeObserver preserves complete pinned axe output", async () => {
+  const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-axe-"));
+  let requestedTags: string[] = [];
+  const rawResult = {
+    testEngine: { name: "axe-core", version: "4.13.0" },
+    testRunner: { name: "axe" },
+    testEnvironment: { userAgent: "test" },
+    toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
+    timestamp: "2026-09-13T00:00:00.000Z",
+    url: "https://example.com/",
+    violations: [{ id: "button-name", nodes: [] }],
+    passes: [{ id: "document-title", nodes: [] }],
+    incomplete: [{ id: "color-contrast", nodes: [] }],
+    inapplicable: [{ id: "audio-caption", nodes: [] }]
+  };
+
+  try {
+    const observer = createAxeObserver();
+    const context: RuntimeObserverContext = {
+      runId: "run-axe",
+      checkpointId: "checkpoint-axe",
+      interactionId: "interaction-axe",
+      artifactDir,
+      page: {
+        async content() {
+          return "<button></button>";
+        },
+        async runAxeAnalysis(options) {
+          requestedTags = options.tags;
+          return rawResult;
+        }
+      }
+    };
+
+    const [record] = await observer.captureBefore!(context);
+    const artifactPath = record.artifacts?.[0]?.path;
+
+    assert.deepEqual(requestedTags, [
+      "wcag2a",
+      "wcag2aa",
+      "wcag21a",
+      "wcag21aa",
+      "wcag22a",
+      "wcag22aa"
+    ]);
+    assert.equal(record.status, "ok");
+    assert.deepEqual(record.meta, {
+      engineVersion: "4.13.0",
+      ruleSelection: { type: "tag", values: requestedTags },
+      explicitlyDisabledRuleIds: [],
+      violations: 1,
+      passes: 1,
+      incomplete: 1,
+      inapplicable: 1,
+      violationRuleIds: ["button-name"],
+      incompleteRuleIds: ["color-contrast"],
+      evaluatedRuleIds: ["audio-caption", "button-name", "color-contrast", "document-title"]
+    });
+    assert.ok(artifactPath);
+    assert.deepEqual(JSON.parse(await readFile(artifactPath, "utf8")), rawResult);
+  } finally {
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
 
 test("createNetworkObserver summarizes per-interaction network deltas and filters noise", async () => {
   const observer = createNetworkObserver();

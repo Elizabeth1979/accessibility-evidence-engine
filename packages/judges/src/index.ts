@@ -59,6 +59,13 @@ export const defaultJudgeManifests = [
     capabilities: ["observable-change-detection"]
   },
   {
+    id: "axe",
+    displayName: "axe Results Judge",
+    version: "0.1.0",
+    kind: "judge" as const,
+    capabilities: ["axe-violation-gating", "axe-incomplete-propagation"]
+  },
+  {
     id: "release",
     displayName: "Release Judge",
     version: "0.1.0",
@@ -107,6 +114,10 @@ export function createBuiltinJudge(judgeId: string): JudgePlugin {
 
   if (judgeId === "change-response") {
     return createChangeResponseJudge();
+  }
+
+  if (judgeId === "axe") {
+    return createAxeJudge();
   }
 
   if (judgeId === "release") {
@@ -911,6 +922,139 @@ function createChangeResponseJudge(): JudgePlugin {
       ];
     }
   };
+}
+
+function createAxeJudge(): JudgePlugin {
+  const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "axe");
+
+  if (!manifest) {
+    throw new Error("Missing axe judge manifest.");
+  }
+
+  return {
+    manifest,
+    async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
+      const record = bundle.records.find(
+        (candidate) =>
+          candidate.observerId === "axe" && candidate.phase === "after" && candidate.status === "ok"
+      );
+
+      if (!record) {
+        return [
+          {
+            id: `axe:${bundle.interaction.id}`,
+            judgeId: "axe",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: "Axe judgment requires a successful post-interaction axe evidence record.",
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: bundle.records
+              .filter((candidate) => candidate.observerId === "axe")
+              .map((candidate) => candidate.id),
+            artifactIds: collectArtifactIds(
+              bundle.records.filter((candidate) => candidate.observerId === "axe")
+            )
+          }
+        ];
+      }
+
+      const violations = getNumberMetaField(record.meta, "violations") ?? 0;
+      const incomplete = getNumberMetaField(record.meta, "incomplete") ?? 0;
+      const violationRuleIds = getStringArrayMetaField(record.meta, "violationRuleIds");
+      const incompleteRuleIds = getStringArrayMetaField(record.meta, "incompleteRuleIds");
+      const artifactIds = collectArtifactIds([record]);
+
+      if (violations > 0) {
+        const findings: Finding[] = violationRuleIds.map((ruleId) => ({
+          id: `axe:${bundle.interaction.id}:${ruleId}`,
+          message: `axe reported the ${ruleId} rule as a violation.`,
+          severity: "high",
+          ruleId,
+          evidenceRecordIds: [record.id],
+          artifactIds,
+          suggestedFix:
+            "Review the raw axe nodes together with DOM, accessibility-tree, and visual evidence."
+        }));
+
+        return [
+          {
+            id: `axe:${bundle.interaction.id}`,
+            judgeId: "axe",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `axe found ${violations} violation${violations === 1 ? "" : "s"}${formatRuleIds(violationRuleIds)}. ${incomplete} check${incomplete === 1 ? " remains" : "s remain"} incomplete${formatRuleIds(incompleteRuleIds)}.`,
+            severity: "high",
+            confidence: 1,
+            evidenceRecordIds: [record.id],
+            artifactIds,
+            findings,
+            suggestedFix:
+              "Resolve the reported axe violations and manually evaluate incomplete checks using the correlated evidence."
+          }
+        ];
+      }
+
+      if (incomplete > 0) {
+        return [
+          {
+            id: `axe:${bundle.interaction.id}`,
+            judgeId: "axe",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: `axe found no violations, but ${incomplete} check${incomplete === 1 ? " requires" : "s require"} review${formatRuleIds(incompleteRuleIds)}.`,
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: [record.id],
+            artifactIds,
+            suggestedFix:
+              "Evaluate incomplete axe checks with the DOM, accessibility tree, screenshots, and full-page context."
+          }
+        ];
+      }
+
+      return [
+        {
+          id: `axe:${bundle.interaction.id}`,
+          judgeId: "axe",
+          judgeVersion: "0.1.0",
+          scope: "interaction",
+          verdict: "pass",
+          summary:
+            "axe found no violations or incomplete checks in the cumulative WCAG 2.0/2.1/2.2 A/AA rule selection.",
+          severity: "info",
+          confidence: 1,
+          evidenceRecordIds: [record.id],
+          artifactIds
+        }
+      ];
+    }
+  };
+}
+
+function getNumberMetaField(
+  meta: Record<string, unknown> | undefined,
+  field: string
+): number | undefined {
+  const value = meta?.[field];
+  return typeof value === "number" ? value : undefined;
+}
+
+function getStringArrayMetaField(
+  meta: Record<string, unknown> | undefined,
+  field: string
+): string[] {
+  const value = meta?.[field];
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string")
+    : [];
+}
+
+function formatRuleIds(ruleIds: string[]): string {
+  return ruleIds.length > 0 ? ` (${ruleIds.join(", ")})` : "";
 }
 
 function createReleaseJudge(): JudgePlugin {

@@ -60,6 +60,68 @@ function createJudgment(overrides: Partial<Judgment>): Judgment {
   };
 }
 
+test("axe judge fails violations and preserves incomplete checks as unresolved context", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-axe-after",
+      runId: "run-1",
+      observerId: "axe",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      artifacts: [
+        {
+          id: "axe-after:artifact",
+          kind: "axe-result",
+          path: "/tmp/axe-after.json",
+          mediaType: "application/json"
+        }
+      ],
+      meta: {
+        violations: 2,
+        incomplete: 1,
+        violationRuleIds: ["aria-required-parent", "color-contrast"],
+        incompleteRuleIds: ["link-in-text-block"]
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /2 violations/);
+  assert.match(judgment?.summary ?? "", /1 check remains incomplete/);
+  assert.deepEqual(
+    judgment?.findings?.map(({ ruleId }) => ruleId),
+    ["aria-required-parent", "color-contrast"]
+  );
+});
+
+test("axe judge returns unknown when only incomplete checks remain", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-axe-after",
+      runId: "run-1",
+      observerId: "axe",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        violations: 0,
+        incomplete: 1,
+        incompleteRuleIds: ["color-contrast"]
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /requires review/);
+});
+
 test("focus-management judge fails when a dialog opens but focus stays on its trigger", async () => {
   const judge = createDefaultJudgePlugins(["focus-management"])[0];
   const bundle = createBundle(

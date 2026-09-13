@@ -193,16 +193,16 @@ await runAeeOnPage({
 
 This expectation is intentionally explicit. AEE does not infer that every DOM change containing dialog markup is modal or that every interaction should transfer focus.
 
-## Screenshot example
+## Screenshot and axe example
 
-The visual observer can capture PNG artifacts around an interaction.
+The visual observer writes separate viewport and full-page PNG artifacts before and after an interaction. The axe observer writes the unmodified axe 4.13 JSON result, including passes, violations, incomplete, and inapplicable checks. Pair the `axe` observer with the `axe` judge so violations and incomplete checks reach the release gate.
 
 ```ts
 await runAeeOnPage({
   page,
   projectRoot: process.cwd(),
-  observers: ["visual"],
-  judges: ["release"],
+  observers: ["visual", "axe"],
+  judges: ["axe", "release"],
   interaction: {
     kind: "click",
     actor: "test"
@@ -212,6 +212,8 @@ await runAeeOnPage({
   }
 });
 ```
+
+This produces `visual-viewport-before.png`, `visual-full-page-before.png`, matching after-state images, and `axe-before.json` / `axe-after.json`. An axe violation fails the axe judgment; a run containing only incomplete axe checks remains `unknown` rather than becoming a pass.
 
 ## Network example
 
@@ -305,7 +307,8 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - The focus-management judge currently supports the explicit `inside-dialog` expectation for modal-opening interactions.
 - The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
-- The visual observer uses a screenshot snapshot hook and captures PNG artifacts before and after the interaction.
+- The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.
+- The axe observer pins `@axe-core/playwright` 4.13.0, runs the cumulative WCAG 2.0/2.1/2.2 A/AA tag selection, and retains every raw result category.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - Before network artifacts are persisted, AEE removes URL credentials and fragments, redacts all query and header values, replaces request bodies, and drops unknown event fields. URL paths remain visible. See [Evidence privacy](privacy.md).
 - The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.

@@ -43,11 +43,11 @@ Adapts real Playwright pages and virtual fixture pages to the shared execution p
 
 ### `@aee/observers`
 
-Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, and network observers. Guidepup and axe are declared but unsupported extension points. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
+Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, pinned axe 4.13, and network observers. Guidepup remains an unsupported extension point. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
 
 ### `@aee/judges`
 
-Owns judge manifests and the built-in structure, keyboard, focus-management, change-response, and release judges. Interaction, screen-reader, and visual judges currently emit `unknown` judgments as extension scaffolds.
+Owns judge manifests and the built-in structure, keyboard, focus-management, change-response, axe, and release judges. Interaction, screen-reader, and visual judges currently emit `unknown` judgments as extension scaffolds.
 
 ### `@aee/reporter`
 

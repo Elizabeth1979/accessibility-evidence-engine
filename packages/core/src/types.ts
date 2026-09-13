@@ -7,6 +7,7 @@ export type ArtifactKind =
   | "accessibility-tree"
   | "network-log"
   | "screen-reader-log"
+  | "axe-result"
   | "trace"
   | "video"
   | "custom";

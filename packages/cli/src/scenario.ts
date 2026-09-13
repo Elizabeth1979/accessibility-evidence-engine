@@ -102,7 +102,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "planned"
   ),
   capability("viewport-screenshot", "Viewport screenshot", "passive-observer", "available"),
-  capability("full-page-screenshot", "Full-page screenshot", "passive-observer", "planned"),
+  capability("full-page-screenshot", "Full-page screenshot", "passive-observer", "available"),
   capability("dom-snapshot", "Full DOM snapshot", "passive-observer", "available"),
   capability(
     "accessibility-tree",
@@ -111,7 +111,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "available"
   ),
   capability("deep-focus-state", "Deep focus state", "passive-observer", "partial"),
-  capability("axe-results", "Pinned axe results", "passive-observer", "planned"),
+  capability("axe-results", "Pinned axe results", "passive-observer", "available"),
   capability("interaction-trace", "Complete interaction trace", "passive-observer", "partial"),
   capability(
     "screen-reader-transcript",

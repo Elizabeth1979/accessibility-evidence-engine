@@ -20,6 +20,10 @@ interface JsonReport {
     meta?: {
       focusTarget?: unknown;
       byteLength?: number;
+      viewportByteLength?: number;
+      fullPageByteLength?: number;
+      engineVersion?: string;
+      violations?: number;
       changed?: boolean;
       previousByteLength?: number;
       eventCount?: number;
@@ -168,7 +172,7 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   });
 
   expect(result.reporterFiles).toHaveLength(2);
-  expect(result.artifactFiles).toHaveLength(2);
+  expect(result.artifactFiles).toHaveLength(4);
   await expect(page.locator("#status")).toHaveText("Saved");
 
   const screenshotBuffers = await Promise.all(
@@ -200,7 +204,8 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
         phase: "before",
         status: "ok",
         meta: expect.objectContaining({
-          byteLength: expect.any(Number)
+          viewportByteLength: expect.any(Number),
+          fullPageByteLength: expect.any(Number)
         })
       }),
       expect.objectContaining({
@@ -208,7 +213,8 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
         phase: "after",
         status: "ok",
         meta: expect.objectContaining({
-          byteLength: expect.any(Number)
+          viewportByteLength: expect.any(Number),
+          fullPageByteLength: expect.any(Number)
         })
       })
     ])
@@ -221,6 +227,48 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
       })
     ])
   );
+});
+
+test("runAeeOnPage preserves raw axe 4.13 WCAG results", async ({ page }, testInfo) => {
+  await page.setContent(`
+    <html>
+      <head><title>Axe evidence</title></head>
+      <body><main><button id="unlabelled"></button></main></body>
+    </html>
+  `);
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-axe-output"),
+    observers: ["axe"],
+    judges: ["release"],
+    checkpointName: "axe-raw-evidence",
+    interaction: {
+      kind: "custom",
+      actor: "test",
+      target: { role: "document", name: "Axe fixture" }
+    }
+  });
+
+  expect(result.artifactFiles).toHaveLength(2);
+  const rawResults = await Promise.all(
+    result.artifactFiles.map(async (filePath) => JSON.parse(await readFile(filePath, "utf8")))
+  );
+
+  for (const rawResult of rawResults) {
+    expect(rawResult.testEngine.version).toBe("4.13.0");
+    expect(rawResult.violations).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "button-name" })])
+    );
+    expect(rawResult).toEqual(
+      expect.objectContaining({
+        passes: expect.any(Array),
+        incomplete: expect.any(Array),
+        inapplicable: expect.any(Array)
+      })
+    );
+  }
 });
 
 test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({

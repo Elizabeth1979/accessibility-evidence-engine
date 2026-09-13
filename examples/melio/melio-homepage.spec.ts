@@ -15,8 +15,8 @@ test("Melio homepage moves focus forward from Sign in", async ({ page }) => {
     projectRoot: process.cwd(),
     outputDir: "aee-output",
     checkpointName: "melio-homepage-sign-in",
-    observers: ["focus", "dom", "accessibility-tree", "visual"],
-    judges: ["keyboard", "release"],
+    observers: ["focus", "dom", "accessibility-tree", "visual", "axe"],
+    judges: ["keyboard", "axe", "release"],
     interaction: {
       kind: "tab",
       actor: "test",

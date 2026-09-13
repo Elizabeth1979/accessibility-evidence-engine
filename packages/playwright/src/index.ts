@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
+import AxeBuilder from "@axe-core/playwright";
 import {
   executeRun,
   resolvePolicyConfig,
@@ -26,7 +27,8 @@ export interface PlaywrightPageLike {
   screenshot?(options?: unknown): Promise<unknown>;
   snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
   snapshotFocusTarget?(options?: unknown): Promise<unknown>;
-  snapshotScreenshot?(options?: unknown): Promise<Uint8Array>;
+  snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
+  runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
   setupNetworkTracking?(options?: unknown): Promise<void>;
   snapshotNetworkLog?(options?: unknown): Promise<unknown>;
   teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -469,6 +471,7 @@ async function createObserverPage(
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
+  const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
   const customSetupNetworkTracking = page.setupNetworkTracking?.bind(page);
   const customSnapshotNetworkLog = page.snapshotNetworkLog?.bind(page);
   const customTeardownNetworkTracking = page.teardownNetworkTracking?.bind(page);
@@ -774,10 +777,13 @@ async function createObserverPage(
           })
       : undefined;
   const snapshotScreenshot = customScreenshot
-    ? async () => customScreenshot()
+    ? async (options?: { fullPage?: boolean }) => customScreenshot(options)
     : nativeScreenshot
-      ? async () => {
-          const value = await nativeScreenshot({ type: "png" });
+      ? async (options?: { fullPage?: boolean }) => {
+          const value = await nativeScreenshot({
+            type: "png",
+            fullPage: options?.fullPage ?? false
+          });
 
           if (value instanceof Uint8Array) {
             return value;
@@ -785,6 +791,16 @@ async function createObserverPage(
 
           throw new Error("Screenshot API returned a non-binary payload.");
         }
+      : undefined;
+  const runAxeAnalysis = customRunAxeAnalysis
+    ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
+    : evaluatablePage.evaluate
+      ? async (options: { tags: string[] }) =>
+          new AxeBuilder({
+            page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
+          })
+            .withTags(options.tags)
+            .analyze()
       : undefined;
   const setupNetworkTracking =
     customSetupNetworkTracking ??
@@ -811,6 +827,7 @@ async function createObserverPage(
     snapshotAccessibilityTree,
     snapshotFocusTarget,
     snapshotScreenshot,
+    runAxeAnalysis,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking

@@ -111,7 +111,12 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
 
   assert.equal(plan.readiness.status, "blocked");
   assert.equal(plan.approval.status, "pending");
-  assert.ok(plan.readiness.blockingCapabilityIds.includes("axe-results"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("axe-results"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("full-page-screenshot"));
+  assert.equal(
+    plan.requiredCapabilities.find(({ id }) => id === "axe-results")?.implementationStatus,
+    "available"
+  );
   assert.ok(plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
   assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
   assert.ok(

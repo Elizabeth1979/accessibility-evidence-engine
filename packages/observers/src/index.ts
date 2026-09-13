@@ -30,7 +30,7 @@ export const defaultObserverManifests = [
     displayName: "Visual Observer",
     version: "0.1.0",
     kind: "observer" as const,
-    capabilities: ["screenshot"]
+    capabilities: ["viewport-screenshot", "full-page-screenshot"]
   },
   {
     id: "network",
@@ -49,9 +49,9 @@ export const defaultObserverManifests = [
   {
     id: "axe",
     displayName: "axe Observer",
-    version: "0.1.0",
+    version: "0.2.0",
     kind: "observer" as const,
-    capabilities: []
+    capabilities: ["axe-core-4.13", "wcag-2.2-a-aa", "raw-results"]
   }
 ];
 
@@ -60,7 +60,8 @@ export interface RuntimeObserverContext extends ObserverContext {
     content(): Promise<string>;
     snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
-    snapshotScreenshot?(options?: unknown): Promise<Uint8Array>;
+    snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
+    runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
     setupNetworkTracking?(options?: unknown): Promise<void>;
     snapshotNetworkLog?(options?: unknown): Promise<unknown>;
     teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -167,6 +168,18 @@ export function createNetworkObserver(): ObserverPlugin {
   };
 }
 
+export function createAxeObserver(): ObserverPlugin {
+  return {
+    manifest: defaultObserverManifests[6],
+    async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureAxeRecord(context as RuntimeObserverContext, "before")];
+    },
+    async captureAfter(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureAxeRecord(context as RuntimeObserverContext, "after")];
+    }
+  };
+}
+
 export function createUnsupportedObserver(observerId: string): ObserverPlugin {
   const manifest = defaultObserverManifests.find((candidate) => candidate.id === observerId);
 
@@ -207,6 +220,10 @@ export function createDefaultObserverPlugins(
 
     if (observerId === "network") {
       return createNetworkObserver();
+    }
+
+    if (observerId === "axe") {
+      return createAxeObserver();
     }
 
     return createUnsupportedObserver(observerId);
@@ -475,10 +492,12 @@ async function captureVisualRecord(
     };
   }
 
-  let screenshot: Uint8Array;
+  let viewportScreenshot: Uint8Array;
+  let fullPageScreenshot: Uint8Array;
 
   try {
-    screenshot = await snapshotScreenshot();
+    viewportScreenshot = await snapshotScreenshot({ fullPage: false });
+    fullPageScreenshot = await snapshotScreenshot({ fullPage: true });
   } catch (error) {
     return {
       id: `visual:${phase}:${Date.now()}`,
@@ -498,14 +517,25 @@ async function captureVisualRecord(
     };
   }
 
-  const artifact = await maybeWriteArtifact(
+  const viewportArtifact = await maybeWriteArtifact(
     context,
     "visual",
     phase,
     "screenshot",
     "png",
     "image/png",
-    screenshot
+    viewportScreenshot,
+    "viewport"
+  );
+  const fullPageArtifact = await maybeWriteArtifact(
+    context,
+    "visual",
+    phase,
+    "screenshot",
+    "png",
+    "image/png",
+    fullPageScreenshot,
+    "full-page"
   );
 
   return {
@@ -518,13 +548,137 @@ async function captureVisualRecord(
     phase,
     status: "ok",
     timestamp: getTimestamp(),
-    summary: `Captured screenshot ${phase} state.`,
-    ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
-    artifacts: artifact ? [artifact] : [],
+    summary: `Captured viewport and full-page screenshots for the ${phase} state.`,
+    ...(phase === "before"
+      ? { beforeStateRef: viewportArtifact }
+      : { afterStateRef: viewportArtifact }),
+    artifacts: [viewportArtifact, fullPageArtifact].filter(
+      (artifact): artifact is NonNullable<typeof artifact> => Boolean(artifact)
+    ),
     meta: {
-      byteLength: screenshot.byteLength
+      viewportByteLength: viewportScreenshot.byteLength,
+      fullPageByteLength: fullPageScreenshot.byteLength
     }
   };
+}
+
+const AXE_WCAG_22_A_AA_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+
+async function captureAxeRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): Promise<EvidenceRecord> {
+  const runAxeAnalysis = context.page?.runAxeAnalysis?.bind(context.page);
+
+  if (!runAxeAnalysis) {
+    return {
+      id: `axe:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "axe",
+      observerVersion: "0.2.0",
+      phase,
+      status: "unsupported",
+      timestamp: getTimestamp(),
+      diagnostics: ["Pinned axe 4.13 analysis API is unavailable."]
+    };
+  }
+
+  try {
+    const result = await runAxeAnalysis({ tags: AXE_WCAG_22_A_AA_TAGS });
+    const normalized = isRecord(result) ? result : {};
+    const violations = arrayLength(normalized.violations);
+    const passes = arrayLength(normalized.passes);
+    const incomplete = arrayLength(normalized.incomplete);
+    const inapplicable = arrayLength(normalized.inapplicable);
+    const violationRuleIds = readRuleIds(normalized.violations);
+    const incompleteRuleIds = readRuleIds(normalized.incomplete);
+    const evaluatedRuleIds = [
+      ...new Set([
+        ...violationRuleIds,
+        ...readRuleIds(normalized.passes),
+        ...incompleteRuleIds,
+        ...readRuleIds(normalized.inapplicable)
+      ])
+    ].sort();
+    const artifact = await maybeWriteArtifact(
+      context,
+      "axe",
+      phase,
+      "axe-result",
+      "json",
+      "application/json",
+      JSON.stringify(result, null, 2)
+    );
+
+    return {
+      id: `axe:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "axe",
+      observerVersion: "0.2.0",
+      phase,
+      status: "ok",
+      timestamp: getTimestamp(),
+      summary: `axe 4.13 found ${violations} violations, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
+      ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
+      artifacts: artifact ? [artifact] : [],
+      meta: {
+        engineVersion: readNestedString(normalized, "testEngine", "version"),
+        ruleSelection: { type: "tag", values: AXE_WCAG_22_A_AA_TAGS },
+        explicitlyDisabledRuleIds: [],
+        violations,
+        passes,
+        incomplete,
+        inapplicable,
+        violationRuleIds,
+        incompleteRuleIds,
+        evaluatedRuleIds
+      }
+    };
+  } catch (error) {
+    return {
+      id: `axe:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "axe",
+      observerVersion: "0.2.0",
+      phase,
+      status: "observer_error",
+      timestamp: getTimestamp(),
+      diagnostics: [
+        error instanceof Error ? `axe analysis failed: ${error.message}` : "axe analysis failed."
+      ]
+    };
+  }
+}
+
+function arrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function readRuleIds(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((entry) =>
+    isRecord(entry) && typeof entry.id === "string" ? [entry.id] : []
+  );
+}
+
+function readNestedString(
+  value: Record<string, unknown>,
+  property: string,
+  nestedProperty: string
+): string | undefined {
+  const nested = value[property];
+  return isRecord(nested) && typeof nested[nestedProperty] === "string"
+    ? nested[nestedProperty]
+    : undefined;
 }
 
 async function captureNetworkRecord(
@@ -784,19 +938,21 @@ async function maybeWriteArtifact(
   kind: ArtifactKind,
   extension: string,
   mediaType: string,
-  content: string | Uint8Array
+  content: string | Uint8Array,
+  label?: string
 ) {
   if (!context.artifactDir) {
     return undefined;
   }
 
   await mkdir(context.artifactDir, { recursive: true });
-  const filename = `${observerId}-${phase}.${extension}`;
+  const identity = label ? `${observerId}-${label}-${phase}` : `${observerId}-${phase}`;
+  const filename = `${identity}.${extension}`;
   const targetPath = path.join(context.artifactDir, filename);
   await writeFile(targetPath, content);
 
   return {
-    id: `${observerId}:${phase}:artifact`,
+    id: `${identity}:artifact`,
     kind,
     path: targetPath,
     mediaType
