@@ -29,6 +29,18 @@ import {
   type SchemaName
 } from "@aee/schemas";
 
+import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
+
+export {
+  compileScenarioPlan,
+  loadScenario,
+  renderScenarioPlan,
+  type AeeScenario,
+  type ScenarioCapability,
+  type ScenarioPlan,
+  type ScenarioProfile
+} from "./scenario";
+
 export interface AeeCliConfig {
   version?: string;
   projectRoot: string;
@@ -244,10 +256,54 @@ async function writeReporterArtifacts(
 }
 
 export async function main(argv: string[]): Promise<void> {
-  const configPath = argv[0];
+  const command = argv[0];
 
-  if (!configPath) {
-    throw new Error("Usage: aee <config-path>");
+  if (!command) {
+    throw new Error(
+      "Usage: aee plan <scenario.yml> [--json] | aee run <config.json> | aee <legacy-config.json>"
+    );
+  }
+
+  if (command === "plan") {
+    const scenarioPath = argv[1];
+
+    if (!scenarioPath || scenarioPath.startsWith("--")) {
+      throw new Error("Usage: aee plan <scenario.yml> [--json]");
+    }
+
+    const scenario = await loadScenario(path.resolve(scenarioPath));
+    const plan = compileScenarioPlan(scenario);
+    process.stdout.write(
+      argv.includes("--json") ? `${JSON.stringify(plan, null, 2)}\n` : renderScenarioPlan(plan)
+    );
+    return;
+  }
+
+  const configPath = command === "run" ? argv[1] : command;
+
+  if (!configPath || configPath.startsWith("--")) {
+    throw new Error("Usage: aee run <config.json>");
+  }
+
+  if (/\.ya?ml$/i.test(configPath)) {
+    const scenario = await loadScenario(path.resolve(configPath));
+    const plan = compileScenarioPlan(scenario);
+
+    if (plan.readiness.status === "blocked") {
+      throw new Error(
+        `Cannot run scenario “${plan.scenarioId}”: ${plan.readiness.summary} Run “aee plan ${configPath}” to review the required capabilities.`
+      );
+    }
+
+    if (plan.approval.status !== "approved") {
+      throw new Error(
+        `Cannot run scenario “${plan.scenarioId}” until plan ${plan.planDigest} is approved in approval.approvedPlanDigest.`
+      );
+    }
+
+    throw new Error(
+      "Scenario execution is not implemented yet; only deterministic planning is available."
+    );
   }
 
   const result = await executeConfig(path.resolve(configPath));

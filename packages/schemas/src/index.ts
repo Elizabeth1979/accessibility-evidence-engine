@@ -11,6 +11,8 @@ export const schemaCatalog = {
   judgment: "json/judgment.schema.json",
   finding: "json/finding.schema.json",
   remediationRegistry: "json/remediation-registry.schema.json",
+  scenario: "json/scenario.schema.json",
+  scenarioPlan: "json/scenario-plan.schema.json",
   cliConfig: "json/cli-config.schema.json",
   virtualPageFixture: "json/virtual-page-fixture.schema.json"
 } as const;

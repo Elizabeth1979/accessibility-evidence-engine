@@ -1,0 +1,43 @@
+$schema: ../../packages/schemas/json/scenario.schema.json
+schemaVersion: 0.1.0
+id: melio-public-homepage
+
+target:
+  url: https://melio.com/
+  allowedOrigins:
+    - https://melio.com/
+
+standard:
+  name: WCAG
+  version: "2.2"
+  levels:
+    - A
+    - AA
+
+profile: core
+goal: Test the public Melio homepage and primary navigation without entering a private or financial workflow.
+
+journeys:
+  - id: explore-public-homepage
+    name: Explore the public homepage
+    goal: Understand Melio and reach public information or the beginning of sign-up safely.
+    startPath: /
+    allowedActions:
+      - navigate
+      - open-menus
+      - hover
+      - focus
+      - activate-public-links
+    forbiddenActions:
+      - sign-in
+      - create-account
+      - submit-personal-information
+      - initiate-payment
+
+privacy:
+  storage: local
+  remoteUpload: forbidden
+  sharingReviewRequired: true
+
+approval:
+  required: true

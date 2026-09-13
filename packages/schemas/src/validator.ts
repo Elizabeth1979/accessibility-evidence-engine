@@ -11,6 +11,8 @@ import findingSchema from "../json/finding.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
+import scenarioPlanSchema from "../json/scenario-plan.schema.json";
+import scenarioSchema from "../json/scenario.schema.json";
 import reportSchema from "../json/report.schema.json";
 import runSchema from "../json/run.schema.json";
 import virtualPageFixtureSchema from "../json/virtual-page-fixture.schema.json";
@@ -28,6 +30,8 @@ const schemaDocuments = {
   judgment: judgmentSchema,
   finding: findingSchema,
   remediationRegistry: remediationRegistrySchema,
+  scenario: scenarioSchema,
+  scenarioPlan: scenarioPlanSchema,
   cliConfig: cliConfigSchema,
   virtualPageFixture: virtualPageFixtureSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
@@ -43,6 +47,8 @@ const schemaTitles: Record<SchemaName, string> = {
   judgment: "AEE judgment payload",
   finding: "AEE finding payload",
   remediationRegistry: "AEE remediation registry",
+  scenario: "AEE user-controlled scenario",
+  scenarioPlan: "AEE compiled scenario plan",
   cliConfig: "AEE CLI config",
   virtualPageFixture: "AEE virtual page fixture"
 };

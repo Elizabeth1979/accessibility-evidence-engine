@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/schemas/scenario.schema.json",
+  "title": "AEE user-controlled accessibility scenario",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "target",
+    "standard",
+    "profile",
+    "goal",
+    "journeys",
+    "approval"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "format": "uri", "pattern": "^https?://" },
+        "allowedOrigins": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "format": "uri", "pattern": "^https?://" }
+        }
+      }
+    },
+    "standard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "levels"],
+      "properties": {
+        "name": { "const": "WCAG" },
+        "version": { "enum": ["2.0", "2.1", "2.2"] },
+        "levels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["A", "AA", "AAA"] }
+        }
+      }
+    },
+    "profile": { "enum": ["core", "at-fidelity"] },
+    "goal": { "type": "string", "minLength": 1 },
+    "journeys": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/journey" }
+    },
+    "privacy": { "$ref": "#/$defs/privacy" },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "properties": {
+        "required": { "const": true },
+        "approvedPlanDigest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "journey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "goal", "allowedActions", "forbiddenActions"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "name": { "type": "string", "minLength": 1 },
+        "goal": { "type": "string", "minLength": 1 },
+        "startPath": { "type": "string", "pattern": "^/" },
+        "allowedActions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/actionId" }
+        },
+        "forbiddenActions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/actionId" }
+        }
+      }
+    },
+    "actionId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storage", "remoteUpload", "sharingReviewRequired"],
+      "properties": {
+        "storage": { "enum": ["local", "custom"] },
+        "remoteUpload": { "enum": ["forbidden", "explicit-only"] },
+        "sharingReviewRequired": { "const": true }
+      }
+    }
+  }
+}

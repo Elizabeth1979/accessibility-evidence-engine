@@ -49,6 +49,17 @@ npm run run:fixture
 
 The command reads [the example config](examples/basic-run-config.json) and [fixture](examples/basic-fixture.json), then writes a report to `aee-output/<run-id>/aee-report.md` alongside its JSON output and captured artifacts.
 
+Plan a user-controlled public Melio assessment without executing it:
+
+```bash
+npm run plan:melio
+```
+
+The [Melio scenario](examples/melio/scenario.yml) owns the goal, WCAG scope, safe actions,
+prohibited account and payment actions, privacy settings, and approval requirement. AEE expands it
+into a deterministic test plan and reports whether every capability required by the selected
+profile is implemented. A blocked or partial plan cannot become an overall pass.
+
 Run the automated checks:
 
 ```bash
@@ -122,7 +133,7 @@ npm run demo:record
 | Change-response judge  | Click, enter, space, submit                         | Detects observable DOM, focus, or network outcomes                                                          |
 | Structure judge        | Evidence completeness                               | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
 | Release judge          | Policy gate                                         | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
-| Validation             | JSON Schema                                         | Validates supported CLI configuration and emitted run, bundle, and report payloads                          |
+| Validation             | JSON Schema and YAML scenario planning              | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads          |
 | Reporting              | JSON and Markdown                                   | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
 | AI review routing      | Headings, icon labels, decorative classification    | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model         |
 | AI fix proposals       | Contextual accessible names                         | Injected provider proposes a label; output is always review-only and requires a verified rerun              |
@@ -142,7 +153,7 @@ The Guidepup screen-reader and axe observers, plus the interaction, screen-reade
 | `@aee/observers`  | Built-in evidence observers and observer manifests                       |
 | `@aee/judges`     | Built-in judges, release gating, and judge manifests                     |
 | `@aee/reporter`   | JSON and Markdown reporters                                              |
-| `@aee/cli`        | Fixture configuration, execution, and artifact output                    |
+| `@aee/cli`        | User-controlled scenario planning plus legacy fixture execution          |
 
 ## Evidence privacy
 
@@ -152,7 +163,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 
 ## Known limitations
 
-- The CLI currently runs JSON fixtures; real pages use the Playwright API.
+- The CLI deterministically plans YAML scenarios but currently executes only JSON fixtures; real pages use the Playwright API.
 - AEE evaluates one interaction bundle per `runAeeOnPage(...)` call.
 - Stabilization is currently a fixed post-interaction delay, not network-idle, animation, or mutation detection.
 - Observer timeout and continue-on-error policy fields exist, but engine-level enforcement is not implemented yet.

@@ -20,7 +20,10 @@
   "files": [
     "dist/index.js",
     "dist/index.js.map",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/scenario.js",
+    "dist/scenario.js.map",
+    "dist/scenario.d.ts"
   ],
   "engines": {
     "node": ">=22"
@@ -50,6 +53,7 @@
     "@aee/observers": "0.1.0",
     "@aee/playwright": "0.1.0",
     "@aee/reporter": "0.1.0",
-    "@aee/schemas": "0.1.0"
+    "@aee/schemas": "0.1.0",
+    "yaml": "^2.9.1"
   }
 }

@@ -20,6 +20,7 @@
     "lint": "eslint . --max-warnings=0",
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "example:melio": "npm run build && playwright test --config examples/melio/playwright.config.ts",
+    "plan:melio": "npm run build && node packages/cli/dist/index.js plan examples/melio/scenario.yml",
     "site:generate": "node scripts/generate-site-registry.mjs",
     "site:check": "node scripts/generate-site-registry.mjs --check",
     "playwright:install": "playwright install chromium",

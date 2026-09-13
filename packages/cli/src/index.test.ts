@@ -1,12 +1,21 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 
 import type { EvidenceRecord, Judgment } from "@aee/core";
 
-import { createBootstrapPlan, runWithPage, type AeeCliConfig } from "./index";
+import {
+  compileScenarioPlan,
+  createBootstrapPlan,
+  loadScenario,
+  renderScenarioPlan,
+  runWithPage,
+  type AeeCliConfig
+} from "./index";
 
 interface JsonReport {
   run: {
@@ -15,6 +24,8 @@ interface JsonReport {
   records: EvidenceRecord[];
   judgments: Judgment[];
 }
+
+const execFileAsync = promisify(execFile);
 
 test("createBootstrapPlan filters observers through the capture policy", () => {
   const plan = createBootstrapPlan({
@@ -90,4 +101,101 @@ test("runWithPage records the capture policy and filtered observer set", async (
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("compileScenarioPlan expands user permissions and blocks incomplete Core coverage", async () => {
+  const scenario = await loadScenario(
+    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+  );
+  const plan = compileScenarioPlan(scenario);
+
+  assert.equal(plan.readiness.status, "blocked");
+  assert.equal(plan.approval.status, "pending");
+  assert.ok(plan.readiness.blockingCapabilityIds.includes("axe-results"));
+  assert.ok(plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
+  assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
+  assert.ok(
+    plan.journeys[0]?.steps.some(
+      ({ id, source }) => id === "permission-open-menus" && source === "user-permission"
+    )
+  );
+  assert.deepEqual(plan.safety.forbiddenActions, [
+    "create-account",
+    "initiate-payment",
+    "sign-in",
+    "submit-personal-information"
+  ]);
+  assert.deepEqual(plan.safety.allowedOrigins, ["https://melio.com"]);
+  assert.match(renderScenarioPlan(plan), /AEE will not convert a partial run into an overall pass/);
+});
+
+test("compileScenarioPlan produces a stable plan digest that can be explicitly approved", async () => {
+  const scenario = await loadScenario(
+    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+  );
+  const firstPlan = compileScenarioPlan(scenario);
+  const approvedPlan = compileScenarioPlan({
+    ...scenario,
+    approval: {
+      required: true,
+      approvedPlanDigest: firstPlan.planDigest
+    }
+  });
+
+  assert.equal(approvedPlan.planDigest, firstPlan.planDigest);
+  assert.equal(approvedPlan.scenarioDigest, firstPlan.scenarioDigest);
+  assert.equal(approvedPlan.approval.status, "approved");
+});
+
+test("compileScenarioPlan rejects actions that are both allowed and forbidden", async () => {
+  const scenario = await loadScenario(
+    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+  );
+  const conflictingAction = scenario.journeys[0]?.allowedActions[0];
+  assert.ok(conflictingAction);
+
+  assert.throws(
+    () =>
+      compileScenarioPlan({
+        ...scenario,
+        journeys: [
+          {
+            ...scenario.journeys[0],
+            forbiddenActions: [...scenario.journeys[0].forbiddenActions, conflictingAction]
+          }
+        ]
+      }),
+    /cannot both allow and forbid/
+  );
+});
+
+test("CLI plan emits a machine-readable user-controlled plan", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
+  const { stdout, stderr } = await execFileAsync(process.execPath, [
+    cliPath,
+    "plan",
+    scenarioPath,
+    "--json"
+  ]);
+  const plan = JSON.parse(stdout) as { scenarioId: string; readiness: { status: string } };
+
+  assert.equal(stderr, "");
+  assert.equal(plan.scenarioId, "melio-public-homepage");
+  assert.equal(plan.readiness.status, "blocked");
+});
+
+test("CLI run refuses to execute a scenario with incomplete required evidence", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
+
+  await assert.rejects(
+    () => execFileAsync(process.execPath, [cliPath, "run", scenarioPath]),
+    (error: unknown) => {
+      const output = error as { stderr?: string };
+      assert.match(output.stderr ?? "", /Cannot run scenario “melio-public-homepage”/);
+      assert.match(output.stderr ?? "", /required capabilities are not fully implemented/);
+      return true;
+    }
+  );
 });
