@@ -22,23 +22,22 @@ test("public demo exposes its purpose and limitations", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeAttached();
 });
 
-test("evidence flow documents every capture lane and its implementation status", async ({
-  page
-}) => {
+test("evidence flow renders a branching graph with a text equivalent", async ({ page }) => {
   await page.goto(demoUrl);
 
-  const flow = page.locator(".workflow-map");
-  await expect(flow.getByRole("heading", { name: "Describe one user journey" })).toBeVisible();
-  await expect(
-    flow.getByRole("heading", { name: "Fork the journey into independent input lanes" })
-  ).toBeVisible();
-  await expect(flow.getByText("DOM + focus", { exact: true })).toBeVisible();
-  await expect(flow.getByText("axe", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Virtual screen reader", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Action trace", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Transcript + video", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Available", { exact: true })).toHaveCount(3);
-  await expect(flow.getByText("Planned", { exact: true })).toHaveCount(4);
+  const graph = page.getByRole("img", { name: /flowchart of the AEE architecture/i });
+  await expect(graph).toBeVisible();
+  await expect(graph).toHaveAttribute("src", "diagrams/aee-evidence-pipeline.svg");
+  await expect(graph).toHaveJSProperty("complete", true);
+  await expect(page.locator(".workflow-stage")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Open the graph full size" })).toHaveAttribute(
+    "href",
+    "diagrams/aee-evidence-pipeline.svg"
+  );
+
+  await page.getByText("Read the graph as six text steps").click();
+  await expect(page.getByText(/run pointer, keyboard, virtual-reader/i)).toBeVisible();
+  await expect(page.getByText(/run deterministic rules first/i)).toBeVisible();
   await expect(
     page.getByRole("link", { name: /artifact contract and Mermaid source/i })
   ).toHaveAttribute("href", /docs\/evidence-run-layout\.md$/);

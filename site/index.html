@@ -86,145 +86,56 @@
           </p>
         </div>
 
-        <div class="workflow-map">
-          <ol class="workflow-stages">
-            <li class="workflow-stage">
-              <div class="stage-marker" aria-hidden="true">1</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Define</p>
-                <h3>Describe one user journey</h3>
-                <p>
-                  Set the URL, initial state, interaction, expected behavior, browser, and evidence
-                  policy.
-                </p>
-                <code>scenario.json</code>
-              </div>
-            </li>
+        <figure class="workflow-map">
+          <div
+            class="workflow-graph-scroll"
+            role="region"
+            aria-label="Accessibility Evidence Engine architecture graph"
+            tabindex="0"
+          >
+            <img
+              class="workflow-graph"
+              src="diagrams/aee-evidence-pipeline.svg"
+              alt="Flowchart of the AEE architecture. A journey branches into isolated pointer, keyboard, virtual screen-reader, and optional VoiceOver or NVDA lanes. Each lane loops through before capture, one meaningful action, and after capture while passive observers collect synchronized evidence. Evidence is correlated, checked by deterministic rules, routed to AI only for permitted contextual judgments, verified across evidence, and published as one report."
+              width="1281"
+              height="1691"
+            />
+          </div>
+          <figcaption>
+            <span><strong>Green</strong> is deterministic or available.</span>
+            <span><strong>Amber</strong> is optional, contextual, or planned.</span>
+            <a href="diagrams/aee-evidence-pipeline.svg">Open the graph full size</a>
+          </figcaption>
+        </figure>
 
-            <li class="workflow-stage">
-              <div class="stage-marker" aria-hidden="true">2</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Isolate active drivers</p>
-                <h3>Fork the journey into independent input lanes</h3>
-                <p>
-                  Pointer, keyboard, and virtual-reader drivers never compete for the same page.
-                  VoiceOver and NVDA are optional AT-fidelity lanes on supported workers.
-                </p>
-                <code>lanes/&lt;lane-id&gt;/run.json</code>
-              </div>
+        <details class="workflow-details">
+          <summary>Read the graph as six text steps</summary>
+          <ol>
+            <li><strong>Define:</strong> version the journey, actions, policy, and tools.</li>
+            <li>
+              <strong>Isolate:</strong> run pointer, keyboard, virtual-reader, and optional real-AT
+              drivers in separate browser contexts.
             </li>
-
-            <li class="workflow-stage collector-stage">
-              <div class="stage-marker" aria-hidden="true">3</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Act, then recapture</p>
-                <h3>Build one synchronized checkpoint for every meaningful action</h3>
-                <p>
-                  Passive observers capture the state, the lane performs one role-aware action, then
-                  every observer captures again. Each checkpoint represents the same instant across
-                  full-page visuals, DOM, accessibility tree, focus, and tool output.
-                </p>
-                <ul class="collector-grid" aria-label="Synchronized evidence observers">
-                  <li>
-                    <span class="collector-status available">Available</span>
-                    <strong>DOM + focus</strong>
-                    <small>Full DOM, deep active element, aria-activedescendant</small>
-                    <code>dom.html + focus.json</code>
-                  </li>
-                  <li>
-                    <span class="collector-status available">Available</span>
-                    <strong>Accessibility tree</strong>
-                    <small>Full normalized tree plus a target-specific derived view</small>
-                    <code>accessibility-tree.json</code>
-                  </li>
-                  <li>
-                    <span class="collector-status available">Available</span>
-                    <strong>Visual evidence</strong>
-                    <small>Viewport and full-page screenshots at the same checkpoint</small>
-                    <code>viewport.png + full-page.png</code>
-                  </li>
-                  <li>
-                    <span class="collector-status planned">Planned</span>
-                    <strong>axe</strong>
-                    <small>Pinned rule set and raw outcomes at meaningful states</small>
-                    <code>axe.json</code>
-                  </li>
-                  <li>
-                    <span class="collector-status planned">Planned</span>
-                    <strong>Virtual screen reader</strong>
-                    <small>Its own active lane, with command and phrase transcript</small>
-                    <code>screen-reader.json + .txt</code>
-                  </li>
-                  <li>
-                    <span class="collector-status planned">Planned</span>
-                    <strong>Action trace</strong>
-                    <small
-                      >Every key, pointer event, hover, selection, and authorized activation</small
-                    >
-                    <code>interaction.json</code>
-                  </li>
-                  <li>
-                    <span class="collector-status planned">Planned</span>
-                    <strong>Transcript + video</strong>
-                    <small
-                      >Lane-spanning evidence; video persists for failures, review, or demos</small
-                    >
-                    <code>transcript.json + video.webm</code>
-                  </li>
-                </ul>
-              </div>
+            <li>
+              <strong>Capture:</strong> record a synchronized state before and after every
+              meaningful action using passive visual, DOM, AOM, focus, axe, transcript, and video
+              observers.
             </li>
-
-            <li class="workflow-stage">
-              <div class="stage-marker" aria-hidden="true">4</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Correlate</p>
-                <h3>Join lanes and observers into an evidence graph</h3>
-                <p>
-                  Preserve execution state, ACT-style rule outcome, and policy decision as separate
-                  facts. Missing or blocked evidence remains explicit—not a pass.
-                </p>
-                <code>bundle.json</code>
-              </div>
+            <li><strong>Correlate:</strong> join immutable artifacts into one evidence graph.</li>
+            <li>
+              <strong>Analyze:</strong> run deterministic rules first, route only allowlisted
+              contextual questions to labeled AI, then verify across all evidence.
             </li>
-
-            <li class="workflow-stage">
-              <div class="stage-marker" aria-hidden="true">5</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Judge, route, verify</p>
-                <h3>Use deterministic rules first and AI only where it helps</h3>
-                <p>
-                  A versioned registry maps each issue to evidence, WCAG, detection, optional AI
-                  specialist, and rerun checks. Every AI output is labeled and must cite evidence.
-                </p>
-                <code>judgments/*.json + ai/evaluations/*.json</code>
-              </div>
-            </li>
-
-            <li class="workflow-stage output-stage">
-              <div class="stage-marker" aria-hidden="true">6</div>
-              <div class="stage-copy">
-                <p class="stage-kind">Publish</p>
-                <h3>Package one reviewable evidence bundle</h3>
-                <p>
-                  HTML, JSON, and Markdown link each conclusion to raw images, video, axe output,
-                  keyboard traces, and screen-reader transcripts. Optional fixes happen only in an
-                  isolated worktree and require a verified rerun.
-                </p>
-                <ul class="output-files" aria-label="Report outputs">
-                  <li><code>manifest.json</code></li>
-                  <li><code>aee-report.html</code></li>
-                  <li><code>aee-report.json</code></li>
-                  <li><code>aee-report.md</code></li>
-                </ul>
-              </div>
+            <li>
+              <strong>Report:</strong> publish one linked HTML, JSON, and Markdown report; any fix
+              is isolated and must pass a verified rerun.
             </li>
           </ol>
-        </div>
+        </details>
 
         <p class="flow-note">
-          This is the target evidence architecture. The status labels above distinguish current
-          capture from planned integrations.
+          This is the target evidence architecture. Colors distinguish deterministic or available
+          work from optional, contextual, or planned integrations.
           <a
             href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/evidence-run-layout.md"
             >Read the artifact contract and Mermaid source on GitHub</a

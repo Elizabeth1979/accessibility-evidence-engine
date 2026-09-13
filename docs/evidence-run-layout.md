@@ -8,21 +8,7 @@ outcome semantics; a rule is called an “ACT Rule” only after it satisfies th
 The editable Mermaid source is
 [`docs/diagrams/aee-evidence-pipeline.mmd`](diagrams/aee-evidence-pipeline.mmd).
 
-```mermaid
-flowchart TD
-  define["1. Define journey and policy"] --> fork{"2. Fork isolated active lanes"}
-  fork --> pointer["Pointer and hover"] & keyboard["Keyboard"] & virtual["Virtual screen reader"]
-  fork -. optional .-> at["VoiceOver or NVDA"]
-  pointer & keyboard & virtual & at --> before["3a. Synchronized before checkpoint"]
-  before --> action["3b. One meaningful action"] --> after["3c. Synchronized after checkpoint"]
-  after --> more{"More actions?"}
-  more -->|Yes| before
-  more -->|No| correlate["4. Correlate immutable evidence graph"]
-  correlate --> judge["5a. Deterministic judges"] --> route{"Registry allows AI?"}
-  route -->|No| verify["5c. Cross-evidence verification"]
-  route -->|Yes| ai["5b. Labeled specialist AI output"] --> verify
-  verify --> report["6. Integrated HTML, JSON, and Markdown report"]
-```
+![AEE evidence pipeline showing isolated active lanes, synchronized evidence capture, deterministic and contextual analysis paths, and the integrated report](../site/diagrams/aee-evidence-pipeline.svg)
 
 ## The execution model
 

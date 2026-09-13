@@ -1,7 +1,12 @@
 ---
 config:
   theme: base
+  flowchart:
+    curve: basis
+    nodeSpacing: 34
+    rankSpacing: 58
   themeVariables:
+    background: "#050b09"
     primaryColor: "#0d1c19"
     primaryTextColor: "#f1f8f5"
     primaryBorderColor: "#70f0b4"
@@ -9,55 +14,56 @@ config:
     secondaryColor: "#142824"
     tertiaryColor: "#342b10"
 ---
-flowchart TD
-  define["1. Define journey, profile, and evidence policy"] --> fork{"2. Fork isolated active lanes"}
+flowchart TB
+  define(["1 · Define journey<br/>actions · policy · versions"])
+  fork{"2 · Isolate<br/>input lanes"}
 
-  subgraph lanes["Active input drivers - never share a page"]
+  subgraph drivers["ACTIVE DRIVERS · separate browser contexts"]
     direction LR
-    pointer["Pointer and hover"]
+    pointer["Pointer + hover"]
     keyboard["Keyboard"]
     virtual["Virtual screen reader"]
-    at["VoiceOver or NVDA - optional AT fidelity"]
+    at["VoiceOver / NVDA<br/>optional fidelity"]
   end
 
-  fork --> pointer
-  fork --> keyboard
-  fork --> virtual
-  fork -. optional .-> at
-
-  pointer & keyboard & virtual & at --> before["3a. Synchronized before checkpoint"]
-  before --> action["3b. One meaningful, role-aware action"]
-  action --> after["3c. Synchronized after checkpoint"]
-
-  subgraph observers["Passive observers at every checkpoint"]
+  subgraph loop["3 · FOR EACH MEANINGFUL ACTION"]
     direction LR
-    visual["Viewport and full-page images"]
-    dom["Full DOM and computed state"]
-    aom["Full accessibility tree"]
-    focus["Deep focus state"]
-    axe["Pinned axe rules"]
-    trace["Action, transcript, video, network"]
+    before["Capture<br/>before"] --> action["Perform one<br/>role-aware action"] --> after["Capture<br/>after"]
   end
 
-  before -. capture same state .-> visual & dom & aom & focus & axe & trace
-  after -. capture same state .-> visual & dom & aom & focus & axe & trace
-  after --> more{"More meaningful actions?"}
-  more -->|Yes| before
-  more -->|No| correlate["4. Correlate immutable evidence graph"]
+  observers["PASSIVE OBSERVERS<br/>viewport + full page · DOM · AOM<br/>focus · axe · transcript · video"]
+  correlate["4 · Correlate<br/>immutable evidence graph"]
 
-  correlate --> deterministic["5a. Deterministic judges and ACT-style outcomes"]
-  deterministic --> route{"Registry allows contextual AI?"}
-  route -->|No| verify["5c. Cross-evidence verification and policy"]
-  route -->|Yes| ai["5b. Labeled specialist AI output with evidence citations"]
-  ai --> verify
-  verify --> report["6. One HTML, JSON, and Markdown report"]
-  report -. optional isolated fix .-> rerun["Verified rerun with lineage"]
-  rerun --> define
+  subgraph analysis["5 · ANALYZE AND VERIFY"]
+    direction LR
+    deterministic["5a · Deterministic<br/>rules + ACT-style outcomes"]
+    route{"Contextual<br/>judgment allowed?"}
+    ai["5b · AI specialist<br/>labeled + evidence-citing"]
+    verify["5c · Cross-evidence<br/>verification + policy"]
+  end
+  report(["6 · Integrated report<br/>HTML · JSON · Markdown"])
+  rerun["Optional isolated fix<br/>+ verified rerun"]
 
-  classDef available fill:#06291d,stroke:#70f0b4,color:#f1f8f5,stroke-width:2px
+  define --> fork
+  fork --> pointer
+  pointer ~~~ keyboard ~~~ virtual ~~~ at
+  pointer & keyboard & virtual & at --> before
+  after -.->|next action| before
+  before & after -.->|same checkpoint| observers
+  after --> correlate
+  observers --> correlate
+  correlate --> deterministic --> route
+  route -->|No| verify
+  route -->|Yes| ai --> verify
+  verify --> report
+  report -.-> rerun
+
+  classDef available fill:#0b2b21,stroke:#70f0b4,color:#f1f8f5,stroke-width:2px
   classDef planned fill:#342b10,stroke:#ffd86b,color:#f1f8f5,stroke-width:2px
   classDef decision fill:#142824,stroke:#70f0b4,color:#f1f8f5,stroke-width:2px
+  classDef output fill:#123d2f,stroke:#70f0b4,color:#f1f8f5,stroke-width:3px
 
-  class pointer,keyboard,visual,dom,aom,focus available
-  class virtual,at,axe,trace,ai,verify,rerun planned
-  class fork,more,route decision
+  class define,pointer,keyboard,before,action,after,observers,correlate,deterministic available
+  class virtual,at,ai,verify,rerun planned
+  class fork,route decision
+  class report output
