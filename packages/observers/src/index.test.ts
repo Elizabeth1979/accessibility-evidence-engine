@@ -7,9 +7,84 @@ import test from "node:test";
 import {
   createAxeObserver,
   createNetworkObserver,
+  createVirtualScreenReaderObserver,
   createVisualObserver,
   type RuntimeObserverContext
 } from "./index";
+
+test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
+  const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-virtual-reader-"));
+  const transcript = {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.1.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-13T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-09-13T00:00:00.000Z",
+        command: "next-heading",
+        announcement: "Invoices, heading, level 1",
+        domFocusBefore: "#pay",
+        domFocusAfter: "#pay",
+        focusMoved: false
+      }
+    ]
+  };
+
+  try {
+    const observer = createVirtualScreenReaderObserver();
+    const context: RuntimeObserverContext = {
+      runId: "run-reader",
+      checkpointId: "checkpoint-reader",
+      interactionId: "interaction-reader",
+      artifactDir,
+      page: {
+        async content() {
+          return "<h1>Invoices</h1><button id='pay'>Pay</button>";
+        },
+        async snapshotVirtualScreenReaderTranscript() {
+          return transcript;
+        }
+      }
+    };
+
+    const [before] = await observer.captureBefore!(context);
+    transcript.entries.push({
+      sequence: 2,
+      timestamp: "2026-09-13T00:00:01.000Z",
+      command: "next-control",
+      announcement: "Pay, button",
+      domFocusBefore: "#pay",
+      domFocusAfter: "#pay",
+      focusMoved: false
+    });
+    const [after] = await observer.captureAfter!(context);
+
+    assert.equal(before.status, "ok");
+    assert.equal(after.status, "ok");
+    assert.equal(after.meta?.newEntryCount, 1);
+    assert.equal(after.meta?.focusMovedCount, 0);
+    assert.equal(after.meta?.lastAnnouncement, "Pay, button");
+    assert.equal(after.artifacts?.length, 2);
+
+    const jsonPath = after.artifacts?.find(
+      ({ mediaType }) => mediaType === "application/json"
+    )?.path;
+    const textPath = after.artifacts?.find(({ mediaType }) => mediaType === "text/plain")?.path;
+    assert.ok(jsonPath);
+    assert.ok(textPath);
+    assert.equal(JSON.parse(await readFile(jsonPath, "utf8")).entries.length, 2);
+    assert.match(await readFile(textPath, "utf8"), /semantic simulation; not VoiceOver, NVDA/);
+    assert.match(await readFile(textPath, "utf8"), /2\. next-control: Pay, button/);
+  } finally {
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
 
 test("createVisualObserver captures separate viewport and full-page artifacts", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-visual-"));

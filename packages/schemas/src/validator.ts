@@ -16,6 +16,7 @@ import scenarioSchema from "../json/scenario.schema.json";
 import reportSchema from "../json/report.schema.json";
 import runSchema from "../json/run.schema.json";
 import virtualPageFixtureSchema from "../json/virtual-page-fixture.schema.json";
+import virtualScreenReaderTranscriptSchema from "../json/virtual-screen-reader-transcript.schema.json";
 
 import type { SchemaName } from "./index";
 
@@ -33,7 +34,8 @@ const schemaDocuments = {
   scenario: scenarioSchema,
   scenarioPlan: scenarioPlanSchema,
   cliConfig: cliConfigSchema,
-  virtualPageFixture: virtualPageFixtureSchema
+  virtualPageFixture: virtualPageFixtureSchema,
+  virtualScreenReaderTranscript: virtualScreenReaderTranscriptSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
 
 const schemaTitles: Record<SchemaName, string> = {
@@ -50,7 +52,8 @@ const schemaTitles: Record<SchemaName, string> = {
   scenario: "AEE user-controlled scenario",
   scenarioPlan: "AEE compiled scenario plan",
   cliConfig: "AEE CLI config",
-  virtualPageFixture: "AEE virtual page fixture"
+  virtualPageFixture: "AEE virtual page fixture",
+  virtualScreenReaderTranscript: "AEE portable virtual screen-reader transcript"
 };
 
 const ajv = new Ajv2020({

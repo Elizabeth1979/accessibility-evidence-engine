@@ -2,7 +2,7 @@ import { access, readFile } from "node:fs/promises";
 
 import { expect, test } from "@playwright/test";
 
-import { runAeeOnPage } from "@aee/playwright";
+import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";
 
 interface JsonReport {
   run: {
@@ -269,6 +269,95 @@ test("runAeeOnPage preserves raw axe 4.13 WCAG results", async ({ page }, testIn
       })
     );
   }
+});
+
+test("portable virtual reader records guide navigation without moving DOM focus", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`
+    <main>
+      <h1>Invoices</h1>
+      <p>Review outstanding bills.</p>
+      <button id="pay" type="button">Pay invoice</button>
+    </main>
+  `);
+  await page.locator("#pay").focus();
+  const reader = createPortableVirtualScreenReader(page);
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-virtual-reader-output"),
+    virtualScreenReader: reader,
+    observers: ["focus", "virtual-screen-reader"],
+    judges: ["screen-reader", "release"],
+    checkpointName: "virtual-reader-next-heading",
+    interaction: {
+      kind: "screen-reader-command",
+      input: "next-heading",
+      actor: "test"
+    },
+    async performInteraction() {
+      await reader.command("next-heading");
+    }
+  });
+
+  await expect(page.locator("#pay")).toBeFocused();
+  expect(result.artifactFiles).toHaveLength(6);
+  const transcriptPath = result.artifactFiles.find((filePath) =>
+    filePath.endsWith("virtual-screen-reader-transcript-json-after.json")
+  );
+  expect(transcriptPath).toBeTruthy();
+  const transcript = JSON.parse(await readFile(transcriptPath!, "utf8"));
+  expect(transcript).toEqual(
+    expect.objectContaining({
+      mode: "guide",
+      fidelity: "semantic-simulation",
+      physicalAssistiveTechnology: false,
+      entries: [
+        expect.objectContaining({
+          command: "next-heading",
+          announcement: "Invoices, heading, level 1",
+          domFocusBefore: "#pay",
+          domFocusAfter: "#pay",
+          focusMoved: false
+        })
+      ]
+    })
+  );
+});
+
+test("portable virtual reader supports item, heading, landmark, control, and current-item commands", async ({
+  page
+}) => {
+  await page.setContent(`
+    <main>
+      <h1>Dashboard</h1>
+      <p>Overview</p>
+      <h2>Invoices</h2>
+    </main>
+    <nav aria-label="Account"><a href="#profile">Profile</a></nav>
+    <button id="stable-focus" type="button">Stay focused</button>
+  `);
+  await page.locator("#stable-focus").focus();
+  const reader = createPortableVirtualScreenReader(page);
+
+  expect((await reader.command("start")).item?.role).toBe("main");
+  expect((await reader.command("next-heading")).announcement).toBe("Dashboard, heading, level 1");
+  expect((await reader.command("next-heading")).announcement).toBe("Invoices, heading, level 2");
+  expect((await reader.command("previous-heading")).announcement).toBe(
+    "Dashboard, heading, level 1"
+  );
+  expect((await reader.command("next-landmark")).announcement).toBe("Account, navigation");
+  expect((await reader.command("next-control")).announcement).toBe("Profile, link");
+  expect((await reader.command("read-current")).announcement).toBe("Profile, link");
+  expect((await reader.command("previous-item")).item?.role).toBe("navigation");
+  expect((await reader.command("next-item")).item?.role).toBe("link");
+  await expect(page.locator("#stable-focus")).toBeFocused();
+
+  const transcript = await reader.snapshot();
+  expect(transcript.entries).toHaveLength(9);
+  expect(transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
 });
 
 test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({

@@ -19,7 +19,7 @@ same-checkpoint evidence and missing evidence cannot pass.
 ## Milestone 2 — Portable automated lanes (planned)
 
 - Add pinned axe 4.13 capture with explicit resolved rules and full raw results.
-- Add the portable virtual-screen-reader lane and canonical JSON transcript.
+- Expand the portable virtual-screen-reader driver and canonical JSON/TXT transcript into complete automatically orchestrated isolated lanes. The explicit Playwright driver, transcript observer, focus-separation judge, and schema are available; full lane orchestration and cross-evidence semantic validation remain partial.
 - Add pointer/hover parity journeys and role-aware keyboard matrices.
 - Add conditional video persistence with sidecars and captions.
 - Enforce dependency-aware `untested` plus `blockedBy` behavior.

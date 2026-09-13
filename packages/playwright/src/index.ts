@@ -20,6 +20,9 @@ import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema } from "@aee/schemas";
 
+import type { PortableVirtualScreenReader } from "./virtual-screen-reader";
+export * from "./virtual-screen-reader";
+
 export interface PlaywrightPageLike {
   url(): string;
   content(): Promise<string>;
@@ -32,6 +35,7 @@ export interface PlaywrightPageLike {
   setupNetworkTracking?(options?: unknown): Promise<void>;
   snapshotNetworkLog?(options?: unknown): Promise<unknown>;
   teardownNetworkTracking?(options?: unknown): Promise<void>;
+  snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
   accessibility?: {
     snapshot(options?: unknown): Promise<unknown>;
   };
@@ -68,6 +72,7 @@ export interface RunAeeOnPageOptions<TPage extends PlaywrightPageLike = Playwrig
   checkpointName?: string;
   interaction?: InteractionRequest;
   writeReports?: boolean;
+  virtualScreenReader?: PortableVirtualScreenReader;
   performInteraction?: (context: PlaywrightInteractionContext<TPage>) => Promise<void>;
 }
 
@@ -328,7 +333,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     checkpointId: checkpoint.id,
     interactionId: interaction.id,
     url: options.page.url(),
-    page: await createObserverPage(options.page),
+    page: await createObserverPage(options.page, options.virtualScreenReader),
     artifactDir
   };
 
@@ -465,13 +470,28 @@ interface EventedPageLike extends PlaywrightPageLike {
 }
 
 async function createObserverPage(
-  page: PlaywrightPageLike
+  page: PlaywrightPageLike,
+  virtualScreenReader?: PortableVirtualScreenReader
 ): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = page as CdpEnabledPageLike;
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
+    ? async () => virtualScreenReader.snapshot()
+    : page.snapshotVirtualScreenReaderTranscript?.bind(page);
+  const snapshotVirtualScreenReaderTranscript = rawSnapshotVirtualScreenReaderTranscript
+    ? async () => {
+        const transcript = await rawSnapshotVirtualScreenReaderTranscript();
+        assertValidSchema(
+          "virtualScreenReaderTranscript",
+          transcript,
+          "portable virtual screen-reader transcript"
+        );
+        return transcript;
+      }
+    : undefined;
   const customSetupNetworkTracking = page.setupNetworkTracking?.bind(page);
   const customSnapshotNetworkLog = page.snapshotNetworkLog?.bind(page);
   const customTeardownNetworkTracking = page.teardownNetworkTracking?.bind(page);
@@ -828,6 +848,7 @@ async function createObserverPage(
     snapshotFocusTarget,
     snapshotScreenshot,
     runAxeAnalysis,
+    snapshotVirtualScreenReaderTranscript,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking

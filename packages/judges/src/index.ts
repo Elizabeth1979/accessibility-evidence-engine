@@ -42,7 +42,7 @@ export const defaultJudgeManifests = [
     displayName: "Screen Reader Judge",
     version: "0.1.0",
     kind: "judge" as const,
-    capabilities: []
+    capabilities: ["virtual-cursor-focus-separation", "transcript-presence"]
   },
   {
     id: "visual",
@@ -110,6 +110,10 @@ export function createBuiltinJudge(judgeId: string): JudgePlugin {
 
   if (judgeId === "focus-management") {
     return createFocusManagementJudge();
+  }
+
+  if (judgeId === "screen-reader") {
+    return createScreenReaderJudge();
   }
 
   if (judgeId === "change-response") {
@@ -918,6 +922,105 @@ function createChangeResponseJudge(): JudgePlugin {
             ...new Set(observedSignals.flatMap((signal) => signal.evidenceRecordIds))
           ],
           artifactIds: [...new Set(observedSignals.flatMap((signal) => signal.artifactIds))]
+        }
+      ];
+    }
+  };
+}
+
+function createScreenReaderJudge(): JudgePlugin {
+  const manifest = defaultJudgeManifests.find((candidate) => candidate.id === "screen-reader");
+
+  if (!manifest) {
+    throw new Error("Missing screen-reader judge manifest.");
+  }
+
+  return {
+    manifest,
+    async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
+      const record = bundle.records.find(
+        (candidate) =>
+          candidate.observerId === "virtual-screen-reader" &&
+          candidate.phase === "after" &&
+          candidate.status === "ok"
+      );
+
+      if (!record) {
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary:
+              "Screen-reader judgment requires a successful portable virtual-reader transcript after the command.",
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: bundle.records
+              .filter((candidate) => candidate.observerId === "virtual-screen-reader")
+              .map((candidate) => candidate.id),
+            artifactIds: collectArtifactIds(
+              bundle.records.filter((candidate) => candidate.observerId === "virtual-screen-reader")
+            )
+          }
+        ];
+      }
+
+      const newEntryCount = getNumberMetaField(record.meta, "newEntryCount") ?? 0;
+      const focusMovedCount = getNumberMetaField(record.meta, "focusMovedCount") ?? 0;
+      const lastAnnouncement = getStringMetaField(record.meta, "lastAnnouncement");
+      const artifactIds = collectArtifactIds([record]);
+
+      if (focusMovedCount > 0) {
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "fail",
+            summary: `The virtual-reader command moved DOM focus during ${focusMovedCount} transcript entr${focusMovedCount === 1 ? "y" : "ies"}; virtual cursor movement and focus movement must remain separate.`,
+            severity: "high",
+            confidence: 1,
+            evidenceRecordIds: [record.id],
+            artifactIds,
+            suggestedFix:
+              "Remove focus-changing behavior from virtual-reader navigation and test explicit focus actions separately."
+          }
+        ];
+      }
+
+      if (newEntryCount === 0 || !lastAnnouncement) {
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.1.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary:
+              "No new announced virtual-reader command was present after the interaction, so the result cannot be evaluated.",
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: [record.id],
+            artifactIds
+          }
+        ];
+      }
+
+      return [
+        {
+          id: `screen-reader:${bundle.interaction.id}`,
+          judgeId: "screen-reader",
+          judgeVersion: "0.1.0",
+          scope: "interaction",
+          verdict: "pass",
+          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus. This verifies virtual-cursor separation, not VoiceOver or NVDA fidelity.`,
+          severity: "info",
+          confidence: 1,
+          evidenceRecordIds: [record.id],
+          artifactIds
         }
       ];
     }

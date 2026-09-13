@@ -14,7 +14,8 @@ export const schemaCatalog = {
   scenario: "json/scenario.schema.json",
   scenarioPlan: "json/scenario-plan.schema.json",
   cliConfig: "json/cli-config.schema.json",
-  virtualPageFixture: "json/virtual-page-fixture.schema.json"
+  virtualPageFixture: "json/virtual-page-fixture.schema.json",
+  virtualScreenReaderTranscript: "json/virtual-screen-reader-transcript.schema.json"
 } as const;
 
 export type SchemaName = keyof typeof schemaCatalog;

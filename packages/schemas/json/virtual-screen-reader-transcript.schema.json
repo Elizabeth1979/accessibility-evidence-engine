@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/virtual-screen-reader-transcript.schema.json",
+  "title": "AEE Portable Virtual Screen Reader Transcript",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "engine",
+    "engineVersion",
+    "mode",
+    "fidelity",
+    "physicalAssistiveTechnology",
+    "pageUrl",
+    "generatedAt",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "engine": { "const": "aee-portable-virtual-screen-reader" },
+    "engineVersion": { "const": "0.1.0" },
+    "mode": { "const": "guide" },
+    "fidelity": { "const": "semantic-simulation" },
+    "physicalAssistiveTechnology": { "const": false },
+    "pageUrl": { "type": "string", "format": "uri" },
+    "generatedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "currentItem": { "$ref": "#/$defs/item" },
+    "entries": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["key", "nodePath", "tagName", "role", "states"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "nodePath": { "type": "string", "minLength": 1 },
+        "tagName": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" },
+        "level": { "type": "integer", "minimum": 1 },
+        "states": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "entry": {
+      "type": "object",
+      "required": ["sequence", "timestamp", "command", "announcement", "focusMoved"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+        "command": {
+          "enum": [
+            "start",
+            "next-item",
+            "previous-item",
+            "next-heading",
+            "previous-heading",
+            "next-landmark",
+            "next-control",
+            "read-current"
+          ]
+        },
+        "announcement": { "type": "string" },
+        "item": { "$ref": "#/$defs/item" },
+        "domFocusBefore": { "type": "string" },
+        "domFocusAfter": { "type": "string" },
+        "focusMoved": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

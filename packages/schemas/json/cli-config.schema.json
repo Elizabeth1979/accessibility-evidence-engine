@@ -118,6 +118,7 @@
             "arrow-key",
             "type",
             "submit",
+            "screen-reader-command",
             "custom"
           ]
         },

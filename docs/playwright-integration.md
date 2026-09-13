@@ -215,6 +215,36 @@ await runAeeOnPage({
 
 This produces `visual-viewport-before.png`, `visual-full-page-before.png`, matching after-state images, and `axe-before.json` / `axe-after.json`. An axe violation fails the axe judgment; a run containing only incomplete axe checks remains `unknown` rather than becoming a pass.
 
+## Portable virtual screen-reader example
+
+The portable reader provides deterministic guide-mode navigation without requiring installed assistive technology. Give it a dedicated Playwright page or test so it forms an isolated lane. Its virtual cursor reads semantic candidates but does not focus or activate them.
+
+```ts
+import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";
+
+const reader = createPortableVirtualScreenReader(page);
+
+await runAeeOnPage({
+  page,
+  projectRoot: process.cwd(),
+  virtualScreenReader: reader,
+  observers: ["dom", "accessibility-tree", "focus", "visual", "virtual-screen-reader"],
+  judges: ["screen-reader", "release"],
+  interaction: {
+    kind: "screen-reader-command",
+    input: "next-heading",
+    actor: "test"
+  },
+  async performInteraction() {
+    await reader.command("next-heading");
+  }
+});
+```
+
+Supported commands are `start`, `next-item`, `previous-item`, `next-heading`, `previous-heading`, `next-landmark`, `next-control`, and `read-current`. Every command records the item, synthesized announcement, timestamp, and DOM focus before and after. The observer writes canonical JSON and a readable text projection for both capture phases.
+
+This is explicitly a semantic simulation. It works without VoiceOver or NVDA, but it does not reproduce their browser/OS accessibility APIs, speech behavior, interaction modes, or bugs. Real VoiceOver and NVDA runs remain an optional AT-fidelity tier.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.
@@ -309,6 +339,8 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.
 - The axe observer pins `@axe-core/playwright` 4.13.0, runs the cumulative WCAG 2.0/2.1/2.2 A/AA tag selection, and retains every raw result category.
+- The portable virtual reader uses a separate in-memory cursor, validates its canonical transcript against JSON Schema, and records DOM focus before and after every command.
+- The screen-reader judge currently verifies transcript presence and focus separation only; semantic agreement across the full visual, DOM, and accessibility-tree context remains planned.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - Before network artifacts are persisted, AEE removes URL credentials and fragments, redacts all query and header values, replaces request bodies, and drops unknown event fields. URL paths remain visible. See [Evidence privacy](privacy.md).
 - The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.

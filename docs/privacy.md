@@ -19,7 +19,7 @@ The URL scheme, host, port, and path remain visible because they are used to cor
 
 ## Evidence that is not automatically redacted
 
-DOM snapshots, accessibility-tree snapshots, focus metadata, screenshots, target descriptions, and generated reports can contain page text, accessible names, form values, identifiers, filesystem paths, or other information from the tested environment. AEE cannot reliably remove this content without also damaging the evidence.
+DOM snapshots, accessibility-tree snapshots, virtual screen-reader transcripts, focus metadata, screenshots, target descriptions, and generated reports can contain page text, accessible names, form values, identifiers, filesystem paths, or other information from the tested environment. AEE cannot reliably remove this content without also damaging the evidence.
 
 Optional AI fix providers can receive the bounded context supplied by the caller, including nearby headings, visible copy, icon descriptions, and destination or dialog text. AEE does not automatically redact that model input. Minimize it, prefer synthetic data, and review the selected provider's data-handling requirements before sending captured UI context.
 

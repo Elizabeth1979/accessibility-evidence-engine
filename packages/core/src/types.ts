@@ -49,6 +49,7 @@ export type InteractionKind =
   | "arrow-key"
   | "type"
   | "submit"
+  | "screen-reader-command"
   | "custom";
 
 export interface Interaction {

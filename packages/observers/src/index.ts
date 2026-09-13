@@ -52,6 +52,13 @@ export const defaultObserverManifests = [
     version: "0.2.0",
     kind: "observer" as const,
     capabilities: ["axe-core-4.13", "wcag-2.2-a-aa", "raw-results"]
+  },
+  {
+    id: "virtual-screen-reader",
+    displayName: "Portable Virtual Screen Reader Observer",
+    version: "0.1.0",
+    kind: "observer" as const,
+    capabilities: ["guide-navigation", "json-transcript", "text-transcript", "focus-separation"]
   }
 ];
 
@@ -62,6 +69,7 @@ export interface RuntimeObserverContext extends ObserverContext {
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
     snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
     runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+    snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
     setupNetworkTracking?(options?: unknown): Promise<void>;
     snapshotNetworkLog?(options?: unknown): Promise<unknown>;
     teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -74,6 +82,7 @@ export interface RuntimeObserverContext extends ObserverContext {
   runtimeState?: {
     domBeforeHtml?: string;
     networkBeforeSummary?: NetworkLogSummary;
+    virtualScreenReaderBeforeEntryCount?: number;
   };
 }
 
@@ -180,6 +189,26 @@ export function createAxeObserver(): ObserverPlugin {
   };
 }
 
+export function createVirtualScreenReaderObserver(): ObserverPlugin {
+  const manifest = defaultObserverManifests.find(
+    (candidate) => candidate.id === "virtual-screen-reader"
+  );
+
+  if (!manifest) {
+    throw new Error("Missing virtual screen-reader observer manifest.");
+  }
+
+  return {
+    manifest,
+    async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureVirtualScreenReaderRecord(context as RuntimeObserverContext, "before")];
+    },
+    async captureAfter(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureVirtualScreenReaderRecord(context as RuntimeObserverContext, "after")];
+    }
+  };
+}
+
 export function createUnsupportedObserver(observerId: string): ObserverPlugin {
   const manifest = defaultObserverManifests.find((candidate) => candidate.id === observerId);
 
@@ -224,6 +253,10 @@ export function createDefaultObserverPlugins(
 
     if (observerId === "axe") {
       return createAxeObserver();
+    }
+
+    if (observerId === "virtual-screen-reader") {
+      return createVirtualScreenReaderObserver();
     }
 
     return createUnsupportedObserver(observerId);
@@ -679,6 +712,163 @@ function readNestedString(
   return isRecord(nested) && typeof nested[nestedProperty] === "string"
     ? nested[nestedProperty]
     : undefined;
+}
+
+async function captureVirtualScreenReaderRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): Promise<EvidenceRecord> {
+  const snapshotTranscript = context.page?.snapshotVirtualScreenReaderTranscript?.bind(
+    context.page
+  );
+
+  if (!snapshotTranscript) {
+    return unsupportedVirtualScreenReaderRecord(context, phase);
+  }
+
+  try {
+    const transcript = await snapshotTranscript();
+    if (!isRecord(transcript) || !Array.isArray(transcript.entries)) {
+      throw new Error("Transcript snapshot did not contain an entries array.");
+    }
+
+    const entries = transcript.entries.filter(isRecord);
+    const entryCount = entries.length;
+    const previousEntryCount =
+      phase === "after" ? (context.runtimeState?.virtualScreenReaderBeforeEntryCount ?? 0) : 0;
+    const newEntries = entries.slice(previousEntryCount);
+    const focusMovedCount = newEntries.filter((entry) => entry.focusMoved === true).length;
+    const lastEntry = newEntries.at(-1);
+
+    if (phase === "before") {
+      context.runtimeState ??= {};
+      context.runtimeState.virtualScreenReaderBeforeEntryCount = entryCount;
+    }
+
+    const jsonArtifact = await maybeWriteArtifact(
+      context,
+      "virtual-screen-reader",
+      phase,
+      "screen-reader-log",
+      "json",
+      "application/json",
+      JSON.stringify(transcript, null, 2),
+      "transcript-json"
+    );
+    const textArtifact = await maybeWriteArtifact(
+      context,
+      "virtual-screen-reader",
+      phase,
+      "screen-reader-log",
+      "txt",
+      "text/plain",
+      renderVirtualScreenReaderTranscript(transcript),
+      "transcript-text"
+    );
+    const artifacts = [jsonArtifact, textArtifact].filter(
+      (artifact): artifact is NonNullable<typeof artifact> => Boolean(artifact)
+    );
+
+    return {
+      id: `virtual-screen-reader:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "virtual-screen-reader",
+      observerVersion: "0.1.0",
+      phase,
+      status: "ok",
+      timestamp: getTimestamp(),
+      summary:
+        phase === "before"
+          ? `Captured the virtual screen-reader transcript baseline with ${entryCount} existing entries.`
+          : focusMovedCount === 0
+            ? `Captured ${newEntries.length} new virtual screen-reader transcript entr${newEntries.length === 1 ? "y" : "ies"}; no entry moved DOM focus.`
+            : `Captured ${newEntries.length} new virtual screen-reader transcript entr${newEntries.length === 1 ? "y" : "ies"}; ${focusMovedCount} moved DOM focus.`,
+      ...(phase === "before" ? { beforeStateRef: jsonArtifact } : { afterStateRef: jsonArtifact }),
+      rawRef: jsonArtifact,
+      artifacts,
+      meta: {
+        engine: readString(transcript.engine),
+        engineVersion: readString(transcript.engineVersion),
+        mode: readString(transcript.mode),
+        fidelity: readString(transcript.fidelity),
+        physicalAssistiveTechnology: transcript.physicalAssistiveTechnology === true,
+        entryCount,
+        newEntryCount: newEntries.length,
+        focusMovedCount,
+        lastAnnouncement: readString(lastEntry?.announcement)
+      }
+    };
+  } catch (error) {
+    return {
+      id: `virtual-screen-reader:${phase}:${Date.now()}`,
+      runId: context.runId,
+      checkpointId: context.checkpointId,
+      interactionId: context.interactionId,
+      observerId: "virtual-screen-reader",
+      observerVersion: "0.1.0",
+      phase,
+      status: "observer_error",
+      timestamp: getTimestamp(),
+      diagnostics: [
+        error instanceof Error
+          ? `Virtual screen-reader transcript capture failed: ${error.message}`
+          : "Virtual screen-reader transcript capture failed."
+      ]
+    };
+  }
+}
+
+function unsupportedVirtualScreenReaderRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): EvidenceRecord {
+  return {
+    id: `virtual-screen-reader:${phase}:${Date.now()}`,
+    runId: context.runId,
+    checkpointId: context.checkpointId,
+    interactionId: context.interactionId,
+    observerId: "virtual-screen-reader",
+    observerVersion: "0.1.0",
+    phase,
+    status: "unsupported",
+    timestamp: getTimestamp(),
+    diagnostics: ["No portable virtual screen-reader driver was attached to this Playwright run."]
+  };
+}
+
+function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>): string {
+  const entries = Array.isArray(transcript.entries) ? transcript.entries.filter(isRecord) : [];
+  const lines = [
+    "AEE portable virtual screen-reader transcript",
+    "Fidelity: semantic simulation; not VoiceOver, NVDA, or another physical assistive technology.",
+    `Page: ${readString(transcript.pageUrl) ?? "unknown"}`,
+    `Mode: ${readString(transcript.mode) ?? "unknown"}`,
+    ""
+  ];
+
+  if (entries.length === 0) {
+    lines.push("No commands recorded.");
+  } else {
+    for (const [index, entry] of entries.entries()) {
+      const sequence = typeof entry.sequence === "number" ? entry.sequence : index + 1;
+      const command = readString(entry.command) ?? "unknown-command";
+      const announcement = readString(entry.announcement) ?? "";
+      const focusBefore = readString(entry.domFocusBefore) ?? "none";
+      const focusAfter = readString(entry.domFocusAfter) ?? "none";
+      lines.push(`${sequence}. ${command}: ${announcement}`);
+      lines.push(
+        `   DOM focus: ${focusBefore} -> ${focusAfter}; moved: ${entry.focusMoved === true ? "yes" : "no"}`
+      );
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
 }
 
 async function captureNetworkRecord(

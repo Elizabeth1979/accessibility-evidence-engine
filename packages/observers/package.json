@@ -1,7 +1,7 @@
 {
   "name": "@aee/observers",
   "version": "0.1.0",
-  "description": "DOM, accessibility-tree, focus, screenshot, and network observers for Accessibility Evidence Engine.",
+  "description": "DOM, accessibility-tree, focus, visual, axe, virtual-reader, and network observers for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
   "main": "dist/index.js",

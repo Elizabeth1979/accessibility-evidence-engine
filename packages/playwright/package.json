@@ -17,7 +17,10 @@
   "files": [
     "dist/index.js",
     "dist/index.js.map",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/virtual-screen-reader.js",
+    "dist/virtual-screen-reader.js.map",
+    "dist/virtual-screen-reader.d.ts"
   ],
   "engines": {
     "node": ">=22"

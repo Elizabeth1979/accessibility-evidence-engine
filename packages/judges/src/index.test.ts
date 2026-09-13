@@ -98,6 +98,55 @@ test("axe judge fails violations and preserves incomplete checks as unresolved c
   );
 });
 
+test("screen-reader judge passes virtual navigation that does not move DOM focus", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: "Invoices, heading, level 1"
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /without moving DOM focus/);
+  assert.match(judgment?.summary ?? "", /not VoiceOver or NVDA fidelity/);
+});
+
+test("screen-reader judge fails when virtual navigation moves DOM focus", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 1,
+        lastAnnouncement: "Pay, button"
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /must remain separate/);
+});
+
 test("axe judge returns unknown when only incomplete checks remain", async () => {
   const judge = createDefaultJudgePlugins(["axe"])[0];
   const bundle = createBundle([

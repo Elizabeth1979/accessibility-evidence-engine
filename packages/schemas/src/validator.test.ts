@@ -170,6 +170,47 @@ test("validateSchema rejects malformed virtual page fixtures", () => {
   assert.match(result.errors.join(" "), /missing required property "html"/);
 });
 
+test("validateSchema accepts a portable virtual screen-reader transcript", () => {
+  const result = validateSchema("virtualScreenReaderTranscript", {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.1.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-13T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-09-13T00:00:00.000Z",
+        command: "next-heading",
+        announcement: "Invoices, heading, level 1",
+        focusMoved: false
+      }
+    ]
+  });
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+});
+
+test("validateSchema rejects a virtual transcript that claims physical AT fidelity", () => {
+  const result = validateSchema("virtualScreenReaderTranscript", {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.1.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: true,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-13T00:00:00.000Z",
+    entries: []
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /must be equal to constant/);
+});
+
 test("validateSchema accepts a valid evidence bundle payload", () => {
   const result = validateSchema("evidenceBundle", sampleBundle);
 

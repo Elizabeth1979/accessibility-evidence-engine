@@ -99,7 +99,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "virtual-screen-reader-lane",
     "Portable virtual screen-reader lane",
     "active-lane",
-    "planned"
+    "partial"
   ),
   capability("viewport-screenshot", "Viewport screenshot", "passive-observer", "available"),
   capability("full-page-screenshot", "Full-page screenshot", "passive-observer", "available"),
@@ -117,7 +117,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "screen-reader-transcript",
     "Virtual screen-reader transcript",
     "passive-observer",
-    "planned"
+    "available"
   ),
   capability("interaction-video", "Interaction video and sidecar", "passive-observer", "planned"),
   capability("evidence-manifest", "Checksummed evidence manifest", "reporter", "planned"),

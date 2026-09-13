@@ -125,23 +125,25 @@ npm run demo:record
 
 ## Current capabilities
 
-| Area                   | Implemented                                                                       | Current scope                                                                                               |
-| ---------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Observers              | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                   |
-| axe judge              | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                  |
-| Keyboard judge         | Tab, shift-tab, arrow-key composites, enter, space                                | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                    |
-| Focus-management judge | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                    |
-| Change-response judge  | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                          |
-| Structure judge        | Evidence completeness                                                             | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
-| Release judge          | Policy gate                                                                       | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
-| Validation             | JSON Schema and YAML scenario planning                                            | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads          |
-| Reporting              | JSON and Markdown                                                                 | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
-| AI review routing      | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model         |
-| AI fix proposals       | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun              |
-| Palette contrast       | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio              |
-| Interaction probes     | Pointer/keyboard equivalence, motion stopping                                     | Compares reset interaction outcomes and verifies stopped motion across two post-action samples              |
+| Area                    | Implemented                                                                       | Current scope                                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                   |
+| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                  |
+| Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                 |
+| Screen-reader judge     | Transcript presence and virtual-cursor/focus separation                           | Does not yet validate every announcement against full visual, DOM, and accessibility-tree context           |
+| Keyboard judge          | Tab, shift-tab, arrow-key composites, enter, space                                | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                    |
+| Focus-management judge  | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                    |
+| Change-response judge   | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                          |
+| Structure judge         | Evidence completeness                                                             | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules |
+| Release judge           | Policy gate                                                                       | Applies severity, confidence, and unknown-result policy to prior judgments                                  |
+| Validation              | JSON Schema and YAML scenario planning                                            | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads          |
+| Reporting               | JSON and Markdown                                                                 | Includes triage, observer coverage, judgments, findings, and artifact summaries                             |
+| AI review routing       | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model         |
+| AI fix proposals        | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun              |
+| Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio              |
+| Interaction probes      | Pointer/keyboard equivalence, motion stopping                                     | Compares reset interaction outcomes and verifies stopped motion across two post-action samples              |
 
-The Guidepup screen-reader observer and the interaction, screen-reader, and visual judges remain extension points that return unsupported or unknown results. They should not be presented as implemented checks.
+The Guidepup observer plus the interaction and visual judges remain unsupported or unknown extension points. The portable virtual reader is implemented, but complete lane orchestration and full cross-evidence announcement validation remain partial. It must not be presented as VoiceOver or NVDA output.
 
 ## Package layout
 

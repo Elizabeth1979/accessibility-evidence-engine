@@ -118,6 +118,7 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
     "available"
   );
   assert.ok(plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("screen-reader-transcript"));
   assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
   assert.ok(
     plan.journeys[0]?.steps.some(
