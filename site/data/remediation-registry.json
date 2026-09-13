@@ -1,0 +1,350 @@
+{
+  "$schema": "./remediation-registry.schema.json",
+  "schemaVersion": "0.1.0",
+  "registryVersion": "2026.09.13",
+  "title": "AEE detection, analysis, and remediation registry",
+  "principles": [
+    "Use deterministic detection and verification whenever possible.",
+    "Route only allowlisted contextual questions to an AI specialist.",
+    "Require synchronized full-page visual, DOM, and accessibility-tree evidence for AI analysis.",
+    "Mark every AI-produced conclusion or suggestion clearly and preserve its audit trail.",
+    "Never treat missing, unsupported, or contradictory evidence as a pass."
+  ],
+  "entries": [
+    {
+      "id": "accessible-name",
+      "title": "Missing or unsuitable accessible name",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "4.1.2",
+          "title": "Name, Role, Value",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "button-name",
+          "title": "Buttons must have discernible text",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
+        }
+      ],
+      "applicability": "Interactive controls and form elements whose accessible name is absent, generic, duplicated, or inconsistent with the visible purpose.",
+      "requiredEvidence": [
+        "axe-result",
+        "full-page-screenshot",
+        "viewport-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Run pinned axe-core rules at each meaningful checkpoint.",
+        "Compute the accessible name and compare it with the rendered role and visible text."
+      ],
+      "ai": {
+        "allowed": true,
+        "required": false,
+        "specialistId": "accessible-name-specialist",
+        "purpose": "Suggest a concise, context-specific name when deterministic checks can prove a name problem but cannot author the wording.",
+        "outputs": ["suggestedName", "rationale", "confidence", "citedEvidenceIds"]
+      },
+      "verification": [
+        "Rerun the same journey and prove the computed name is non-empty and unique enough for the task.",
+        "Match visible purpose, DOM, accessibility tree, and screen-reader output.",
+        "Confirm keyboard activation and resulting user outcome are unchanged."
+      ]
+    },
+    {
+      "id": "image-purpose",
+      "title": "Image purpose and text alternative",
+      "implementationStatus": "planned",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.1.1",
+          "title": "Non-text Content",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
+        }
+      ],
+      "applicability": "Rendered images, SVGs, icons, and CSS images whose purpose depends on their relationship to surrounding content or controls.",
+      "requiredEvidence": [
+        "full-page-screenshot",
+        "viewport-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Identify rendered non-text content and its exposed alternative or hidden state.",
+        "Flag mechanically provable missing alternatives and role conflicts."
+      ],
+      "ai": {
+        "allowed": true,
+        "required": false,
+        "specialistId": "image-purpose-specialist",
+        "purpose": "Classify an image as decorative, informative, functional, or complex and draft text only when page context is required.",
+        "outputs": [
+          "classification",
+          "suggestedAlternative",
+          "rationale",
+          "confidence",
+          "citedEvidenceIds"
+        ]
+      },
+      "verification": [
+        "Confirm the rendered image, nearby content, DOM treatment, accessibility tree, and spoken output express the same purpose.",
+        "For decorative images, verify they are absent from the accessibility tree and spoken output."
+      ]
+    },
+    {
+      "id": "heading-structure",
+      "title": "Visual and semantic heading structure",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.3.1",
+          "title": "Info and Relationships",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"
+        }
+      ],
+      "applicability": "Pages where typography, spacing, grouping, or repeated regions imply a hierarchy that may differ from the semantic outline.",
+      "requiredEvidence": [
+        "full-page-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Extract the complete semantic heading outline and structural relationships.",
+        "Record visual typography and grouping signals without deciding meaning."
+      ],
+      "ai": {
+        "allowed": true,
+        "required": false,
+        "specialistId": "heading-structure-specialist",
+        "purpose": "Compare the full visual hierarchy with the full DOM and accessibility-tree outline when the intended relationships require contextual judgment.",
+        "outputs": [
+          "proposedOutline",
+          "relationshipMismatches",
+          "rationale",
+          "confidence",
+          "citedEvidenceIds"
+        ]
+      },
+      "verification": [
+        "Re-extract the full outline after the fix.",
+        "Confirm visual grouping, DOM hierarchy, accessibility tree, and screen-reader heading navigation agree."
+      ]
+    },
+    {
+      "id": "color-contrast",
+      "title": "Text and component color contrast",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.4.3",
+          "title": "Contrast (Minimum)",
+          "level": "AA",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"
+        },
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.4.11",
+          "title": "Non-text Contrast",
+          "level": "AA",
+          "relationship": "secondary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html"
+        }
+      ],
+      "applicability": "Visible text, icons, focus indicators, controls, and meaningful graphics whose foreground and background colors can be sampled or inferred.",
+      "requiredEvidence": [
+        "axe-result",
+        "full-page-screenshot",
+        "viewport-screenshot",
+        "dom-snapshot",
+        "computed-styles"
+      ],
+      "deterministicDetection": [
+        "Use axe-core where foreground and background colors can be determined.",
+        "Calculate WCAG contrast ratios from resolved colors; never let a model estimate the ratio.",
+        "Select the closest passing supplied design token using deterministic color-distance and contrast calculations."
+      ],
+      "ai": {
+        "allowed": true,
+        "required": false,
+        "specialistId": "visual-region-specialist",
+        "purpose": "Locate complex rendered foreground and background regions or explain brand intent when deterministic extraction is inconclusive.",
+        "outputs": [
+          "regionCandidates",
+          "brandContext",
+          "rationale",
+          "confidence",
+          "citedEvidenceIds"
+        ]
+      },
+      "verification": [
+        "Recompute the exact contrast ratio from the final rendered colors.",
+        "Verify default, hover, focus, active, disabled, and error states that apply to the component."
+      ]
+    },
+    {
+      "id": "keyboard-operation",
+      "title": "Keyboard operation and activation",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "2.1.1",
+          "title": "Keyboard",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html"
+        }
+      ],
+      "applicability": "Every visible or inferred interactive candidate, including elements discovered visually even when semantics are missing.",
+      "requiredEvidence": [
+        "keyboard-trace",
+        "focus-state",
+        "viewport-screenshot",
+        "full-page-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Drive Tab, Shift+Tab, Enter, Space, arrows, Escape, and role-specific keys through the active keyboard lane.",
+        "Record document.activeElement, deep active element, aria-activedescendant, visible focus, and accessibility-tree focus after every meaningful action.",
+        "Compare the observed outcome with the scenario's authorized expected outcome."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Keyboard operability and focus movement are verified from recorded behavior, not inferred by AI.",
+        "outputs": []
+      },
+      "verification": [
+        "Repeat the same role-aware key sequence in an isolated active lane.",
+        "Confirm focus moves only when required and the user outcome matches pointer activation.",
+        "Require explicit authorization before destructive or financial actions."
+      ]
+    },
+    {
+      "id": "hover-focus-equivalence",
+      "title": "Hover and keyboard-focus equivalence",
+      "implementationStatus": "planned",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.4.13",
+          "title": "Content on Hover or Focus",
+          "level": "AA",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html"
+        }
+      ],
+      "applicability": "Content or controls revealed, changed, or made available on pointer hover, keyboard focus, or activation.",
+      "requiredEvidence": [
+        "pointer-trace",
+        "keyboard-trace",
+        "focus-state",
+        "viewport-screenshot",
+        "full-page-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Run hover and keyboard paths in separate active browser contexts.",
+        "Capture synchronized before and after evidence for hover, focus, Enter, and Space when appropriate to the role.",
+        "Compare available user outcomes rather than requiring identical implementation events."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Equivalent behavior is decided from traces and outcomes; AI does not substitute for exercising both paths.",
+        "outputs": []
+      },
+      "verification": [
+        "Verify hover content is dismissible, hoverable, and persistent where WCAG requires it.",
+        "Verify the equivalent information or control is reachable and usable by keyboard and represented consistently to the screen reader."
+      ]
+    },
+    {
+      "id": "focus-management",
+      "title": "Focus management after interface changes",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "2.4.3",
+          "title": "Focus Order",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html"
+        },
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "4.1.3",
+          "title": "Status Messages",
+          "level": "AA",
+          "relationship": "secondary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
+        }
+      ],
+      "applicability": "Dialogs, route changes, inserted or removed content, validation, async updates, composite widgets, and other meaningful state changes.",
+      "requiredEvidence": [
+        "interaction-trace",
+        "focus-state",
+        "viewport-screenshot",
+        "full-page-screenshot",
+        "dom-snapshot",
+        "accessibility-tree",
+        "screen-reader-transcript"
+      ],
+      "deterministicDetection": [
+        "Record focus and aria-activedescendant before and after every meaningful action.",
+        "Detect loss of focus, hidden focused elements, and focus outside an opened modal.",
+        "Record live-region and screen-reader output separately from focus movement."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Focus movement and announcements are observable state. AI may explain evidence later but cannot decide or cause the movement.",
+        "outputs": []
+      },
+      "verification": [
+        "Confirm only the active input driver moves focus.",
+        "Do not both move focus and announce the same update unless the interaction pattern requires both.",
+        "Match focus, visible context, DOM, accessibility tree, and spoken output after the action."
+      ]
+    }
+  ]
+}

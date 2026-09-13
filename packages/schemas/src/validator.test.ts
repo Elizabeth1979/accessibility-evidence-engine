@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { assertValidSchema, validateSchema } from "./validator";
@@ -109,6 +110,10 @@ const sampleRun = {
   }
 };
 
+const remediationRegistry = JSON.parse(
+  readFileSync("rules/remediation-registry.json", "utf8")
+) as unknown;
+
 test("validateSchema accepts a valid CLI config payload", () => {
   const result = validateSchema("cliConfig", {
     projectRoot: "..",
@@ -185,4 +190,23 @@ test("validateSchema accepts a valid report payload", () => {
 
   assert.equal(result.valid, true);
   assert.deepEqual(result.errors, []);
+});
+
+test("validateSchema accepts the canonical remediation registry", () => {
+  const result = validateSchema("remediationRegistry", remediationRegistry);
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+  assert.deepEqual(result.errors, []);
+});
+
+test("validateSchema rejects an AI-enabled registry entry without a specialist", () => {
+  const invalidRegistry = structuredClone(remediationRegistry) as {
+    entries: Array<{ ai: { specialistId?: string } }>;
+  };
+  delete invalidRegistry.entries[0]?.ai.specialistId;
+
+  const result = validateSchema("remediationRegistry", invalidRegistry);
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /missing required property "specialistId"/);
 });

@@ -47,9 +47,9 @@
             AEE is a public preview, not a complete WCAG scanner or accessibility certification.
           </p>
         </div>
-        <div class="report-preview" aria-label="Example AEE report summary">
+        <section class="report-preview" aria-labelledby="report-preview-title">
           <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-          <p class="mono muted">aee-report.md</p>
+          <p class="mono muted" id="report-preview-title">Example AEE report summary</p>
           <div class="preview-verdict pass">
             <span aria-hidden="true">✓</span> Verified rerun passed
           </div>
@@ -71,7 +71,7 @@
           <div class="trace-line">
             <span>rerun</span><strong>Evidence verifies behavior</strong>
           </div>
-        </div>
+        </section>
       </section>
 
       <section class="section" id="how-it-works" aria-labelledby="how-title">
@@ -86,7 +86,7 @@
           </p>
         </div>
 
-        <div class="workflow-map" aria-label="Accessibility Evidence Engine processing flow">
+        <div class="workflow-map">
           <ol class="workflow-stages">
             <li class="workflow-stage">
               <div class="stage-marker" aria-hidden="true">1</div>
@@ -104,67 +104,72 @@
             <li class="workflow-stage">
               <div class="stage-marker" aria-hidden="true">2</div>
               <div class="stage-copy">
-                <p class="stage-kind">Exercise</p>
-                <h3>Playwright performs the interaction</h3>
+                <p class="stage-kind">Isolate active drivers</p>
+                <h3>Fork the journey into independent input lanes</h3>
                 <p>
-                  Capture the before state, use keyboard-first input, wait for a stable outcome,
-                  then capture the after state.
+                  Pointer, keyboard, and virtual-reader drivers never compete for the same page.
+                  VoiceOver and NVDA are optional AT-fidelity lanes on supported workers.
                 </p>
-                <code>interaction.json</code>
+                <code>lanes/&lt;lane-id&gt;/run.json</code>
               </div>
             </li>
 
             <li class="workflow-stage collector-stage">
               <div class="stage-marker" aria-hidden="true">3</div>
               <div class="stage-copy">
-                <p class="stage-kind">Observe in parallel</p>
-                <h3>Specialized workers preserve independent evidence</h3>
+                <p class="stage-kind">Act, then recapture</p>
+                <h3>Build one synchronized checkpoint for every meaningful action</h3>
                 <p>
-                  Each worker writes its own JSON record. Images, transcripts, and video remain
-                  linked artifacts rather than being flattened into a single result.
+                  Passive observers capture the state, the lane performs one role-aware action, then
+                  every observer captures again. Each checkpoint represents the same instant across
+                  full-page visuals, DOM, accessibility tree, focus, and tool output.
                 </p>
-                <ul class="collector-grid" aria-label="Evidence collection workers">
+                <ul class="collector-grid" aria-label="Synchronized evidence observers">
                   <li>
                     <span class="collector-status available">Available</span>
-                    <strong>Keyboard + focus</strong>
-                    <small>Tab order, activation, composites, focus changes</small>
-                    <code>keyboard.json</code>
+                    <strong>DOM + focus</strong>
+                    <small>Full DOM, deep active element, aria-activedescendant</small>
+                    <code>dom.html + focus.json</code>
                   </li>
                   <li>
                     <span class="collector-status available">Available</span>
-                    <strong>Page structure</strong>
-                    <small>DOM, accessibility tree, focus, and network</small>
-                    <code>dom.json</code>
+                    <strong>Accessibility tree</strong>
+                    <small>Full normalized tree plus a target-specific derived view</small>
+                    <code>accessibility-tree.json</code>
                   </li>
                   <li>
                     <span class="collector-status available">Available</span>
                     <strong>Visual evidence</strong>
-                    <small>Before-and-after screenshots</small>
-                    <code>screenshot.json + .png</code>
+                    <small>Viewport and full-page screenshots at the same checkpoint</small>
+                    <code>viewport.png + full-page.png</code>
                   </li>
                   <li>
                     <span class="collector-status planned">Planned</span>
                     <strong>axe</strong>
-                    <small>Automatic rule results at meaningful states</small>
+                    <small>Pinned rule set and raw outcomes at meaningful states</small>
                     <code>axe.json</code>
                   </li>
                   <li>
                     <span class="collector-status planned">Planned</span>
                     <strong>Virtual screen reader</strong>
-                    <small>Portable semantic navigation and spoken phrase log</small>
-                    <code>virtual-screen-reader.json</code>
+                    <small>Its own active lane, with command and phrase transcript</small>
+                    <code>screen-reader.json + .txt</code>
                   </li>
                   <li>
                     <span class="collector-status planned">Planned</span>
-                    <strong>Guidepup screen reader</strong>
-                    <small>VoiceOver or NVDA commands and transcript where supported</small>
-                    <code>guidepup.json</code>
+                    <strong>Action trace</strong>
+                    <small
+                      >Every key, pointer event, hover, selection, and authorized activation</small
+                    >
+                    <code>interaction.json</code>
                   </li>
                   <li>
                     <span class="collector-status planned">Planned</span>
-                    <strong>Interaction video</strong>
-                    <small>Playwright recording with a metadata sidecar</small>
-                    <code>video.json + .webm</code>
+                    <strong>Transcript + video</strong>
+                    <small
+                      >Lane-spanning evidence; video persists for failures, review, or demos</small
+                    >
+                    <code>transcript.json + video.webm</code>
                   </li>
                 </ul>
               </div>
@@ -174,10 +179,10 @@
               <div class="stage-marker" aria-hidden="true">4</div>
               <div class="stage-copy">
                 <p class="stage-kind">Correlate</p>
-                <h3>Join evidence by checkpoint and interaction</h3>
+                <h3>Join lanes and observers into an evidence graph</h3>
                 <p>
-                  Normalize timestamps, connect before and after records, and preserve provenance
-                  for every artifact.
+                  Preserve execution state, ACT-style rule outcome, and policy decision as separate
+                  facts. Missing or blocked evidence remains explicit—not a pass.
                 </p>
                 <code>bundle.json</code>
               </div>
@@ -186,13 +191,13 @@
             <li class="workflow-stage">
               <div class="stage-marker" aria-hidden="true">5</div>
               <div class="stage-copy">
-                <p class="stage-kind">Judge and route</p>
-                <h3>Apply deterministic judges first</h3>
+                <p class="stage-kind">Judge, route, verify</p>
+                <h3>Use deterministic rules first and AI only where it helps</h3>
                 <p>
-                  Objective failures go directly to policy. Only meaning-dependent questions may be
-                  routed to review-only AI, followed by human review and a verified rerun.
+                  A versioned registry maps each issue to evidence, WCAG, detection, optional AI
+                  specialist, and rerun checks. Every AI output is labeled and must cite evidence.
                 </p>
-                <code>judgments/*.json</code>
+                <code>judgments/*.json + ai/evaluations/*.json</code>
               </div>
             </li>
 
@@ -202,12 +207,16 @@
                 <p class="stage-kind">Publish</p>
                 <h3>Package one reviewable evidence bundle</h3>
                 <p>
-                  The report links every finding to raw JSON, screenshots, video, axe output, and
-                  screen-reader transcripts. A manifest records paths, media types, and checksums.
+                  HTML, JSON, and Markdown link each conclusion to raw images, video, axe output,
+                  keyboard traces, and screen-reader transcripts. Optional fixes happen only in an
+                  isolated worktree and require a verified rerun.
                 </p>
-                <div class="output-files" aria-label="Report outputs">
-                  <code>manifest.json</code><code>aee-report.json</code><code>aee-report.md</code>
-                </div>
+                <ul class="output-files" aria-label="Report outputs">
+                  <li><code>manifest.json</code></li>
+                  <li><code>aee-report.html</code></li>
+                  <li><code>aee-report.json</code></li>
+                  <li><code>aee-report.md</code></li>
+                </ul>
               </div>
             </li>
           </ol>
@@ -221,6 +230,351 @@
             >Read the artifact contract and Mermaid source on GitHub</a
           >.
         </p>
+
+        <section
+          class="registry-section"
+          id="remediation-registry"
+          aria-labelledby="registry-title"
+        >
+          <div class="section-heading registry-heading">
+            <div>
+              <p class="eyebrow">Deterministic first, AI by exception</p>
+              <h3 id="registry-title">How findings map to evidence and fixes</h3>
+            </div>
+            <p>
+              This table is generated from the versioned
+              <a href="data/remediation-registry.json">JSON registry</a>. “Partial” and “Planned”
+              describe implementation status, not accessibility conformance.
+            </p>
+          </div>
+          <div
+            class="registry-table-wrap"
+            tabindex="0"
+            role="region"
+            aria-label="Remediation registry table"
+          >
+            <table class="registry-table">
+              <caption>
+                Detection, AI scope, and verification requirements by accessibility issue
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Issue and mapping</th>
+                  <th scope="col">Deterministic detection</th>
+                  <th scope="col">AI contribution</th>
+                  <th scope="col">Verification</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- remediation-registry:start -->
+                <tr>
+                  <th scope="row">
+                    <strong>Missing or unsuitable accessible name</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html"
+                        >WCAG 4.1.2</a
+                      >,
+                      <a href="https://dequeuniversity.com/rules/axe/4.13/button-name"
+                        >axe-core button-name</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>Run pinned axe-core rules at each meaningful checkpoint.</li>
+                      <li>
+                        Compute the accessible name and compare it with the rendered role and
+                        visible text.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong class="ai-label">AI-assisted</strong
+                    ><span
+                      >Suggest a concise, context-specific name when deterministic checks can prove
+                      a name problem but cannot author the wording.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>
+                        Rerun the same journey and prove the computed name is non-empty and unique
+                        enough for the task.
+                      </li>
+                      <li>
+                        Match visible purpose, DOM, accessibility tree, and screen-reader output.
+                      </li>
+                      <li>Confirm keyboard activation and resulting user outcome are unchanged.</li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Image purpose and text alternative</strong>
+                    <span class="registry-status planned">Planned</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
+                        >WCAG 1.1.1</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>
+                        Identify rendered non-text content and its exposed alternative or hidden
+                        state.
+                      </li>
+                      <li>Flag mechanically provable missing alternatives and role conflicts.</li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong class="ai-label">AI-assisted</strong
+                    ><span
+                      >Classify an image as decorative, informative, functional, or complex and
+                      draft text only when page context is required.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>
+                        Confirm the rendered image, nearby content, DOM treatment, accessibility
+                        tree, and spoken output express the same purpose.
+                      </li>
+                      <li>
+                        For decorative images, verify they are absent from the accessibility tree
+                        and spoken output.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Visual and semantic heading structure</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a
+                        href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"
+                        >WCAG 1.3.1</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>
+                        Extract the complete semantic heading outline and structural relationships.
+                      </li>
+                      <li>
+                        Record visual typography and grouping signals without deciding meaning.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong class="ai-label">AI-assisted</strong
+                    ><span
+                      >Compare the full visual hierarchy with the full DOM and accessibility-tree
+                      outline when the intended relationships require contextual judgment.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>Re-extract the full outline after the fix.</li>
+                      <li>
+                        Confirm visual grouping, DOM hierarchy, accessibility tree, and
+                        screen-reader heading navigation agree.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Text and component color contrast</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"
+                        >WCAG 1.4.3</a
+                      >,
+                      <a href="https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html"
+                        >WCAG 1.4.11</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>
+                        Use axe-core where foreground and background colors can be determined.
+                      </li>
+                      <li>
+                        Calculate WCAG contrast ratios from resolved colors; never let a model
+                        estimate the ratio.
+                      </li>
+                      <li>
+                        Select the closest passing supplied design token using deterministic
+                        color-distance and contrast calculations.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong class="ai-label">AI-assisted</strong
+                    ><span
+                      >Locate complex rendered foreground and background regions or explain brand
+                      intent when deterministic extraction is inconclusive.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>Recompute the exact contrast ratio from the final rendered colors.</li>
+                      <li>
+                        Verify default, hover, focus, active, disabled, and error states that apply
+                        to the component.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Keyboard operation and activation</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html"
+                        >WCAG 2.1.1</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>
+                        Drive Tab, Shift+Tab, Enter, Space, arrows, Escape, and role-specific keys
+                        through the active keyboard lane.
+                      </li>
+                      <li>
+                        Record document.activeElement, deep active element, aria-activedescendant,
+                        visible focus, and accessibility-tree focus after every meaningful action.
+                      </li>
+                      <li>
+                        Compare the observed outcome with the scenario&#39;s authorized expected
+                        outcome.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong>Deterministic only</strong
+                    ><span
+                      >Keyboard operability and focus movement are verified from recorded behavior,
+                      not inferred by AI.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>Repeat the same role-aware key sequence in an isolated active lane.</li>
+                      <li>
+                        Confirm focus moves only when required and the user outcome matches pointer
+                        activation.
+                      </li>
+                      <li>
+                        Require explicit authorization before destructive or financial actions.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Hover and keyboard-focus equivalence</strong>
+                    <span class="registry-status planned">Planned</span>
+                    <span
+                      ><a
+                        href="https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html"
+                        >WCAG 1.4.13</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>Run hover and keyboard paths in separate active browser contexts.</li>
+                      <li>
+                        Capture synchronized before and after evidence for hover, focus, Enter, and
+                        Space when appropriate to the role.
+                      </li>
+                      <li>
+                        Compare available user outcomes rather than requiring identical
+                        implementation events.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong>Deterministic only</strong
+                    ><span
+                      >Equivalent behavior is decided from traces and outcomes; AI does not
+                      substitute for exercising both paths.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>
+                        Verify hover content is dismissible, hoverable, and persistent where WCAG
+                        requires it.
+                      </li>
+                      <li>
+                        Verify the equivalent information or control is reachable and usable by
+                        keyboard and represented consistently to the screen reader.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
+                    <strong>Focus management after interface changes</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html"
+                        >WCAG 2.4.3</a
+                      >,
+                      <a href="https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
+                        >WCAG 4.1.3</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>
+                        Record focus and aria-activedescendant before and after every meaningful
+                        action.
+                      </li>
+                      <li>
+                        Detect loss of focus, hidden focused elements, and focus outside an opened
+                        modal.
+                      </li>
+                      <li>
+                        Record live-region and screen-reader output separately from focus movement.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong>Deterministic only</strong
+                    ><span
+                      >Focus movement and announcements are observable state. AI may explain
+                      evidence later but cannot decide or cause the movement.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>Confirm only the active input driver moves focus.</li>
+                      <li>
+                        Do not both move focus and announce the same update unless the interaction
+                        pattern requires both.
+                      </li>
+                      <li>
+                        Match focus, visible context, DOM, accessibility tree, and spoken output
+                        after the action.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <!-- remediation-registry:end -->
+              </tbody>
+            </table>
+          </div>
+        </section>
       </section>
 
       <section class="section examples-section" id="examples" aria-labelledby="examples-title">
@@ -236,6 +590,7 @@
         </div>
         <div
           class="example-slideshow"
+          role="region"
           aria-roledescription="carousel"
           aria-label="Accessibility before-and-after examples"
         >

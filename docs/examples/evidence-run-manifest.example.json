@@ -1,62 +1,128 @@
 {
   "schemaVersion": "0.2.0-proposal",
-  "runId": "run-example",
+  "runId": "run-example-rerun-01",
   "scenarioId": "pay-bill-keyboard-flow",
+  "scenarioDigest": "sha256:76ea09fbc39e9534dd2d7db52cf30db83fb555932d5082aa5de03a7ce26150ba",
   "status": "completed",
   "createdAt": "2026-09-13T00:00:00.000Z",
+  "profile": "core",
+  "lineage": {
+    "kind": "verified-rerun",
+    "parentRunId": "run-example-original",
+    "intendedDifferences": [
+      "source patch sha256:5ef5d181dc60c90c93b40dd7db2eb66c813cab609b054ac6b01e145b821f17bf"
+    ],
+    "environmentEquivalent": true
+  },
   "entrypoints": {
+    "htmlReport": "report/aee-report.html",
     "jsonReport": "report/aee-report.json",
     "markdownReport": "report/aee-report.md"
   },
+  "lanes": [
+    {
+      "id": "keyboard-chromium",
+      "driver": "keyboard",
+      "browserContext": "isolated",
+      "status": "completed",
+      "actionIds": ["open-bill", "confirm-payment"]
+    }
+  ],
   "artifacts": [
     {
-      "id": "focus-before",
-      "observerId": "focus",
-      "phase": "before",
-      "kind": "focus-state",
-      "path": "evidence/checkpoints/open-bill/before/focus.json",
-      "mediaType": "application/json",
-      "integrity": null
+      "id": "full-page-after-open-bill",
+      "laneId": "keyboard-chromium",
+      "checkpointId": "open-bill",
+      "observerId": "visual",
+      "phase": "after",
+      "kind": "full-page-screenshot",
+      "path": "lanes/keyboard-chromium/checkpoints/open-bill/after/full-page.png",
+      "metadataPath": "lanes/keyboard-chromium/checkpoints/open-bill/after/full-page.json",
+      "mediaType": "image/png",
+      "integrity": "sha256:65b56a7d403d77c932077d2381421d5b649492908494a182862280fa48af5e65",
+      "lifecycle": "persisted",
+      "privacy": {
+        "classification": "sensitive",
+        "redactionStatus": "not-reviewed",
+        "shareable": false
+      }
     },
     {
-      "id": "axe-after",
+      "id": "axe-after-open-bill",
+      "laneId": "keyboard-chromium",
+      "checkpointId": "open-bill",
       "observerId": "axe",
       "phase": "after",
       "kind": "axe-result",
-      "path": "evidence/checkpoints/open-bill/after/axe.json",
+      "path": "lanes/keyboard-chromium/checkpoints/open-bill/after/axe.json",
       "mediaType": "application/json",
-      "integrity": null
+      "integrity": "sha256:fdad2af316ef21dc694025362286787d0bb17af2a9d1cd79a004f993e579a6d0",
+      "lifecycle": "persisted",
+      "privacy": {
+        "classification": "sensitive",
+        "redactionStatus": "not-reviewed",
+        "shareable": false
+      }
     },
     {
-      "id": "virtual-screen-reader-transcript",
+      "id": "virtual-reader-transcript",
+      "laneId": "virtual-reader-chromium",
       "observerId": "virtual-screen-reader",
-      "phase": "interaction",
+      "phase": "lane",
       "kind": "screen-reader-transcript",
-      "path": "evidence/interactions/open-bill/virtual-screen-reader.json",
+      "path": "lanes/virtual-reader-chromium/transcript.json",
+      "projectionPaths": ["lanes/virtual-reader-chromium/transcript.txt"],
       "mediaType": "application/json",
-      "integrity": null
+      "integrity": "sha256:0b2d36904e60932dfa36949539fe6659ed5cfe057cd57dcb0afbf05147a996f3",
+      "lifecycle": "persisted",
+      "privacy": {
+        "classification": "sensitive",
+        "redactionStatus": "not-reviewed",
+        "shareable": false
+      }
     },
     {
-      "id": "interaction-video",
+      "id": "keyboard-video",
+      "laneId": "keyboard-chromium",
       "observerId": "video",
-      "phase": "interaction",
+      "phase": "lane",
       "kind": "video",
-      "path": "evidence/interactions/open-bill/video.webm",
-      "metadataPath": "evidence/interactions/open-bill/video.json",
-      "captionPath": "evidence/interactions/open-bill/video.vtt",
+      "path": "lanes/keyboard-chromium/video.webm",
+      "metadataPath": "lanes/keyboard-chromium/video.json",
+      "captionPath": "lanes/keyboard-chromium/video.vtt",
       "mediaType": "video/webm",
-      "integrity": null
+      "integrity": "sha256:bcfbd2e3d35eb6925ab8e377e26d57f40bbef287369432f248f72bb72acc66b9",
+      "lifecycle": "persisted-on-review",
+      "privacy": {
+        "classification": "sensitive",
+        "redactionStatus": "not-reviewed",
+        "shareable": false
+      }
     }
   ],
+  "results": {
+    "execution": "completed",
+    "ruleOutcomes": {
+      "passed": 8,
+      "failed": 0,
+      "cantTell": 1,
+      "inapplicable": 3,
+      "untested": 0
+    },
+    "policyDecision": "review"
+  },
   "judgmentFiles": [
-    "judgments/keyboard.json",
-    "judgments/screen-reader.json",
-    "judgments/release.json"
+    "judgments/keyboard/keyboard-operation-01.json",
+    "judgments/focus-management/focus-order-01.json",
+    "judgments/release/release-01.json"
   ],
+  "aiEvaluationFiles": ["ai/evaluations/accessible-name-01.json"],
+  "verificationFiles": ["verification/accessible-name-01.json"],
   "findingFiles": ["findings/finding-001.json"],
   "privacy": {
-    "classification": "review-required",
-    "redactionPolicy": "default",
-    "reviewedForSharing": false
+    "defaultClassification": "sensitive",
+    "redactionPolicy": "local-default-v1",
+    "reviewedForSharing": false,
+    "remoteUploadAuthorized": false
   }
 }

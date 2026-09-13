@@ -482,6 +482,12 @@ pre {
   color: #ffd86b;
 }
 
+.collector-status.partial,
+.registry-status.partial {
+  background: #26304b;
+  color: #b9c9ff;
+}
+
 .output-stage {
   border-color: rgba(112, 240, 180, 0.55);
 }
@@ -490,6 +496,9 @@ pre {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .flow-note {
@@ -497,6 +506,114 @@ pre {
   margin: 1.25rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.registry-section {
+  margin-top: clamp(4rem, 8vw, 7rem);
+}
+
+.registry-heading {
+  align-items: end;
+}
+
+.registry-heading h3 {
+  font-size: clamp(1.65rem, 4vw, 2.5rem);
+}
+
+.registry-table-wrap {
+  margin-top: 2rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.registry-table-wrap:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.registry-table {
+  width: 100%;
+  min-width: 70rem;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.registry-table caption {
+  padding: 1rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.registry-table th,
+.registry-table td {
+  width: 25%;
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+}
+
+.registry-table th:last-child,
+.registry-table td:last-child {
+  border-right: 0;
+}
+
+.registry-table thead th {
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.registry-table tbody th > strong,
+.registry-ai > strong {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: var(--text);
+}
+
+.registry-table tbody th > span:not(.registry-status),
+.registry-ai > span {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.registry-table ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.registry-table li + li {
+  margin-top: 0.5rem;
+}
+
+.registry-status {
+  display: inline-block;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 820;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.registry-status.available {
+  background: var(--accent-dark);
+  color: var(--accent);
+}
+
+.registry-status.planned {
+  background: #342b10;
+  color: #ffd86b;
+}
+
+.ai-label {
+  color: #b9c9ff !important;
 }
 
 .section-heading,

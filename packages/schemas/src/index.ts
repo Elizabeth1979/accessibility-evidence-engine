@@ -10,6 +10,7 @@ export const schemaCatalog = {
   evidenceRecord: "json/evidence-record.schema.json",
   judgment: "json/judgment.schema.json",
   finding: "json/finding.schema.json",
+  remediationRegistry: "json/remediation-registry.schema.json",
   cliConfig: "json/cli-config.schema.json",
   virtualPageFixture: "json/virtual-page-fixture.schema.json"
 } as const;

@@ -10,6 +10,7 @@ import evidenceRecordSchema from "../json/evidence-record.schema.json";
 import findingSchema from "../json/finding.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
+import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import reportSchema from "../json/report.schema.json";
 import runSchema from "../json/run.schema.json";
 import virtualPageFixtureSchema from "../json/virtual-page-fixture.schema.json";
@@ -26,6 +27,7 @@ const schemaDocuments = {
   evidenceRecord: evidenceRecordSchema,
   judgment: judgmentSchema,
   finding: findingSchema,
+  remediationRegistry: remediationRegistrySchema,
   cliConfig: cliConfigSchema,
   virtualPageFixture: virtualPageFixtureSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
@@ -40,6 +42,7 @@ const schemaTitles: Record<SchemaName, string> = {
   evidenceRecord: "AEE evidence record payload",
   judgment: "AEE judgment payload",
   finding: "AEE finding payload",
+  remediationRegistry: "AEE remediation registry",
   cliConfig: "AEE CLI config",
   virtualPageFixture: "AEE virtual page fixture"
 };

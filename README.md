@@ -172,6 +172,8 @@ Review artifacts before sharing them and use test accounts and non-production en
 
 - [Architecture](docs/architecture.md)
 - [Target evidence pipeline and artifact layout](docs/evidence-run-layout.md)
+- [Implementation roadmap](docs/implementation-roadmap.md)
+- [Detection, analysis, and remediation registry](rules/remediation-registry.json)
 - [Observer lifecycle](docs/observer-lifecycle.md)
 - [Playwright integration](docs/playwright-integration.md)
 - [Evidence privacy](docs/privacy.md)

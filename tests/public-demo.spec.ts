@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 const demoUrl = pathToFileURL(path.resolve("site/index.html")).href;
@@ -26,21 +27,55 @@ test("evidence flow documents every capture lane and its implementation status",
 }) => {
   await page.goto(demoUrl);
 
-  const flow = page.getByLabel("Accessibility Evidence Engine processing flow");
+  const flow = page.locator(".workflow-map");
   await expect(flow.getByRole("heading", { name: "Describe one user journey" })).toBeVisible();
   await expect(
-    flow.getByRole("heading", { name: "Playwright performs the interaction" })
+    flow.getByRole("heading", { name: "Fork the journey into independent input lanes" })
   ).toBeVisible();
-  await expect(flow.getByText("Keyboard + focus", { exact: true })).toBeVisible();
+  await expect(flow.getByText("DOM + focus", { exact: true })).toBeVisible();
   await expect(flow.getByText("axe", { exact: true })).toBeVisible();
   await expect(flow.getByText("Virtual screen reader", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Guidepup screen reader", { exact: true })).toBeVisible();
-  await expect(flow.getByText("Interaction video", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Action trace", { exact: true })).toBeVisible();
+  await expect(flow.getByText("Transcript + video", { exact: true })).toBeVisible();
   await expect(flow.getByText("Available", { exact: true })).toHaveCount(3);
   await expect(flow.getByText("Planned", { exact: true })).toHaveCount(4);
   await expect(
     page.getByRole("link", { name: /artifact contract and Mermaid source/i })
   ).toHaveAttribute("href", /docs\/evidence-run-layout\.md$/);
+});
+
+test("generated remediation table stays readable and identifies AI boundaries", async ({
+  page
+}) => {
+  await page.goto(demoUrl);
+
+  const registry = page.getByRole("region", { name: "Remediation registry table" });
+  await expect(registry.getByRole("table")).toBeVisible();
+  await expect(registry.getByRole("row")).toHaveCount(8);
+  await expect(registry.getByText("Missing or unsuitable accessible name")).toBeVisible();
+  await expect(registry.getByText("Text and component color contrast")).toBeVisible();
+  await expect(registry.getByText("AI-assisted", { exact: true })).toHaveCount(4);
+  await expect(page.getByRole("link", { name: "JSON registry" })).toHaveAttribute(
+    "href",
+    "data/remediation-registry.json"
+  );
+});
+
+test("public demo has no serious axe violations or prohibited ARIA attributes", async ({
+  page
+}) => {
+  await page.goto(demoUrl);
+
+  const results = await new AxeBuilder({ page }).analyze();
+  const seriousViolations = results.violations.filter(({ impact }) =>
+    ["serious", "critical"].includes(impact ?? "")
+  );
+  const prohibitedAria = [...results.violations, ...results.incomplete].filter(
+    ({ id }) => id === "aria-prohibited-attr"
+  );
+
+  expect(seriousViolations).toEqual([]);
+  expect(prohibitedAria).toEqual([]);
 });
 
 test("slideshow shows only one focused before-and-after example", async ({ page }) => {
