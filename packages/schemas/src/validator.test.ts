@@ -211,6 +211,56 @@ test("validateSchema rejects a virtual transcript that claims physical AT fideli
   assert.match(result.errors.join(" "), /must be equal to constant/);
 });
 
+test("validateSchema accepts an isolated virtual screen-reader lane", () => {
+  const entry = {
+    sequence: 1,
+    timestamp: "2026-09-14T00:00:01.000Z",
+    command: "next-heading",
+    announcement: "Invoices, heading, level 1",
+    focusMoved: false
+  };
+  const transcript = {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.1.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-14T00:00:02.000Z",
+    entries: [entry]
+  };
+  const result = validateSchema("virtualScreenReaderLane", {
+    schemaVersion: "0.1.0",
+    laneId: "reader-lane",
+    driver: "portable-virtual-screen-reader",
+    isolation: "dedicated-browser-context",
+    status: "completed",
+    targetUrl: "https://example.com/",
+    allowedOrigins: ["https://example.com"],
+    startedAt: "2026-09-14T00:00:00.000Z",
+    finishedAt: "2026-09-14T00:00:03.000Z",
+    transcriptJsonFile: "/tmp/transcript.json",
+    transcriptTextFile: "/tmp/transcript.txt",
+    steps: [
+      {
+        sequence: 1,
+        command: "next-heading",
+        runId: "reader-lane-001",
+        pageUrl: "https://example.com/",
+        entry,
+        results: { pass: 2, fail: 0, unknown: 0 },
+        releaseVerdict: "pass",
+        reporterFiles: ["/tmp/report.md"],
+        artifactFiles: ["/tmp/full-page.png"]
+      }
+    ],
+    transcript
+  });
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+});
+
 test("validateSchema accepts a valid evidence bundle payload", () => {
   const result = validateSchema("evidenceBundle", sampleBundle);
 

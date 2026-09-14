@@ -117,13 +117,21 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
     plan.requiredCapabilities.find(({ id }) => id === "axe-results")?.implementationStatus,
     "available"
   );
-  assert.ok(plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("screen-reader-transcript"));
   assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
   assert.ok(
     plan.journeys[0]?.steps.some(
       ({ id, source }) => id === "permission-open-menus" && source === "user-permission"
     )
+  );
+  assert.deepEqual(
+    plan.journeys[0]?.steps.filter(({ source }) => source === "user-command").map(({ id }) => id),
+    [
+      "reader-command-1-next-landmark",
+      "reader-command-2-next-heading",
+      "reader-command-3-next-control"
+    ]
   );
   assert.deepEqual(plan.safety.forbiddenActions, [
     "create-account",

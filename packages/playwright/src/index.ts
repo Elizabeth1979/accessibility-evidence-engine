@@ -11,8 +11,10 @@ import {
   type CapturePolicy,
   type Checkpoint,
   type Interaction,
+  type JudgmentVerdict,
   type ReporterInput,
   type ReporterArtifact,
+  type RunSummary,
   type TargetDescriptor
 } from "@aee/core";
 import { createDefaultJudgePlugins } from "@aee/judges";
@@ -20,7 +22,15 @@ import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema } from "@aee/schemas";
 
-import type { PortableVirtualScreenReader } from "./virtual-screen-reader";
+import {
+  createPortableVirtualScreenReader,
+  renderPortableVirtualScreenReaderTranscript,
+  type PortableVirtualScreenReader,
+  type VirtualScreenReaderCommand,
+  type VirtualScreenReaderEntry,
+  type VirtualScreenReaderPage,
+  type VirtualScreenReaderTranscript
+} from "./virtual-screen-reader";
 export * from "./virtual-screen-reader";
 
 export interface PlaywrightPageLike {
@@ -82,6 +92,61 @@ export interface RunAeeOnPageResult {
   reporterFiles: string[];
   artifactFiles: string[];
   reportArtifacts: ReporterArtifact[];
+}
+
+export interface VirtualScreenReaderLanePage extends PlaywrightPageLike, VirtualScreenReaderPage {
+  goto(url: string, options?: { waitUntil?: "domcontentloaded" }): Promise<unknown>;
+}
+
+export interface VirtualScreenReaderLaneContext<TPage extends VirtualScreenReaderLanePage> {
+  newPage(): Promise<TPage>;
+  close(): Promise<void>;
+}
+
+export interface VirtualScreenReaderLaneBrowser<TPage extends VirtualScreenReaderLanePage> {
+  newContext(): Promise<VirtualScreenReaderLaneContext<TPage>>;
+}
+
+export interface RunVirtualScreenReaderLaneOptions<TPage extends VirtualScreenReaderLanePage> {
+  browser: VirtualScreenReaderLaneBrowser<TPage>;
+  projectRoot: string;
+  targetUrl: string;
+  allowedOrigins: string[];
+  commands: VirtualScreenReaderCommand[];
+  outputDir?: string;
+  laneId?: string;
+  policy?: AeePolicyOverrides;
+  additionalObservers?: string[];
+  additionalJudges?: string[];
+}
+
+export interface VirtualScreenReaderLaneStep {
+  sequence: number;
+  command: VirtualScreenReaderCommand;
+  runId: string;
+  pageUrl: string;
+  entry: VirtualScreenReaderEntry;
+  results: RunSummary;
+  releaseVerdict: JudgmentVerdict;
+  reporterFiles: string[];
+  artifactFiles: string[];
+}
+
+export interface VirtualScreenReaderLaneResult {
+  schemaVersion: "0.1.0";
+  laneId: string;
+  driver: "portable-virtual-screen-reader";
+  isolation: "dedicated-browser-context";
+  status: "completed";
+  targetUrl: string;
+  allowedOrigins: string[];
+  startedAt: string;
+  finishedAt: string;
+  steps: VirtualScreenReaderLaneStep[];
+  transcript: VirtualScreenReaderTranscript;
+  laneFile?: string;
+  transcriptJsonFile?: string;
+  transcriptTextFile?: string;
 }
 
 export interface InteractionOutcomeComparison<T> {
@@ -396,6 +461,220 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     reporterFiles,
     artifactFiles: execution.artifacts.map((artifact) => artifact.path),
     reportArtifacts
+  };
+}
+
+const VIRTUAL_READER_LANE_OBSERVERS = [
+  "focus",
+  "dom",
+  "accessibility-tree",
+  "visual",
+  "axe",
+  "virtual-screen-reader"
+];
+
+const VIRTUAL_READER_LANE_JUDGES = ["screen-reader", "axe", "release"];
+
+/** Runs user-selected virtual-reader commands in a dedicated browser context. */
+export async function runVirtualScreenReaderLane<TPage extends VirtualScreenReaderLanePage>(
+  options: RunVirtualScreenReaderLaneOptions<TPage>
+): Promise<VirtualScreenReaderLaneResult> {
+  if (options.commands.length === 0) {
+    throw new Error("A virtual screen-reader lane requires at least one command.");
+  }
+
+  const laneId = options.laneId ?? `virtual-reader-${Date.now()}`;
+  assertSafeRunId(laneId);
+  const allowedOrigins = normalizeAllowedOrigins(options.allowedOrigins);
+  assertAllowedOrigin(options.targetUrl, allowedOrigins);
+  const outputBase = options.outputDir ?? "aee-output";
+  const laneOutputDir = path.resolve(options.projectRoot, outputBase, laneId);
+  const runOutputDir = path.join(outputBase, laneId);
+  const laneFile = path.join(laneOutputDir, "lane.json");
+  const startedAt = new Date().toISOString();
+  const steps: VirtualScreenReaderLaneStep[] = [];
+  const observerIds = [
+    ...new Set([...VIRTUAL_READER_LANE_OBSERVERS, ...(options.additionalObservers ?? [])])
+  ];
+  const judgeIds = [
+    ...new Set([...VIRTUAL_READER_LANE_JUDGES, ...(options.additionalJudges ?? [])])
+  ];
+
+  await mkdir(laneOutputDir, { recursive: true });
+  const browserContext = await options.browser.newContext();
+
+  try {
+    const page = await browserContext.newPage();
+    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
+    assertAllowedOrigin(page.url(), allowedOrigins);
+    const reader = createPortableVirtualScreenReader(page);
+
+    for (const [index, command] of options.commands.entries()) {
+      const sequence = index + 1;
+      const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
+      let entry: VirtualScreenReaderEntry | undefined;
+      const result = await runAeeOnPage({
+        page,
+        projectRoot: options.projectRoot,
+        outputDir: runOutputDir,
+        runId,
+        policy: options.policy,
+        virtualScreenReader: reader,
+        observers: observerIds,
+        judges: judgeIds,
+        checkpointName: `${laneId}:${sequence}:${command}`,
+        interaction: {
+          kind: "screen-reader-command",
+          input: command,
+          actor: "engine",
+          meta: {
+            laneId,
+            laneSequence: sequence,
+            isolation: "dedicated-browser-context"
+          }
+        },
+        async performInteraction() {
+          entry = await reader.command(command);
+          assertAllowedOrigin(page.url(), allowedOrigins);
+        }
+      });
+
+      assertAllowedOrigin(page.url(), allowedOrigins);
+      if (!entry) {
+        throw new Error(`Virtual screen-reader command ${command} produced no transcript entry.`);
+      }
+      const outcome = readLaneStepOutcome(result);
+
+      steps.push({
+        sequence,
+        command,
+        runId,
+        pageUrl: page.url(),
+        entry,
+        results: outcome.results,
+        releaseVerdict: outcome.releaseVerdict,
+        reporterFiles: result.reporterFiles,
+        artifactFiles: result.artifactFiles
+      });
+    }
+
+    const transcript = await reader.snapshot();
+    assertValidSchema(
+      "virtualScreenReaderTranscript",
+      transcript,
+      "portable virtual screen-reader lane transcript"
+    );
+    const transcriptJsonFile = path.join(laneOutputDir, "transcript.json");
+    const transcriptTextFile = path.join(laneOutputDir, "transcript.txt");
+    const laneResult: VirtualScreenReaderLaneResult = {
+      schemaVersion: "0.1.0",
+      laneId,
+      driver: "portable-virtual-screen-reader",
+      isolation: "dedicated-browser-context",
+      status: "completed",
+      targetUrl: options.targetUrl,
+      allowedOrigins,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      steps,
+      transcript,
+      laneFile,
+      transcriptJsonFile,
+      transcriptTextFile
+    };
+
+    assertValidSchema("virtualScreenReaderLane", laneResult, "virtual screen-reader lane output");
+    await Promise.all([
+      writeFile(transcriptJsonFile, JSON.stringify(transcript, null, 2), "utf8"),
+      writeFile(
+        transcriptTextFile,
+        renderPortableVirtualScreenReaderTranscript(transcript),
+        "utf8"
+      ),
+      writeFile(laneFile, JSON.stringify(laneResult, null, 2), "utf8")
+    ]);
+
+    return laneResult;
+  } catch (error) {
+    const laneFailure = {
+      schemaVersion: "0.1.0",
+      laneId,
+      driver: "portable-virtual-screen-reader",
+      isolation: "dedicated-browser-context",
+      status: error instanceof VirtualScreenReaderOriginError ? "blocked" : "failed",
+      targetUrl: options.targetUrl,
+      allowedOrigins,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      steps,
+      laneFile,
+      diagnostics: [error instanceof Error ? error.message : String(error)]
+    };
+    assertValidSchema(
+      "virtualScreenReaderLane",
+      laneFailure,
+      "failed virtual screen-reader lane output"
+    );
+    await writeFile(laneFile, JSON.stringify(laneFailure, null, 2), "utf8");
+    throw error;
+  } finally {
+    await browserContext.close();
+  }
+}
+
+function normalizeAllowedOrigins(origins: string[]): string[] {
+  if (origins.length === 0) {
+    throw new Error("A virtual screen-reader lane requires at least one allowed origin.");
+  }
+
+  return [...new Set(origins.map((origin) => new URL(origin).origin))].sort();
+}
+
+function assertAllowedOrigin(value: string, allowedOrigins: string[]): void {
+  const origin = new URL(value).origin;
+
+  if (!allowedOrigins.includes(origin)) {
+    throw new VirtualScreenReaderOriginError(
+      `Virtual screen-reader lane blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
+    );
+  }
+}
+
+class VirtualScreenReaderOriginError extends Error {}
+
+function readLaneStepOutcome(result: RunAeeOnPageResult): {
+  results: RunSummary;
+  releaseVerdict: JudgmentVerdict;
+} {
+  const jsonReport = result.reportArtifacts.find(({ label }) => label === "aee-report.json");
+
+  if (!jsonReport) {
+    throw new Error("Virtual screen-reader lane could not find the command JSON report.");
+  }
+
+  const parsed = JSON.parse(jsonReport.content) as {
+    run?: { results?: Partial<RunSummary> };
+    judgments?: Array<{ judgeId?: unknown; verdict?: unknown }>;
+  };
+  const results = parsed.run?.results;
+  const releaseVerdict = parsed.judgments?.find(({ judgeId }) => judgeId === "release")?.verdict;
+
+  if (
+    typeof results?.pass !== "number" ||
+    typeof results.fail !== "number" ||
+    typeof results.unknown !== "number" ||
+    !["pass", "fail", "unknown"].includes(String(releaseVerdict))
+  ) {
+    throw new Error("Virtual screen-reader lane command report did not contain a valid outcome.");
+  }
+
+  return {
+    results: {
+      pass: results.pass,
+      fail: results.fail,
+      unknown: results.unknown
+    },
+    releaseVerdict: releaseVerdict as JudgmentVerdict
   };
 }
 

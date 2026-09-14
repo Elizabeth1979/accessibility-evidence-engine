@@ -245,6 +245,30 @@ Supported commands are `start`, `next-item`, `previous-item`, `next-heading`, `p
 
 This is explicitly a semantic simulation. It works without VoiceOver or NVDA, but it does not reproduce their browser/OS accessibility APIs, speech behavior, interaction modes, or bugs. Real VoiceOver and NVDA runs remain an optional AT-fidelity tier.
 
+For a complete isolated lane, declare the command sequence in the user-controlled scenario and pass it to `runVirtualScreenReaderLane(...)`. The lane owns and closes a dedicated browser context, checks the origin before and after every command, and calls `runAeeOnPage(...)` once per command so every action receives fresh DOM, accessibility-tree, focus, visual, Axe, and transcript evidence.
+
+```yaml
+journeys:
+  - id: explore-homepage
+    # ...goal and action permissions...
+    virtualScreenReaderCommands:
+      - next-landmark
+      - next-heading
+      - next-control
+```
+
+```ts
+const lane = await runVirtualScreenReaderLane({
+  browser,
+  projectRoot: process.cwd(),
+  targetUrl: scenario.target.url,
+  allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
+  commands: scenario.journeys[0].virtualScreenReaderCommands!
+});
+```
+
+The lane writes `lane.json`, `transcript.json`, and `transcript.txt`, plus one full AEE run directory for every user-selected command. `virtual-screen-reader-lane.schema.json` and `virtual-screen-reader-transcript.schema.json` validate the canonical files.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.

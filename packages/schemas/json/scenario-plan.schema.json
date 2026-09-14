@@ -134,7 +134,7 @@
             "properties": {
               "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
               "label": { "type": "string", "minLength": 1 },
-              "source": { "enum": ["profile", "user-permission"] }
+              "source": { "enum": ["profile", "user-permission", "user-command"] }
             }
           }
         }

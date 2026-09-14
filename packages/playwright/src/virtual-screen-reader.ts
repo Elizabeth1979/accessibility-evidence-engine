@@ -42,6 +42,31 @@ export interface VirtualScreenReaderTranscript {
   entries: VirtualScreenReaderEntry[];
 }
 
+export function renderPortableVirtualScreenReaderTranscript(
+  transcript: VirtualScreenReaderTranscript
+): string {
+  const lines = [
+    "AEE portable virtual screen-reader transcript",
+    "Fidelity: semantic simulation; not VoiceOver, NVDA, or another physical assistive technology.",
+    `Page: ${transcript.pageUrl}`,
+    `Mode: ${transcript.mode}`,
+    ""
+  ];
+
+  if (transcript.entries.length === 0) {
+    lines.push("No commands recorded.");
+  } else {
+    for (const entry of transcript.entries) {
+      lines.push(`${entry.sequence}. ${entry.command}: ${entry.announcement}`);
+      lines.push(
+        `   DOM focus: ${entry.domFocusBefore ?? "none"} -> ${entry.domFocusAfter ?? "none"}; moved: ${entry.focusMoved ? "yes" : "no"}`
+      );
+    }
+  }
+
+  return `${lines.join("\n")}\n`;
+}
+
 export interface PortableVirtualScreenReader {
   command(command: VirtualScreenReaderCommand): Promise<VirtualScreenReaderEntry>;
   snapshot(): Promise<VirtualScreenReaderTranscript>;

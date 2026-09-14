@@ -89,6 +89,22 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/actionId" }
+        },
+        "virtualScreenReaderCommands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "start",
+              "next-item",
+              "previous-item",
+              "next-heading",
+              "previous-heading",
+              "next-landmark",
+              "next-control",
+              "read-current"
+            ]
+          }
         }
       }
     },

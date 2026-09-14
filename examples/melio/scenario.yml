@@ -33,6 +33,10 @@ journeys:
       - create-account
       - submit-personal-information
       - initiate-payment
+    virtualScreenReaderCommands:
+      - next-landmark
+      - next-heading
+      - next-control
 
 privacy:
   storage: local

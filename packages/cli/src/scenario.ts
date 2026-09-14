@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import type { VirtualScreenReaderCommand } from "@aee/playwright";
 import { parseDocument } from "yaml";
 
 export type ScenarioProfile = "core" | "at-fidelity";
@@ -37,6 +38,7 @@ export interface ScenarioJourney {
   startPath?: string;
   allowedActions: string[];
   forbiddenActions: string[];
+  virtualScreenReaderCommands?: VirtualScreenReaderCommand[];
 }
 
 export interface ScenarioPrivacy {
@@ -80,7 +82,7 @@ export interface ScenarioPlan {
     steps: Array<{
       id: string;
       label: string;
-      source: "profile" | "user-permission";
+      source: "profile" | "user-permission" | "user-command";
     }>;
   }>;
   safety: {
@@ -99,7 +101,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "virtual-screen-reader-lane",
     "Portable virtual screen-reader lane",
     "active-lane",
-    "partial"
+    "available"
   ),
   capability("viewport-screenshot", "Viewport screenshot", "passive-observer", "available"),
   capability("full-page-screenshot", "Full-page screenshot", "passive-observer", "available"),
@@ -234,6 +236,11 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
           ACTION_STEP_LABELS[action] ??
           `Exercise the user-authorized action “${humanize(action)}” within the declared safety boundary.`,
         source: "user-permission" as const
+      })),
+      ...(journey.virtualScreenReaderCommands ?? []).map((command, index) => ({
+        id: `reader-command-${index + 1}-${command}`,
+        label: `Run the user-selected virtual screen-reader command “${command}” in the isolated reader lane.`,
+        source: "user-command" as const
       }))
     ]
   }));

@@ -39,7 +39,7 @@ Owns the JSON Schema documents and runtime validation. The CLI and Playwright ad
 
 ### `@aee/playwright`
 
-Adapts real Playwright pages and virtual fixture pages to the shared execution pipeline. It owns interaction bracketing, fixed-delay stabilization, Playwright-specific accessibility/focus/network adapters, artifact output, and the `runAeeOnPage(...)` entry point.
+Adapts real Playwright pages and virtual fixture pages to the shared execution pipeline. It owns interaction bracketing, fixed-delay stabilization, Playwright-specific accessibility/focus/network adapters, artifact output, the `runAeeOnPage(...)` entry point, and dedicated-context virtual-reader lane orchestration.
 
 ### `@aee/observers`
 

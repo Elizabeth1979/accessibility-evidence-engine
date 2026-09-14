@@ -21,5 +21,7 @@ The planner currently reports `BLOCKED` because several capabilities required by
 are not fully implemented. This is deliberate: a partial smoke test must not be presented as a
 complete accessibility assessment.
 
+The scenario also owns the ordered virtual-reader commands. The example passes those commands to `runVirtualScreenReaderLane(...)`, which creates a dedicated browser context and captures a complete before/after evidence run for each command.
+
 `melio-homepage.spec.ts` remains a narrow Playwright smoke test for one Tab transition. It is not the
 execution of `scenario.yml` and must not be described as a complete Melio assessment.

@@ -143,7 +143,7 @@ npm run demo:record
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio              |
 | Interaction probes      | Pointer/keyboard equivalence, motion stopping                                     | Compares reset interaction outcomes and verifies stopped motion across two post-action samples              |
 
-The Guidepup observer plus the interaction and visual judges remain unsupported or unknown extension points. The portable virtual reader is implemented, but complete lane orchestration and full cross-evidence announcement validation remain partial. It must not be presented as VoiceOver or NVDA output.
+The Guidepup observer plus the interaction and visual judges remain unsupported or unknown extension points. The portable virtual-reader lane and transcripts are implemented, but full cross-evidence announcement validation remains partial. Virtual-reader evidence must not be presented as VoiceOver or NVDA output.
 
 ## Package layout
 

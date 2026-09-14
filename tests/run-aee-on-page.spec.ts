@@ -1,8 +1,32 @@
 import { access, readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
+import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";
+import {
+  createPortableVirtualScreenReader,
+  runAeeOnPage,
+  runVirtualScreenReaderLane
+} from "@aee/playwright";
+
+async function startHtmlServer(
+  handler: Parameters<typeof createServer>[0]
+): Promise<{ origin: string; close(): Promise<void> }> {
+  const server: Server = createServer(handler);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address() as AddressInfo;
+
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    async close() {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve()))
+      );
+    }
+  };
+}
 
 interface JsonReport {
   run: {
@@ -358,6 +382,104 @@ test("portable virtual reader supports item, heading, landmark, control, and cur
   const transcript = await reader.snapshot();
   expect(transcript.entries).toHaveLength(9);
   expect(transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
+});
+
+test("virtual-reader lane owns an isolated context and recaptures every command", async ({
+  browser
+}, testInfo) => {
+  const fixtureServer = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`
+      <!doctype html>
+      <html lang="en">
+        <head><title>Lane fixture</title></head>
+        <body><main><h1>Invoices</h1><button type="button">Pay invoice</button></main></body>
+      </html>
+    `);
+  });
+  const initialContextCount = browser.contexts().length;
+
+  try {
+    const lane = await runVirtualScreenReaderLane({
+      browser,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("virtual-reader-lanes"),
+      laneId: "reader-lane-test",
+      targetUrl: `${fixtureServer.origin}/invoices`,
+      allowedOrigins: [fixtureServer.origin],
+      commands: ["next-heading", "next-control"]
+    });
+
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    expect(lane.status).toBe("completed");
+    expect(lane.isolation).toBe("dedicated-browser-context");
+    expect(lane.steps).toHaveLength(2);
+    expect(lane.transcript.entries.map(({ announcement }) => announcement)).toEqual([
+      "Invoices, heading, level 1",
+      "Pay invoice, button"
+    ]);
+    expect(lane.transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
+    expect(lane.steps.every(({ reporterFiles }) => reporterFiles.length === 2)).toBe(true);
+    expect(lane.steps.every(({ releaseVerdict }) => releaseVerdict === "pass")).toBe(true);
+
+    for (const step of lane.steps) {
+      expect(
+        step.artifactFiles.some((filePath) => filePath.endsWith("visual-full-page-after.png"))
+      ).toBe(true);
+      expect(
+        step.artifactFiles.some((filePath) =>
+          filePath.endsWith("virtual-screen-reader-transcript-json-after.json")
+        )
+      ).toBe(true);
+      expect(step.artifactFiles.some((filePath) => filePath.endsWith("axe-after.json"))).toBe(true);
+    }
+
+    await Promise.all([
+      access(lane.laneFile!),
+      access(lane.transcriptJsonFile!),
+      access(lane.transcriptTextFile!)
+    ]);
+  } finally {
+    await fixtureServer.close();
+  }
+});
+
+test("virtual-reader lane blocks a redirect outside the approved origin and closes its context", async ({
+  browser
+}, testInfo) => {
+  const destination = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<h1>Outside approved origin</h1>");
+  });
+  const redirector = await startHtmlServer((_request, response) => {
+    response.writeHead(302, { location: `${destination.origin}/outside` });
+    response.end();
+  });
+  const initialContextCount = browser.contexts().length;
+  const blockedOutputDir = testInfo.outputPath("blocked-virtual-reader-lanes");
+
+  try {
+    await expect(
+      runVirtualScreenReaderLane({
+        browser,
+        projectRoot: process.cwd(),
+        outputDir: blockedOutputDir,
+        laneId: "reader-lane-blocked-origin",
+        targetUrl: `${redirector.origin}/start`,
+        allowedOrigins: [redirector.origin],
+        commands: ["next-heading"]
+      })
+    ).rejects.toThrow(/blocked origin/);
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    const blockedLane = JSON.parse(
+      await readFile(path.join(blockedOutputDir, "reader-lane-blocked-origin", "lane.json"), "utf8")
+    );
+    expect(blockedLane.status).toBe("blocked");
+    expect(blockedLane.diagnostics).toEqual([expect.stringMatching(/blocked origin/)]);
+  } finally {
+    await redirector.close();
+    await destination.close();
+  }
 });
 
 test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({

@@ -1,7 +1,9 @@
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { expect, test } from "@playwright/test";
-import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";
+import { loadScenario } from "@aee/cli";
+import { runAeeOnPage, runVirtualScreenReaderLane } from "@aee/playwright";
 
 test("Melio homepage moves focus forward from Sign in", async ({ page }) => {
   await page.goto("https://melio.com/", {
@@ -36,43 +38,28 @@ test("Melio homepage moves focus forward from Sign in", async ({ page }) => {
   console.log("AEE reports:", result.reporterFiles);
 });
 
-test("Melio homepage supports an isolated portable virtual-reader heading command", async ({
-  page
+test("Melio homepage runs user-selected virtual-reader commands in an isolated lane", async ({
+  browser
 }) => {
-  await page.goto("https://melio.com/", {
-    waitUntil: "domcontentloaded"
-  });
+  const scenario = await loadScenario(path.resolve("examples/melio/scenario.yml"));
+  const journey = scenario.journeys[0]!;
+  const commands = journey.virtualScreenReaderCommands;
+  expect(commands).toEqual(["next-landmark", "next-heading", "next-control"]);
 
-  const reader = createPortableVirtualScreenReader(page);
-  const result = await runAeeOnPage({
-    page,
+  const lane = await runVirtualScreenReaderLane({
+    browser,
     projectRoot: process.cwd(),
     outputDir: "aee-output",
-    virtualScreenReader: reader,
-    checkpointName: "melio-homepage-virtual-reader-heading",
-    observers: ["focus", "dom", "accessibility-tree", "visual", "axe", "virtual-screen-reader"],
-    judges: ["screen-reader", "axe", "release"],
-    interaction: {
-      kind: "screen-reader-command",
-      input: "next-heading",
-      actor: "test"
-    },
-    async performInteraction() {
-      await reader.command("next-heading");
-    }
+    laneId: `melio-virtual-reader-${Date.now()}`,
+    targetUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
+    allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
+    commands: commands!
   });
 
-  const transcriptPath = result.artifactFiles.find((filePath) =>
-    filePath.endsWith("virtual-screen-reader-transcript-json-after.json")
+  expect(lane.steps).toHaveLength(commands!.length);
+  expect(lane.transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
+  expect(JSON.parse(await readFile(lane.transcriptJsonFile!, "utf8")).entries).toHaveLength(
+    commands!.length
   );
-  expect(transcriptPath).toBeTruthy();
-  const transcript = JSON.parse(await readFile(transcriptPath!, "utf8"));
-  expect(transcript.entries).toEqual([
-    expect.objectContaining({
-      command: "next-heading",
-      focusMoved: false,
-      item: expect.objectContaining({ role: "heading" })
-    })
-  ]);
-  console.log("AEE virtual-reader reports:", result.reporterFiles);
+  console.log("AEE virtual-reader lane:", lane.laneFile);
 });

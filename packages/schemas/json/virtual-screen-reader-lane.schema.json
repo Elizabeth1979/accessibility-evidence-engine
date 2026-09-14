@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/virtual-screen-reader-lane.schema.json",
+  "title": "AEE Portable Virtual Screen Reader Lane",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "laneId",
+    "driver",
+    "isolation",
+    "status",
+    "targetUrl",
+    "allowedOrigins",
+    "startedAt",
+    "finishedAt",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
+    "driver": { "const": "portable-virtual-screen-reader" },
+    "isolation": { "const": "dedicated-browser-context" },
+    "status": { "enum": ["completed", "blocked", "failed"] },
+    "targetUrl": { "type": "string", "format": "uri" },
+    "allowedOrigins": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "format": "uri" }
+    },
+    "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "steps": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "transcript": {
+      "$ref": "./virtual-screen-reader-transcript.schema.json"
+    },
+    "laneFile": { "type": "string", "minLength": 1 },
+    "transcriptJsonFile": { "type": "string", "minLength": 1 },
+    "transcriptTextFile": { "type": "string", "minLength": 1 },
+    "diagnostics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": [
+        "sequence",
+        "command",
+        "runId",
+        "pageUrl",
+        "entry",
+        "results",
+        "releaseVerdict",
+        "reporterFiles",
+        "artifactFiles"
+      ],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "command": {
+          "enum": [
+            "start",
+            "next-item",
+            "previous-item",
+            "next-heading",
+            "previous-heading",
+            "next-landmark",
+            "next-control",
+            "read-current"
+          ]
+        },
+        "runId": { "$ref": "./common.schema.json#/$defs/uid" },
+        "pageUrl": { "type": "string", "format": "uri" },
+        "entry": {
+          "$ref": "./virtual-screen-reader-transcript.schema.json#/$defs/entry"
+        },
+        "results": {
+          "type": "object",
+          "required": ["pass", "fail", "unknown"],
+          "properties": {
+            "pass": { "type": "integer", "minimum": 0 },
+            "fail": { "type": "integer", "minimum": 0 },
+            "unknown": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "releaseVerdict": { "enum": ["pass", "fail", "unknown"] },
+        "reporterFiles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "artifactFiles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "completed" } } },
+      "then": {
+        "required": ["transcript", "transcriptJsonFile", "transcriptTextFile"],
+        "properties": { "steps": { "minItems": 1 } }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "enum": ["blocked", "failed"] } } },
+      "then": { "required": ["diagnostics"] }
+    }
+  ],
+  "additionalProperties": false
+}
