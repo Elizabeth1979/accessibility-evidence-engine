@@ -28,8 +28,11 @@ export interface EvidenceManifestSupplementalFile {
   path: string;
   kind?: EvidenceManifestArtifact["kind"];
   mediaType?: string;
-  phase?: "lane" | "assessment";
+  phase?: "before" | "after" | "action" | "lane" | "assessment";
   laneId?: string;
+  actionId?: string;
+  runId?: string;
+  sequence?: number;
 }
 
 export interface WriteEvidenceManifestOptions {
@@ -63,6 +66,8 @@ export interface EvidenceManifestArtifact {
     | "evidence-bundle"
     | "interaction-trace"
     | "lane-metadata"
+    | "evidence-manifest"
+    | "html-report"
     | "custom";
   mediaType: string;
   phase: "before" | "after" | "action" | "lane" | "assessment";
@@ -120,10 +125,77 @@ export interface EvidenceManifest {
   };
 }
 
-interface CandidateFile extends EvidenceManifestSupplementalFile {
-  actionId?: string;
-  runId?: string;
-  sequence?: number;
+type CandidateFile = EvidenceManifestSupplementalFile;
+
+export interface AggregateEvidenceManifestsOptions {
+  assessmentId: string;
+  rootDir: string;
+  childManifestFiles: string[];
+  scenarioId: string;
+  scenarioDigest: string;
+  profile: "core" | "at-fidelity";
+  supplementalFiles?: EvidenceManifestSupplementalFile[];
+  manifestFile?: string;
+}
+
+/** Re-indexes child lane manifests under one scenario root without trusting their checksums. */
+export async function aggregateEvidenceManifests(
+  options: AggregateEvidenceManifestsOptions
+): Promise<{ manifest: EvidenceManifest; manifestFile: string }> {
+  const rootDir = path.resolve(options.rootDir);
+  const canonicalRoot = await realpath(rootDir);
+  const lanes: EvidenceManifestLaneSource[] = [];
+  const supplementalFiles: EvidenceManifestSupplementalFile[] = [
+    ...(options.supplementalFiles ?? [])
+  ];
+
+  for (const childManifestFile of options.childManifestFiles) {
+    const absoluteManifestFile = path.resolve(childManifestFile);
+    assertInsideRoot(rootDir, absoluteManifestFile);
+    if ((await lstat(absoluteManifestFile)).isSymbolicLink()) {
+      throw new Error(`Child evidence manifest cannot be a symbolic link: ${childManifestFile}`);
+    }
+    assertInsideRoot(canonicalRoot, await realpath(absoluteManifestFile));
+    const parsed = JSON.parse(await readFile(absoluteManifestFile, "utf8")) as EvidenceManifest;
+    assertValidSchema("evidenceManifest", parsed, `child evidence manifest ${childManifestFile}`);
+    lanes.push(
+      ...parsed.lanes.map((lane) => ({
+        id: lane.id,
+        driver: lane.driver,
+        status: lane.status,
+        actions: lane.actions.map((action) => ({
+          ...action,
+          reporterFiles: [],
+          artifactFiles: []
+        }))
+      }))
+    );
+    supplementalFiles.push({
+      path: absoluteManifestFile,
+      kind: "evidence-manifest",
+      phase: "lane"
+    });
+    for (const artifact of parsed.artifacts) {
+      supplementalFiles.push({
+        path: path.resolve(path.dirname(absoluteManifestFile), artifact.path),
+        kind: artifact.kind,
+        mediaType: artifact.mediaType,
+        phase: artifact.phase,
+        ...artifact.provenance
+      });
+    }
+  }
+
+  return writeEvidenceManifest({
+    assessmentId: options.assessmentId,
+    rootDir,
+    scenarioId: options.scenarioId,
+    scenarioDigest: options.scenarioDigest,
+    profile: options.profile,
+    lanes,
+    supplementalFiles,
+    manifestFile: options.manifestFile
+  });
 }
 
 /** Writes a deterministic, privacy-conservative index of required and available evidence files. */
@@ -347,6 +419,8 @@ function inferArtifactMetadata(
   if (basename === "interaction-trace.json")
     return metadata("interaction-trace", "application/json", "lane");
   if (basename === "lane.json") return metadata("lane-metadata", "application/json", "lane");
+  if (basename === "manifest.json")
+    return metadata("evidence-manifest", "application/json", "lane");
   if (basename === "video.webm")
     return metadata("interaction-video", "video/webm", "lane", "video");
   if (basename === "video.json")

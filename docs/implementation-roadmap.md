@@ -3,22 +3,22 @@
 This roadmap turns the evidence architecture into incremental, testable releases. Status reflects
 the repository at the time this document was written.
 
-## Milestone 1 — Evidence foundation (in progress)
+## Milestone 1 — Evidence foundation (implemented for authored Core scenarios)
 
-- Version complete journeys, meaningful actions, checkpoints, and isolated active lanes.
-- Continue correlating the implemented synchronized viewport image, full-page image, DOM,
-  accessibility tree, and deep focus state before and after every action at scenario-report level.
-- Preserve execution state, ACT-style rule outcome, and policy decision independently.
-- Aggregate the implemented checksummed lane manifests into one scenario-level manifest with full rerun lineage.
-- Produce integrated HTML, JSON, and Markdown reports.
-- Implement CLI-compatible scenario input and `--open` / `--ci` behavior.
+- Version journeys, meaningful actions, checkpoints, and isolated active lanes.
+- Capture synchronized viewport image, full-page image, DOM, accessibility tree, Axe, and deep
+  focus state before and after every authored action.
+- Preserve action release verdict and scenario evidence completeness independently.
+- Aggregate checksummed lane manifests into one scenario-level manifest by re-hashing every artifact.
+- Produce integrated HTML, JSON, and Markdown reports with explicit privacy and AI labels.
+- Execute approved YAML scenarios from the CLI with `--open`, `--ci`, and `--output` behavior.
 
 Exit test: a keyboard journey with two actions can be replayed; every report conclusion resolves to
 same-checkpoint evidence and missing evidence cannot pass.
 
-## Milestone 2 — Portable automated lanes (planned)
+## Milestone 2 — Portable automated lanes (in progress)
 
-- Add pinned axe 4.13 capture with explicit resolved rules and full raw results.
+- Maintain pinned axe 4.13 capture with the cumulative WCAG 2.0/2.1/2.2 A/AA selection and full raw results.
 - Expand cross-evidence semantic validation for the portable virtual-screen-reader lane. The Playwright driver, automatic dedicated-context orchestration, per-command recapture, origin enforcement, JSON/TXT transcript, focus-separation judge, and schemas are available.
 - Expand the implemented user-authored pointer/hover and keyboard journey runner with role-aware keyboard matrices.
 - Expand the implemented per-lane WebM persistence, JSON sidecars, and WebVTT captions with scenario-level retention policy.

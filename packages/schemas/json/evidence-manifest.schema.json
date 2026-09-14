@@ -118,6 +118,8 @@
             "evidence-bundle",
             "interaction-trace",
             "lane-metadata",
+            "evidence-manifest",
+            "html-report",
             "custom"
           ]
         },

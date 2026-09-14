@@ -14,6 +14,7 @@ export const schemaCatalog = {
   remediationRegistry: "json/remediation-registry.schema.json",
   scenario: "json/scenario.schema.json",
   scenarioPlan: "json/scenario-plan.schema.json",
+  scenarioReport: "json/scenario-report.schema.json",
   cliConfig: "json/cli-config.schema.json",
   virtualPageFixture: "json/virtual-page-fixture.schema.json",
   virtualScreenReaderTranscript: "json/virtual-screen-reader-transcript.schema.json",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -103,14 +103,14 @@ test("runWithPage records the capture policy and filtered observer set", async (
   }
 });
 
-test("compileScenarioPlan expands user permissions and blocks incomplete Core coverage", async () => {
+test("compileScenarioPlan expands user permissions into ready Core coverage", async () => {
   const scenario = await loadScenario(
     path.resolve(__dirname, "../../../examples/melio/scenario.yml")
   );
   const plan = compileScenarioPlan(scenario);
 
-  assert.equal(plan.readiness.status, "blocked");
-  assert.equal(plan.approval.status, "pending");
+  assert.equal(plan.readiness.status, "ready");
+  assert.equal(plan.approval.status, "approved");
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("axe-results"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("full-page-screenshot"));
   assert.equal(
@@ -125,7 +125,8 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("evidence-manifest"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("interaction-video"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("deep-focus-state"));
-  assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("integrated-report"));
+  assert.deepEqual(plan.readiness.blockingCapabilityIds, []);
   assert.ok(
     plan.journeys[0]?.steps.some(
       ({ id, source }) => id === "permission-open-menus" && source === "user-permission"
@@ -148,7 +149,8 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
     "submit-personal-information"
   ]);
   assert.deepEqual(plan.safety.allowedOrigins, ["https://melio.com"]);
-  assert.match(renderScenarioPlan(plan), /AEE will not convert a partial run into an overall pass/);
+  assert.match(renderScenarioPlan(plan), /Readiness: READY/);
+  assert.match(renderScenarioPlan(plan), /Integrated HTML, JSON, and Markdown report — available/);
 });
 
 test("compileScenarioPlan produces a stable plan digest that can be explicitly approved", async () => {
@@ -204,20 +206,32 @@ test("CLI plan emits a machine-readable user-controlled plan", async () => {
 
   assert.equal(stderr, "");
   assert.equal(plan.scenarioId, "melio-public-homepage");
-  assert.equal(plan.readiness.status, "blocked");
+  assert.equal(plan.readiness.status, "ready");
 });
 
-test("CLI run refuses to execute a scenario with incomplete required evidence", async () => {
+test("CLI run refuses to execute a scenario until its exact plan is approved", async () => {
   const cliPath = path.resolve(__dirname, "index.js");
   const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
-
-  await assert.rejects(
-    () => execFileAsync(process.execPath, [cliPath, "run", scenarioPath]),
-    (error: unknown) => {
-      const output = error as { stderr?: string };
-      assert.match(output.stderr ?? "", /Cannot run scenario “melio-public-homepage”/);
-      assert.match(output.stderr ?? "", /required capabilities are not fully implemented/);
-      return true;
-    }
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-unapproved-"));
+  const unapprovedScenarioPath = path.join(tempRoot, "scenario.yml");
+  const scenarioYaml = await readFile(scenarioPath, "utf8");
+  await writeFile(
+    unapprovedScenarioPath,
+    scenarioYaml.replace(/^\s{2}approvedPlanDigest:.*\n/m, ""),
+    "utf8"
   );
+
+  try {
+    await assert.rejects(
+      () => execFileAsync(process.execPath, [cliPath, "run", unapprovedScenarioPath]),
+      (error: unknown) => {
+        const output = error as { stderr?: string };
+        assert.match(output.stderr ?? "", /Cannot run scenario “melio-public-homepage”/);
+        assert.match(output.stderr ?? "", /until plan sha256:[a-f0-9]+ is approved/);
+        return true;
+      }
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });

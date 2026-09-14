@@ -30,6 +30,15 @@ import {
 } from "@aee/schemas";
 
 import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
+import { executeScenario, openScenarioReport } from "./scenario-runner";
+
+export {
+  executeScenario,
+  openScenarioReport,
+  type ExecuteScenarioOptions,
+  type ExecuteScenarioResult,
+  type ScenarioIntegratedReport
+} from "./scenario-runner";
 
 export {
   compileScenarioPlan,
@@ -260,7 +269,7 @@ export async function main(argv: string[]): Promise<void> {
 
   if (!command) {
     throw new Error(
-      "Usage: aee plan <scenario.yml> [--json] | aee run <config.json> | aee <legacy-config.json>"
+      "Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json>"
     );
   }
 
@@ -286,28 +295,46 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   if (/\.ya?ml$/i.test(configPath)) {
-    const scenario = await loadScenario(path.resolve(configPath));
-    const plan = compileScenarioPlan(scenario);
-
-    if (plan.readiness.status === "blocked") {
-      throw new Error(
-        `Cannot run scenario “${plan.scenarioId}”: ${plan.readiness.summary} Run “aee plan ${configPath}” to review the required capabilities.`
-      );
+    const scenarioOptions = parseScenarioRunOptions(argv.slice(2));
+    const result = await executeScenario(path.resolve(configPath), {
+      outputDir: scenarioOptions.outputDir
+    });
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    if (scenarioOptions.open) openScenarioReport(result.reportFiles.html);
+    if (scenarioOptions.ci && (result.verdict !== "pass" || result.completeness !== "complete")) {
+      process.exitCode = 1;
     }
-
-    if (plan.approval.status !== "approved") {
-      throw new Error(
-        `Cannot run scenario “${plan.scenarioId}” until plan ${plan.planDigest} is approved in approval.approvedPlanDigest.`
-      );
-    }
-
-    throw new Error(
-      "Scenario execution is not implemented yet; only deterministic planning is available."
-    );
+    return;
   }
 
   const result = await executeConfig(path.resolve(configPath));
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
+function parseScenarioRunOptions(argv: string[]): {
+  open: boolean;
+  ci: boolean;
+  outputDir?: string;
+} {
+  let outputDir: string | undefined;
+  const allowedFlags = new Set(["--open", "--ci", "--output"]);
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (!allowedFlags.has(argument)) throw new Error(`Unknown scenario run option: ${argument}`);
+    if (argument === "--output") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error("--output requires a directory path.");
+      }
+      outputDir = value;
+      index += 1;
+    }
+  }
+  return {
+    open: argv.includes("--open"),
+    ci: argv.includes("--ci"),
+    ...(outputDir ? { outputDir } : {})
+  };
 }
 
 if (require.main === module) {

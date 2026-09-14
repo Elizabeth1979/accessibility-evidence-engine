@@ -20,6 +20,9 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Schema-validated evidence manifests for pointer, keyboard, and portable-reader lanes, with relative paths, SHA-256 integrity, required-file completeness, action provenance, failure manifests, and privacy-conservative defaults.
 - Per-lane Playwright WebM recordings with schema-validated JSON action timelines, WebVTT captions, deterministic filenames, failure-state metadata, and manifest integrity coverage.
 - Schema-validated deep focus evidence spanning document and deepest active elements, shadow-root and same-origin iframe chains, focus-visible styles, `aria-activedescendant`, and browser accessibility focus, plus explicit preserve/target/dialog focus judgments.
+- Approved YAML scenario execution for real pages, with `--open`, strict `--ci`, and configurable output-directory behavior.
+- Integrated HTML, JSON, and Markdown scenario reports that combine action verdicts, consolidated findings, screenshots, videos, virtual-reader transcripts, Axe results, raw evidence links, privacy state, and an explicit AI-output label.
+- A scenario-level manifest that validates child manifests and re-hashes all indexed evidence with action provenance and completeness kept separate from the accessibility verdict.
 
 ## [0.1.0] - 2026-08-30
 

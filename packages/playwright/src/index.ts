@@ -1747,9 +1747,9 @@ async function createObserverPage(
               shadowRoot?: { activeElement?: unknown };
               contentDocument?: { activeElement?: unknown };
             }) => {
-              const role = element.getAttribute?.("role");
               const tagName =
                 typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
+              const role = element.getAttribute?.("role") ?? getImplicitRole(element, tagName);
               const id =
                 typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
               const canUseTextAsName =
@@ -1902,6 +1902,29 @@ async function createObserverPage(
               }
 
               return segments.length > 0 ? segments.join(" > ") : undefined;
+            }
+
+            function getImplicitRole(
+              element: {
+                type?: unknown;
+                getAttribute?: (name: string) => string | null;
+              },
+              tagName: string | undefined
+            ): string | undefined {
+              if (tagName === "a" && element.getAttribute?.("href")) return "link";
+              if (tagName === "button" || tagName === "summary") return "button";
+              if (tagName === "textarea") return "textbox";
+              if (tagName === "select")
+                return element.getAttribute?.("multiple") !== null ? "listbox" : "combobox";
+              if (tagName !== "input") return undefined;
+              const type = typeof element.type === "string" ? element.type.toLowerCase() : "text";
+              if (type === "checkbox") return "checkbox";
+              if (type === "radio") return "radio";
+              if (["button", "image", "reset", "submit"].includes(type)) return "button";
+              if (type === "range") return "slider";
+              if (type === "number") return "spinbutton";
+              if (["email", "search", "tel", "text", "url"].includes(type)) return "textbox";
+              return undefined;
             }
           });
           const accessibilityFocus = cdpPage.context

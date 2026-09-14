@@ -19,9 +19,17 @@ For machine-readable output:
 node packages/cli/dist/index.js plan examples/melio/scenario.yml --json
 ```
 
-The planner currently reports `BLOCKED` because several capabilities required by the Core profile
-are not fully implemented. This is deliberate: a partial smoke test must not be presented as a
-complete accessibility assessment.
+The checked-in plan digest is explicitly approved and the planner reports `READY`. If the authored
+scenario changes, its digest changes and execution stops until the new plan is reviewed and approved.
+
+Run the exact approved scenario and create one integrated report:
+
+```bash
+node packages/cli/dist/index.js run examples/melio/scenario.yml --output aee-output/melio
+```
+
+Use `--open` for the HTML review surface or `--ci` when a failed, unknown, or incomplete result must
+return a nonzero process status.
 
 The scenario also owns the ordered virtual-reader commands and the exact pointer/keyboard comparisons. The example passes those declarations to the lane runners; the engine does not invent targets or interactions.
 
@@ -31,4 +39,4 @@ The comparison also writes a WebM recording, JSON action timeline, and WebVTT ca
 
 Melio currently routes visitors through homepage variants such as `/b/` and `/c/`. The runner first obtains one initial storage state and gives an identical copy to both fresh lanes, preventing experiment assignment from masquerading as an input-method difference. The final URLs are still compared between lanes. Observed text is whitespace-normalized before exact comparison while the raw DOM remains in the evidence artifacts.
 
-These are still bounded executions of the declared scenario, not a complete Melio accessibility assessment. The planner remains blocked until the remaining required reporting and evidence capabilities are implemented.
+This is still a bounded execution of the declared scenario, not a complete Melio accessibility assessment or a WCAG conformance claim.

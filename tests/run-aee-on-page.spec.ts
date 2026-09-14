@@ -1,10 +1,11 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
+import { compileScenarioPlan, executeScenario, loadScenario } from "@aee/cli";
 import {
   createPortableVirtualScreenReader,
   runInputComparison,
@@ -28,6 +29,80 @@ async function startHtmlServer(
     }
   };
 }
+
+test("executeScenario integrates an approved real-page lane into one complete report", async ({
+  browser
+}, testInfo) => {
+  const server = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><html lang="en"><head><title>Example</title></head><body>
+      <main><h1>Account overview</h1><p>Review public information.</p></main>
+    </body></html>`);
+  });
+  const scenarioPath = testInfo.outputPath("scenario.yml");
+  const outputDir = testInfo.outputPath("scenario-output");
+  const scenarioYaml = `schemaVersion: 0.1.0
+id: local-public-page
+target:
+  url: ${server.origin}/
+  allowedOrigins:
+    - ${server.origin}
+standard:
+  name: WCAG
+  version: "2.2"
+  levels: [A, AA]
+profile: core
+goal: Read the public page heading.
+journeys:
+  - id: read-public-page
+    name: Read public page
+    goal: Find the primary heading.
+    startPath: /
+    allowedActions: [navigate]
+    forbiddenActions: [submit]
+    virtualScreenReaderCommands: [next-heading]
+privacy:
+  storage: local
+  remoteUpload: forbidden
+  sharingReviewRequired: true
+approval:
+  required: true
+`;
+
+  try {
+    await writeFile(scenarioPath, scenarioYaml, "utf8");
+    const plan = compileScenarioPlan(await loadScenario(scenarioPath));
+    await writeFile(
+      scenarioPath,
+      `${scenarioYaml}  approvedPlanDigest: ${plan.planDigest}\n`,
+      "utf8"
+    );
+
+    const result = await executeScenario(scenarioPath, { browser, outputDir });
+    const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+      status: string;
+      completeness: { status: string; plannedLanes: number; completedLanes: number };
+      summary: { actions: number; artifacts: number };
+      ai: { present: boolean };
+    };
+    const html = await readFile(result.reportFiles.html, "utf8");
+
+    expect(report.status).toBe("completed");
+    expect(report.completeness).toMatchObject({
+      status: "complete",
+      plannedLanes: 1,
+      completedLanes: 1
+    });
+    expect(report.summary.actions).toBe(1);
+    expect(report.summary.artifacts).toBeGreaterThan(0);
+    expect(report.ai.present).toBe(false);
+    expect(html).toContain("<video controls");
+    expect(html).toContain("Virtual screen-reader transcript");
+    await access(result.manifestFile);
+  } finally {
+    await server.close();
+  }
+});
 
 interface JsonReport {
   run: {

@@ -142,7 +142,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "integrated-report",
     "Integrated HTML, JSON, and Markdown report",
     "reporter",
-    "partial"
+    "available"
   )
 ];
 

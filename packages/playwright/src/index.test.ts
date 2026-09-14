@@ -7,6 +7,7 @@ import test from "node:test";
 import type { EvidenceRecord, Judgment } from "@aee/core";
 
 import {
+  aggregateEvidenceManifests,
   comparePointerAndKeyboardOutcomes,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
@@ -405,6 +406,47 @@ test("writeEvidenceManifest does not follow evidence symlinks", async () => {
       rm(tempRoot, { recursive: true, force: true }),
       rm(outsideRoot, { recursive: true, force: true })
     ]);
+  }
+});
+
+test("aggregateEvidenceManifests re-hashes child evidence into one scenario manifest", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-aggregate-manifest-"));
+  const childRoot = path.join(tempRoot, "keyboard-lane");
+  const artifactFile = path.join(childRoot, "evidence.json");
+  await mkdir(childRoot, { recursive: true });
+  await writeFile(artifactFile, '{"state":"before"}', "utf8");
+
+  try {
+    const child = await writeEvidenceManifest({
+      assessmentId: "child-assessment",
+      rootDir: childRoot,
+      lanes: [{ id: "keyboard", driver: "keyboard", status: "completed", actions: [] }],
+      supplementalFiles: [{ path: artifactFile, kind: "custom", phase: "lane" }]
+    });
+    const childIntegrity = child.manifest.artifacts[0]?.integrity;
+    await writeFile(artifactFile, '{"state":"after"}', "utf8");
+
+    const aggregate = await aggregateEvidenceManifests({
+      assessmentId: "scenario-assessment",
+      rootDir: tempRoot,
+      childManifestFiles: [child.manifestFile],
+      scenarioId: "scenario-assessment",
+      scenarioDigest: `sha256:${"a".repeat(64)}`,
+      profile: "core"
+    });
+    const artifact = aggregate.manifest.artifacts.find(({ path: filePath }) =>
+      filePath.endsWith("evidence.json")
+    );
+
+    assert.equal(aggregate.manifest.status, "completed");
+    assert.equal(aggregate.manifest.lanes[0]?.id, "keyboard");
+    assert.notEqual(artifact?.integrity, childIntegrity);
+    assert.ok(
+      aggregate.manifest.artifacts.some(({ kind }) => kind === "evidence-manifest"),
+      "Expected the child manifest itself to be indexed."
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 

@@ -90,48 +90,36 @@ Exact generated text cannot be guaranteed byte-for-byte across all providers. AE
 reproducible where possible through deterministic routing, pinned prompt and specialist versions,
 pinned model settings, structured output, input hashes, caching, and deterministic verification.
 
-## Proposed run directory
+## Scenario run directory
 
 ```text
-aee-output/<run-id>/
+aee-output/<scenario-id>-<timestamp>/
 ├── manifest.json
-├── run.json
-├── scenario.json
-├── environment.json
-├── report/
-│   ├── aee-report.html
-│   ├── aee-report.json
-│   └── aee-report.md
-├── lanes/<lane-id>/
+├── scenario-plan.json
+├── aee-report.html
+├── aee-report.json
+├── aee-report.md
+├── <virtual-reader-lane>/
+│   ├── manifest.json
 │   ├── lane.json
-│   ├── actions/<action-id>/interaction.json
-│   ├── checkpoints/<checkpoint-id>/before/
-│   │   ├── viewport.png
-│   │   ├── full-page.png
-│   │   ├── dom.html
-│   │   ├── dom.json
-│   │   ├── accessibility-tree.json
-│   │   ├── focus.json
-│   │   └── axe.json
-│   ├── checkpoints/<checkpoint-id>/after/
-│   │   └── ...same synchronized artifact types...
 │   ├── transcript.json
 │   ├── transcript.txt
 │   ├── video.webm
 │   ├── video.json
-│   └── video.vtt
-├── judgments/<rule-id>/<judgment-id>.json
-├── ai/evaluations/<evaluation-id>.json
-├── fixes/<proposal-id>/proposal.json
-├── corrections/<correction-id>.json
-└── verification/<verification-id>.json
+│   ├── video.vtt
+│   └── actions/<sequence>-<command>/<run-id>/...before and after evidence...
+└── <comparison-id>/
+    ├── manifest.json
+    ├── interaction-trace.json
+    ├── pointer/...lane video and per-action runs...
+    └── keyboard/...lane video and per-action runs...
 ```
 
 See the [manifest example](examples/evidence-run-manifest.example.json).
 
 ## Artifact rules
 
-The current pointer/keyboard and portable-reader lane runners write a schema-validated `manifest.json`. Every indexed path is relative to the assessment directory and receives SHA-256 integrity, byte length, lane/action/run provenance, lifecycle, and conservative privacy metadata. Each action declares its required artifact basenames; absent files are recorded as `missing`, failed inspections as `failed`, and either condition makes the manifest `partial`. Paths outside the assessment root are rejected. The manifest does not hash itself.
+The pointer/keyboard and portable-reader lane runners each write a schema-validated `manifest.json`. The scenario runner verifies those manifests, rejects escaped or symbolic-link child manifests, re-hashes their artifacts, and writes one aggregate manifest. Every indexed path is relative to the assessment directory and receives SHA-256 integrity, byte length, lane/action/run provenance, lifecycle, and conservative privacy metadata. Each action declares its required artifact basenames; absent files are recorded as `missing`, failed inspections as `failed`, and either condition makes the aggregate manifest partial. The manifest does not hash itself.
 
 Each active lane also produces `video.webm`, a schema-validated `video.json` action timeline, and `video.vtt` captions. Recording ends when the isolated browser context closes; the deterministic copies are privacy-sensitive and indexed in the lane manifest.
 
@@ -153,17 +141,16 @@ Each active lane also produces `video.webm`, a schema-validated `video.json` act
 ```bash
 aee run scenario.yml
 aee run scenario.yml --open
-aee run scenario.yml --at-fidelity
-aee run scenario.yml --fix
 aee run scenario.yml --ci
+aee run scenario.yml --output aee-output/scenarios
 ```
 
 - `--open` opens the integrated HTML report.
-- `--at-fidelity` schedules optional VoiceOver or NVDA lanes where supported.
-- `--fix` creates proposals in an isolated worktree or branch, never merges or deploys, and reruns
-  the same scenario.
 - `--ci` is non-interactive, writes machine-readable output, and returns the configured policy exit
   code.
+- `--output` chooses the parent directory for the timestamped assessment.
+
+Optional `--at-fidelity` and review-only `--fix` workflows remain planned.
 
 ## Learning from corrections
 
@@ -175,4 +162,4 @@ Candidates are tested offline against versioned per-specialist suites before pro
 evidence citation validity, verdict accuracy, `cantTell` calibration, verified-fix rate, regressions,
 privacy checks, and per-rule slices. Releases are versioned, approved, canaried, and reversible.
 
-The [implementation roadmap](implementation-roadmap.md) separates this target from current code.
+The [implementation roadmap](implementation-roadmap.md) separates the available Core flow from planned fidelity and fix workflows.

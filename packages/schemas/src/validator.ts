@@ -17,6 +17,7 @@ import interactionVideoSchema from "../json/interaction-video.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import scenarioPlanSchema from "../json/scenario-plan.schema.json";
+import scenarioReportSchema from "../json/scenario-report.schema.json";
 import scenarioSchema from "../json/scenario.schema.json";
 import reportSchema from "../json/report.schema.json";
 import runSchema from "../json/run.schema.json";
@@ -40,6 +41,7 @@ const schemaDocuments = {
   remediationRegistry: remediationRegistrySchema,
   scenario: scenarioSchema,
   scenarioPlan: scenarioPlanSchema,
+  scenarioReport: scenarioReportSchema,
   cliConfig: cliConfigSchema,
   virtualPageFixture: virtualPageFixtureSchema,
   virtualScreenReaderTranscript: virtualScreenReaderTranscriptSchema,
@@ -64,6 +66,7 @@ const schemaTitles: Record<SchemaName, string> = {
   remediationRegistry: "AEE remediation registry",
   scenario: "AEE user-controlled scenario",
   scenarioPlan: "AEE compiled scenario plan",
+  scenarioReport: "AEE integrated scenario report",
   cliConfig: "AEE CLI config",
   virtualPageFixture: "AEE virtual page fixture",
   virtualScreenReaderTranscript: "AEE portable virtual screen-reader transcript",

@@ -7,6 +7,7 @@ The package also provides focused runtime probes:
 - `comparePointerAndKeyboardOutcomes(...)` runs pointer and keyboard paths from the same reset state and compares caller-captured outcomes.
 - `runInputComparison(...)` executes a user-authored pointer lane and keyboard lane in separate contexts with matching seeded browser storage and landing URLs, recaptures evidence after every declared action, and writes a schema-validated `interaction-trace.json`.
 - `writeEvidenceManifest(...)` writes relative, SHA-256-indexed evidence with lane/action provenance and conservative privacy defaults; required omissions make the manifest partial.
+- `aggregateEvidenceManifests(...)` verifies and re-hashes child-lane artifacts into one scenario-level manifest instead of trusting child checksums.
 - `persistInteractionVideo(...)` finalizes a WebM lane recording with a schema-validated JSON action timeline and WebVTT captions.
 - `verifyMotionControl(...)` requests a stop action and checks two later samples for zero active motion and a stable state.
 

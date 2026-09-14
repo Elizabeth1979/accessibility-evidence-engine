@@ -1,7 +1,7 @@
 {
   "name": "@aee/cli",
   "version": "0.1.0",
-  "description": "Fixture-based command-line runner for Accessibility Evidence Engine.",
+  "description": "Approved-scenario command-line runner for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
   "main": "dist/index.js",
@@ -23,7 +23,10 @@
     "dist/index.d.ts",
     "dist/scenario.js",
     "dist/scenario.js.map",
-    "dist/scenario.d.ts"
+    "dist/scenario.d.ts",
+    "dist/scenario-runner.js",
+    "dist/scenario-runner.js.map",
+    "dist/scenario-runner.d.ts"
   ],
   "engines": {
     "node": ">=22"
@@ -54,6 +57,7 @@
     "@aee/playwright": "0.1.0",
     "@aee/reporter": "0.1.0",
     "@aee/schemas": "0.1.0",
-    "yaml": "^2.9.1"
+    "yaml": "^2.9.1",
+    "playwright": "^1.62.1"
   }
 }

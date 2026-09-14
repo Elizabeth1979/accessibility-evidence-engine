@@ -312,6 +312,23 @@ The result is `interaction-trace.json`, validated by `interaction-comparison.sch
 
 The manifest indexes the trace, JSON and Markdown reports, run and bundle metadata, and every required before/after focus, DOM, accessibility-tree, viewport, full-page, and Axe artifact. It uses relative paths and SHA-256 checksums. Missing required files remain visible and make the manifest partial.
 
+## Approved scenario CLI
+
+The CLI composes those lane runners for an approved YAML scenario:
+
+```bash
+aee plan scenario.yml
+aee run scenario.yml --output aee-output/scenarios
+aee run scenario.yml --open
+aee run scenario.yml --ci
+```
+
+The compiled digest must match `approval.approvedPlanDigest`. Execution is limited to concrete
+`virtualScreenReaderCommands` and `interactionComparisons`; `allowedActions` only define the safety
+boundary. The result includes `aee-report.html`, `aee-report.json`, `aee-report.md`, the compiled
+plan, and one scenario-level `manifest.json` that validates and re-hashes the child-lane evidence.
+Verdict and evidence completeness are reported separately, and incomplete evidence cannot pass.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.
@@ -411,4 +428,4 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - Before network artifacts are persisted, AEE removes URL credentials and fragments, redacts all query and header values, replaces request bodies, and drops unknown event fields. URL paths remain visible. See [Evidence privacy](privacy.md).
 - The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.
-- This repo does not yet bundle Playwright itself; install `@playwright/test` or `playwright` in the consuming test project.
+- `@aee/cli` installs Playwright for its real-page scenario runner. Direct `@aee/playwright` consumers still provide a compatible Playwright page or browser.

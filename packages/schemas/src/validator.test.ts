@@ -427,6 +427,54 @@ test("validateSchema accepts a valid report payload", () => {
   assert.deepEqual(result.errors, []);
 });
 
+test("validateSchema accepts an integrated scenario report", () => {
+  const result = validateSchema("scenarioReport", {
+    schemaVersion: "0.1.0",
+    assessmentId: "scenario-assessment-1",
+    scenarioId: "scenario-assessment",
+    scenarioDigest: `sha256:${"a".repeat(64)}`,
+    planDigest: `sha256:${"b".repeat(64)}`,
+    profile: "core",
+    target: "https://example.com/",
+    goal: "Evaluate an approved public journey.",
+    standard: "WCAG 2.2 A/AA",
+    status: "completed",
+    verdict: "pass",
+    startedAt: "2026-09-14T00:00:00.000Z",
+    finishedAt: "2026-09-14T00:01:00.000Z",
+    completeness: {
+      status: "complete",
+      plannedLanes: 1,
+      completedLanes: 1,
+      missingArtifacts: 0,
+      failedArtifacts: 0
+    },
+    summary: { actions: 1, passed: 1, failed: 0, unknown: 0, findings: 0, artifacts: 1 },
+    journeys: [
+      { id: "journey", name: "Journey", goal: "Read content", startUrl: "https://example.com/" }
+    ],
+    actions: [],
+    findings: [],
+    artifacts: [],
+    diagnostics: [],
+    files: {
+      html: "aee-report.html",
+      json: "aee-report.json",
+      markdown: "aee-report.md",
+      manifest: "manifest.json",
+      plan: "scenario-plan.json"
+    },
+    privacy: {
+      classification: "sensitive",
+      reviewedForSharing: false,
+      remoteUploadAuthorized: false
+    },
+    ai: { present: false, label: "AI-generated analysis: none in this report." }
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
+});
+
 test("validateSchema accepts the canonical remediation registry", () => {
   const result = validateSchema("remediationRegistry", remediationRegistry);
 
