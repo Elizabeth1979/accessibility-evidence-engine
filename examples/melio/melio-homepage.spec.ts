@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 import { loadScenario } from "@aee/cli";
-import { runAeeOnPage, runVirtualScreenReaderLane } from "@aee/playwright";
+import { runAeeOnPage, runInputComparison, runVirtualScreenReaderLane } from "@aee/playwright";
 
 test("Melio homepage moves focus forward from Sign in", async ({ page }) => {
   await page.goto("https://melio.com/", {
@@ -62,4 +62,31 @@ test("Melio homepage runs user-selected virtual-reader commands in an isolated l
     commands!.length
   );
   console.log("AEE virtual-reader lane:", lane.laneFile);
+});
+
+test("Melio homepage runs the user-authored pointer and keyboard comparison", async ({
+  browser
+}) => {
+  const scenario = await loadScenario(path.resolve("examples/melio/scenario.yml"));
+  const journey = scenario.journeys[0]!;
+  const comparison = journey.interactionComparisons?.[0];
+  expect(comparison).toBeDefined();
+
+  const result = await runInputComparison({
+    browser,
+    projectRoot: process.cwd(),
+    outputDir: "aee-output",
+    comparisonId: `melio-${comparison!.id}-${Date.now()}`,
+    name: comparison!.name,
+    targetUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
+    allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
+    pointerActions: comparison!.pointerActions,
+    keyboardActions: comparison!.keyboardActions,
+    observe: comparison!.observe,
+    expected: comparison!.expected
+  });
+
+  expect(result.equivalence.verdict).toBe("pass");
+  expect(result.expectation?.verdict).toBe("pass");
+  console.log("AEE pointer/keyboard trace:", result.traceFile);
 });

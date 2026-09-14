@@ -9,6 +9,8 @@ import evidenceBundleSchema from "../json/evidence-bundle.schema.json";
 import evidenceRecordSchema from "../json/evidence-record.schema.json";
 import findingSchema from "../json/finding.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
+import interactionComparisonSchema from "../json/interaction-comparison.schema.json";
+import interactionComparisonRequestSchema from "../json/interaction-comparison-request.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import scenarioPlanSchema from "../json/scenario-plan.schema.json";
@@ -37,7 +39,9 @@ const schemaDocuments = {
   cliConfig: cliConfigSchema,
   virtualPageFixture: virtualPageFixtureSchema,
   virtualScreenReaderTranscript: virtualScreenReaderTranscriptSchema,
-  virtualScreenReaderLane: virtualScreenReaderLaneSchema
+  virtualScreenReaderLane: virtualScreenReaderLaneSchema,
+  interactionComparison: interactionComparisonSchema,
+  interactionComparisonRequest: interactionComparisonRequestSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
 
 const schemaTitles: Record<SchemaName, string> = {
@@ -56,7 +60,9 @@ const schemaTitles: Record<SchemaName, string> = {
   cliConfig: "AEE CLI config",
   virtualPageFixture: "AEE virtual page fixture",
   virtualScreenReaderTranscript: "AEE portable virtual screen-reader transcript",
-  virtualScreenReaderLane: "AEE portable virtual screen-reader lane"
+  virtualScreenReaderLane: "AEE portable virtual screen-reader lane",
+  interactionComparison: "AEE pointer and keyboard interaction comparison",
+  interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request"
 };
 
 const ajv = new Ajv2020({

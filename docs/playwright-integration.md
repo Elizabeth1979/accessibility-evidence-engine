@@ -269,6 +269,47 @@ const lane = await runVirtualScreenReaderLane({
 
 The lane writes `lane.json`, `transcript.json`, and `transcript.txt`, plus one full AEE run directory for every user-selected command. `virtual-screen-reader-lane.schema.json` and `virtual-screen-reader-transcript.schema.json` validate the canonical files.
 
+## User-authored pointer and keyboard comparison
+
+Declare both input paths and the exact observable outcome in the scenario. Pointer and keyboard paths start from separate, newly loaded browser contexts. The engine executes only these actions, captures a full evidence run after every action, and compares only the requested observable fields.
+
+```yaml
+interactionComparisons:
+  - id: invoice-details
+    name: Invoice details appear on hover and keyboard focus
+    pointerActions:
+      - id: hover-details
+        kind: hover
+        target: { role: button, name: Invoice details }
+    keyboardActions:
+      - id: focus-details
+        kind: focus
+        target: { role: button, name: Invoice details }
+    observe:
+      target: { selector: "#invoice-details" }
+      visible: true
+      text: true
+      attributes: [data-state]
+    expected:
+      visible: true
+      text: Invoice total is $24
+      attributes: { data-state: shown }
+```
+
+```ts
+const comparison = scenario.journeys[0].interactionComparisons![0];
+const trace = await runInputComparison({
+  browser,
+  projectRoot: process.cwd(),
+  targetUrl: scenario.target.url,
+  allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
+  comparisonId: comparison.id,
+  ...comparison
+});
+```
+
+The result is `interaction-trace.json`, validated by `interaction-comparison.schema.json`. Equivalence and expected-outcome verdicts are separate from each action's Axe/release verdict, so an equivalent interaction cannot conceal an unrelated accessibility failure.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.

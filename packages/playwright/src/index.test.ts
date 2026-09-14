@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import type { EvidenceRecord, Judgment } from "@aee/core";
@@ -7,6 +10,7 @@ import {
   comparePointerAndKeyboardOutcomes,
   resolveObserverIdsForCapturePolicy,
   runAeeOnPage,
+  runInputComparison,
   verifyMotionControl,
   type PlaywrightPageLike
 } from "./index";
@@ -93,6 +97,130 @@ test("comparePointerAndKeyboardOutcomes passes equivalent interaction outcomes",
   });
 
   assert.equal(comparison.verdict, "pass");
+});
+
+test("runInputComparison saves a deterministic trace for declared click and Enter paths", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-input-comparison-"));
+  let closedContexts = 0;
+  const browser = {
+    async newContext() {
+      let focusedSelector: string | undefined;
+      let resultText = "Closed";
+      const nodes = new Map<string, { ownerDocument: { activeElement: unknown } }>();
+      const nodeFor = (selector: string) => {
+        const node = nodes.get(selector) ?? { ownerDocument: { activeElement: undefined } };
+        node.ownerDocument.activeElement = focusedSelector === selector ? node : undefined;
+        nodes.set(selector, node);
+        return node;
+      };
+      const locatorFor = (selector: string) => ({
+        async hover() {},
+        async click() {
+          if (selector === "#open") resultText = "Open";
+        },
+        async focus() {
+          focusedSelector = selector;
+        },
+        async isVisible() {
+          return true;
+        },
+        async textContent() {
+          return selector === "#result" ? `  ${resultText}\n` : "Open details";
+        },
+        async getAttribute(name: string) {
+          return name === "data-state" ? resultText.toLowerCase() : null;
+        },
+        async evaluate<T>(callback: (node: { ownerDocument: { activeElement: unknown } }) => T) {
+          return callback(nodeFor(selector));
+        }
+      });
+      const page = {
+        url() {
+          return "https://example.com/invoices";
+        },
+        async goto() {},
+        async content() {
+          return `<button id="open">Open details</button><p id="result">${resultText}</p>`;
+        },
+        locator: locatorFor,
+        getByRole() {
+          return locatorFor("#open");
+        },
+        keyboard: {
+          async press(key: string) {
+            if (key === "Enter" && focusedSelector === "#open") resultText = "Open";
+          }
+        },
+        async snapshotScreenshot() {
+          return new Uint8Array([1]);
+        },
+        async snapshotAccessibilityTree() {
+          return { role: "WebArea", name: "Invoices" };
+        },
+        async snapshotFocusTarget() {
+          return focusedSelector ? { role: "button", name: "Open details" } : null;
+        },
+        async runAxeAnalysis() {
+          return {
+            testEngine: { name: "axe-core", version: "4.13.0" },
+            testRunner: { name: "axe" },
+            testEnvironment: { userAgent: "unit-test" },
+            toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
+            timestamp: "2026-09-14T00:00:00.000Z",
+            url: "https://example.com/invoices",
+            violations: [],
+            passes: [],
+            incomplete: [],
+            inapplicable: []
+          };
+        }
+      };
+
+      return {
+        async newPage() {
+          return page;
+        },
+        async storageState() {
+          return { cookies: [], origins: [] };
+        },
+        async close() {
+          closedContexts += 1;
+        }
+      };
+    }
+  };
+
+  try {
+    const result = await runInputComparison({
+      browser,
+      projectRoot: tempRoot,
+      comparisonId: "unit-click-enter",
+      name: "Open details with click and Enter",
+      targetUrl: "https://example.com/invoices",
+      allowedOrigins: ["https://example.com"],
+      pointerActions: [{ id: "click-open", kind: "click", target: { selector: "#open" } }],
+      keyboardActions: [
+        { id: "focus-open", kind: "focus", target: { selector: "#open" } },
+        { id: "press-enter", kind: "press", key: "Enter" }
+      ],
+      observe: {
+        target: { selector: "#result" },
+        url: true,
+        text: true,
+        attributes: ["data-state"]
+      },
+      expected: { text: "Open", attributes: { "data-state": "open" } }
+    });
+
+    assert.equal(result.equivalence.verdict, "pass");
+    assert.equal(result.expectation?.verdict, "pass");
+    assert.equal(result.lanes.keyboard.steps.length, 2);
+    assert.equal(closedContexts, 3);
+    const storedTrace = JSON.parse(await readFile(result.traceFile, "utf8"));
+    assert.equal(storedTrace.initialState.strategy, "shared-playwright-storage-state");
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("verifyMotionControl distinguishes stopped and continuing motion", async () => {

@@ -46,6 +46,7 @@ test("loadScenario accepts the user-controlled Melio YAML scenario", async () =>
     "submit-personal-information",
     "initiate-payment"
   ]);
+  assert.equal(scenario.journeys[0]?.interactionComparisons?.[0]?.id, "sign-in-hover-focus");
 });
 
 test("loadScenario rejects duplicate YAML keys", async () => {

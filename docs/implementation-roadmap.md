@@ -20,7 +20,7 @@ same-checkpoint evidence and missing evidence cannot pass.
 
 - Add pinned axe 4.13 capture with explicit resolved rules and full raw results.
 - Expand cross-evidence semantic validation for the portable virtual-screen-reader lane. The Playwright driver, automatic dedicated-context orchestration, per-command recapture, origin enforcement, JSON/TXT transcript, focus-separation judge, and schemas are available.
-- Add pointer/hover parity journeys and role-aware keyboard matrices.
+- Expand the implemented user-authored pointer/hover and keyboard journey runner with role-aware keyboard matrices.
 - Add conditional video persistence with sidecars and captions.
 - Enforce dependency-aware `untested` plus `blockedBy` behavior.
 

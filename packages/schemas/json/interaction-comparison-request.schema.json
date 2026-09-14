@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/interaction-comparison-request.schema.json",
+  "title": "AEE Pointer and Keyboard Interaction Comparison Request",
+  "$ref": "./interaction-comparison.schema.json#/$defs/request"
+}

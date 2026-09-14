@@ -37,6 +37,31 @@ journeys:
       - next-landmark
       - next-heading
       - next-control
+    interactionComparisons:
+      - id: sign-in-hover-focus
+        name: Sign in remains available on pointer hover and keyboard focus
+        pointerActions:
+          - id: hover-sign-in
+            kind: hover
+            target:
+              role: link
+              name: Sign in
+        keyboardActions:
+          - id: focus-sign-in
+            kind: focus
+            target:
+              role: link
+              name: Sign in
+        observe:
+          target:
+            role: link
+            name: Sign in
+          url: true
+          visible: true
+          text: true
+        expected:
+          visible: true
+          text: Sign in
 
 privacy:
   storage: local

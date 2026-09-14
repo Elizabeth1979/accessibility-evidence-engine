@@ -119,6 +119,9 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
   );
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("virtual-screen-reader-lane"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("screen-reader-transcript"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("keyboard-lane"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("pointer-hover-lane"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("interaction-trace"));
   assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
   assert.ok(
     plan.journeys[0]?.steps.some(
@@ -130,7 +133,9 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
     [
       "reader-command-1-next-landmark",
       "reader-command-2-next-heading",
-      "reader-command-3-next-control"
+      "reader-command-3-next-control",
+      "comparison-sign-in-hover-focus-pointer-1",
+      "comparison-sign-in-hover-focus-keyboard-1"
     ]
   );
   assert.deepEqual(plan.safety.forbiddenActions, [

@@ -3,6 +3,11 @@ import { readFile } from "node:fs/promises";
 
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
 import type { VirtualScreenReaderCommand } from "@aee/playwright";
+import type {
+  InputComparisonAction,
+  InputComparisonExpectation,
+  InputComparisonObservationRequest
+} from "@aee/playwright";
 import { parseDocument } from "yaml";
 
 export type ScenarioProfile = "core" | "at-fidelity";
@@ -39,6 +44,16 @@ export interface ScenarioJourney {
   allowedActions: string[];
   forbiddenActions: string[];
   virtualScreenReaderCommands?: VirtualScreenReaderCommand[];
+  interactionComparisons?: ScenarioInteractionComparison[];
+}
+
+export interface ScenarioInteractionComparison {
+  id: string;
+  name: string;
+  pointerActions: InputComparisonAction[];
+  keyboardActions: InputComparisonAction[];
+  observe: InputComparisonObservationRequest;
+  expected?: InputComparisonExpectation;
 }
 
 export interface ScenarioPrivacy {
@@ -95,8 +110,8 @@ export interface ScenarioPlan {
 }
 
 const CORE_CAPABILITIES: ScenarioCapability[] = [
-  capability("keyboard-lane", "Keyboard input lane", "active-lane", "partial"),
-  capability("pointer-hover-lane", "Pointer and hover input lane", "active-lane", "partial"),
+  capability("keyboard-lane", "Keyboard input lane", "active-lane", "available"),
+  capability("pointer-hover-lane", "Pointer and hover input lane", "active-lane", "available"),
   capability(
     "virtual-screen-reader-lane",
     "Portable virtual screen-reader lane",
@@ -114,7 +129,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
   ),
   capability("deep-focus-state", "Deep focus state", "passive-observer", "partial"),
   capability("axe-results", "Pinned axe results", "passive-observer", "available"),
-  capability("interaction-trace", "Complete interaction trace", "passive-observer", "partial"),
+  capability("interaction-trace", "Complete interaction trace", "passive-observer", "available"),
   capability(
     "screen-reader-transcript",
     "Virtual screen-reader transcript",
@@ -151,7 +166,7 @@ const PROFILE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
   ),
   step(
     "exercise-keyboard",
-    "Traverse with the keyboard and use role-appropriate activation keys only on user-allowed targets in an isolated lane."
+    "Run only the user-declared keyboard actions in an isolated lane; permissions alone do not create actions."
   ),
   step(
     "exercise-virtual-reader",
@@ -172,12 +187,13 @@ const PROFILE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
 ];
 
 const ACTION_STEP_LABELS: Record<string, string> = {
-  navigate: "Follow only navigation that stays within the approved target origins.",
-  "open-menus": "Open and close menus with pointer and role-appropriate keyboard controls.",
-  hover: "Compare pointer hover with keyboard focus and activation outcomes.",
-  focus: "Inspect visible focus and deep focus state throughout the journey.",
+  navigate: "Permit declared navigation only within the approved target origins.",
+  "open-menus":
+    "Permit declared menu operations with pointer or role-appropriate keyboard controls.",
+  hover: "Permit declared pointer-hover comparisons.",
+  focus: "Permit declared focus operations and focus-state inspection.",
   "activate-public-links":
-    "Activate public informational links without submitting data or starting restricted workflows."
+    "Permit declared activation of public informational links without submitting data or starting restricted workflows."
 };
 
 export async function loadScenario(scenarioPath: string): Promise<AeeScenario> {
@@ -234,14 +250,26 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
         id: `permission-${action}`,
         label:
           ACTION_STEP_LABELS[action] ??
-          `Exercise the user-authorized action “${humanize(action)}” within the declared safety boundary.`,
+          `Permit “${humanize(action)}” only when an explicit user-authored step requests it.`,
         source: "user-permission" as const
       })),
       ...(journey.virtualScreenReaderCommands ?? []).map((command, index) => ({
         id: `reader-command-${index + 1}-${command}`,
         label: `Run the user-selected virtual screen-reader command “${command}” in the isolated reader lane.`,
         source: "user-command" as const
-      }))
+      })),
+      ...(journey.interactionComparisons ?? []).flatMap((comparison) => [
+        ...comparison.pointerActions.map((action, index) => ({
+          id: `comparison-${comparison.id}-pointer-${index + 1}`,
+          label: `Run pointer action “${action.id}” (${action.kind}) from the user-authored comparison “${comparison.name}”.`,
+          source: "user-command" as const
+        })),
+        ...comparison.keyboardActions.map((action, index) => ({
+          id: `comparison-${comparison.id}-keyboard-${index + 1}`,
+          label: `Run keyboard action “${action.id}” (${action.kind}) from the user-authored comparison “${comparison.name}”.`,
+          source: "user-command" as const
+        }))
+      ])
     ]
   }));
   const allowedActions = uniqueSorted(
@@ -332,7 +360,7 @@ export function renderScenarioPlan(plan: ScenarioPlan): string {
     });
   }
 
-  lines.push("", "Allowed actions:");
+  lines.push("", "Action permissions (do not execute by themselves):");
   plan.safety.allowedActions.forEach((action) => lines.push(`  + ${action}`));
   lines.push("", "Forbidden actions:");
   plan.safety.forbiddenActions.forEach((action) => lines.push(`  - ${action}`));
@@ -387,6 +415,41 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
       throw new Error(
         `Journey “${journey.id}” cannot both allow and forbid: ${uniqueSorted(conflicts).join(", ")}`
       );
+    }
+
+    const comparisonIds = (journey.interactionComparisons ?? []).map(({ id }) => id);
+    const duplicateComparisonIds = duplicates(comparisonIds);
+    if (duplicateComparisonIds.length > 0) {
+      throw new Error(
+        `Journey “${journey.id}” interaction comparison IDs must be unique: ${duplicateComparisonIds.join(", ")}`
+      );
+    }
+
+    for (const comparison of journey.interactionComparisons ?? []) {
+      for (const [lane, actions] of [
+        ["pointer", comparison.pointerActions],
+        ["keyboard", comparison.keyboardActions]
+      ] as const) {
+        const duplicateActionIds = duplicates(actions.map(({ id }) => id));
+        if (duplicateActionIds.length > 0) {
+          throw new Error(
+            `Journey “${journey.id}” comparison “${comparison.id}” ${lane} action IDs must be unique: ${duplicateActionIds.join(", ")}`
+          );
+        }
+
+        const invalidKinds = actions
+          .filter(({ kind }) =>
+            lane === "pointer"
+              ? !["hover", "click"].includes(kind)
+              : !["focus", "press"].includes(kind)
+          )
+          .map(({ kind }) => kind);
+        if (invalidKinds.length > 0) {
+          throw new Error(
+            `Journey “${journey.id}” comparison “${comparison.id}” contains invalid ${lane} action kinds: ${uniqueSorted(invalidKinds).join(", ")}`
+          );
+        }
+      }
     }
   }
 }

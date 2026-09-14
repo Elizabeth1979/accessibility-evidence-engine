@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   createPortableVirtualScreenReader,
+  runInputComparison,
   runAeeOnPage,
   runVirtualScreenReaderLane
 } from "@aee/playwright";
@@ -479,6 +480,144 @@ test("virtual-reader lane blocks a redirect outside the approved origin and clos
   } finally {
     await redirector.close();
     await destination.close();
+  }
+});
+
+test("input comparison runs declared pointer and keyboard actions in isolated contexts", async ({
+  browser
+}, testInfo) => {
+  const fixtureServer = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`
+      <!doctype html>
+      <html lang="en">
+        <head><title>Input comparison fixture</title></head>
+        <body>
+          <main>
+            <button id="details" type="button">Invoice details</button>
+            <p id="outcome" hidden>Invoice total is $24</p>
+          </main>
+          <script>
+            const button = document.querySelector('#details');
+            const outcome = document.querySelector('#outcome');
+            const reveal = () => {
+              outcome.hidden = false;
+              outcome.dataset.state = 'shown';
+            };
+            button.addEventListener('mouseenter', reveal);
+            button.addEventListener('focus', reveal);
+          </script>
+        </body>
+      </html>
+    `);
+  });
+  const initialContextCount = browser.contexts().length;
+
+  try {
+    const comparison = await runInputComparison({
+      browser,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("input-comparisons"),
+      comparisonId: "invoice-details-equivalence",
+      name: "Invoice details appear on hover and keyboard focus",
+      targetUrl: `${fixtureServer.origin}/invoices`,
+      allowedOrigins: [fixtureServer.origin],
+      pointerActions: [
+        { id: "hover-details", kind: "hover", target: { role: "button", name: "Invoice details" } }
+      ],
+      keyboardActions: [
+        { id: "focus-details", kind: "focus", target: { role: "button", name: "Invoice details" } }
+      ],
+      observe: {
+        target: { selector: "#outcome" },
+        visible: true,
+        text: true,
+        attributes: ["data-state"]
+      },
+      expected: {
+        visible: true,
+        text: "Invoice total is $24",
+        attributes: { "data-state": "shown" }
+      }
+    });
+
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    expect(comparison.status).toBe("completed");
+    expect(comparison.equivalence.verdict).toBe("pass");
+    expect(comparison.expectation?.verdict).toBe("pass");
+    expect(comparison.lanes.pointer.steps).toHaveLength(1);
+    expect(comparison.lanes.keyboard.steps).toHaveLength(1);
+    expect(comparison.lanes.pointer.steps[0]?.action.id).toBe("hover-details");
+    expect(comparison.lanes.keyboard.steps[0]?.action.id).toBe("focus-details");
+    for (const lane of Object.values(comparison.lanes)) {
+      expect(
+        lane.steps[0]?.artifactFiles.some((filePath) =>
+          filePath.endsWith("visual-full-page-after.png")
+        )
+      ).toBe(true);
+      expect(
+        lane.steps[0]?.artifactFiles.some((filePath) => filePath.endsWith("axe-after.json"))
+      ).toBe(true);
+    }
+    await access(comparison.traceFile);
+  } finally {
+    await fixtureServer.close();
+  }
+});
+
+test("input comparison recaptures focus and Enter as separate keyboard actions", async ({
+  browser
+}, testInfo) => {
+  const fixtureServer = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end(`
+      <!doctype html>
+      <html lang="en">
+        <head><title>Activation fixture</title></head>
+        <body>
+          <button id="open" type="button">Open details</button>
+          <p id="result">Closed</p>
+          <script>
+            document.querySelector('#open').addEventListener('click', () => {
+              document.querySelector('#result').textContent = 'Open';
+            });
+          </script>
+        </body>
+      </html>
+    `);
+  });
+
+  try {
+    const comparison = await runInputComparison({
+      browser,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("activation-comparisons"),
+      comparisonId: "click-enter-equivalence",
+      name: "Details open with click and Enter",
+      targetUrl: fixtureServer.origin,
+      allowedOrigins: [fixtureServer.origin],
+      pointerActions: [
+        { id: "click-open", kind: "click", target: { role: "button", name: "Open details" } }
+      ],
+      keyboardActions: [
+        { id: "focus-open", kind: "focus", target: { role: "button", name: "Open details" } },
+        { id: "press-enter", kind: "press", key: "Enter" }
+      ],
+      observe: { target: { selector: "#result" }, text: true },
+      expected: { text: "Open" }
+    });
+
+    expect(comparison.equivalence.verdict).toBe("pass");
+    expect(comparison.expectation?.verdict).toBe("pass");
+    expect(comparison.lanes.keyboard.steps.map(({ action }) => action.id)).toEqual([
+      "focus-open",
+      "press-enter"
+    ]);
+    expect(
+      comparison.lanes.keyboard.steps.every(({ artifactFiles }) => artifactFiles.length > 0)
+    ).toBe(true);
+  } finally {
+    await fixtureServer.close();
   }
 });
 

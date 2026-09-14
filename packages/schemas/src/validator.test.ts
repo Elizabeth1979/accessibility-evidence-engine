@@ -261,6 +261,39 @@ test("validateSchema accepts an isolated virtual screen-reader lane", () => {
   assert.equal(result.valid, true, result.errors.join("; "));
 });
 
+test("validateSchema accepts a user-authored input comparison request", () => {
+  const result = validateSchema("interactionComparisonRequest", {
+    id: "menu-equivalence",
+    name: "Menu opens with pointer and keyboard",
+    pointerActions: [{ id: "click-menu", kind: "click", target: { role: "button", name: "Menu" } }],
+    keyboardActions: [
+      { id: "focus-menu", kind: "focus", target: { role: "button", name: "Menu" } },
+      { id: "press-enter", kind: "press", key: "Enter" }
+    ],
+    observe: {
+      target: { selector: "#menu" },
+      visible: true,
+      attributes: ["aria-hidden"]
+    },
+    expected: { visible: true, attributes: { "aria-hidden": "false" } }
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
+});
+
+test("validateSchema rejects input actions whose operation is ambiguous", () => {
+  const result = validateSchema("interactionComparisonRequest", {
+    id: "ambiguous-menu",
+    name: "Ambiguous menu action",
+    pointerActions: [{ id: "bad-hover", kind: "hover" }],
+    keyboardActions: [{ id: "bad-press", kind: "press" }],
+    observe: { url: true }
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.length > 0);
+});
+
 test("validateSchema accepts a valid evidence bundle payload", () => {
   const result = validateSchema("evidenceBundle", sampleBundle);
 

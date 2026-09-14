@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
@@ -147,6 +148,134 @@ export interface VirtualScreenReaderLaneResult {
   laneFile?: string;
   transcriptJsonFile?: string;
   transcriptTextFile?: string;
+}
+
+export interface InputComparisonTarget {
+  selector?: string;
+  role?: string;
+  name?: string;
+  exact?: boolean;
+}
+
+export interface InputComparisonAction {
+  id: string;
+  kind: "hover" | "click" | "focus" | "press";
+  target?: InputComparisonTarget;
+  key?:
+    | "Tab"
+    | "Shift+Tab"
+    | "Enter"
+    | "Space"
+    | "Escape"
+    | "ArrowUp"
+    | "ArrowDown"
+    | "ArrowLeft"
+    | "ArrowRight"
+    | "Home"
+    | "End";
+}
+
+export interface InputComparisonObservationRequest {
+  target?: InputComparisonTarget;
+  url?: boolean;
+  visible?: boolean;
+  text?: boolean;
+  focused?: boolean;
+  attributes?: string[];
+}
+
+export interface InputComparisonExpectation {
+  url?: string;
+  visible?: boolean;
+  text?: string | null;
+  focused?: boolean;
+  attributes?: Record<string, string | null>;
+}
+
+export type InputComparisonObservation = InputComparisonExpectation;
+
+export interface InteractionLaneLocator {
+  hover(): Promise<void>;
+  click(): Promise<void>;
+  focus(): Promise<void>;
+  isVisible(): Promise<boolean>;
+  textContent(): Promise<string | null>;
+  getAttribute(name: string): Promise<string | null>;
+  evaluate<T>(callback: (element: { ownerDocument: { activeElement: unknown } }) => T): Promise<T>;
+}
+
+export interface InteractionComparisonPage extends PlaywrightPageLike {
+  goto(url: string, options?: { waitUntil?: "domcontentloaded" }): Promise<unknown>;
+  locator(selector: string): InteractionLaneLocator;
+  keyboard: { press(key: string): Promise<void> };
+}
+
+export interface InteractionComparisonContext<TPage extends InteractionComparisonPage> {
+  newPage(): Promise<TPage>;
+  close(): Promise<void>;
+}
+
+export interface InteractionComparisonBrowser<TPage extends InteractionComparisonPage> {
+  newContext(): Promise<InteractionComparisonContext<TPage>>;
+}
+
+export interface RunInputComparisonOptions<TPage extends InteractionComparisonPage> {
+  browser: InteractionComparisonBrowser<TPage>;
+  projectRoot: string;
+  targetUrl: string;
+  allowedOrigins: string[];
+  comparisonId?: string;
+  name: string;
+  pointerActions: InputComparisonAction[];
+  keyboardActions: InputComparisonAction[];
+  observe: InputComparisonObservationRequest;
+  expected?: InputComparisonExpectation;
+  outputDir?: string;
+  policy?: AeePolicyOverrides;
+  additionalObservers?: string[];
+  additionalJudges?: string[];
+}
+
+export interface InputComparisonStep {
+  sequence: number;
+  action: InputComparisonAction;
+  runId: string;
+  pageUrl: string;
+  results: RunSummary;
+  releaseVerdict: JudgmentVerdict;
+  reporterFiles: string[];
+  artifactFiles: string[];
+}
+
+export interface InputComparisonLane {
+  driver: "pointer" | "keyboard";
+  steps: InputComparisonStep[];
+  observation: InputComparisonObservation;
+}
+
+export interface InputComparisonResult {
+  schemaVersion: "0.1.0";
+  comparisonId: string;
+  name: string;
+  isolation: "separate-dedicated-browser-contexts";
+  status: "completed";
+  targetUrl: string;
+  allowedOrigins: string[];
+  startedAt: string;
+  finishedAt: string;
+  initialState: {
+    strategy: "shared-playwright-storage-state";
+    resolvedUrl: string;
+    contentHash: string;
+  };
+  lanes: { pointer: InputComparisonLane; keyboard: InputComparisonLane };
+  equivalence: { verdict: "pass" | "fail"; summary: string };
+  expectation?: {
+    verdict: "pass" | "fail";
+    expected: InputComparisonExpectation;
+    summary: string;
+  };
+  traceFile: string;
 }
 
 export interface InteractionOutcomeComparison<T> {
@@ -475,6 +604,329 @@ const VIRTUAL_READER_LANE_OBSERVERS = [
 
 const VIRTUAL_READER_LANE_JUDGES = ["screen-reader", "axe", "release"];
 
+const INPUT_COMPARISON_OBSERVERS = ["focus", "dom", "accessibility-tree", "visual", "axe"];
+const INPUT_COMPARISON_JUDGES = ["axe", "release"];
+
+/** Runs only caller-supplied actions in isolated pointer and keyboard contexts. */
+export async function runInputComparison<TPage extends InteractionComparisonPage>(
+  options: RunInputComparisonOptions<TPage>
+): Promise<InputComparisonResult> {
+  validateInputComparisonOptions(options);
+  const comparisonId = options.comparisonId ?? `input-comparison-${Date.now()}`;
+  assertSafeRunId(comparisonId);
+  const allowedOrigins = normalizeAllowedOrigins(options.allowedOrigins, "input comparison");
+  assertAllowedOrigin(options.targetUrl, allowedOrigins, "Input comparison");
+  const outputBase = options.outputDir ?? "aee-output";
+  const comparisonOutputDir = path.resolve(options.projectRoot, outputBase, comparisonId);
+  const runOutputDir = path.join(outputBase, comparisonId);
+  const traceFile = path.join(comparisonOutputDir, "interaction-trace.json");
+  const startedAt = new Date().toISOString();
+  await mkdir(comparisonOutputDir, { recursive: true });
+
+  try {
+    const initialState = await captureInitialStorageState(
+      options.browser,
+      options.targetUrl,
+      allowedOrigins
+    );
+    const createContext = () =>
+      (
+        options.browser as unknown as {
+          newContext(options: {
+            storageState: unknown;
+          }): Promise<InteractionComparisonContext<TPage>>;
+        }
+      ).newContext({ storageState: initialState.storageState });
+    const pointer = await runInputLane(
+      options,
+      comparisonId,
+      "pointer",
+      options.pointerActions,
+      allowedOrigins,
+      runOutputDir,
+      createContext,
+      initialState.resolvedUrl
+    );
+    const keyboard = await runInputLane(
+      options,
+      comparisonId,
+      "keyboard",
+      options.keyboardActions,
+      allowedOrigins,
+      runOutputDir,
+      createContext,
+      initialState.resolvedUrl
+    );
+    const equivalent = isDeepStrictEqual(pointer.observation, keyboard.observation);
+    const expectationMatches = options.expected
+      ? matchesInputExpectation(pointer.observation, options.expected) &&
+        matchesInputExpectation(keyboard.observation, options.expected)
+      : undefined;
+    const result: InputComparisonResult = {
+      schemaVersion: "0.1.0",
+      comparisonId,
+      name: options.name,
+      isolation: "separate-dedicated-browser-contexts",
+      status: "completed",
+      targetUrl: options.targetUrl,
+      allowedOrigins,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      initialState: {
+        strategy: "shared-playwright-storage-state",
+        resolvedUrl: initialState.resolvedUrl,
+        contentHash: initialState.contentHash
+      },
+      lanes: { pointer, keyboard },
+      equivalence: {
+        verdict: equivalent ? "pass" : "fail",
+        summary: equivalent
+          ? "Pointer and keyboard lanes produced the same user-declared observable outcome."
+          : "Pointer and keyboard lanes produced different user-declared observable outcomes."
+      },
+      ...(options.expected
+        ? {
+            expectation: {
+              verdict: expectationMatches ? ("pass" as const) : ("fail" as const),
+              expected: options.expected,
+              summary: expectationMatches
+                ? "Both lanes matched the user-declared expected outcome."
+                : "One or both lanes did not match the user-declared expected outcome."
+            }
+          }
+        : {}),
+      traceFile
+    };
+
+    assertValidSchema("interactionComparison", result, "pointer and keyboard interaction trace");
+    await writeFile(traceFile, JSON.stringify(result, null, 2), "utf8");
+    return result;
+  } catch (error) {
+    const failure = {
+      schemaVersion: "0.1.0",
+      comparisonId,
+      name: options.name,
+      isolation: "separate-dedicated-browser-contexts",
+      status: error instanceof InputComparisonOriginError ? "blocked" : "failed",
+      targetUrl: options.targetUrl,
+      allowedOrigins,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      traceFile,
+      diagnostics: [error instanceof Error ? error.message : String(error)]
+    };
+    assertValidSchema("interactionComparison", failure, "failed pointer and keyboard trace");
+    await writeFile(traceFile, JSON.stringify(failure, null, 2), "utf8");
+    throw error;
+  }
+}
+
+async function runInputLane<TPage extends InteractionComparisonPage>(
+  options: RunInputComparisonOptions<TPage>,
+  comparisonId: string,
+  driver: "pointer" | "keyboard",
+  actions: InputComparisonAction[],
+  allowedOrigins: string[],
+  runOutputDir: string,
+  createContext: () => Promise<InteractionComparisonContext<TPage>>,
+  resolvedStartUrl: string
+): Promise<InputComparisonLane> {
+  const context = await createContext();
+  const steps: InputComparisonStep[] = [];
+
+  try {
+    const page = await context.newPage();
+    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
+    assertAllowedOrigin(page.url(), allowedOrigins, `Input comparison ${driver} lane`);
+    if (page.url() !== resolvedStartUrl) {
+      throw new Error(
+        `Input comparison ${driver} lane resolved to ${page.url()} instead of the seeded start URL ${resolvedStartUrl}.`
+      );
+    }
+    const observerIds = [
+      ...new Set([...INPUT_COMPARISON_OBSERVERS, ...(options.additionalObservers ?? [])])
+    ];
+    const judgeIds = [
+      ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
+    ];
+
+    for (const [index, action] of actions.entries()) {
+      const sequence = index + 1;
+      const runId = `${comparisonId}-${driver}-${String(sequence).padStart(3, "0")}`;
+      const result = await runAeeOnPage({
+        page,
+        projectRoot: options.projectRoot,
+        outputDir: runOutputDir,
+        runId,
+        policy: options.policy,
+        observers: observerIds,
+        judges: judgeIds,
+        checkpointName: `${driver}:${sequence}:${action.id}`,
+        interaction: {
+          kind: action.kind === "press" ? interactionKindForKey(action.key!) : action.kind,
+          input: action.key,
+          actor: "user-script",
+          target: action.target,
+          meta: {
+            source: "user-authored-scenario",
+            lane: driver,
+            sequence,
+            actionId: action.id,
+            isolation: "separate-dedicated-browser-contexts"
+          }
+        },
+        async performInteraction() {
+          await performInputAction(page, action);
+          assertAllowedOrigin(page.url(), allowedOrigins, `Input comparison ${driver} lane`);
+        }
+      });
+      const outcome = readLaneStepOutcome(result, "Input comparison");
+      steps.push({
+        sequence,
+        action,
+        runId,
+        pageUrl: page.url(),
+        results: outcome.results,
+        releaseVerdict: outcome.releaseVerdict,
+        reporterFiles: result.reporterFiles,
+        artifactFiles: result.artifactFiles
+      });
+    }
+
+    return { driver, steps, observation: await captureInputObservation(page, options.observe) };
+  } finally {
+    await context.close();
+  }
+}
+
+async function captureInitialStorageState<TPage extends InteractionComparisonPage>(
+  browser: InteractionComparisonBrowser<TPage>,
+  targetUrl: string,
+  allowedOrigins: string[]
+): Promise<{ storageState: unknown; resolvedUrl: string; contentHash: string }> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+    assertAllowedOrigin(page.url(), allowedOrigins, "Input comparison initial-state seed");
+    const storageState = await (
+      context as unknown as { storageState(options?: { indexedDB?: boolean }): Promise<unknown> }
+    ).storageState({ indexedDB: true });
+    return {
+      storageState,
+      resolvedUrl: page.url(),
+      contentHash: `sha256:${createHash("sha256").update(JSON.stringify(storageState)).digest("hex")}`
+    };
+  } finally {
+    await context.close();
+  }
+}
+
+function matchesInputExpectation(
+  observation: InputComparisonObservation,
+  expected: InputComparisonExpectation
+): boolean {
+  return Object.entries(expected).every(([key, expectedValue]) =>
+    isDeepStrictEqual(observation[key as keyof InputComparisonObservation], expectedValue)
+  );
+}
+
+async function performInputAction(
+  page: InteractionComparisonPage,
+  action: InputComparisonAction
+): Promise<void> {
+  if (action.kind === "press") {
+    await page.keyboard.press(action.key!);
+    return;
+  }
+
+  const target = resolveInputTarget(page, action.target!);
+  if (action.kind === "hover") await target.hover();
+  if (action.kind === "click") await target.click();
+  if (action.kind === "focus") await target.focus();
+}
+
+async function captureInputObservation(
+  page: InteractionComparisonPage,
+  request: InputComparisonObservationRequest
+): Promise<InputComparisonObservation> {
+  const observation: InputComparisonObservation = {};
+  if (request.url) observation.url = page.url();
+  const target = request.target ? resolveInputTarget(page, request.target) : undefined;
+  if (request.visible) observation.visible = await target!.isVisible();
+  if (request.text) observation.text = normalizeObservedText(await target!.textContent());
+  if (request.focused) {
+    observation.focused = await target!.evaluate(
+      (element) => element === element.ownerDocument.activeElement
+    );
+  }
+  if (request.attributes) {
+    observation.attributes = Object.fromEntries(
+      await Promise.all(
+        request.attributes.map(async (name) => [name, await target!.getAttribute(name)] as const)
+      )
+    );
+  }
+  return observation;
+}
+
+function normalizeObservedText(value: string | null): string | null {
+  return value === null ? null : value.replace(/\s+/g, " ").trim();
+}
+
+function resolveInputTarget(
+  page: InteractionComparisonPage,
+  target: InputComparisonTarget
+): InteractionLaneLocator {
+  if (target.selector) return page.locator(target.selector);
+  const rolePage = page as unknown as {
+    getByRole(role: string, options: { name: string; exact: boolean }): InteractionLaneLocator;
+  };
+  return rolePage.getByRole(target.role!, { name: target.name!, exact: target.exact ?? true });
+}
+
+function interactionKindForKey(
+  key: NonNullable<InputComparisonAction["key"]>
+): Interaction["kind"] {
+  if (key === "Tab") return "tab";
+  if (key === "Shift+Tab") return "shift-tab";
+  if (key === "Enter") return "enter";
+  if (key === "Space") return "space";
+  if (key === "Escape") return "escape";
+  return "arrow-key";
+}
+
+function validateInputComparisonOptions(
+  options: RunInputComparisonOptions<InteractionComparisonPage>
+): void {
+  if (options.pointerActions.length === 0 || options.keyboardActions.length === 0) {
+    throw new Error("An input comparison requires at least one action in each lane.");
+  }
+  assertValidSchema(
+    "interactionComparisonRequest",
+    {
+      id: options.comparisonId ?? "input-comparison",
+      name: options.name,
+      pointerActions: options.pointerActions,
+      keyboardActions: options.keyboardActions,
+      observe: options.observe,
+      ...(options.expected ? { expected: options.expected } : {})
+    },
+    "pointer and keyboard comparison request"
+  );
+  const invalidPointerKinds = options.pointerActions.filter(
+    ({ kind }) => kind !== "hover" && kind !== "click"
+  );
+  const invalidKeyboardKinds = options.keyboardActions.filter(
+    ({ kind }) => kind !== "focus" && kind !== "press"
+  );
+  if (invalidPointerKinds.length > 0 || invalidKeyboardKinds.length > 0) {
+    throw new Error(
+      "Pointer lanes accept hover/click; keyboard lanes accept focus/press. Split each physical input into its matching lane."
+    );
+  }
+}
+
 /** Runs user-selected virtual-reader commands in a dedicated browser context. */
 export async function runVirtualScreenReaderLane<TPage extends VirtualScreenReaderLanePage>(
   options: RunVirtualScreenReaderLaneOptions<TPage>
@@ -622,34 +1074,48 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   }
 }
 
-function normalizeAllowedOrigins(origins: string[]): string[] {
+function normalizeAllowedOrigins(
+  origins: string[],
+  laneName = "virtual screen-reader lane"
+): string[] {
   if (origins.length === 0) {
-    throw new Error("A virtual screen-reader lane requires at least one allowed origin.");
+    throw new Error(`A ${laneName} requires at least one allowed origin.`);
   }
 
   return [...new Set(origins.map((origin) => new URL(origin).origin))].sort();
 }
 
-function assertAllowedOrigin(value: string, allowedOrigins: string[]): void {
+function assertAllowedOrigin(
+  value: string,
+  allowedOrigins: string[],
+  laneLabel = "Virtual screen-reader lane"
+): void {
   const origin = new URL(value).origin;
 
   if (!allowedOrigins.includes(origin)) {
-    throw new VirtualScreenReaderOriginError(
-      `Virtual screen-reader lane blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
+    const ErrorClass = laneLabel.startsWith("Input comparison")
+      ? InputComparisonOriginError
+      : VirtualScreenReaderOriginError;
+    throw new ErrorClass(
+      `${laneLabel} blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
     );
   }
 }
 
 class VirtualScreenReaderOriginError extends Error {}
+class InputComparisonOriginError extends Error {}
 
-function readLaneStepOutcome(result: RunAeeOnPageResult): {
+function readLaneStepOutcome(
+  result: RunAeeOnPageResult,
+  laneLabel = "Virtual screen-reader lane"
+): {
   results: RunSummary;
   releaseVerdict: JudgmentVerdict;
 } {
   const jsonReport = result.reportArtifacts.find(({ label }) => label === "aee-report.json");
 
   if (!jsonReport) {
-    throw new Error("Virtual screen-reader lane could not find the command JSON report.");
+    throw new Error(`${laneLabel} could not find the action JSON report.`);
   }
 
   const parsed = JSON.parse(jsonReport.content) as {
@@ -665,7 +1131,7 @@ function readLaneStepOutcome(result: RunAeeOnPageResult): {
     typeof results.unknown !== "number" ||
     !["pass", "fail", "unknown"].includes(String(releaseVerdict))
   ) {
-    throw new Error("Virtual screen-reader lane command report did not contain a valid outcome.");
+    throw new Error(`${laneLabel} action report did not contain a valid outcome.`);
   }
 
   return {
