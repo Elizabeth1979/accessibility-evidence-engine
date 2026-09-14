@@ -21,7 +21,7 @@ same-checkpoint evidence and missing evidence cannot pass.
 - Add pinned axe 4.13 capture with explicit resolved rules and full raw results.
 - Expand cross-evidence semantic validation for the portable virtual-screen-reader lane. The Playwright driver, automatic dedicated-context orchestration, per-command recapture, origin enforcement, JSON/TXT transcript, focus-separation judge, and schemas are available.
 - Expand the implemented user-authored pointer/hover and keyboard journey runner with role-aware keyboard matrices.
-- Add conditional video persistence with sidecars and captions.
+- Expand the implemented per-lane WebM persistence, JSON sidecars, and WebVTT captions with scenario-level retention policy.
 - Enforce dependency-aware `untested` plus `blockedBy` behavior.
 
 Exit test: one journey correlates keyboard, pointer/hover, virtual-reader, visual, DOM/AOM, focus,

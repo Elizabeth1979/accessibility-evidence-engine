@@ -54,6 +54,9 @@ export interface EvidenceManifestArtifact {
     | "focus-state"
     | "axe-result"
     | "screen-reader-transcript"
+    | "interaction-video"
+    | "video-sidecar"
+    | "video-captions"
     | "json-report"
     | "markdown-report"
     | "run-metadata"
@@ -344,6 +347,11 @@ function inferArtifactMetadata(
   if (basename === "interaction-trace.json")
     return metadata("interaction-trace", "application/json", "lane");
   if (basename === "lane.json") return metadata("lane-metadata", "application/json", "lane");
+  if (basename === "video.webm")
+    return metadata("interaction-video", "video/webm", "lane", "video");
+  if (basename === "video.json")
+    return metadata("video-sidecar", "application/json", "lane", "video");
+  if (basename === "video.vtt") return metadata("video-captions", "text/vtt", "lane", "video");
   return metadata("custom", mediaTypeForPath(basename), phase);
 }
 

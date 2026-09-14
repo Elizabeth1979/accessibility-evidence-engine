@@ -18,6 +18,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - User-authored pointer and keyboard journey comparisons with separate contexts sharing seeded browser storage and a verified landing URL, per-action synchronized evidence capture, deterministic expected-outcome and equivalence verdicts, and schema-validated interaction traces.
 - A safe Melio homepage comparison that exercises only the declared hover and focus actions while preserving Axe failures separately from interaction equivalence.
 - Schema-validated evidence manifests for pointer, keyboard, and portable-reader lanes, with relative paths, SHA-256 integrity, required-file completeness, action provenance, failure manifests, and privacy-conservative defaults.
+- Per-lane Playwright WebM recordings with schema-validated JSON action timelines, WebVTT captions, deterministic filenames, failure-state metadata, and manifest integrity coverage.
 
 ## [0.1.0] - 2026-08-30
 

@@ -8,4 +8,6 @@ Schema JSON files are exposed through `@aee/schemas/json/*` in addition to the m
 
 `evidence-manifest.schema.json` validates the checksummed inventory, including artifact availability, provenance, lifecycle, and privacy handling.
 
+`interaction-video.schema.json` validates the lane recording sidecar, action timing, caption linkage, execution status, and conservative privacy state.
+
 See the [project README](https://github.com/Elizabeth1979/accessibility-evidence-engine#readme) for status, usage, and limitations.

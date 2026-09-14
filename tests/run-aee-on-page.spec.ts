@@ -439,8 +439,17 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
       access(lane.laneFile!),
       access(lane.transcriptJsonFile!),
       access(lane.transcriptTextFile!),
-      access(lane.manifestFile!)
+      access(lane.manifestFile!),
+      access(lane.video!.videoFile),
+      access(lane.video!.sidecarFile),
+      access(lane.video!.captionsFile)
     ]);
+    const videoSidecar = JSON.parse(await readFile(lane.video!.sidecarFile, "utf8"));
+    expect(videoSidecar.actions.map(({ label }: { label: string }) => label)).toEqual([
+      "Virtual reader: next-heading",
+      "Virtual reader: next-control"
+    ]);
+    expect(await readFile(lane.video!.captionsFile, "utf8")).toContain("WEBVTT");
     const manifest = JSON.parse(await readFile(lane.manifestFile!, "utf8"));
     expect(manifest.status).toBe("completed");
     expect(manifest.summary.missing).toBe(0);
@@ -573,12 +582,20 @@ test("input comparison runs declared pointer and keyboard actions in isolated co
       expect(
         lane.steps[0]?.artifactFiles.some((filePath) => filePath.endsWith("axe-after.json"))
       ).toBe(true);
+      await Promise.all([
+        access(lane.video.videoFile),
+        access(lane.video.sidecarFile),
+        access(lane.video.captionsFile)
+      ]);
+      const videoSidecar = JSON.parse(await readFile(lane.video.sidecarFile, "utf8"));
+      expect(videoSidecar.status).toBe("completed");
+      expect(videoSidecar.actions).toHaveLength(1);
     }
     await access(comparison.traceFile);
     await access(comparison.manifestFile);
     const manifest = JSON.parse(await readFile(comparison.manifestFile, "utf8"));
     expect(manifest.status).toBe("completed");
-    expect(manifest.summary.available).toBe(33);
+    expect(manifest.summary.available).toBe(39);
     expect(manifest.artifacts.every(({ integrity }: { integrity?: string }) => integrity)).toBe(
       true
     );

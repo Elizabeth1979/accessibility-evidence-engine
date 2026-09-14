@@ -41,6 +41,7 @@
     "transcriptJsonFile": { "type": "string", "minLength": 1 },
     "transcriptTextFile": { "type": "string", "minLength": 1 },
     "manifestFile": { "type": "string", "minLength": 1 },
+    "video": { "$ref": "#/$defs/videoEvidence" },
     "diagnostics": {
       "type": "array",
       "minItems": 1,
@@ -48,6 +49,16 @@
     }
   },
   "$defs": {
+    "videoEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["videoFile", "sidecarFile", "captionsFile"],
+      "properties": {
+        "videoFile": { "type": "string", "minLength": 1 },
+        "sidecarFile": { "type": "string", "minLength": 1 },
+        "captionsFile": { "type": "string", "minLength": 1 }
+      }
+    },
     "step": {
       "type": "object",
       "required": [
@@ -107,7 +118,13 @@
     {
       "if": { "properties": { "status": { "const": "completed" } } },
       "then": {
-        "required": ["transcript", "transcriptJsonFile", "transcriptTextFile", "manifestFile"],
+        "required": [
+          "transcript",
+          "transcriptJsonFile",
+          "transcriptTextFile",
+          "manifestFile",
+          "video"
+        ],
         "properties": { "steps": { "minItems": 1 } }
       }
     },

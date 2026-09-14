@@ -247,6 +247,11 @@ test("validateSchema accepts an isolated virtual screen-reader lane", () => {
     transcriptJsonFile: "/tmp/transcript.json",
     transcriptTextFile: "/tmp/transcript.txt",
     manifestFile: "/tmp/manifest.json",
+    video: {
+      videoFile: "/tmp/video.webm",
+      sidecarFile: "/tmp/video.json",
+      captionsFile: "/tmp/video.vtt"
+    },
     steps: [
       {
         sequence: 1,
@@ -281,6 +286,40 @@ test("validateSchema accepts a user-authored input comparison request", () => {
       attributes: ["aria-hidden"]
     },
     expected: { visible: true, attributes: { "aria-hidden": "false" } }
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
+});
+
+test("validateSchema accepts an interaction video sidecar", () => {
+  const result = validateSchema("interactionVideo", {
+    schemaVersion: "0.1.0",
+    laneId: "keyboard-lane",
+    driver: "keyboard",
+    status: "completed",
+    startedAt: "2026-09-14T00:00:00.000Z",
+    finishedAt: "2026-09-14T00:00:01.000Z",
+    video: {
+      path: "keyboard/video.webm",
+      mediaType: "video/webm",
+      captionsPath: "keyboard/video.vtt"
+    },
+    actions: [
+      {
+        id: "press-enter",
+        sequence: 1,
+        label: "Press Enter",
+        startedAt: "2026-09-14T00:00:00.100Z",
+        finishedAt: "2026-09-14T00:00:00.300Z",
+        offsetMs: 100,
+        durationMs: 200
+      }
+    ],
+    privacy: {
+      classification: "sensitive",
+      reviewedForSharing: false,
+      shareable: false
+    }
   });
 
   assert.deepEqual(result, { valid: true, errors: [] });

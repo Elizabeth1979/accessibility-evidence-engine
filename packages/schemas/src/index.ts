@@ -19,6 +19,7 @@ export const schemaCatalog = {
   virtualScreenReaderLane: "json/virtual-screen-reader-lane.schema.json",
   interactionComparison: "json/interaction-comparison.schema.json",
   interactionComparisonRequest: "json/interaction-comparison-request.schema.json",
+  interactionVideo: "json/interaction-video.schema.json",
   evidenceManifest: "json/evidence-manifest.schema.json"
 } as const;
 

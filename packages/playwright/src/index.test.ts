@@ -9,6 +9,8 @@ import type { EvidenceRecord, Judgment } from "@aee/core";
 import {
   comparePointerAndKeyboardOutcomes,
   resolveObserverIdsForCapturePolicy,
+  renderInteractionVideoCaptions,
+  persistInteractionVideo,
   runAeeOnPage,
   runInputComparison,
   writeEvidenceManifest,
@@ -143,6 +145,14 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
         async content() {
           return `<button id="open">Open details</button><p id="result">${resultText}</p>`;
         },
+        video() {
+          return {
+            async saveAs(filePath: string) {
+              await writeFile(filePath, new Uint8Array([26, 45, 223, 163]));
+            },
+            async delete() {}
+          };
+        },
         locator: locatorFor,
         getByRole() {
           return locatorFor("#open");
@@ -221,9 +231,60 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
     assert.equal(storedTrace.initialState.strategy, "shared-playwright-storage-state");
     const storedManifest = JSON.parse(await readFile(result.manifestFile, "utf8"));
     assert.equal(storedManifest.status, "completed");
+    assert.equal(storedManifest.summary.available, 55);
     assert.ok(storedManifest.artifacts.every(({ integrity }: { integrity?: string }) => integrity));
+    assert.match(await readFile(result.lanes.keyboard.video.captionsFile, "utf8"), /Press Enter/);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("renderInteractionVideoCaptions produces an accessible action timeline", () => {
+  const captions = renderInteractionVideoCaptions([
+    {
+      id: "open-menu",
+      sequence: 1,
+      label: "Press Enter",
+      startedAt: "2026-09-14T00:00:00.100Z",
+      finishedAt: "2026-09-14T00:00:00.350Z",
+      offsetMs: 100,
+      durationMs: 250
+    }
+  ]);
+
+  assert.equal(captions, "WEBVTT\n\n1\n00:00:00.100 --> 00:00:00.350\nPress Enter\n");
+});
+
+test("persistInteractionVideo refuses symbolic-link output targets", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-video-root-"));
+  const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "aee-video-outside-"));
+  const laneDir = path.join(tempRoot, "keyboard");
+  const outsideFile = path.join(outsideRoot, "outside.webm");
+  await mkdir(laneDir, { recursive: true });
+  await writeFile(outsideFile, "unchanged", "utf8");
+  await symlink(outsideFile, path.join(laneDir, "video.webm"));
+
+  try {
+    await assert.rejects(
+      persistInteractionVideo({
+        video: { async saveAs() {} },
+        rootDir: tempRoot,
+        laneDir,
+        laneId: "keyboard",
+        driver: "keyboard",
+        status: "completed",
+        startedAt: "2026-09-14T00:00:00.000Z",
+        finishedAt: "2026-09-14T00:00:01.000Z",
+        actions: []
+      }),
+      /cannot be a symbolic link/
+    );
+    assert.equal(await readFile(outsideFile, "utf8"), "unchanged");
+  } finally {
+    await Promise.all([
+      rm(tempRoot, { recursive: true, force: true }),
+      rm(outsideRoot, { recursive: true, force: true })
+    ]);
   }
 });
 

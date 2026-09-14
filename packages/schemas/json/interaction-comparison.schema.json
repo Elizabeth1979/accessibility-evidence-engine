@@ -151,11 +151,22 @@
     "lane": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["driver", "steps", "observation"],
+      "required": ["driver", "steps", "observation", "video"],
       "properties": {
         "driver": { "enum": ["pointer", "keyboard"] },
         "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
-        "observation": { "$ref": "#/$defs/observation" }
+        "observation": { "$ref": "#/$defs/observation" },
+        "video": { "$ref": "#/$defs/videoEvidence" }
+      }
+    },
+    "videoEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["videoFile", "sidecarFile", "captionsFile"],
+      "properties": {
+        "videoFile": { "type": "string", "minLength": 1 },
+        "sidecarFile": { "type": "string", "minLength": 1 },
+        "captionsFile": { "type": "string", "minLength": 1 }
       }
     }
   },

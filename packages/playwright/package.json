@@ -21,6 +21,9 @@
     "dist/evidence-manifest.js",
     "dist/evidence-manifest.js.map",
     "dist/evidence-manifest.d.ts",
+    "dist/interaction-video.js",
+    "dist/interaction-video.js.map",
+    "dist/interaction-video.d.ts",
     "dist/virtual-screen-reader.js",
     "dist/virtual-screen-reader.js.map",
     "dist/virtual-screen-reader.d.ts"

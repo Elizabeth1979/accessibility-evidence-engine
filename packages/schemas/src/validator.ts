@@ -12,6 +12,7 @@ import findingSchema from "../json/finding.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
 import interactionComparisonSchema from "../json/interaction-comparison.schema.json";
 import interactionComparisonRequestSchema from "../json/interaction-comparison-request.schema.json";
+import interactionVideoSchema from "../json/interaction-video.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import scenarioPlanSchema from "../json/scenario-plan.schema.json";
@@ -43,6 +44,7 @@ const schemaDocuments = {
   virtualScreenReaderLane: virtualScreenReaderLaneSchema,
   interactionComparison: interactionComparisonSchema,
   interactionComparisonRequest: interactionComparisonRequestSchema,
+  interactionVideo: interactionVideoSchema,
   evidenceManifest: evidenceManifestSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
 
@@ -65,6 +67,7 @@ const schemaTitles: Record<SchemaName, string> = {
   virtualScreenReaderLane: "AEE portable virtual screen-reader lane",
   interactionComparison: "AEE pointer and keyboard interaction comparison",
   interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request",
+  interactionVideo: "AEE interaction video sidecar",
   evidenceManifest: "AEE evidence manifest"
 };
 

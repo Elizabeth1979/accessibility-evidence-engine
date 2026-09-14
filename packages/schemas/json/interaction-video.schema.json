@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/interaction-video.schema.json",
+  "title": "AEE Interaction Video Sidecar",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "laneId",
+    "driver",
+    "status",
+    "startedAt",
+    "finishedAt",
+    "video",
+    "actions",
+    "privacy"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
+    "driver": { "enum": ["pointer", "keyboard", "portable-virtual-screen-reader"] },
+    "status": { "enum": ["completed", "blocked", "failed"] },
+    "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "mediaType", "captionsPath"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)" },
+        "mediaType": { "const": "video/webm" },
+        "captionsPath": { "type": "string", "minLength": 1, "pattern": "^(?!/)" }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "sequence",
+          "label",
+          "startedAt",
+          "finishedAt",
+          "offsetMs",
+          "durationMs"
+        ],
+        "properties": {
+          "id": { "$ref": "./common.schema.json#/$defs/uid" },
+          "sequence": { "type": "integer", "minimum": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+          "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+          "offsetMs": { "type": "integer", "minimum": 0 },
+          "durationMs": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classification", "reviewedForSharing", "shareable"],
+      "properties": {
+        "classification": { "const": "sensitive" },
+        "reviewedForSharing": { "const": false },
+        "shareable": { "const": false }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}
