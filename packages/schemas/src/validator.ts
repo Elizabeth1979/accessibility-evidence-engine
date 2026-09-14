@@ -9,6 +9,7 @@ import evidenceBundleSchema from "../json/evidence-bundle.schema.json";
 import evidenceRecordSchema from "../json/evidence-record.schema.json";
 import evidenceManifestSchema from "../json/evidence-manifest.schema.json";
 import findingSchema from "../json/finding.schema.json";
+import focusStateSchema from "../json/focus-state.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
 import interactionComparisonSchema from "../json/interaction-comparison.schema.json";
 import interactionComparisonRequestSchema from "../json/interaction-comparison-request.schema.json";
@@ -35,6 +36,7 @@ const schemaDocuments = {
   evidenceRecord: evidenceRecordSchema,
   judgment: judgmentSchema,
   finding: findingSchema,
+  focusState: focusStateSchema,
   remediationRegistry: remediationRegistrySchema,
   scenario: scenarioSchema,
   scenarioPlan: scenarioPlanSchema,
@@ -58,6 +60,7 @@ const schemaTitles: Record<SchemaName, string> = {
   evidenceRecord: "AEE evidence record payload",
   judgment: "AEE judgment payload",
   finding: "AEE finding payload",
+  focusState: "AEE deep focus state",
   remediationRegistry: "AEE remediation registry",
   scenario: "AEE user-controlled scenario",
   scenarioPlan: "AEE compiled scenario plan",

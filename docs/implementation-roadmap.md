@@ -6,8 +6,8 @@ the repository at the time this document was written.
 ## Milestone 1 — Evidence foundation (in progress)
 
 - Version complete journeys, meaningful actions, checkpoints, and isolated active lanes.
-- Capture synchronized viewport image, full-page image, DOM, accessibility tree, and deep focus
-  state before and after every action.
+- Continue correlating the implemented synchronized viewport image, full-page image, DOM,
+  accessibility tree, and deep focus state before and after every action at scenario-report level.
 - Preserve execution state, ACT-style rule outcome, and policy decision independently.
 - Aggregate the implemented checksummed lane manifests into one scenario-level manifest with full rerun lineage.
 - Produce integrated HTML, JSON, and Markdown reports.

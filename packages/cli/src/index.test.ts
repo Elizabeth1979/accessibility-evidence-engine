@@ -124,6 +124,7 @@ test("compileScenarioPlan expands user permissions and blocks incomplete Core co
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("interaction-trace"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("evidence-manifest"));
   assert.ok(!plan.readiness.blockingCapabilityIds.includes("interaction-video"));
+  assert.ok(!plan.readiness.blockingCapabilityIds.includes("deep-focus-state"));
   assert.ok(plan.readiness.blockingCapabilityIds.includes("integrated-report"));
   assert.ok(
     plan.journeys[0]?.steps.some(

@@ -325,6 +325,39 @@ test("validateSchema accepts an interaction video sidecar", () => {
   assert.deepEqual(result, { valid: true, errors: [] });
 });
 
+test("validateSchema accepts a deep focus-state artifact", () => {
+  const element = {
+    tagName: "button",
+    id: "save",
+    nodePath: "button#save",
+    focusVisible: true,
+    focusIndicator: {
+      visible: true,
+      outlineColor: "rgb(0, 0, 0)",
+      outlineStyle: "auto",
+      outlineWidth: "1px",
+      boxShadow: "none"
+    }
+  };
+  const result = validateSchema("focusState", {
+    schemaVersion: "0.1.0",
+    captureType: "deep-focus-state",
+    ...element,
+    documentActiveElement: element,
+    deepActiveElement: element,
+    activeElementChain: [{ context: "document", ...element }],
+    accessibilityFocus: {
+      status: "matched",
+      nodeId: "7",
+      backendDOMNodeId: 14,
+      role: "button",
+      name: "Save"
+    }
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
+});
+
 test("validateSchema rejects input actions whose operation is ambiguous", () => {
   const result = validateSchema("interactionComparisonRequest", {
     id: "ambiguous-menu",

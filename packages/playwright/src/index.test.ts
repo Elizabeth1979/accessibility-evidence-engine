@@ -169,7 +169,7 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
           return { role: "WebArea", name: "Invoices" };
         },
         async snapshotFocusTarget() {
-          return focusedSelector ? { role: "button", name: "Open details" } : null;
+          return focusedSelector ? { id: "open", role: "button", name: "Open details" } : null;
         },
         async runAxeAnalysis() {
           return {

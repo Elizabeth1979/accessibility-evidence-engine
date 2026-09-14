@@ -1577,7 +1577,16 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
         meta: expect.objectContaining({
           focusTarget: expect.objectContaining({
             focusOrderIndex: 1,
-            focusableCount: 2
+            focusableCount: 2,
+            captureType: "deep-focus-state",
+            documentActiveElement: expect.objectContaining({ id: "second" }),
+            deepActiveElement: expect.objectContaining({ id: "second", focusVisible: true }),
+            activeElementChain: [expect.objectContaining({ context: "document", id: "second" })],
+            accessibilityFocus: expect.objectContaining({
+              status: "matched",
+              role: "button",
+              name: "Second"
+            })
           })
         })
       })
@@ -1594,6 +1603,95 @@ test("runAeeOnPage can capture focus movement around a tab interaction", async (
         verdict: "pass"
       })
     ])
+  );
+});
+
+test("runAeeOnPage captures the deepest active element through a shadow root", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<main><button id="before">Before</button><div id="host"></div></main>`);
+  await page.evaluate(() => {
+    const host = document.querySelector("#host")!;
+    host.attachShadow({ mode: "open" }).innerHTML =
+      `<button id="shadow-action">Shadow action</button>`;
+  });
+  await page.focus("#before");
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("deep-focus-output"),
+    observers: ["focus", "accessibility-tree"],
+    judges: ["release"],
+    checkpointName: "shadow-focus",
+    interaction: { kind: "focus", actor: "test" },
+    async performInteraction() {
+      await page.evaluate(() => {
+        (
+          document.querySelector("#host")!.shadowRoot!.querySelector("button") as HTMLElement
+        ).focus();
+      });
+    }
+  });
+  const reportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const report = JSON.parse(await readFile(reportPath!, "utf8")) as JsonReport;
+  const afterFocus = report.records.find(
+    ({ observerId, phase }) => observerId === "focus" && phase === "after"
+  );
+
+  expect(afterFocus?.meta?.focusTarget).toEqual(
+    expect.objectContaining({
+      id: "shadow-action",
+      documentActiveElement: expect.objectContaining({ id: "host" }),
+      deepActiveElement: expect.objectContaining({ id: "shadow-action" }),
+      activeElementChain: [
+        expect.objectContaining({ context: "document", id: "host" }),
+        expect.objectContaining({ context: "shadow-root", id: "shadow-action" })
+      ],
+      accessibilityFocus: expect.objectContaining({ status: "matched", name: "Shadow action" })
+    })
+  );
+});
+
+test("runAeeOnPage captures the deepest active element in a same-origin frame", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`
+    <button id="before">Before</button>
+    <iframe id="payment-frame" srcdoc='<button id="inside">Review invoice</button>'></iframe>
+  `);
+  const childFrame = page.frames().find((frame) => frame !== page.mainFrame())!;
+  await childFrame.locator("#inside").waitFor();
+  await page.focus("#before");
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("frame-focus-output"),
+    observers: ["focus"],
+    judges: ["release"],
+    checkpointName: "frame-focus",
+    interaction: { kind: "focus", actor: "test" },
+    async performInteraction() {
+      await childFrame.focus("#inside");
+    }
+  });
+  const reportPath = result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
+  const report = JSON.parse(await readFile(reportPath!, "utf8")) as JsonReport;
+  const afterFocus = report.records.find(
+    ({ observerId, phase }) => observerId === "focus" && phase === "after"
+  );
+
+  expect(afterFocus?.meta?.focusTarget).toEqual(
+    expect.objectContaining({
+      id: "inside",
+      documentActiveElement: expect.objectContaining({ id: "payment-frame" }),
+      deepActiveElement: expect.objectContaining({ id: "inside" }),
+      activeElementChain: [
+        expect.objectContaining({ context: "document", id: "payment-frame" }),
+        expect.objectContaining({ context: "iframe-document", id: "inside" })
+      ]
+    })
   );
 });
 

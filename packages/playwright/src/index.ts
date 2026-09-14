@@ -882,7 +882,10 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         runId,
         policy: options.policy,
         observers: observerIds,
-        judges: judgeIds,
+        judges:
+          action.kind === "hover" || action.kind === "focus"
+            ? [...new Set([...judgeIds, "focus-management"])]
+            : judgeIds,
         checkpointName: `${driver}:${sequence}:${action.id}`,
         interaction: {
           kind: action.kind === "press" ? interactionKindForKey(action.key!) : action.kind,
@@ -894,7 +897,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
             lane: driver,
             sequence,
             actionId: action.id,
-            isolation: "separate-dedicated-browser-contexts"
+            isolation: "separate-dedicated-browser-contexts",
+            ...(action.kind === "hover"
+              ? { focusExpectation: "preserve" }
+              : action.kind === "focus"
+                ? { focusExpectation: "target" }
+                : {})
           }
         },
         async performInteraction() {
@@ -1529,8 +1537,8 @@ async function createObserverPage(
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
     : evaluatablePage.evaluate
-      ? async () =>
-          evaluatablePage.evaluate?.(() => {
+      ? async () => {
+          const domFocus = await evaluatablePage.evaluate?.(() => {
             const globalRef = globalThis as unknown as {
               document?: {
                 activeElement?: unknown;
@@ -1540,10 +1548,14 @@ async function createObserverPage(
               getComputedStyle?: (element: unknown) => {
                 display?: string;
                 visibility?: string;
+                outlineColor?: string;
+                outlineStyle?: string;
+                outlineWidth?: string;
+                boxShadow?: string;
               };
             };
             const documentRef = globalRef.document;
-            const activeElement = documentRef?.activeElement as
+            const documentActiveElement = documentRef?.activeElement as
               | {
                   tagName?: unknown;
                   id?: unknown;
@@ -1555,10 +1567,13 @@ async function createObserverPage(
                   getAttribute?: (name: string) => string | null;
                   getClientRects?: () => { length?: number };
                   querySelectorAll?: (selector: string) => Iterable<unknown>;
+                  matches?: (selector: string) => boolean;
+                  shadowRoot?: { activeElement?: unknown };
+                  contentDocument?: { activeElement?: unknown };
                 }
               | undefined;
 
-            if (!activeElement) {
+            if (!documentActiveElement) {
               return null;
             }
 
@@ -1575,7 +1590,29 @@ async function createObserverPage(
               getAttribute?: (name: string) => string | null;
               getClientRects?: () => { length?: number };
               querySelectorAll?: (selector: string) => Iterable<unknown>;
+              matches?: (selector: string) => boolean;
+              shadowRoot?: { activeElement?: unknown };
+              contentDocument?: { activeElement?: unknown };
             } => typeof value === "object" && value !== null;
+            const activeElementSources: Array<{
+              context: "document" | "shadow-root" | "iframe-document";
+              element: typeof documentActiveElement;
+            }> = [{ context: "document", element: documentActiveElement }];
+            let activeElement = documentActiveElement;
+
+            while (activeElement) {
+              const shadowActive = activeElement.shadowRoot?.activeElement;
+              const frameActive = activeElement.contentDocument?.activeElement;
+              const nextActive = isElementLike(shadowActive)
+                ? { context: "shadow-root" as const, element: shadowActive }
+                : isElementLike(frameActive)
+                  ? { context: "iframe-document" as const, element: frameActive }
+                  : undefined;
+
+              if (!nextActive || nextActive.element === activeElement) break;
+              activeElementSources.push(nextActive);
+              activeElement = nextActive.element;
+            }
             const compositeRoles = [
               "tablist",
               "radiogroup",
@@ -1706,16 +1743,24 @@ async function createObserverPage(
               getAttribute?: (name: string) => string | null;
               getClientRects?: () => { length?: number };
               querySelectorAll?: (selector: string) => Iterable<unknown>;
+              matches?: (selector: string) => boolean;
+              shadowRoot?: { activeElement?: unknown };
+              contentDocument?: { activeElement?: unknown };
             }) => {
               const role = element.getAttribute?.("role");
               const tagName =
                 typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
               const id =
                 typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
+              const canUseTextAsName =
+                Boolean(role) ||
+                ["a", "button", "label", "option", "summary", "td", "th"].includes(tagName ?? "");
               const name =
                 element.getAttribute?.("aria-label") ??
                 element.getAttribute?.("name") ??
-                (typeof element.textContent === "string" && element.textContent.trim().length > 0
+                (canUseTextAsName &&
+                typeof element.textContent === "string" &&
+                element.textContent.trim().length > 0
                   ? element.textContent.trim().slice(0, 120)
                   : undefined);
               const type =
@@ -1725,6 +1770,18 @@ async function createObserverPage(
               const focusOrderIndex = focusableElements.indexOf(element);
               const tabIndex = typeof element.tabIndex === "number" ? element.tabIndex : undefined;
               const disabled = typeof element.disabled === "boolean" ? element.disabled : undefined;
+              const style = globalRef.getComputedStyle?.(element);
+              let focusVisible: boolean;
+              try {
+                focusVisible = element.matches?.(":focus-visible") ?? false;
+              } catch {
+                focusVisible = false;
+              }
+              const outlineVisible =
+                style?.outlineStyle !== undefined &&
+                style.outlineStyle !== "none" &&
+                style.outlineWidth !== "0px";
+              const shadowVisible = style?.boxShadow !== undefined && style.boxShadow !== "none";
               const compositeContext = getCompositeRole(element);
               const compositeSelector = compositeContext.compositeRole
                 ? itemRoleSelectors[compositeContext.compositeRole]
@@ -1744,6 +1801,15 @@ async function createObserverPage(
                 type,
                 tabIndex,
                 disabled,
+                nodePath: getElementNodePath(element),
+                focusVisible,
+                focusIndicator: {
+                  visible: focusVisible && (outlineVisible || shadowVisible),
+                  outlineColor: style?.outlineColor,
+                  outlineStyle: style?.outlineStyle,
+                  outlineWidth: style?.outlineWidth,
+                  boxShadow: style?.boxShadow
+                },
                 ariaSelected: getBooleanAttribute(element, "aria-selected"),
                 ariaChecked: getBooleanAttribute(element, "aria-checked"),
                 compositeRole: compositeContext.compositeRole,
@@ -1802,13 +1868,59 @@ async function createObserverPage(
                 ? getElementSummary(activeDescendantCandidate)
                 : undefined;
             const activeElementSummary = getElementSummary(activeElement);
+            const documentActiveElementSummary = getElementSummary(documentActiveElement);
 
             return {
+              schemaVersion: "0.1.0",
+              captureType: "deep-focus-state",
               ...activeElementSummary,
+              documentActiveElement: documentActiveElementSummary,
+              deepActiveElement: activeElementSummary,
+              activeElementChain: activeElementSources.map(({ context, element }) => ({
+                context,
+                ...getElementSummary(element)
+              })),
               activeDescendantId,
               activeDescendant
             };
-          })
+
+            function getElementNodePath(element: {
+              tagName?: unknown;
+              id?: unknown;
+              parentElement?: unknown;
+            }): string | undefined {
+              const segments: string[] = [];
+              let current: unknown = element;
+
+              while (isElementLike(current)) {
+                const tagName =
+                  typeof current.tagName === "string" ? current.tagName.toLowerCase() : "element";
+                const id = typeof current.id === "string" && current.id ? `#${current.id}` : "";
+                segments.unshift(`${tagName}${id}`);
+                if (id) break;
+                current = current.parentElement;
+              }
+
+              return segments.length > 0 ? segments.join(" > ") : undefined;
+            }
+          });
+          const accessibilityFocus = cdpPage.context
+            ? await captureAccessibilityFocus(cdpPage.context(), page)
+            : { status: "unsupported" as const };
+
+          const focusState =
+            typeof domFocus === "object" && domFocus !== null
+              ? { ...domFocus, accessibilityFocus }
+              : domFocus;
+          if (
+            typeof focusState === "object" &&
+            focusState !== null &&
+            "captureType" in focusState
+          ) {
+            assertValidSchema("focusState", focusState, "deep focus state");
+          }
+          return focusState;
+        }
       : undefined;
   const snapshotScreenshot = customScreenshot
     ? async (options?: { fullPage?: boolean }) => customScreenshot(options)
@@ -1867,6 +1979,76 @@ async function createObserverPage(
     snapshotNetworkLog,
     teardownNetworkTracking
   };
+}
+
+async function captureAccessibilityFocus(
+  context: CdpContextLike | undefined,
+  page: PlaywrightPageLike
+): Promise<Record<string, unknown>> {
+  if (!context) return { status: "unsupported" };
+  const session = await context.newCDPSession(page);
+
+  try {
+    const response = await session.send("Accessibility.getFullAXTree");
+    const nodes = getRecordArrayField(response, "nodes");
+    const focusedNodes = nodes.filter((node) =>
+      getRecordArrayField(node, "properties").some(
+        (property) =>
+          property.name === "focused" && getNestedRecordValue(property, "value", "value") === true
+      )
+    );
+    const focusedNode =
+      focusedNodes.find(
+        (node) =>
+          !["RootWebArea", "WebArea"].includes(String(getNestedRecordValue(node, "role", "value")))
+      ) ?? focusedNodes.at(-1);
+
+    if (!focusedNode) return { status: "not-exposed" };
+    return {
+      status: "matched",
+      nodeId: getStringField(focusedNode, "nodeId"),
+      backendDOMNodeId:
+        typeof focusedNode.backendDOMNodeId === "number" ? focusedNode.backendDOMNodeId : undefined,
+      role: getNestedRecordValue(focusedNode, "role", "value"),
+      name: getNestedRecordValue(focusedNode, "name", "value")
+    };
+  } catch (error) {
+    return {
+      status: "failed",
+      diagnostics: [
+        error instanceof Error
+          ? `Accessibility focus capture failed: ${error.message}`
+          : "Accessibility focus capture failed."
+      ]
+    };
+  } finally {
+    await session.detach?.();
+  }
+}
+
+function getRecordArrayField(value: unknown, field: string): Array<Record<string, unknown>> {
+  if (typeof value !== "object" || value === null) return [];
+  const candidate = (value as Record<string, unknown>)[field];
+  return Array.isArray(candidate)
+    ? candidate.filter(
+        (item): item is Record<string, unknown> => typeof item === "object" && item !== null
+      )
+    : [];
+}
+
+function getNestedRecordValue(
+  value: Record<string, unknown>,
+  field: string,
+  nestedField: string
+): unknown {
+  const nested = value[field];
+  return typeof nested === "object" && nested !== null
+    ? (nested as Record<string, unknown>)[nestedField]
+    : undefined;
+}
+
+function getStringField(value: Record<string, unknown>, field: string): string | undefined {
+  return typeof value[field] === "string" ? value[field] : undefined;
 }
 
 function createNetworkTracker(page: EventedPageLike) {

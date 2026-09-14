@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/focus-state.schema.json",
+  "title": "AEE Deep Focus State",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "captureType",
+    "documentActiveElement",
+    "deepActiveElement",
+    "activeElementChain",
+    "accessibilityFocus"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "captureType": { "const": "deep-focus-state" },
+    "documentActiveElement": { "$ref": "#/$defs/element" },
+    "deepActiveElement": { "$ref": "#/$defs/element" },
+    "activeElementChain": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "allOf": [
+          { "$ref": "#/$defs/element" },
+          {
+            "type": "object",
+            "required": ["context"],
+            "properties": {
+              "context": { "enum": ["document", "shadow-root", "iframe-document"] }
+            }
+          }
+        ]
+      }
+    },
+    "activeDescendantId": { "type": "string", "minLength": 1 },
+    "activeDescendant": { "$ref": "#/$defs/element" },
+    "accessibilityFocus": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["matched", "not-exposed", "failed", "unsupported"] },
+        "nodeId": { "type": "string", "minLength": 1 },
+        "backendDOMNodeId": { "type": "integer", "minimum": 0 },
+        "role": { "type": ["string", "null"] },
+        "name": { "type": ["string", "null"] },
+        "diagnostics": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "element": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tagName", "nodePath", "focusVisible", "focusIndicator"],
+      "properties": {
+        "tagName": { "type": "string", "minLength": 1 },
+        "id": { "type": "string" },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "nodePath": { "type": "string", "minLength": 1 },
+        "focusVisible": { "type": "boolean" },
+        "focusIndicator": {
+          "type": "object",
+          "required": ["visible"],
+          "properties": {
+            "visible": { "type": "boolean" },
+            "outlineColor": { "type": "string" },
+            "outlineStyle": { "type": "string" },
+            "outlineWidth": { "type": "string" },
+            "boxShadow": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      }
+    }
+  }
+}

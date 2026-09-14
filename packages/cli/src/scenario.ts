@@ -127,7 +127,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "passive-observer",
     "available"
   ),
-  capability("deep-focus-state", "Deep focus state", "passive-observer", "partial"),
+  capability("deep-focus-state", "Deep focus state", "passive-observer", "available"),
   capability("axe-results", "Pinned axe results", "passive-observer", "available"),
   capability("interaction-trace", "Complete interaction trace", "passive-observer", "available"),
   capability(

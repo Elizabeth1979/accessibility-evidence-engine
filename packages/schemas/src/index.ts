@@ -10,6 +10,7 @@ export const schemaCatalog = {
   evidenceRecord: "json/evidence-record.schema.json",
   judgment: "json/judgment.schema.json",
   finding: "json/finding.schema.json",
+  focusState: "json/focus-state.schema.json",
   remediationRegistry: "json/remediation-registry.schema.json",
   scenario: "json/scenario.schema.json",
   scenarioPlan: "json/scenario-plan.schema.json",

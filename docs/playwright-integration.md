@@ -399,9 +399,9 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - `policy.capture` filters incompatible observer requests before execution and records the applied capture policy in the emitted run config.
 - The DOM observer relies on `page.content()`.
 - The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
-- The focus observer snapshots `document.activeElement` and pairs well with `performInteraction(...)` for keyboard-navigation checks.
+- The focus observer snapshots `document.activeElement`, the deepest active element through open shadow roots and same-origin frames, the complete focus chain, focus-visible computed styles, `aria-activedescendant`, and the browser accessibility tree's focused node.
 - Focus snapshots include the containing dialog context when the active element is inside a native or ARIA dialog.
-- The focus-management judge currently supports the explicit `inside-dialog` expectation for modal-opening interactions.
+- The focus-management judge supports explicit `inside-dialog`, `preserve`, and `target` expectations. Pointer hover is required to preserve focus; an authored focus action must resolve to its requested target.
 - The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.

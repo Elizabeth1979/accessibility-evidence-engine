@@ -263,6 +263,88 @@ test("focus-management judge passes when focus moves inside the opened dialog", 
   assert.match(judgment?.summary ?? "", /inside the opened dialog/i);
 });
 
+test("focus-management judge fails when a reveal-only interaction moves focus", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget: { nodePath: "button#trigger", id: "trigger" } }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: { focusTarget: { nodePath: "a#unexpected", id: "unexpected" } }
+      }
+    ],
+    {
+      kind: "hover",
+      meta: { focusExpectation: "preserve" },
+      target: { role: "button", name: "More information" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.equal(judgment?.findings?.[0]?.ruleId, "focus-preservation");
+});
+
+test("focus-management judge matches the deepest focused target", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget: { nodePath: "body", tagName: "body" } }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            id: "host",
+            deepActiveElement: {
+              nodePath: "button#save",
+              id: "save",
+              role: "button",
+              name: "Save"
+            }
+          }
+        }
+      }
+    ],
+    {
+      kind: "focus",
+      meta: { focusExpectation: "target" },
+      target: { role: "button", name: "Save" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /requested target/i);
+});
+
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
   const releaseJudge = createDefaultJudgePlugins(["release"])[0];
   const bundle = createBundle([

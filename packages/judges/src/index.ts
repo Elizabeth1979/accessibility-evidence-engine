@@ -223,7 +223,7 @@ function createFocusManagementJudge(): JudgePlugin {
     async judge(bundle: EvidenceBundle): Promise<Judgment[]> {
       const expectation = getStringMetaField(bundle.interaction.meta, "focusExpectation");
 
-      if (expectation !== "inside-dialog") {
+      if (!expectation || !["inside-dialog", "preserve", "target"].includes(expectation)) {
         return [
           {
             id: `focus-management:${bundle.interaction.id}`,
@@ -232,7 +232,7 @@ function createFocusManagementJudge(): JudgePlugin {
             scope: "interaction",
             verdict: "unknown",
             summary:
-              'Focus-management judge currently requires interaction.meta.focusExpectation to be "inside-dialog".',
+              'Focus-management judge requires interaction.meta.focusExpectation to be "inside-dialog", "preserve", or "target".',
             severity: "info",
             confidence: 0.5,
             evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -262,6 +262,12 @@ function createFocusManagementJudge(): JudgePlugin {
 
       const beforeTarget = getFocusTarget(beforeRecord);
       const afterTarget = getFocusTarget(afterRecord);
+      if (expectation === "preserve") {
+        return judgePreservedFocus(bundle, beforeRecord, afterRecord, beforeTarget, afterTarget);
+      }
+      if (expectation === "target") {
+        return judgeFocusedTarget(bundle, beforeRecord, afterRecord, beforeTarget, afterTarget);
+      }
       const beforeDialog = isRecord(beforeTarget) ? beforeTarget.dialogContext : undefined;
       const afterDialog = isRecord(afterTarget) ? afterTarget.dialogContext : undefined;
       const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
@@ -338,6 +344,156 @@ function createFocusManagementJudge(): JudgePlugin {
       ];
     }
   };
+}
+
+function judgePreservedFocus(
+  bundle: EvidenceBundle,
+  beforeRecord: EvidenceRecord,
+  afterRecord: EvidenceRecord,
+  beforeTarget: unknown,
+  afterTarget: unknown
+): Judgment[] {
+  const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
+  const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
+  const preserved = focusIdentity(beforeTarget) === focusIdentity(afterTarget);
+  const suggestedFix = preserved
+    ? undefined
+    : "Do not move DOM focus for an interaction that only reveals or announces supplemental information.";
+  const finding: Finding | undefined = preserved
+    ? undefined
+    : {
+        id: `focus-management:${bundle.interaction.id}:unexpected-focus-move`,
+        message: "The interaction moved focus even though focus was expected to remain unchanged.",
+        severity: "high",
+        ruleId: "focus-preservation",
+        target: bundle.interaction.target,
+        evidenceRecordIds,
+        artifactIds,
+        suggestedFix,
+        tags: ["focus-management", "interaction-state"]
+      };
+
+  return [
+    {
+      id: `focus-management:${bundle.interaction.id}`,
+      judgeId: "focus-management",
+      judgeVersion: "0.2.0",
+      scope: "interaction",
+      verdict: preserved ? "pass" : "fail",
+      summary: preserved
+        ? `Focus remained on ${describeFocusTarget(beforeTarget)} as required.`
+        : `Focus unexpectedly moved from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.`,
+      severity: preserved ? "info" : "high",
+      confidence: 0.98,
+      evidenceRecordIds,
+      artifactIds,
+      ...(finding ? { findings: [finding] } : {}),
+      ...(suggestedFix ? { suggestedFix } : {}),
+      tags: ["focus-management", "interaction-state"]
+    }
+  ];
+}
+
+function judgeFocusedTarget(
+  bundle: EvidenceBundle,
+  beforeRecord: EvidenceRecord,
+  afterRecord: EvidenceRecord,
+  beforeTarget: unknown,
+  afterTarget: unknown
+): Judgment[] {
+  const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
+  const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
+  const expectedTarget = bundle.interaction.target;
+  const matched = focusMatchesTarget(afterTarget, expectedTarget);
+
+  if (matched === undefined) {
+    return [
+      {
+        id: `focus-management:${bundle.interaction.id}`,
+        judgeId: "focus-management",
+        judgeVersion: "0.2.0",
+        scope: "interaction",
+        verdict: "unknown",
+        summary:
+          "The captured focus target cannot be deterministically matched to the requested target.",
+        severity: "medium",
+        confidence: 0.8,
+        evidenceRecordIds,
+        artifactIds,
+        tags: ["focus-management", "interaction-state"]
+      }
+    ];
+  }
+
+  const suggestedFix = matched
+    ? undefined
+    : "After the focus action, ensure document.activeElement resolves to the requested control.";
+  const finding: Finding | undefined = matched
+    ? undefined
+    : {
+        id: `focus-management:${bundle.interaction.id}:target-not-focused`,
+        message: "The requested control did not receive focus.",
+        severity: "high",
+        ruleId: "focus-target",
+        target: expectedTarget,
+        evidenceRecordIds,
+        artifactIds,
+        suggestedFix,
+        tags: ["focus-management", "interaction-state"]
+      };
+  return [
+    {
+      id: `focus-management:${bundle.interaction.id}`,
+      judgeId: "focus-management",
+      judgeVersion: "0.2.0",
+      scope: "interaction",
+      verdict: matched ? "pass" : "fail",
+      summary: matched
+        ? `Focus resolved to the requested target ${describeFocusTarget(afterTarget)}.`
+        : `Focus did not resolve to the requested target. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
+      severity: matched ? "info" : "high",
+      confidence: 0.98,
+      evidenceRecordIds,
+      artifactIds,
+      ...(finding ? { findings: [finding] } : {}),
+      ...(suggestedFix ? { suggestedFix } : {}),
+      tags: ["focus-management", "interaction-state"]
+    }
+  ];
+}
+
+function focusIdentity(focusTarget: unknown): string {
+  const target = getDeepFocusTarget(focusTarget);
+  if (!isRecord(target)) return "none";
+  return JSON.stringify({
+    nodePath: getStringField(target, "nodePath"),
+    id: getStringField(target, "id"),
+    role: getStringField(target, "role"),
+    name: getStringField(target, "name")
+  });
+}
+
+function focusMatchesTarget(
+  focusTarget: unknown,
+  expectedTarget: EvidenceBundle["interaction"]["target"]
+): boolean | undefined {
+  const target = getDeepFocusTarget(focusTarget);
+  if (!isRecord(target) || !expectedTarget) return undefined;
+  if (expectedTarget.role && getStringField(target, "role") !== expectedTarget.role) return false;
+  if (expectedTarget.name && getStringField(target, "name") !== expectedTarget.name) return false;
+  if (expectedTarget.selector) {
+    if (expectedTarget.selector.startsWith("#")) {
+      return getStringField(target, "id") === expectedTarget.selector.slice(1);
+    }
+    return getStringField(target, "nodePath") === expectedTarget.selector;
+  }
+  return Boolean(expectedTarget.role || expectedTarget.name);
+}
+
+function getDeepFocusTarget(focusTarget: unknown): unknown {
+  return isRecord(focusTarget) && isRecord(focusTarget.deepActiveElement)
+    ? focusTarget.deepActiveElement
+    : focusTarget;
 }
 
 function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
