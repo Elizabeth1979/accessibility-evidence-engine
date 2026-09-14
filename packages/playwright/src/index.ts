@@ -32,6 +32,12 @@ import {
   type VirtualScreenReaderPage,
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
+import {
+  writeEvidenceManifest,
+  type EvidenceManifestActionSource,
+  type EvidenceManifestLaneSource
+} from "./evidence-manifest";
+export * from "./evidence-manifest";
 export * from "./virtual-screen-reader";
 
 export interface PlaywrightPageLike {
@@ -148,6 +154,7 @@ export interface VirtualScreenReaderLaneResult {
   laneFile?: string;
   transcriptJsonFile?: string;
   transcriptTextFile?: string;
+  manifestFile?: string;
 }
 
 export interface InputComparisonTarget {
@@ -276,6 +283,7 @@ export interface InputComparisonResult {
     summary: string;
   };
   traceFile: string;
+  manifestFile: string;
 }
 
 export interface InteractionOutcomeComparison<T> {
@@ -607,6 +615,29 @@ const VIRTUAL_READER_LANE_JUDGES = ["screen-reader", "axe", "release"];
 const INPUT_COMPARISON_OBSERVERS = ["focus", "dom", "accessibility-tree", "visual", "axe"];
 const INPUT_COMPARISON_JUDGES = ["axe", "release"];
 
+const INPUT_LANE_REQUIRED_ARTIFACTS = [
+  "focus-before.json",
+  "focus-after.json",
+  "dom-before.html",
+  "dom-after.html",
+  "accessibility-tree-before.json",
+  "accessibility-tree-after.json",
+  "visual-viewport-before.png",
+  "visual-viewport-after.png",
+  "visual-full-page-before.png",
+  "visual-full-page-after.png",
+  "axe-before.json",
+  "axe-after.json"
+];
+
+const VIRTUAL_READER_REQUIRED_ARTIFACTS = [
+  ...INPUT_LANE_REQUIRED_ARTIFACTS,
+  "virtual-screen-reader-transcript-json-before.json",
+  "virtual-screen-reader-transcript-json-after.json",
+  "virtual-screen-reader-transcript-text-before.txt",
+  "virtual-screen-reader-transcript-text-after.txt"
+];
+
 /** Runs only caller-supplied actions in isolated pointer and keyboard contexts. */
 export async function runInputComparison<TPage extends InteractionComparisonPage>(
   options: RunInputComparisonOptions<TPage>
@@ -620,7 +651,22 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
   const comparisonOutputDir = path.resolve(options.projectRoot, outputBase, comparisonId);
   const runOutputDir = path.join(outputBase, comparisonId);
   const traceFile = path.join(comparisonOutputDir, "interaction-trace.json");
+  const manifestFile = path.join(comparisonOutputDir, "manifest.json");
   const startedAt = new Date().toISOString();
+  const manifestLanes: EvidenceManifestLaneSource[] = [
+    {
+      id: `${comparisonId}-pointer`,
+      driver: "pointer",
+      status: "blocked",
+      actions: []
+    },
+    {
+      id: `${comparisonId}-keyboard`,
+      driver: "keyboard",
+      status: "blocked",
+      actions: []
+    }
+  ];
   await mkdir(comparisonOutputDir, { recursive: true });
 
   try {
@@ -645,7 +691,8 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
       allowedOrigins,
       runOutputDir,
       createContext,
-      initialState.resolvedUrl
+      initialState.resolvedUrl,
+      manifestLanes[0]!
     );
     const keyboard = await runInputLane(
       options,
@@ -655,7 +702,8 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
       allowedOrigins,
       runOutputDir,
       createContext,
-      initialState.resolvedUrl
+      initialState.resolvedUrl,
+      manifestLanes[1]!
     );
     const equivalent = isDeepStrictEqual(pointer.observation, keyboard.observation);
     const expectationMatches = options.expected
@@ -695,28 +743,49 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
             }
           }
         : {}),
-      traceFile
+      traceFile,
+      manifestFile
     };
 
     assertValidSchema("interactionComparison", result, "pointer and keyboard interaction trace");
     await writeFile(traceFile, JSON.stringify(result, null, 2), "utf8");
+    await writeEvidenceManifest({
+      assessmentId: comparisonId,
+      rootDir: comparisonOutputDir,
+      manifestFile,
+      lanes: manifestLanes,
+      supplementalFiles: [{ path: traceFile, kind: "interaction-trace", phase: "lane" }]
+    });
     return result;
   } catch (error) {
+    const failureStatus: "blocked" | "failed" =
+      error instanceof InputComparisonOriginError ? "blocked" : "failed";
+    manifestLanes.forEach((lane) => {
+      if (lane.status !== "completed") lane.status = failureStatus;
+    });
     const failure = {
       schemaVersion: "0.1.0",
       comparisonId,
       name: options.name,
       isolation: "separate-dedicated-browser-contexts",
-      status: error instanceof InputComparisonOriginError ? "blocked" : "failed",
+      status: failureStatus,
       targetUrl: options.targetUrl,
       allowedOrigins,
       startedAt,
       finishedAt: new Date().toISOString(),
       traceFile,
+      manifestFile,
       diagnostics: [error instanceof Error ? error.message : String(error)]
     };
     assertValidSchema("interactionComparison", failure, "failed pointer and keyboard trace");
     await writeFile(traceFile, JSON.stringify(failure, null, 2), "utf8");
+    await writeEvidenceManifest({
+      assessmentId: comparisonId,
+      rootDir: comparisonOutputDir,
+      manifestFile,
+      lanes: manifestLanes,
+      supplementalFiles: [{ path: traceFile, kind: "interaction-trace", phase: "lane" }]
+    }).catch(() => undefined);
     throw error;
   }
 }
@@ -729,10 +798,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
   allowedOrigins: string[],
   runOutputDir: string,
   createContext: () => Promise<InteractionComparisonContext<TPage>>,
-  resolvedStartUrl: string
+  resolvedStartUrl: string,
+  manifestLane: EvidenceManifestLaneSource
 ): Promise<InputComparisonLane> {
   const context = await createContext();
   const steps: InputComparisonStep[] = [];
+  manifestLane.status = "failed";
 
   try {
     const page = await context.newPage();
@@ -753,6 +824,17 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
       const runId = `${comparisonId}-${driver}-${String(sequence).padStart(3, "0")}`;
+      const manifestAction: EvidenceManifestActionSource = {
+        id: action.id,
+        sequence,
+        runId,
+        status: "failed",
+        reporterFiles: [],
+        artifactFiles: [],
+        runDir: path.resolve(options.projectRoot, runOutputDir, runId),
+        requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
+      };
+      manifestLane.actions.push(manifestAction);
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
@@ -781,6 +863,9 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         }
       });
       const outcome = readLaneStepOutcome(result, "Input comparison");
+      manifestAction.status = "completed";
+      manifestAction.reporterFiles = result.reporterFiles;
+      manifestAction.artifactFiles = result.artifactFiles;
       steps.push({
         sequence,
         action,
@@ -793,7 +878,9 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
       });
     }
 
-    return { driver, steps, observation: await captureInputObservation(page, options.observe) };
+    const observation = await captureInputObservation(page, options.observe);
+    manifestLane.status = "completed";
+    return { driver, steps, observation };
   } finally {
     await context.close();
   }
@@ -943,6 +1030,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   const laneOutputDir = path.resolve(options.projectRoot, outputBase, laneId);
   const runOutputDir = path.join(outputBase, laneId);
   const laneFile = path.join(laneOutputDir, "lane.json");
+  const manifestFile = path.join(laneOutputDir, "manifest.json");
   const startedAt = new Date().toISOString();
   const steps: VirtualScreenReaderLaneStep[] = [];
   const observerIds = [
@@ -951,11 +1039,18 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   const judgeIds = [
     ...new Set([...VIRTUAL_READER_LANE_JUDGES, ...(options.additionalJudges ?? [])])
   ];
+  const manifestLane: EvidenceManifestLaneSource = {
+    id: laneId,
+    driver: "portable-virtual-screen-reader",
+    status: "failed",
+    actions: []
+  };
 
   await mkdir(laneOutputDir, { recursive: true });
-  const browserContext = await options.browser.newContext();
+  let browserContext: VirtualScreenReaderLaneContext<TPage> | undefined;
 
   try {
+    browserContext = await options.browser.newContext();
     const page = await browserContext.newPage();
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
     assertAllowedOrigin(page.url(), allowedOrigins);
@@ -964,6 +1059,17 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
     for (const [index, command] of options.commands.entries()) {
       const sequence = index + 1;
       const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
+      const manifestAction: EvidenceManifestActionSource = {
+        id: `command-${sequence}-${command}`,
+        sequence,
+        runId,
+        status: "failed",
+        reporterFiles: [],
+        artifactFiles: [],
+        runDir: path.resolve(options.projectRoot, runOutputDir, runId),
+        requiredArtifactBasenames: VIRTUAL_READER_REQUIRED_ARTIFACTS
+      };
+      manifestLane.actions.push(manifestAction);
       let entry: VirtualScreenReaderEntry | undefined;
       const result = await runAeeOnPage({
         page,
@@ -996,6 +1102,9 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
         throw new Error(`Virtual screen-reader command ${command} produced no transcript entry.`);
       }
       const outcome = readLaneStepOutcome(result);
+      manifestAction.status = "completed";
+      manifestAction.reporterFiles = result.reporterFiles;
+      manifestAction.artifactFiles = result.artifactFiles;
 
       steps.push({
         sequence,
@@ -1032,7 +1141,8 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       transcript,
       laneFile,
       transcriptJsonFile,
-      transcriptTextFile
+      transcriptTextFile,
+      manifestFile
     };
 
     assertValidSchema("virtualScreenReaderLane", laneResult, "virtual screen-reader lane output");
@@ -1045,21 +1155,47 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       ),
       writeFile(laneFile, JSON.stringify(laneResult, null, 2), "utf8")
     ]);
+    manifestLane.status = "completed";
+    await writeEvidenceManifest({
+      assessmentId: laneId,
+      rootDir: laneOutputDir,
+      manifestFile,
+      lanes: [manifestLane],
+      supplementalFiles: [
+        { path: laneFile, kind: "lane-metadata", phase: "lane", laneId },
+        {
+          path: transcriptJsonFile,
+          kind: "screen-reader-transcript",
+          phase: "lane",
+          laneId
+        },
+        {
+          path: transcriptTextFile,
+          kind: "screen-reader-transcript",
+          phase: "lane",
+          laneId
+        }
+      ]
+    });
 
     return laneResult;
   } catch (error) {
+    const failureStatus: "blocked" | "failed" =
+      error instanceof VirtualScreenReaderOriginError ? "blocked" : "failed";
+    manifestLane.status = failureStatus;
     const laneFailure = {
       schemaVersion: "0.1.0",
       laneId,
       driver: "portable-virtual-screen-reader",
       isolation: "dedicated-browser-context",
-      status: error instanceof VirtualScreenReaderOriginError ? "blocked" : "failed",
+      status: failureStatus,
       targetUrl: options.targetUrl,
       allowedOrigins,
       startedAt,
       finishedAt: new Date().toISOString(),
       steps,
       laneFile,
+      manifestFile,
       diagnostics: [error instanceof Error ? error.message : String(error)]
     };
     assertValidSchema(
@@ -1068,9 +1204,16 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       "failed virtual screen-reader lane output"
     );
     await writeFile(laneFile, JSON.stringify(laneFailure, null, 2), "utf8");
+    await writeEvidenceManifest({
+      assessmentId: laneId,
+      rootDir: laneOutputDir,
+      manifestFile,
+      lanes: [manifestLane],
+      supplementalFiles: [{ path: laneFile, kind: "lane-metadata", phase: "lane", laneId }]
+    }).catch(() => undefined);
     throw error;
   } finally {
-    await browserContext.close();
+    await browserContext?.close();
   }
 }
 

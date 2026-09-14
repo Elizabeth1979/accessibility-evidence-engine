@@ -267,7 +267,7 @@ const lane = await runVirtualScreenReaderLane({
 });
 ```
 
-The lane writes `lane.json`, `transcript.json`, and `transcript.txt`, plus one full AEE run directory for every user-selected command. `virtual-screen-reader-lane.schema.json` and `virtual-screen-reader-transcript.schema.json` validate the canonical files.
+The lane writes `lane.json`, `transcript.json`, `transcript.txt`, and a checksummed `manifest.json`, plus one full AEE run directory for every user-selected command. `virtual-screen-reader-lane.schema.json`, `virtual-screen-reader-transcript.schema.json`, and `evidence-manifest.schema.json` validate the canonical files.
 
 ## User-authored pointer and keyboard comparison
 
@@ -308,7 +308,9 @@ const trace = await runInputComparison({
 });
 ```
 
-The result is `interaction-trace.json`, validated by `interaction-comparison.schema.json`. Equivalence and expected-outcome verdicts are separate from each action's Axe/release verdict, so an equivalent interaction cannot conceal an unrelated accessibility failure.
+The result is `interaction-trace.json`, validated by `interaction-comparison.schema.json`, plus `manifest.json`, validated by `evidence-manifest.schema.json`. Equivalence and expected-outcome verdicts are separate from each action's Axe/release verdict, so an equivalent interaction cannot conceal an unrelated accessibility failure.
+
+The manifest indexes the trace, JSON and Markdown reports, run and bundle metadata, and every required before/after focus, DOM, accessibility-tree, viewport, full-page, and Axe artifact. It uses relative paths and SHA-256 checksums. Missing required files remain visible and make the manifest partial.
 
 ## Network example
 

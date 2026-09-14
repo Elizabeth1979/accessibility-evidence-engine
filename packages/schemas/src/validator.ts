@@ -7,6 +7,7 @@ import cliConfigSchema from "../json/cli-config.schema.json";
 import commonSchema from "../json/common.schema.json";
 import evidenceBundleSchema from "../json/evidence-bundle.schema.json";
 import evidenceRecordSchema from "../json/evidence-record.schema.json";
+import evidenceManifestSchema from "../json/evidence-manifest.schema.json";
 import findingSchema from "../json/finding.schema.json";
 import interactionSchema from "../json/interaction.schema.json";
 import interactionComparisonSchema from "../json/interaction-comparison.schema.json";
@@ -41,7 +42,8 @@ const schemaDocuments = {
   virtualScreenReaderTranscript: virtualScreenReaderTranscriptSchema,
   virtualScreenReaderLane: virtualScreenReaderLaneSchema,
   interactionComparison: interactionComparisonSchema,
-  interactionComparisonRequest: interactionComparisonRequestSchema
+  interactionComparisonRequest: interactionComparisonRequestSchema,
+  evidenceManifest: evidenceManifestSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
 
 const schemaTitles: Record<SchemaName, string> = {
@@ -62,7 +64,8 @@ const schemaTitles: Record<SchemaName, string> = {
   virtualScreenReaderTranscript: "AEE portable virtual screen-reader transcript",
   virtualScreenReaderLane: "AEE portable virtual screen-reader lane",
   interactionComparison: "AEE pointer and keyboard interaction comparison",
-  interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request"
+  interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request",
+  evidenceManifest: "AEE evidence manifest"
 };
 
 const ajv = new Ajv2020({

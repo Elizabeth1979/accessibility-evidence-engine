@@ -9,7 +9,7 @@ the repository at the time this document was written.
 - Capture synchronized viewport image, full-page image, DOM, accessibility tree, and deep focus
   state before and after every action.
 - Preserve execution state, ACT-style rule outcome, and policy decision independently.
-- Index immutable evidence in one manifest with checksums, lifecycle, lineage, and privacy.
+- Aggregate the implemented checksummed lane manifests into one scenario-level manifest with full rerun lineage.
 - Produce integrated HTML, JSON, and Markdown reports.
 - Implement CLI-compatible scenario input and `--open` / `--ci` behavior.
 

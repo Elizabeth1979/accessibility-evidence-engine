@@ -89,4 +89,5 @@ test("Melio homepage runs the user-authored pointer and keyboard comparison", as
   expect(result.equivalence.verdict).toBe("pass");
   expect(result.expectation?.verdict).toBe("pass");
   console.log("AEE pointer/keyboard trace:", result.traceFile);
+  console.log("AEE evidence manifest:", result.manifestFile);
 });

@@ -17,6 +17,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Three generated public examples backed by those APIs: palette contrast, hover accessibility, and animation stopping.
 - User-authored pointer and keyboard journey comparisons with separate contexts sharing seeded browser storage and a verified landing URL, per-action synchronized evidence capture, deterministic expected-outcome and equivalence verdicts, and schema-validated interaction traces.
 - A safe Melio homepage comparison that exercises only the declared hover and focus actions while preserving Axe failures separately from interaction equivalence.
+- Schema-validated evidence manifests for pointer, keyboard, and portable-reader lanes, with relative paths, SHA-256 integrity, required-file completeness, action provenance, failure manifests, and privacy-conservative defaults.
 
 ## [0.1.0] - 2026-08-30
 

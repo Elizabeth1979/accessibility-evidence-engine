@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/evidence-manifest.schema.json",
+  "title": "AEE Evidence Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assessmentId",
+    "status",
+    "createdAt",
+    "root",
+    "lanes",
+    "artifacts",
+    "summary",
+    "privacy"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "assessmentId": { "$ref": "./common.schema.json#/$defs/uid" },
+    "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "scenarioDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "profile": { "enum": ["core", "at-fidelity"] },
+    "status": { "enum": ["completed", "partial"] },
+    "createdAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "root": { "const": "." },
+    "lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "driver", "status", "actionIds", "actions"],
+        "properties": {
+          "id": { "$ref": "./common.schema.json#/$defs/uid" },
+          "driver": { "enum": ["pointer", "keyboard", "portable-virtual-screen-reader"] },
+          "status": { "enum": ["completed", "blocked", "failed"] },
+          "actionIds": {
+            "type": "array",
+            "items": { "$ref": "./common.schema.json#/$defs/uid" }
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "sequence", "runId", "status"],
+              "properties": {
+                "id": { "$ref": "./common.schema.json#/$defs/uid" },
+                "sequence": { "type": "integer", "minimum": 1 },
+                "runId": { "$ref": "./common.schema.json#/$defs/uid" },
+                "status": { "enum": ["completed", "blocked", "failed"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "available", "missing", "failed"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "available": { "type": "integer", "minimum": 0 },
+        "missing": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["defaultClassification", "reviewedForSharing", "remoteUploadAuthorized"],
+      "properties": {
+        "defaultClassification": { "const": "sensitive" },
+        "reviewedForSharing": { "const": false },
+        "remoteUploadAuthorized": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "path",
+        "kind",
+        "mediaType",
+        "phase",
+        "status",
+        "provenance",
+        "lifecycle",
+        "privacy"
+      ],
+      "properties": {
+        "id": { "$ref": "./common.schema.json#/$defs/uid" },
+        "path": { "type": "string", "minLength": 1, "pattern": "^(?!/)" },
+        "kind": {
+          "enum": [
+            "viewport-screenshot",
+            "full-page-screenshot",
+            "dom-snapshot",
+            "accessibility-tree",
+            "focus-state",
+            "axe-result",
+            "screen-reader-transcript",
+            "json-report",
+            "markdown-report",
+            "run-metadata",
+            "evidence-bundle",
+            "interaction-trace",
+            "lane-metadata",
+            "custom"
+          ]
+        },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "phase": { "enum": ["before", "after", "action", "lane", "assessment"] },
+        "status": { "enum": ["available", "missing", "failed"] },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "integrity": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "observerId": { "type": "string", "minLength": 1 },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
+            "actionId": { "$ref": "./common.schema.json#/$defs/uid" },
+            "runId": { "$ref": "./common.schema.json#/$defs/uid" },
+            "sequence": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "lifecycle": { "const": "persisted" },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["classification", "redactionStatus", "shareable"],
+          "properties": {
+            "classification": { "const": "sensitive" },
+            "redactionStatus": { "const": "not-reviewed" },
+            "shareable": { "const": false }
+          }
+        },
+        "diagnostics": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "available" } }, "required": ["status"] },
+          "then": { "required": ["byteLength", "integrity"] }
+        },
+        {
+          "if": {
+            "properties": { "status": { "enum": ["missing", "failed"] } },
+            "required": ["status"]
+          },
+          "then": { "required": ["diagnostics"] }
+        }
+      ]
+    }
+  }
+}

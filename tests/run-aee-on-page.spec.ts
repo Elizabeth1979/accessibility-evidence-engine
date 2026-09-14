@@ -438,8 +438,15 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
     await Promise.all([
       access(lane.laneFile!),
       access(lane.transcriptJsonFile!),
-      access(lane.transcriptTextFile!)
+      access(lane.transcriptTextFile!),
+      access(lane.manifestFile!)
     ]);
+    const manifest = JSON.parse(await readFile(lane.manifestFile!, "utf8"));
+    expect(manifest.status).toBe("completed");
+    expect(manifest.summary.missing).toBe(0);
+    expect(
+      manifest.artifacts.every(({ path: filePath }: { path: string }) => !path.isAbsolute(filePath))
+    ).toBe(true);
   } finally {
     await fixtureServer.close();
   }
@@ -477,6 +484,14 @@ test("virtual-reader lane blocks a redirect outside the approved origin and clos
     );
     expect(blockedLane.status).toBe("blocked");
     expect(blockedLane.diagnostics).toEqual([expect.stringMatching(/blocked origin/)]);
+    const blockedManifest = JSON.parse(
+      await readFile(
+        path.join(blockedOutputDir, "reader-lane-blocked-origin", "manifest.json"),
+        "utf8"
+      )
+    );
+    expect(blockedManifest.status).toBe("partial");
+    expect(blockedManifest.lanes[0].status).toBe("blocked");
   } finally {
     await redirector.close();
     await destination.close();
@@ -560,6 +575,13 @@ test("input comparison runs declared pointer and keyboard actions in isolated co
       ).toBe(true);
     }
     await access(comparison.traceFile);
+    await access(comparison.manifestFile);
+    const manifest = JSON.parse(await readFile(comparison.manifestFile, "utf8"));
+    expect(manifest.status).toBe("completed");
+    expect(manifest.summary.available).toBe(33);
+    expect(manifest.artifacts.every(({ integrity }: { integrity?: string }) => integrity)).toBe(
+      true
+    );
   } finally {
     await fixtureServer.close();
   }

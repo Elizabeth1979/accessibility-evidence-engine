@@ -138,6 +138,7 @@ npm run demo:record
 | Release judge           | Policy gate                                                                       | Applies severity, confidence, and unknown-result policy to prior judgments                                                        |
 | Validation              | JSON Schema and YAML scenario planning                                            | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads                                |
 | Reporting               | JSON and Markdown                                                                 | Includes triage, observer coverage, judgments, findings, and artifact summaries                                                   |
+| Evidence manifest       | Relative paths, SHA-256 integrity, provenance, execution status, and privacy      | Indexes required and available lane evidence; omissions make the manifest partial                                                 |
 | AI review routing       | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                               |
 | AI fix proposals        | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun                                    |
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                    |
@@ -167,6 +168,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 ## Known limitations
 
 - The CLI deterministically plans YAML scenarios but currently executes only JSON fixtures; real pages use the Playwright API.
+- Lane runners emit checksummed manifests; one scenario-level orchestrator that combines every lane remains part of the integrated-report work.
 - `runAeeOnPage(...)` evaluates one interaction bundle per call; lane runners compose those calls into per-action journeys.
 - Stabilization is currently a fixed post-interaction delay, not network-idle, animation, or mutation detection.
 - Observer timeout and continue-on-error policy fields exist, but engine-level enforcement is not implemented yet.

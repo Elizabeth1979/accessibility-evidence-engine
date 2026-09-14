@@ -114,6 +114,10 @@ const remediationRegistry = JSON.parse(
   readFileSync("rules/remediation-registry.json", "utf8")
 ) as unknown;
 
+const evidenceManifestExample = JSON.parse(
+  readFileSync("docs/examples/evidence-run-manifest.example.json", "utf8")
+) as unknown;
+
 test("validateSchema accepts a valid CLI config payload", () => {
   const result = validateSchema("cliConfig", {
     projectRoot: "..",
@@ -242,6 +246,7 @@ test("validateSchema accepts an isolated virtual screen-reader lane", () => {
     finishedAt: "2026-09-14T00:00:03.000Z",
     transcriptJsonFile: "/tmp/transcript.json",
     transcriptTextFile: "/tmp/transcript.txt",
+    manifestFile: "/tmp/manifest.json",
     steps: [
       {
         sequence: 1,
@@ -292,6 +297,40 @@ test("validateSchema rejects input actions whose operation is ambiguous", () => 
 
   assert.equal(result.valid, false);
   assert.ok(result.errors.length > 0);
+});
+
+test("validateSchema accepts a checksummed evidence manifest", () => {
+  const result = validateSchema("evidenceManifest", {
+    schemaVersion: "0.1.0",
+    assessmentId: "assessment-001",
+    status: "completed",
+    createdAt: "2026-09-14T00:00:00.000Z",
+    root: ".",
+    lanes: [
+      {
+        id: "keyboard-lane",
+        driver: "keyboard",
+        status: "completed",
+        actionIds: [],
+        actions: []
+      }
+    ],
+    artifacts: [],
+    summary: { total: 0, available: 0, missing: 0, failed: 0 },
+    privacy: {
+      defaultClassification: "sensitive",
+      reviewedForSharing: false,
+      remoteUploadAuthorized: false
+    }
+  });
+
+  assert.deepEqual(result, { valid: true, errors: [] });
+});
+
+test("validateSchema accepts the documented evidence manifest example", () => {
+  const result = validateSchema("evidenceManifest", evidenceManifestExample);
+
+  assert.deepEqual(result, { valid: true, errors: [] });
 });
 
 test("validateSchema accepts a valid evidence bundle payload", () => {

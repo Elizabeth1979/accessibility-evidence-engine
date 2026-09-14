@@ -18,7 +18,8 @@ export const schemaCatalog = {
   virtualScreenReaderTranscript: "json/virtual-screen-reader-transcript.schema.json",
   virtualScreenReaderLane: "json/virtual-screen-reader-lane.schema.json",
   interactionComparison: "json/interaction-comparison.schema.json",
-  interactionComparisonRequest: "json/interaction-comparison-request.schema.json"
+  interactionComparisonRequest: "json/interaction-comparison-request.schema.json",
+  evidenceManifest: "json/evidence-manifest.schema.json"
 } as const;
 
 export type SchemaName = keyof typeof schemaCatalog;

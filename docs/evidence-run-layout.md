@@ -131,6 +131,8 @@ See the [manifest example](examples/evidence-run-manifest.example.json).
 
 ## Artifact rules
 
+The current pointer/keyboard and portable-reader lane runners write a schema-validated `manifest.json`. Every indexed path is relative to the assessment directory and receives SHA-256 integrity, byte length, lane/action/run provenance, lifecycle, and conservative privacy metadata. Each action declares its required artifact basenames; absent files are recorded as `missing`, failed inspections as `failed`, and either condition makes the manifest `partial`. Paths outside the assessment root are rejected. The manifest does not hash itself.
+
 - The canonical manifest indexes immutable artifacts with relative path, media type, SHA-256,
   provenance, lifecycle, lineage, and per-artifact privacy classification.
 - Every binary has a JSON sidecar. Transcript JSON is canonical; TXT and WebVTT are projections.

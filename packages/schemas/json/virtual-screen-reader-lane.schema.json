@@ -40,6 +40,7 @@
     "laneFile": { "type": "string", "minLength": 1 },
     "transcriptJsonFile": { "type": "string", "minLength": 1 },
     "transcriptTextFile": { "type": "string", "minLength": 1 },
+    "manifestFile": { "type": "string", "minLength": 1 },
     "diagnostics": {
       "type": "array",
       "minItems": 1,
@@ -106,7 +107,7 @@
     {
       "if": { "properties": { "status": { "const": "completed" } } },
       "then": {
-        "required": ["transcript", "transcriptJsonFile", "transcriptTextFile"],
+        "required": ["transcript", "transcriptJsonFile", "transcriptTextFile", "manifestFile"],
         "properties": { "steps": { "minItems": 1 } }
       }
     },

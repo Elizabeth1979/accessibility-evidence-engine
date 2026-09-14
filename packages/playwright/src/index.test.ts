@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import {
   resolveObserverIdsForCapturePolicy,
   runAeeOnPage,
   runInputComparison,
+  writeEvidenceManifest,
   verifyMotionControl,
   type PlaywrightPageLike
 } from "./index";
@@ -218,8 +219,131 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
     assert.equal(closedContexts, 3);
     const storedTrace = JSON.parse(await readFile(result.traceFile, "utf8"));
     assert.equal(storedTrace.initialState.strategy, "shared-playwright-storage-state");
+    const storedManifest = JSON.parse(await readFile(result.manifestFile, "utf8"));
+    assert.equal(storedManifest.status, "completed");
+    assert.ok(storedManifest.artifacts.every(({ integrity }: { integrity?: string }) => integrity));
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("writeEvidenceManifest hashes available files and marks required omissions", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-manifest-"));
+  const runDir = path.join(tempRoot, "run-001");
+  const artifactDir = path.join(runDir, "artifacts");
+  await mkdir(artifactDir, { recursive: true });
+  const reportFile = path.join(runDir, "aee-report.json");
+  const focusFile = path.join(artifactDir, "focus-before.json");
+  await Promise.all([
+    writeFile(reportFile, "{}", "utf8"),
+    writeFile(path.join(runDir, "aee-report.md"), "# Report", "utf8"),
+    writeFile(focusFile, '{"role":"button"}', "utf8"),
+    writeFile(path.join(runDir, "run.json"), "{}", "utf8"),
+    writeFile(path.join(runDir, "bundle.json"), "{}", "utf8")
+  ]);
+
+  try {
+    const { manifest, manifestFile } = await writeEvidenceManifest({
+      assessmentId: "manifest-test",
+      rootDir: tempRoot,
+      lanes: [
+        {
+          id: "keyboard-lane",
+          driver: "keyboard",
+          status: "completed",
+          actions: [
+            {
+              id: "focus-save",
+              sequence: 1,
+              runId: "run-001",
+              status: "completed",
+              reporterFiles: [reportFile],
+              artifactFiles: [focusFile],
+              requiredArtifactBasenames: ["focus-before.json", "axe-after.json"]
+            }
+          ]
+        }
+      ]
+    });
+
+    assert.equal(manifest.status, "partial");
+    assert.equal(manifest.summary.available, 5);
+    assert.equal(manifest.summary.missing, 1);
+    assert.equal(
+      manifest.artifacts.find(({ path: filePath }) => filePath.endsWith("axe-after.json"))?.status,
+      "missing"
+    );
+    const focus = manifest.artifacts.find(({ path: filePath }) =>
+      filePath.endsWith("focus-before.json")
+    );
+    assert.match(focus?.integrity ?? "", /^sha256:[a-f0-9]{64}$/);
+    assert.equal(path.isAbsolute(focus?.path ?? ""), false);
+    assert.equal(
+      JSON.parse(await readFile(manifestFile, "utf8")).privacy.reviewedForSharing,
+      false
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("writeEvidenceManifest refuses files outside the assessment root", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-manifest-root-"));
+  try {
+    await assert.rejects(
+      () =>
+        writeEvidenceManifest({
+          assessmentId: "unsafe-manifest-test",
+          rootDir: tempRoot,
+          lanes: [
+            {
+              id: "pointer-lane",
+              driver: "pointer",
+              status: "completed",
+              actions: []
+            }
+          ],
+          supplementalFiles: [{ path: path.resolve(tempRoot, "../outside.json") }]
+        }),
+      /must remain inside its root/
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("writeEvidenceManifest does not follow evidence symlinks", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-manifest-symlink-"));
+  const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "aee-manifest-outside-"));
+  const outsideFile = path.join(outsideRoot, "private.json");
+  const linkedFile = path.join(tempRoot, "linked.json");
+  await writeFile(outsideFile, '{"secret":"not-indexed"}', "utf8");
+  await symlink(outsideFile, linkedFile);
+
+  try {
+    const { manifest } = await writeEvidenceManifest({
+      assessmentId: "symlink-manifest-test",
+      rootDir: tempRoot,
+      lanes: [
+        {
+          id: "pointer-lane",
+          driver: "pointer",
+          status: "completed",
+          actions: []
+        }
+      ],
+      supplementalFiles: [{ path: linkedFile }]
+    });
+
+    assert.equal(manifest.status, "partial");
+    assert.equal(manifest.artifacts[0]?.status, "failed");
+    assert.equal(manifest.artifacts[0]?.integrity, undefined);
+    assert.deepEqual(manifest.artifacts[0]?.diagnostics, ["Symbolic-link evidence is not read."]);
+  } finally {
+    await Promise.all([
+      rm(tempRoot, { recursive: true, force: true }),
+      rm(outsideRoot, { recursive: true, force: true })
+    ]);
   }
 });
 

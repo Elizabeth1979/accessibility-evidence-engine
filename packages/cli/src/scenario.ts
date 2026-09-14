@@ -137,7 +137,7 @@ const CORE_CAPABILITIES: ScenarioCapability[] = [
     "available"
   ),
   capability("interaction-video", "Interaction video and sidecar", "passive-observer", "planned"),
-  capability("evidence-manifest", "Checksummed evidence manifest", "reporter", "planned"),
+  capability("evidence-manifest", "Checksummed evidence manifest", "reporter", "available"),
   capability(
     "integrated-report",
     "Integrated HTML, JSON, and Markdown report",

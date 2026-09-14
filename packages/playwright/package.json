@@ -18,6 +18,9 @@
     "dist/index.js",
     "dist/index.js.map",
     "dist/index.d.ts",
+    "dist/evidence-manifest.js",
+    "dist/evidence-manifest.js.map",
+    "dist/evidence-manifest.d.ts",
     "dist/virtual-screen-reader.js",
     "dist/virtual-screen-reader.js.map",
     "dist/virtual-screen-reader.d.ts"
