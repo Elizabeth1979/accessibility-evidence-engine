@@ -753,20 +753,6 @@ function renderIntegratedHtml(
       report.completeness.missingArtifacts -
       report.completeness.failedArtifacts
   );
-  const scoreCards = [
-    ["Overall result", report.verdict.toUpperCase(), `${report.summary.failed} failed actions`],
-    [
-      "Release gates passed",
-      `${report.summary.passed}/${report.summary.actions}`,
-      `${report.summary.failed} blocked, ${report.summary.unknown} need review`
-    ],
-    ["Unique findings", String(report.summary.findings), "Consolidated across actions"],
-    [
-      "Evidence available",
-      `${availableArtifacts}/${report.summary.artifacts}`,
-      report.completeness.status
-    ]
-  ] as const;
   const tabLinks = [
     ["overview", "Overview"],
     ["actions", `Actions (${report.summary.actions})`],
@@ -779,14 +765,87 @@ function renderIntegratedHtml(
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Accessibility evidence report: ${escapeHtml(report.scenarioId)}</title>
 <style>
-:root{color-scheme:light;--ink:#14201b;--muted:#52645c;--surface:#fff;--canvas:#f4f7f5;--line:#cad7d1;--brand:#096c50;--brand-dark:#063f31;--pass:#087443;--fail:#a31d2d;--unknown:#765900;--focus:#ffbf47}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font:16px/1.55 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:var(--canvas)}a{color:#075b42;text-underline-offset:.18em}a:hover{text-decoration-thickness:2px}a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:3px}.skip-link{position:absolute;left:1rem;top:-5rem;background:#fff;color:#000;padding:.75rem 1rem;z-index:10}.skip-link:focus{top:1rem}.report-header{background:var(--brand-dark);color:#fff;padding:clamp(2rem,5vw,4rem) max(1.25rem,calc((100vw - 1180px)/2))}.report-header a{color:#b9ffe7}.eyebrow{margin:0 0 .5rem;text-transform:uppercase;letter-spacing:.1em;font-weight:750;color:#9ff4d2}.report-header h1{max-width:18ch;margin:.25rem 0;font-size:clamp(2rem,5vw,4rem);line-height:1.05}.lede{max-width:70ch;font-size:1.1rem}.header-links{display:flex;flex-wrap:wrap;gap:.75rem 1.25rem;margin-top:1.5rem}.page-shell{max-width:1180px;margin:auto;padding:1.5rem}.score-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin:-3rem 0 1.5rem}.score-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:1.15rem;box-shadow:0 6px 20px rgb(18 54 42/.08)}.score-card span,.score-card small{display:block}.score-card span{color:var(--muted);font-weight:650}.score-card strong{display:block;margin:.2rem 0;font-size:clamp(1.6rem,4vw,2.35rem);line-height:1}.score-card small{color:var(--muted)}.score-card.fail strong,.badge.fail{color:var(--fail)}.score-card.pass strong,.badge.pass{color:var(--pass)}.score-card.unknown strong,.badge.unknown{color:var(--unknown)}.score-note{color:var(--muted);max-width:80ch}.report-tabs{display:flex;gap:.35rem;overflow-x:auto;margin:1.5rem 0 0;padding:.35rem;border:1px solid var(--line);border-radius:12px;background:#e7efeb}.report-tabs a{flex:0 0 auto;padding:.7rem .9rem;border-radius:8px;color:var(--ink);font-weight:700;text-decoration:none}.report-tabs a[aria-selected="true"]{color:#fff;background:var(--brand-dark)}.tab-panel{scroll-margin-top:1rem}.tabs-ready .tab-panel[hidden]{display:none}.panel,.result-card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:clamp(1rem,3vw,1.5rem);margin:1rem 0}.panel>h2:first-child,.result-card>h3:first-child{margin-top:0}.notice{border-left:6px solid #b36b00}.ai{border-left:6px solid #5367d8}.badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:.12rem .55rem;font-size:.82rem;font-weight:800;text-transform:uppercase}.card-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem}.metrics{display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;color:var(--muted)}dl.meta{display:grid;grid-template-columns:max-content 1fr;gap:.4rem 1rem}dt{font-weight:750}dd{margin:0;overflow-wrap:anywhere}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px}caption{text-align:left;font-weight:700;padding:.5rem 0}th,td{padding:.7rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#edf3f0}code,pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#eef4f1;border-radius:6px;padding:.2rem .35rem}pre{padding:1rem;max-height:34rem;overflow:auto}details{margin:.8rem 0;border-top:1px solid var(--line);padding-top:.75rem}summary{cursor:pointer;font-weight:700}.finding-list,.file-list{padding-left:1.25rem}.finding-list li,.file-list li{margin:.55rem 0}.rule{border-left:4px solid var(--line);padding:.15rem 0 .15rem 1rem;margin:1rem 0}.rule.critical,.rule.serious{border-color:var(--fail)}.rule.review,.rule.moderate,.rule.minor{border-color:var(--unknown)}.media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:1rem}img,video{display:block;max-width:100%;height:auto;border:1px solid #8da49a;border-radius:8px;background:#000}figure{margin:0}figcaption{margin:.5rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem}.empty{color:var(--muted);font-style:italic}@media(max-width:600px){.page-shell{padding:1rem}.score-grid{margin:-2rem 0 1rem}dl.meta{grid-template-columns:1fr;gap:.1rem}dd{margin-bottom:.6rem}}@media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000;padding:1rem 0}.report-header a{color:#075b42}.page-shell{max-width:none}.score-grid{margin:0}.panel,.result-card,.score-card{break-inside:avoid;box-shadow:none}}
+:root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--focus:#f6b73c;--serif:Charter,"Bitstream Charter","Sitka Text",Cambria,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scrollbar-color:var(--line-strong) var(--wash)}
+body{margin:0;font:16px/1.6 var(--sans);color:var(--ink);background:var(--paper);font-variant-numeric:tabular-nums}
+::selection{color:#fff;background:var(--forest)}
+a{color:#086246;text-decoration-thickness:1px;text-underline-offset:.22em}
+a:hover{text-decoration-thickness:2px}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:2px}
+.skip-link{position:absolute;left:1rem;top:-5rem;background:#fff;color:#000;padding:.75rem 1rem;z-index:10}
+.skip-link:focus{top:1rem}
+.report-header{color:var(--forest-deep);background:#e1eee8;border-bottom:1px solid var(--line-strong)}
+.header-inner{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(18rem,.8fr);gap:clamp(2rem,7vw,7rem);max-width:1220px;margin:auto;padding:clamp(2.5rem,6vw,5.5rem) 1.5rem clamp(2rem,5vw,4rem)}
+.report-header h1{max-width:12ch;margin:0;font:700 clamp(3rem,7vw,6rem)/.94 var(--serif);letter-spacing:-.035em;text-wrap:balance}
+.lede{max-width:58ch;margin:1.5rem 0 0;font-size:clamp(1.05rem,2vw,1.25rem);color:#29493f}
+.header-meta{align-self:end;border-top:1px solid var(--line-strong);padding-top:1rem}
+.header-meta dt{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#496159}
+.header-meta dd{margin:0 0 1rem;font-weight:650}
+.header-links{display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;max-width:1220px;margin:auto;padding:0 1.5rem 1.5rem;border-top:1px solid rgb(18 61 49/.15)}
+.header-links a{padding-top:1rem;color:var(--forest-deep);font-weight:700}
+.page-shell{max-width:1220px;margin:auto;padding:clamp(1.5rem,4vw,3.5rem) 1.5rem 5rem}
+.scoreboard{display:grid;grid-template-columns:minmax(16rem,.8fr) minmax(0,1.8fr);background:var(--forest-deep);color:#fff;border-radius:16px;overflow:hidden}
+.score-primary{padding:clamp(1.5rem,4vw,3rem);background:var(--forest)}
+.score-primary p{margin:.25rem 0;color:#d7e9e2}
+.score-primary .score-label{margin:0;font:750 1rem/1.4 var(--sans);color:var(--mint)}
+.score-primary strong{display:block;margin:.2rem 0;font:750 clamp(3.25rem,7vw,5.5rem)/1 var(--serif);letter-spacing:-.035em}
+.score-primary.fail strong{color:#ffafbb}.score-primary.pass strong{color:#91e4c1}.score-primary.unknown strong{color:#f3d47c}
+.score-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0;padding:clamp(1.5rem,4vw,3rem)}
+.score-facts div{padding:0 clamp(1rem,3vw,2rem);border-left:1px solid rgb(255 255 255/.2)}
+.score-facts div:first-child{border-left:0}
+.score-facts dt{color:#b7cbc4;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase}
+.score-facts dd{margin:.25rem 0 0;font:700 clamp(1.65rem,3vw,2.65rem)/1 var(--serif);white-space:nowrap}
+.score-facts small{display:block;margin-top:.6rem;color:#d7e2de;font:400 .86rem/1.35 var(--sans);white-space:normal}
+.score-note{max-width:72ch;margin:1rem 0 2.5rem;color:var(--muted)}
+.report-tabs{display:flex;gap:1.5rem;overflow-x:auto;border-bottom:1px solid var(--line-strong);scrollbar-width:thin}
+.report-tabs a{flex:0 0 auto;padding:.9rem .1rem .75rem;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;text-decoration:none}
+.report-tabs a:hover{color:var(--forest-deep);border-color:var(--line)}
+.report-tabs a[aria-selected="true"]{color:var(--forest-deep);border-color:var(--forest)}
+.tab-panel{scroll-margin-top:1rem;padding-top:clamp(1.5rem,4vw,3rem)}
+.tab-panel>h2{max-width:22ch;margin:0 0 .5rem;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em;text-wrap:balance}
+.tab-panel>h2+p{max-width:72ch;color:var(--muted)}
+.tabs-ready .tab-panel[hidden]{display:none}
+.panel{padding:clamp(1.25rem,3vw,2rem) 0;margin:1.5rem 0;border-top:1px solid var(--line-strong)}
+.panel>h3:first-child{margin-top:0}
+.result-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:clamp(1.15rem,3vw,1.75rem);margin:1rem 0}
+.result-card>h3:first-child{margin-top:0}
+.notice-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2rem}
+.notice,.ai{border-top-color:var(--unknown)}
+.ai{border-top-color:#5367d8}
+.badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:.12rem .55rem;font-size:.75rem;line-height:1.4;font-weight:800;letter-spacing:.035em;text-transform:uppercase}
+.badge.fail{color:var(--fail);background:var(--fail-wash)}.badge.pass{color:var(--pass);background:#eaf8f1}.badge.unknown{color:var(--unknown);background:var(--unknown-wash)}
+.card-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem}
+.card-heading h3{margin:.1rem 0;font:700 clamp(1.3rem,3vw,1.75rem)/1.15 var(--serif)}
+.technical-id{color:var(--muted);font:400 .78rem/1.4 var(--mono)}
+.metrics{display:flex;flex-wrap:wrap;gap:.4rem 1.5rem;color:var(--muted)}
+dl.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.5rem 1.5rem;max-width:58rem}
+dt{font-weight:750}dd{margin:0;overflow-wrap:anywhere}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+caption{text-align:left;font-weight:700;padding:.75rem 1rem;background:var(--wash)}
+th,td{padding:.8rem 1rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+tbody tr:last-child td{border-bottom:0}th{background:#f3f6f4;color:#34463f;font-size:.82rem;letter-spacing:.025em}
+code,pre{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--wash);border-radius:4px;padding:.2rem .35rem;font-family:var(--mono)}
+pre{padding:1.25rem;max-height:34rem;overflow:auto;border:1px solid var(--line);line-height:1.65}
+details{margin:.8rem 0;border-top:1px solid var(--line);padding-top:.75rem}
+summary{cursor:pointer;font-weight:700}
+.finding-list,.file-list{padding-left:1.35rem}.finding-list li,.file-list li{margin:.7rem 0}.finding-list li::marker{color:var(--fail);font-weight:800}
+.rule{padding:1rem 0;margin:1rem 0;border-top:1px solid var(--line)}
+.rule:first-of-type{border-top-color:var(--line-strong)}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:1.5rem}
+img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
+figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
+@media(max-width:780px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{padding:1.5rem}.score-facts div{padding:0 1rem}.notice-grid{grid-template-columns:1fr;gap:0}}
+@media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child{padding:1rem 0;border-left:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
+@media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
-<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><p class="eyebrow">Accessibility Evidence Engine</p><h1>Accessibility evidence report</h1><p class="lede">${escapeHtml(report.goal)}</p><p>Target: <a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a> · ${escapeHtml(report.standard)}</p><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Checksummed manifest</a><a href="${encodeURI(report.files.json)}">Raw JSON report</a><a href="${encodeURI(report.files.markdown)}">Markdown report</a></nav></header>
-<main id="report-content" class="page-shell"><section aria-labelledby="score-heading"><h2 id="score-heading">Overall result</h2><div class="score-grid">${scoreCards.map(([label, value, detail], index) => `<article class="score-card ${index === 0 ? report.verdict : ""}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(detail)}</small></article>`).join("")}</div><p class="score-note">These are transparent result and completeness counts, not an automated WCAG conformance percentage. Missing evidence never becomes a pass.</p></section>
+<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>Accessibility evidence report</h1><p class="lede">${escapeHtml(report.goal)}</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Checksummed manifest</a><a href="${encodeURI(report.files.json)}">Raw JSON report</a><a href="${encodeURI(report.files.markdown)}">Markdown report</a></nav></header>
+<main id="report-content" class="page-shell"><section class="scoreboard" aria-labelledby="score-heading"><div class="score-primary ${report.verdict}"><h2 class="score-label" id="score-heading">Overall result</h2><strong>${escapeHtml(report.verdict.toUpperCase())}</strong><p>${report.summary.failed} of ${report.summary.actions} action release gates blocked</p></div><dl class="score-facts"><div><dt>Release gates passed</dt><dd>${report.summary.passed}/${report.summary.actions}<small>${report.summary.unknown} need review</small></dd></div><div><dt>Unique findings</dt><dd>${report.summary.findings}<small>Consolidated across actions</small></dd></div><div><dt>Evidence available</dt><dd>${availableArtifacts}/${report.summary.artifacts}<small>${escapeHtml(report.completeness.status)}</small></dd></div></dl></section><p class="score-note">Transparent result and completeness counts—not an automated WCAG conformance percentage. Missing evidence never becomes a pass.</p>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><h2>Overview</h2><section class="panel"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Completed lanes</dt><dd>${report.completeness.completedLanes} of ${report.completeness.plannedLanes}</dd></dl></section>
 <section class="panel"><h3>Consolidated findings</h3>${report.findings.length ? `<ol class="finding-list">${report.findings.map((finding) => `<li><strong>${escapeHtml(String(finding.ruleId ?? finding.id ?? "Finding"))}</strong><p>${escapeHtml(String(finding.message ?? "No message."))}</p>${finding.suggestedFix ? `<p><strong>Suggested next step:</strong> ${escapeHtml(String(finding.suggestedFix))}</p>` : ""}</li>`).join("")}</ol>` : '<p class="empty">No findings were emitted.</p>'}</section>
-<section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></section>
+<div class="notice-grid"><section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></div></section>
 <section id="panel-actions" class="tab-panel" data-tab-panel><h2>Individual action reports</h2><p>Each card translates one machine-readable action report into judgments and observer notes. Raw JSON remains available for audit and tooling.</p>${renderActionReportViews(views.actionReports)}</section>
 <section id="panel-axe" class="tab-panel" data-tab-panel><h2>Axe reports</h2><p>Axe results are shown per authored action. Violations and incomplete checks are separate; incomplete results require review and are not passes.</p>${renderAxeReportViews(views.axeReports)}</section>
 <section id="panel-reader" class="tab-panel" data-tab-panel><h2>Virtual screen-reader transcript</h2><p>This portable transcript is correlated with DOM, accessibility-tree, visual, and focus evidence. It is not VoiceOver or NVDA output.</p>${views.transcripts.length ? views.transcripts.map((transcript) => `<article class="result-card"><h3>${escapeHtml(humanFileName(transcript.path))}</h3><pre>${escapeHtml(transcript.content)}</pre><p><a class="raw-link" href="${encodeURI(transcript.path)}">Open transcript file</a></p></article>`).join("") : '<p class="empty">No virtual-reader transcript was requested.</p>'}</section>
@@ -828,7 +887,7 @@ function renderActionReportViews(views: ActionReportView[]): string {
             `<tr><td>${escapeHtml(judgment.judgeId)}</td><td><span class="badge ${judgment.verdict}">${escapeHtml(judgment.verdict)}</span></td><td>${escapeHtml(judgment.summary)}${judgment.suggestedFix ? `<br><strong>Suggested next step:</strong> ${escapeHtml(judgment.suggestedFix)}` : ""}</td></tr>`
         )
         .join("");
-      return `<article class="result-card"><div class="card-heading"><h3>${escapeHtml(action.actionId)}</h3><span class="badge ${action.releaseVerdict}">${escapeHtml(action.releaseVerdict)}</span></div><p class="metrics"><span><strong>Lane:</strong> ${escapeHtml(action.driver)}</span><span><strong>Checks:</strong> ${action.results.pass} passed, ${action.results.fail} failed, ${action.results.unknown} unknown</span></p>${readError ? `<p class="notice"><strong>Report could not be summarized:</strong> ${escapeHtml(readError)}</p>` : `<div class="table-wrap"><table><caption>Judgments for ${escapeHtml(action.actionId)}</caption><thead><tr><th scope="col">Judge</th><th scope="col">Result</th><th scope="col">Explanation</th></tr></thead><tbody>${judgmentRows}</tbody></table></div><details><summary>${observerSummaries.length} observer capture notes</summary><ul>${observerSummaries.map((summary) => `<li>${escapeHtml(summary)}</li>`).join("")}</ul></details>`}<p><a class="raw-link" href="${encodeURI(action.reportPath)}">View raw action JSON</a></p></article>`;
+      return `<article class="result-card"><div class="card-heading"><div><h3>${escapeHtml(humanActionName(action.actionId))}</h3><div class="technical-id">${escapeHtml(action.actionId)}</div></div><span class="badge ${action.releaseVerdict}">${escapeHtml(action.releaseVerdict)}</span></div><p class="metrics"><span><strong>Lane:</strong> ${escapeHtml(humanDriverName(action.driver))}</span><span><strong>Checks:</strong> ${action.results.pass} passed, ${action.results.fail} failed, ${action.results.unknown} unknown</span></p>${readError ? `<p class="notice"><strong>Report could not be summarized:</strong> ${escapeHtml(readError)}</p>` : `<div class="table-wrap"><table><caption>Judgments for ${escapeHtml(humanActionName(action.actionId))}</caption><thead><tr><th scope="col">Judge</th><th scope="col">Result</th><th scope="col">Explanation</th></tr></thead><tbody>${judgmentRows}</tbody></table></div><details><summary>${observerSummaries.length} observer capture notes</summary><ul>${observerSummaries.map((summary) => `<li>${escapeHtml(summary)}</li>`).join("")}</ul></details>`}<p><a class="raw-link" href="${encodeURI(action.reportPath)}">View raw action JSON</a></p></article>`;
     })
     .join("");
 }
@@ -871,7 +930,7 @@ function renderAxeReportViews(views: AxeReportView[]): string {
         rules.length
           ? `<section><h4>${escapeHtml(label)}</h4>${rules.map(renderAxeRule).join("")}</section>`
           : `<p class="empty">No ${escapeHtml(label.toLowerCase())}.</p>`;
-      return `<details class="result-card"><summary><span>${escapeHtml(view.actionId)}</span> <span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span></summary>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
+      return `<details class="result-card"><summary><span>${escapeHtml(humanActionName(view.actionId))}</span> <span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span></summary><div class="technical-id">${escapeHtml(view.actionId)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
     })
     .join("");
   return `<section class="panel"><h3>Unique rules across checkpoints</h3><p>Repeated page-level results are consolidated here. “Reports” shows how many after-action Axe runs contained the rule; “Nodes” is the largest affected-node count in one run.</p><div class="table-wrap"><table><caption>Consolidated Axe rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Result</th><th scope="col">Reports</th><th scope="col">Nodes</th><th scope="col">Guidance</th></tr></thead><tbody>${consolidatedRows}</tbody></table></div></section><section aria-labelledby="individual-axe-heading"><h3 id="individual-axe-heading">Individual Axe reports</h3><p>Expand a checkpoint to review its full rule summary.</p>${individualReports}</section>`;
@@ -917,6 +976,16 @@ function humanFileName(filePath: string): string {
     .basename(filePath)
     .replaceAll("-", " ")
     .replace(/\.[^.]+$/, "");
+}
+
+function humanActionName(actionId: string): string {
+  const words = actionId.replace(/^command-\d+-/, "").replaceAll("-", " ");
+  return words.length > 0 ? `${words[0]!.toUpperCase()}${words.slice(1)}` : "Action";
+}
+
+function humanDriverName(driver: ScenarioActionReport["driver"]): string {
+  if (driver === "portable-virtual-screen-reader") return "Portable virtual screen reader";
+  return driver === "keyboard" ? "Keyboard" : "Pointer";
 }
 
 function artifactKindLabel(kind: string): string {
