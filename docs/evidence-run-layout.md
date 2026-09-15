@@ -29,7 +29,14 @@ The editable Mermaid source is
    evidence, WCAG mappings, deterministic detection, the few allowlisted AI questions, and
    verification. AI output is clearly labeled, evidence-citing, provider-neutral, and advisory.
 6. **Publish one integrated report.** HTML is the primary review surface; JSON is canonical for
-   tools; Markdown works in GitHub. Findings link to raw evidence rather than copying it.
+   tools; Markdown works in GitHub. The HTML report presents transparent overall metrics and
+   keyboard-operable Overview, Actions, Axe, Screen reader, Media, and Evidence files tabs.
+   Individual machine-readable reports are summarized in place and remain linked as raw evidence.
+
+The overall result is a release-policy verdict, not an automated WCAG percentage. Its scorecard
+shows the exact number of action release gates passed, unique findings, and available artifacts.
+The tabs use progressive enhancement: without JavaScript they remain ordinary in-page links and all
+sections remain readable; with JavaScript they follow the ARIA tab keyboard pattern.
 
 ## Active drivers and passive observers
 

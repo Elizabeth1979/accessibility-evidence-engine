@@ -25,6 +25,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - A scenario-level manifest that validates child manifests and re-hashes all indexed evidence with action provenance and completeness kept separate from the accessibility verdict.
 - Deterministic portable-reader cross-evidence judgments that require focus separation, same-checkpoint DOM/AOM role-name-level agreement, non-zero rendered bounds, and full-page visual evidence; missing inputs remain unknown and semantic contradictions fail.
 - A deterministic role-aware keyboard matrix for user-authored actions, including activation-key filtering, orientation-aware composite navigation, Home/End endpoints, automatic keyboard judging in isolated input lanes, and explicit `unknown` results for unsupported or context-dependent combinations.
+- An accessible tabbed HTML review surface with a transparent overall scorecard, readable per-action judgments, consolidated and per-checkpoint Axe summaries, transcripts, media, categorized evidence files, progressive enhancement, and secondary raw JSON links.
 
 ## [0.1.0] - 2026-08-30
 

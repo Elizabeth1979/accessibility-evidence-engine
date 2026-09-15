@@ -2,7 +2,9 @@ import { access, readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import { compileScenarioPlan, executeScenario, loadScenario } from "@aee/cli";
@@ -31,7 +33,8 @@ async function startHtmlServer(
 }
 
 test("executeScenario integrates an approved real-page lane into one complete report", async ({
-  browser
+  browser,
+  page
 }, testInfo) => {
   const server = await startHtmlServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -98,7 +101,51 @@ approval:
     expect(report.ai.present).toBe(false);
     expect(html).toContain("<video controls");
     expect(html).toContain("Virtual screen-reader transcript");
+    expect(html).toContain('data-tab-list aria-label="Report sections"');
+    expect(html).toContain("Individual action reports");
+    expect(html).toContain("View raw action JSON");
     await access(result.manifestFile);
+
+    await page.goto(pathToFileURL(result.reportFiles.html).href);
+    const tabs = page.getByRole("tab");
+    await expect(tabs).toHaveCount(6);
+    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    await expect(page.getByRole("heading", { name: "Assessment scope" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Individual action reports" })).toBeHidden();
+
+    const actionsTab = page.getByRole("tab", { name: /Actions/ });
+    await actionsTab.click();
+    await expect(actionsTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("heading", { name: "Individual action reports" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "View raw action JSON" })).toBeVisible();
+
+    await actionsTab.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: /Axe/ })).toBeFocused();
+    await expect(page.getByRole("heading", { name: "Axe reports", exact: true })).toBeVisible();
+
+    const accessibility = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"])
+      .analyze();
+    expect(
+      accessibility.violations.filter(({ impact }) => impact === "critical" || impact === "serious")
+    ).toEqual([]);
+
+    const noScriptContext = await browser.newContext({ javaScriptEnabled: false });
+    try {
+      const noScriptPage = await noScriptContext.newPage();
+      await noScriptPage.goto(pathToFileURL(result.reportFiles.html).href);
+      await expect(
+        noScriptPage.getByRole("heading", { name: "Individual action reports" })
+      ).toBeVisible();
+      await expect(
+        noScriptPage.getByRole("heading", { name: "Axe reports", exact: true })
+      ).toBeVisible();
+    } finally {
+      await noScriptContext.close();
+    }
   } finally {
     await server.close();
   }
