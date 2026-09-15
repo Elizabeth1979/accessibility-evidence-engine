@@ -465,6 +465,18 @@ test("validateSchema accepts an integrated scenario report", () => {
     ],
     actions: [],
     findings: [],
+    synthesis: {
+      conclusion: "The authored reader command passed cross-evidence validation.",
+      directJudgments: { passed: 1, failed: 0, unknown: 0 },
+      releaseGates: { passed: 1, failed: 0, unknown: 0 },
+      findingOccurrences: 0,
+      incompleteRuleResults: 0,
+      uniqueIncompleteRules: [],
+      lanes: [],
+      comparisons: [],
+      reader: { commands: 1, passed: 1, failed: 0, unknown: 0 },
+      findings: []
+    },
     artifacts: [],
     diagnostics: [],
     files: {

@@ -68,6 +68,7 @@ export interface ScenarioIntegratedReport {
   journeys: Array<{ id: string; name: string; goal: string; startUrl: string }>;
   actions: ScenarioActionReport[];
   findings: Array<Record<string, unknown>>;
+  synthesis: ScenarioSynthesis;
   artifacts: Array<Record<string, unknown>>;
   diagnostics: string[];
   files: {
@@ -118,12 +119,17 @@ interface AxeRuleView {
   helpUrl?: string;
   nodeCount: number;
   targets: string[];
+  htmlSamples: string[];
+  tags: string[];
   failureSummary?: string;
+  failureSummaries: string[];
 }
 
 interface AxeReportView {
   path: string;
   actionId: string;
+  laneId: string;
+  runId: string;
   violations: AxeRuleView[];
   incomplete: AxeRuleView[];
   passes: number;
@@ -131,10 +137,104 @@ interface AxeReportView {
   readError?: string;
 }
 
+interface InputComparisonView {
+  path: string;
+  comparisonId: string;
+  name: string;
+  status: string;
+  isolation: string;
+  equivalence: { verdict: "pass" | "fail" | "unknown"; summary: string };
+  expectation: { verdict: "pass" | "fail" | "unknown"; summary: string };
+  pointer: { actionIds: string[]; url?: string; visible?: boolean; text?: string };
+  keyboard: { actionIds: string[]; url?: string; visible?: boolean; text?: string };
+  readError?: string;
+}
+
+interface ReaderEntryView {
+  sequence: number;
+  command: string;
+  announcement: string;
+  role?: string;
+  name?: string;
+  level?: number;
+  nodePath?: string;
+  focusBefore: string;
+  focusAfter: string;
+  focusMoved: boolean;
+  visualBounds?: { x: number; y: number; width: number; height: number };
+}
+
+interface ReaderTranscriptView {
+  path: string;
+  textPath?: string;
+  pageUrl: string;
+  mode: string;
+  fidelity: string;
+  entries: ReaderEntryView[];
+  readError?: string;
+}
+
+interface FindingCheckpointSynthesis {
+  actionId: string;
+  laneId: string;
+  runId: string;
+  driver: ScenarioActionReport["driver"];
+  behaviorVerdict: "pass" | "fail" | "unknown";
+  behaviorSummary: string;
+  nodeCount: number;
+  targets: string[];
+  htmlSamples: string[];
+  axePath?: string;
+  domPath?: string;
+  accessibilityTreePath?: string;
+  focusPath?: string;
+  screenshotPath?: string;
+  viewportPath?: string;
+  readerTranscriptPath?: string;
+}
+
+interface FindingSynthesis {
+  ruleId: string;
+  title: string;
+  severity: string;
+  wcagCriteria: string[];
+  conclusion: string;
+  occurrenceCount: number;
+  checkpointCount: number;
+  maximumAffectedNodes: number;
+  checkpoints: FindingCheckpointSynthesis[];
+  remediation: {
+    deterministic: string;
+    ai: { used: false; status: "not-applicable" | "available-if-needed"; reason: string };
+    verification: string[];
+  };
+}
+
+export interface ScenarioSynthesis {
+  conclusion: string;
+  directJudgments: { passed: number; failed: number; unknown: number };
+  releaseGates: { passed: number; failed: number; unknown: number };
+  findingOccurrences: number;
+  incompleteRuleResults: number;
+  uniqueIncompleteRules: string[];
+  lanes: Array<{
+    driver: ScenarioActionReport["driver"];
+    actions: number;
+    passed: number;
+    failed: number;
+    unknown: number;
+    summary: string;
+  }>;
+  comparisons: InputComparisonView[];
+  reader: { commands: number; passed: number; failed: number; unknown: number };
+  findings: FindingSynthesis[];
+}
+
 interface IntegratedHtmlViews {
-  transcripts: Array<{ path: string; content: string }>;
+  transcripts: ReaderTranscriptView[];
   actionReports: ActionReportView[];
   axeReports: AxeReportView[];
+  comparisons: InputComparisonView[];
 }
 
 /** Executes only approved, user-authored scenario commands and integrates every resulting lane. */
@@ -523,6 +623,7 @@ function createIntegratedReport(input: {
     })),
     actions: input.actions,
     findings: input.findings,
+    synthesis: emptyScenarioSynthesis(),
     artifacts: input.artifacts,
     diagnostics: input.diagnostics,
     files: {
@@ -543,34 +644,176 @@ function createIntegratedReport(input: {
   return report;
 }
 
+function emptyScenarioSynthesis(): ScenarioSynthesis {
+  return {
+    conclusion: "Synthesis is generated from the completed evidence set.",
+    directJudgments: { passed: 0, failed: 0, unknown: 0 },
+    releaseGates: { passed: 0, failed: 0, unknown: 0 },
+    findingOccurrences: 0,
+    incompleteRuleResults: 0,
+    uniqueIncompleteRules: [],
+    lanes: [],
+    comparisons: [],
+    reader: { commands: 0, passed: 0, failed: 0, unknown: 0 },
+    findings: []
+  };
+}
+
 async function writeIntegratedReport(
   report: ScenarioIntegratedReport,
   files: { html: string; json: string; markdown: string },
   rootDir: string
 ): Promise<void> {
+  const [transcripts, actionReports, axeReports, comparisons] = await Promise.all([
+    loadReaderTranscriptViews(report, rootDir),
+    loadActionReportViews(report, rootDir),
+    loadAxeReportViews(report, rootDir),
+    loadInputComparisonViews(report, rootDir)
+  ]);
+  const views = { transcripts, actionReports, axeReports, comparisons };
+  report.synthesis = buildScenarioSynthesis(report, views);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
-  const transcriptArtifacts = report.artifacts.filter(
-    (artifact) =>
-      artifact.kind === "screen-reader-transcript" &&
-      /(^|\/)transcript\.txt$/.test(String(artifact.path))
-  );
-  const transcripts = await Promise.all(
-    transcriptArtifacts.map(async (artifact) => ({
-      path: String(artifact.path),
-      content: await readFile(resolveReportPath(rootDir, String(artifact.path)), "utf8")
-    }))
-  );
-  const actionReports = await loadActionReportViews(report, rootDir);
-  const axeReports = await loadAxeReportViews(report, rootDir);
   await Promise.all([
     writeFile(files.json, JSON.stringify(report, null, 2), "utf8"),
     writeFile(files.markdown, renderIntegratedMarkdown(report), "utf8"),
-    writeFile(
-      files.html,
-      renderIntegratedHtml(report, { transcripts, actionReports, axeReports }),
-      "utf8"
-    )
+    writeFile(files.html, renderIntegratedHtml(report, views), "utf8")
   ]);
+}
+
+async function loadReaderTranscriptViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<ReaderTranscriptView[]> {
+  const artifacts = report.artifacts.filter(
+    (artifact) =>
+      artifact.kind === "screen-reader-transcript" &&
+      artifact.phase === "lane" &&
+      /(^|\/)transcript\.json$/.test(String(artifact.path))
+  );
+  return Promise.all(
+    artifacts.map(async (artifact) => {
+      const artifactPath = String(artifact.path);
+      try {
+        const document = await readReportJson(rootDir, artifactPath);
+        const entries = Array.isArray(document.entries)
+          ? document.entries.filter(isRecord).map(readerEntryView)
+          : [];
+        const textPath = report.artifacts.find(
+          (candidate) =>
+            candidate.kind === "screen-reader-transcript" &&
+            candidate.phase === "lane" &&
+            path.posix.dirname(String(candidate.path)) === path.posix.dirname(artifactPath) &&
+            /(^|\/)transcript\.txt$/.test(String(candidate.path))
+        );
+        return {
+          path: artifactPath,
+          textPath: textPath ? String(textPath.path) : undefined,
+          pageUrl: stringField(document, "pageUrl", report.target),
+          mode: stringField(document, "mode", "guide"),
+          fidelity: stringField(document, "fidelity", "semantic-simulation"),
+          entries
+        };
+      } catch (error) {
+        return {
+          path: artifactPath,
+          pageUrl: report.target,
+          mode: "unknown",
+          fidelity: "unknown",
+          entries: [],
+          readError: error instanceof Error ? error.message : String(error)
+        };
+      }
+    })
+  );
+}
+
+function readerEntryView(entry: Record<string, unknown>): ReaderEntryView {
+  const item = isRecord(entry.item) ? entry.item : {};
+  const bounds = isRecord(item.visualBounds) ? item.visualBounds : undefined;
+  return {
+    sequence: numberField(entry, "sequence"),
+    command: stringField(entry, "command", "unknown-command"),
+    announcement: stringField(entry, "announcement", "No announcement was emitted."),
+    role: optionalStringField(item, "role"),
+    name: optionalStringField(item, "name"),
+    level: optionalNumberField(item, "level"),
+    nodePath: optionalStringField(item, "nodePath"),
+    focusBefore: stringField(entry, "domFocusBefore", "unknown"),
+    focusAfter: stringField(entry, "domFocusAfter", "unknown"),
+    focusMoved: entry.focusMoved === true,
+    visualBounds:
+      bounds && ["x", "y", "width", "height"].every((key) => typeof bounds[key] === "number")
+        ? {
+            x: Number(bounds.x),
+            y: Number(bounds.y),
+            width: Number(bounds.width),
+            height: Number(bounds.height)
+          }
+        : undefined
+  };
+}
+
+async function loadInputComparisonViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<InputComparisonView[]> {
+  const artifacts = report.artifacts.filter((artifact) => artifact.kind === "interaction-trace");
+  return Promise.all(
+    artifacts.map(async (artifact) => {
+      const artifactPath = String(artifact.path);
+      try {
+        const document = await readReportJson(rootDir, artifactPath);
+        const lanes = isRecord(document.lanes) ? document.lanes : {};
+        return {
+          path: artifactPath,
+          comparisonId: stringField(document, "comparisonId", "comparison"),
+          name: stringField(document, "name", "Pointer and keyboard comparison"),
+          status: stringField(document, "status", "unknown"),
+          isolation: stringField(document, "isolation", "unknown"),
+          equivalence: comparisonResultView(document.equivalence),
+          expectation: comparisonResultView(document.expectation),
+          pointer: comparisonLaneView(lanes.pointer),
+          keyboard: comparisonLaneView(lanes.keyboard)
+        };
+      } catch (error) {
+        return {
+          path: artifactPath,
+          comparisonId: "comparison",
+          name: "Pointer and keyboard comparison",
+          status: "unreadable",
+          isolation: "unknown",
+          equivalence: { verdict: "unknown", summary: "Comparison could not be read." },
+          expectation: { verdict: "unknown", summary: "Expectation could not be read." },
+          pointer: { actionIds: [] },
+          keyboard: { actionIds: [] },
+          readError: error instanceof Error ? error.message : String(error)
+        };
+      }
+    })
+  );
+}
+
+function comparisonResultView(value: unknown): InputComparisonView["equivalence"] {
+  const result = isRecord(value) ? value : {};
+  return {
+    verdict: verdictField(result.verdict),
+    summary: stringField(result, "summary", "No comparison summary was emitted.")
+  };
+}
+
+function comparisonLaneView(value: unknown): InputComparisonView["keyboard"] {
+  const lane = isRecord(value) ? value : {};
+  const observation = isRecord(lane.observation) ? lane.observation : {};
+  const steps = Array.isArray(lane.steps) ? lane.steps.filter(isRecord) : [];
+  return {
+    actionIds: steps.map((step) => {
+      const action = isRecord(step.action) ? step.action : {};
+      return stringField(action, "id", "unknown-action");
+    }),
+    url: optionalStringField(observation, "url"),
+    visible: typeof observation.visible === "boolean" ? observation.visible : undefined,
+    text: optionalStringField(observation, "text")
+  };
 }
 
 async function loadActionReportViews(
@@ -621,11 +864,15 @@ async function loadAxeReportViews(
       const artifactPath = String(artifact.path);
       const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
       const actionId = stringField(provenance, "actionId", "Unknown action");
+      const laneId = stringField(provenance, "laneId", "unknown-lane");
+      const runId = stringField(provenance, "runId", "unknown-run");
       try {
         const document = await readReportJson(rootDir, artifactPath);
         return {
           path: artifactPath,
           actionId,
+          laneId,
+          runId,
           violations: axeRuleViews(document.violations),
           incomplete: axeRuleViews(document.incomplete),
           passes: Array.isArray(document.passes) ? document.passes.length : 0,
@@ -635,6 +882,8 @@ async function loadAxeReportViews(
         return {
           path: artifactPath,
           actionId,
+          laneId,
+          runId,
           violations: [],
           incomplete: [],
           passes: 0,
@@ -653,6 +902,16 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
     const targets = nodes.flatMap((node) =>
       Array.isArray(node.target) ? node.target.map(String) : []
     );
+    const htmlSamples = nodes
+      .map((node) => optionalStringField(node, "html"))
+      .filter((sample): sample is string => Boolean(sample));
+    const failureSummaries = [
+      ...new Set(
+        nodes
+          .map((node) => optionalStringField(node, "failureSummary"))
+          .filter((summary): summary is string => Boolean(summary))
+      )
+    ];
     return {
       id: stringField(rule, "id", "unknown-rule"),
       impact: optionalStringField(rule, "impact") ?? "review",
@@ -661,10 +920,288 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       helpUrl: optionalStringField(rule, "helpUrl"),
       nodeCount: nodes.length,
       targets,
+      htmlSamples,
+      tags: Array.isArray(rule.tags) ? rule.tags.map(String) : [],
       failureSummary:
-        nodes.length > 0 ? optionalStringField(nodes[0]!, "failureSummary") : undefined
+        nodes.length > 0 ? optionalStringField(nodes[0]!, "failureSummary") : undefined,
+      failureSummaries
     };
   });
+}
+
+function buildScenarioSynthesis(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews
+): ScenarioSynthesis {
+  const direct = views.actionReports.flatMap(({ judgments }) =>
+    judgments.filter(({ judgeId }) => judgeId !== "release")
+  );
+  const directJudgments = countVerdicts(direct.map(({ verdict }) => verdict));
+  const incompleteRules = views.axeReports.flatMap(({ incomplete }) => incomplete);
+  const uniqueIncompleteRules = [...new Set(incompleteRules.map(({ id }) => id))].sort();
+  const findingOccurrences = report.findings.reduce((count, finding) => {
+    return count + (Array.isArray(finding.occurrences) ? finding.occurrences.length : 0);
+  }, 0);
+  const readerJudgments = views.actionReports.flatMap(({ judgments }) =>
+    judgments.filter(({ judgeId }) => judgeId === "screen-reader")
+  );
+  const readerCounts = countVerdicts(readerJudgments.map(({ verdict }) => verdict));
+  const lanes = (["keyboard", "pointer", "portable-virtual-screen-reader"] as const)
+    .map((driver) => {
+      const laneReports = views.actionReports.filter(({ action }) => action.driver === driver);
+      const judgments = laneReports.flatMap(({ judgments }) =>
+        judgments.filter(({ judgeId }) => judgeId !== "release")
+      );
+      const counts = countVerdicts(judgments.map(({ verdict }) => verdict));
+      return {
+        driver,
+        actions: laneReports.length,
+        ...counts,
+        summary: laneSummary(driver, laneReports, counts)
+      };
+    })
+    .filter(({ actions }) => actions > 0);
+  const findings = report.findings.map((finding) => buildFindingSynthesis(report, views, finding));
+  const passedComparisons = views.comparisons.filter(
+    ({ equivalence, expectation }) =>
+      equivalence.verdict === "pass" && expectation.verdict === "pass"
+  ).length;
+  const positive = [
+    readerJudgments.length
+      ? `${readerCounts.passed} of ${readerJudgments.length} virtual-reader commands passed cross-evidence validation`
+      : undefined,
+    views.comparisons.length
+      ? `${passedComparisons} of ${views.comparisons.length} pointer/keyboard comparisons matched both equivalence and the expected outcome`
+      : undefined
+  ].filter((item): item is string => Boolean(item));
+  const negative = findings.length
+    ? `${findings.length} unique confirmed issue${findings.length === 1 ? "" : "s"} produced ${findingOccurrences} finding occurrence${findingOccurrences === 1 ? "" : "s"} across ${report.actions.length} action checkpoint${report.actions.length === 1 ? "" : "s"}`
+    : "no confirmed issues were emitted";
+  const unresolved = uniqueIncompleteRules.length
+    ? ` ${uniqueIncompleteRules.length} distinct Axe rule${uniqueIncompleteRules.length === 1 ? " remains" : "s remain"} unresolved and require review.`
+    : "";
+  return {
+    conclusion: `${positive.length ? `${positive.join("; ")}. ` : ""}Within the user-authored scope, ${negative}.${unresolved}`,
+    directJudgments,
+    releaseGates: {
+      passed: report.summary.passed,
+      failed: report.summary.failed,
+      unknown: report.summary.unknown
+    },
+    findingOccurrences,
+    incompleteRuleResults: incompleteRules.length,
+    uniqueIncompleteRules,
+    lanes,
+    comparisons: views.comparisons,
+    reader: { commands: readerJudgments.length, ...readerCounts },
+    findings
+  };
+}
+
+/** Pure synthesis entry point used to verify cross-evidence reporting without launching a browser. */
+export function buildScenarioSynthesisForTest(
+  report: ScenarioIntegratedReport,
+  views: unknown
+): ScenarioSynthesis {
+  return buildScenarioSynthesis(report, views as IntegratedHtmlViews);
+}
+
+function countVerdicts(verdicts: Array<"pass" | "fail" | "unknown">) {
+  return {
+    passed: verdicts.filter((verdict) => verdict === "pass").length,
+    failed: verdicts.filter((verdict) => verdict === "fail").length,
+    unknown: verdicts.filter((verdict) => verdict === "unknown").length
+  };
+}
+
+function laneSummary(
+  driver: ScenarioActionReport["driver"],
+  reports: ActionReportView[],
+  counts: { passed: number; failed: number; unknown: number }
+): string {
+  const label = humanDriverName(driver);
+  const failingJudges = [
+    ...new Set(
+      reports.flatMap(({ judgments }) =>
+        judgments
+          .filter(({ judgeId, verdict }) => judgeId !== "release" && verdict === "fail")
+          .map(({ judgeId }) => judgeId)
+      )
+    )
+  ];
+  return `${label} ran ${reports.length} authored action${reports.length === 1 ? "" : "s"}: ${counts.passed} direct checks passed, ${counts.failed} failed, and ${counts.unknown} were unresolved.${failingJudges.length ? ` Failing judges: ${failingJudges.join(", ")}.` : ""}`;
+}
+
+function buildFindingSynthesis(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews,
+  finding: Record<string, unknown>
+): FindingSynthesis {
+  const ruleId = String(finding.ruleId ?? finding.id ?? "unknown-finding");
+  const matchingReports = views.axeReports
+    .map((axeReport) => ({
+      axeReport,
+      rule: axeReport.violations.find(({ id }) => id === ruleId)
+    }))
+    .filter((entry): entry is { axeReport: AxeReportView; rule: AxeRuleView } =>
+      Boolean(entry.rule)
+    );
+  const allRules = matchingReports.map(({ rule }) => rule);
+  const representative = allRules[0];
+  const checkpoints = matchingReports.map(({ axeReport, rule }) => {
+    const action = report.actions.find(
+      (candidate) => candidate.runId === axeReport.runId && candidate.laneId === axeReport.laneId
+    );
+    const actionView = views.actionReports.find(
+      (candidate) => candidate.action.runId === axeReport.runId
+    );
+    const behavior = actionView?.judgments.find(
+      ({ judgeId }) => judgeId !== "axe" && judgeId !== "release"
+    );
+    return {
+      actionId: axeReport.actionId,
+      laneId: axeReport.laneId,
+      runId: axeReport.runId,
+      driver: action?.driver ?? driverFromLaneId(axeReport.laneId),
+      behaviorVerdict: behavior?.verdict ?? "unknown",
+      behaviorSummary: behavior?.summary ?? "No independent behavior judgment was available.",
+      nodeCount: rule.nodeCount,
+      targets: rule.targets.slice(0, 8),
+      htmlSamples: rule.htmlSamples.slice(0, 3),
+      axePath: axeReport.path,
+      domPath: action ? actionArtifactPath(report, action, "dom-snapshot", "after") : undefined,
+      accessibilityTreePath: action
+        ? actionArtifactPath(report, action, "accessibility-tree", "after")
+        : undefined,
+      focusPath: action ? actionArtifactPath(report, action, "focus-state", "after") : undefined,
+      screenshotPath: action
+        ? actionArtifactPath(report, action, "full-page-screenshot", "after")
+        : undefined,
+      viewportPath: action
+        ? actionArtifactPath(report, action, "viewport-screenshot", "after")
+        : undefined,
+      readerTranscriptPath: action
+        ? actionArtifactPath(
+            report,
+            action,
+            "screen-reader-transcript",
+            "after",
+            /json-after\.json$/
+          )
+        : undefined
+    };
+  });
+  const occurrenceCount = Array.isArray(finding.occurrences)
+    ? finding.occurrences.length
+    : checkpoints.length;
+  const wcagCriteria = [
+    ...new Set(allRules.flatMap(({ tags }) => tags.map(wcagCriterionFromTag).filter(Boolean)))
+  ] as string[];
+  const maximumAffectedNodes = Math.max(0, ...allRules.map(({ nodeCount }) => nodeCount));
+  const remediation = findingRemediation(ruleId, representative);
+  return {
+    ruleId,
+    title: representative?.help ?? String(finding.message ?? ruleId),
+    severity: String(finding.severity ?? representative?.impact ?? "review"),
+    wcagCriteria,
+    conclusion: `${representative?.description ?? String(finding.message ?? "A confirmed issue was emitted.")} The same rule was observed at ${checkpoints.length} of ${views.axeReports.length} after-action checkpoints; the largest checkpoint affected ${maximumAffectedNodes} node${maximumAffectedNodes === 1 ? "" : "s"}. Independent behavior results remain shown separately and do not cancel this rule failure.`,
+    occurrenceCount,
+    checkpointCount: checkpoints.length,
+    maximumAffectedNodes,
+    checkpoints,
+    remediation
+  };
+}
+
+function actionArtifactPath(
+  report: ScenarioIntegratedReport,
+  action: ScenarioActionReport,
+  kind: string,
+  phase: string,
+  pathPattern?: RegExp
+): string | undefined {
+  const artifact = report.artifacts.find((candidate) => {
+    const provenance = isRecord(candidate.provenance) ? candidate.provenance : {};
+    return (
+      candidate.kind === kind &&
+      candidate.phase === phase &&
+      provenance.runId === action.runId &&
+      (!pathPattern || pathPattern.test(String(candidate.path)))
+    );
+  });
+  return artifact ? String(artifact.path) : undefined;
+}
+
+function driverFromLaneId(laneId: string): ScenarioActionReport["driver"] {
+  if (laneId.endsWith("-keyboard")) return "keyboard";
+  if (laneId.endsWith("-pointer")) return "pointer";
+  return "portable-virtual-screen-reader";
+}
+
+function wcagCriterionFromTag(tag: string): string | undefined {
+  const match = /^wcag(\d)(\d)(\d+)$/.exec(tag);
+  return match ? `WCAG ${match[1]}.${match[2]}.${match[3]}` : undefined;
+}
+
+function findingRemediation(
+  ruleId: string,
+  rule: AxeRuleView | undefined
+): FindingSynthesis["remediation"] {
+  const measured = rule?.failureSummaries
+    .slice(0, 3)
+    .map((summary) => summary.replace(/^Fix any of the following:\s*/i, "").trim())
+    .join(" ");
+  if (ruleId === "aria-required-parent") {
+    return {
+      deterministic:
+        'For ordinary footer navigation, remove role="menuitem" and keep native link semantics. If these controls intentionally form an application-style menu, place each menuitem inside an element with role="menu", role="menubar", or role="group" and implement the complete keyboard pattern. ' +
+        (measured ?? "Rerun the ARIA parent relationship check after changing the structure."),
+      ai: {
+        used: false,
+        status: "not-applicable",
+        reason:
+          "The required parent-role relationship is deterministic. A language or vision model should not choose whether invalid ARIA passes."
+      },
+      verification: [
+        "Rerun axe at the same five checkpoints and require aria-required-parent to pass.",
+        "Confirm the footer remains navigable with Tab and that link names and destinations are unchanged.",
+        "Confirm DOM roles match the accessibility tree after the fix."
+      ]
+    };
+  }
+  if (ruleId === "color-contrast") {
+    return {
+      deterministic:
+        (measured ? `${measured} ` : "") +
+        "Choose a brand-approved foreground/background token pair that computes to at least 4.5:1 for this normal-sized text, then verify every applicable default, hover, focus, and active state.",
+      ai: {
+        used: false,
+        status: "available-if-needed",
+        reason:
+          "A visual specialist may locate complex foreground/background regions or explain brand intent when deterministic extraction is inconclusive. The final contrast ratio and token selection must still be calculated deterministically."
+      },
+      verification: [
+        "Recompute the exact contrast ratio from final rendered colors and require at least 4.5:1.",
+        "Compare the corrected state with the full-page visual and DOM computed styles.",
+        "Rerun the same keyboard, pointer, and virtual-reader checkpoints."
+      ]
+    };
+  }
+  return {
+    deterministic:
+      measured ??
+      "Apply the rule guidance to the affected nodes, then rerun the same authored journey.",
+    ai: {
+      used: false,
+      status: "not-applicable",
+      reason:
+        "No allowlisted contextual AI task is defined for this finding; deterministic evidence remains authoritative."
+    },
+    verification: [
+      "Rerun the same action and require the rule to pass.",
+      "Confirm DOM, accessibility tree, focus, visual, and screen-reader evidence still agree."
+    ]
+  };
 }
 
 async function readReportJson(
@@ -699,27 +1236,46 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     "",
     "## Summary",
     "",
-    `- ${report.summary.actions} user-authored actions evaluated`,
-    `- ${report.summary.failed} failed, ${report.summary.unknown} unknown, ${report.summary.passed} passed`,
-    `- ${report.summary.findings} findings`,
+    report.synthesis.conclusion,
+    "",
+    `- ${report.summary.actions} user-authored actions evaluated across ${report.synthesis.lanes.length} active lanes`,
+    `- ${report.synthesis.directJudgments.passed} direct judgments passed, ${report.synthesis.directJudgments.failed} failed, ${report.synthesis.directJudgments.unknown} unresolved`,
+    `- ${report.summary.findings} unique findings across ${report.synthesis.findingOccurrences} checkpoint occurrences`,
+    `- ${report.synthesis.uniqueIncompleteRules.length} unique incomplete Axe rules across ${report.synthesis.incompleteRuleResults} checkpoint results`,
     `- ${report.summary.artifacts} indexed artifacts`,
     "",
-    "## Actions",
+    "## Coverage by lane",
     "",
-    "| Lane | Action | Verdict | Raw report |",
-    "| --- | --- | --- | --- |",
-    ...report.actions.map(
-      (action) =>
-        `| ${escapeMarkdown(action.driver)} | ${escapeMarkdown(action.actionId)} | ${action.releaseVerdict} | [JSON](${encodeURI(action.reportPath)}) |`
+    "| Lane | Actions | Direct pass | Direct fail | Unresolved |",
+    "| --- | ---: | ---: | ---: | ---: |",
+    ...report.synthesis.lanes.map(
+      (lane) =>
+        `| ${escapeMarkdown(humanDriverName(lane.driver))} | ${lane.actions} | ${lane.passed} | ${lane.failed} | ${lane.unknown} |`
     ),
     "",
-    "## Findings",
+    "## Consolidated findings",
     ""
   ];
   if (report.findings.length === 0) lines.push("No findings were emitted.");
-  for (const finding of report.findings) {
+  for (const finding of report.synthesis.findings) {
     lines.push(
-      `- **${escapeMarkdown(String(finding.ruleId ?? finding.id ?? "finding"))}:** ${escapeMarkdown(String(finding.message ?? "No message."))}`
+      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}`,
+      "",
+      finding.conclusion,
+      "",
+      `**WCAG:** ${finding.wcagCriteria.length ? finding.wcagCriteria.join(", ") : "Mapping not emitted"}`,
+      "",
+      `**Deterministic remediation:** ${finding.remediation.deterministic}`,
+      "",
+      `**AI:** Not used — ${finding.remediation.ai.reason}`,
+      "",
+      "| Lane | Action | Behavior | Nodes | DOM | Accessibility tree | Visual | Focus | Axe |",
+      "| --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
+      ...finding.checkpoints.map(
+        (checkpoint) =>
+          `| ${escapeMarkdown(humanDriverName(checkpoint.driver))} | ${escapeMarkdown(humanActionName(checkpoint.actionId))} | ${checkpoint.behaviorVerdict} | ${checkpoint.nodeCount} | ${markdownEvidenceLink(checkpoint.domPath)} | ${markdownEvidenceLink(checkpoint.accessibilityTreePath)} | ${markdownEvidenceLink(checkpoint.screenshotPath)} | ${markdownEvidenceLink(checkpoint.focusPath)} | ${markdownEvidenceLink(checkpoint.axePath)} |`
+      ),
+      ""
     );
   }
   lines.push(
@@ -755,9 +1311,10 @@ function renderIntegratedHtml(
   );
   const tabLinks = [
     ["overview", "Overview"],
-    ["actions", `Actions (${report.summary.actions})`],
-    ["axe", `Axe (${views.axeReports.length})`],
+    ["findings", `Findings (${report.summary.findings})`],
+    ["keyboard", "Keyboard"],
     ["reader", "Screen reader"],
+    ["axe", `Axe (${views.axeReports.length})`],
     ["media", `Media (${videos.length + screenshots.length})`],
     ["evidence", `Evidence files (${report.summary.artifacts})`]
   ] as const;
@@ -791,13 +1348,14 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .score-primary .score-label{margin:0;font:750 1rem/1.4 var(--sans);color:var(--mint)}
 .score-primary strong{display:block;margin:.2rem 0;font:750 clamp(3.25rem,7vw,5.5rem)/1 var(--serif);letter-spacing:-.035em}
 .score-primary.fail strong{color:#ffafbb}.score-primary.pass strong{color:#91e4c1}.score-primary.unknown strong{color:#f3d47c}
-.score-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin:0;padding:clamp(1.5rem,4vw,3rem)}
+.score-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;padding:clamp(1.5rem,4vw,3rem)}
 .score-facts div{padding:0 clamp(1rem,3vw,2rem);border-left:1px solid rgb(255 255 255/.2)}
 .score-facts div:first-child{border-left:0}
 .score-facts dt{color:#b7cbc4;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase}
 .score-facts dd{margin:.25rem 0 0;font:700 clamp(1.65rem,3vw,2.65rem)/1 var(--serif);white-space:nowrap}
 .score-facts small{display:block;margin-top:.6rem;color:#d7e2de;font:400 .86rem/1.35 var(--sans);white-space:normal}
 .score-note{max-width:72ch;margin:1rem 0 2.5rem;color:var(--muted)}
+.conclusion{max-width:72ch;margin:1rem 0 2.5rem;font:600 clamp(1.2rem,2.2vw,1.55rem)/1.5 var(--serif);color:#29493f}
 .report-tabs{display:flex;gap:1.5rem;overflow-x:auto;border-bottom:1px solid var(--line-strong);scrollbar-width:thin}
 .report-tabs a{flex:0 0 auto;padding:.9rem .1rem .75rem;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;text-decoration:none}
 .report-tabs a:hover{color:var(--forest-deep);border-color:var(--line)}
@@ -810,6 +1368,32 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .panel>h3:first-child{margin-top:0}
 .result-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:clamp(1.15rem,3vw,1.75rem);margin:1rem 0}
 .result-card>h3:first-child{margin-top:0}
+.coverage-table td:first-child{font-weight:750}.coverage-table td:last-child{min-width:24rem}
+.finding-index{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem;padding:0;list-style:none}
+.finding-index li{padding:1rem 0;border-top:1px solid var(--line)}
+.finding-index a{font:700 1.15rem/1.3 var(--serif)}
+.finding-dossier{margin:2rem 0 4rem;padding-top:2rem;border-top:2px solid var(--forest)}
+.finding-dossier>header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1rem;align-items:start}
+.finding-dossier h3{max-width:24ch;margin:0;font:700 clamp(1.6rem,3.5vw,2.5rem)/1.1 var(--serif);letter-spacing:-.02em}
+.finding-summary{max-width:72ch;font-size:1.08rem;color:#34463f}
+.evidence-preview{display:grid;grid-template-columns:minmax(15rem,.8fr) minmax(0,1.2fr);gap:clamp(1.25rem,4vw,3rem);align-items:start;margin:1.5rem 0 2rem}
+.evidence-preview img{width:100%;max-height:30rem;object-fit:cover;object-position:top}
+.finding-dossier[data-rule-id="aria-required-parent"] .evidence-preview img{object-position:bottom}
+.evidence-preview h4,.remediation-grid h4{margin-top:0}
+.evidence-links{display:flex;flex-wrap:wrap;gap:.45rem 1rem;padding:0;list-style:none}
+.evidence-links a{font-weight:700}
+.remediation-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(16rem,.8fr);gap:2rem;margin:2rem 0;padding:1.5rem;background:var(--wash);border-radius:12px}
+.remediation-grid section+section{border-left:1px solid var(--line-strong);padding-left:2rem}
+.verification-list li{margin:.45rem 0}
+.reader-announcement{font:600 1.05rem/1.45 var(--serif)}
+.bounds{color:var(--muted);font-size:.9rem}
+.outcome-pair{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin:1.25rem 0}
+.outcome{padding-top:1rem;border-top:1px solid var(--line-strong)}
+.outcome h4{display:flex;justify-content:space-between;gap:1rem;margin:0}
+.lane-visuals{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0}
+.lane-visuals figure{min-width:0}
+.lane-visuals img{width:100%;aspect-ratio:16/10;object-fit:cover;object-position:top}
+.technical-sample{font-size:.8rem;max-height:12rem}
 .notice-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2rem}
 .notice,.ai{border-top-color:var(--unknown)}
 .ai{border-top-color:#5367d8}
@@ -836,19 +1420,20 @@ summary{cursor:pointer;font-weight:700}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:1.5rem}
 img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
 figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
-@media(max-width:780px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{padding:1.5rem}.score-facts div{padding:0 1rem}.notice-grid{grid-template-columns:1fr;gap:0}}
-@media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child{padding:1rem 0;border-left:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
+@media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}}
+@media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals{grid-template-columns:1fr;gap:0}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}}
+@media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child,.score-facts div:nth-child(odd){padding:1rem 0;border-left:0;border-right:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
 <body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>Accessibility evidence report</h1><p class="lede">${escapeHtml(report.goal)}</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Checksummed manifest</a><a href="${encodeURI(report.files.json)}">Raw JSON report</a><a href="${encodeURI(report.files.markdown)}">Markdown report</a></nav></header>
-<main id="report-content" class="page-shell"><section class="scoreboard" aria-labelledby="score-heading"><div class="score-primary ${report.verdict}"><h2 class="score-label" id="score-heading">Overall result</h2><strong>${escapeHtml(report.verdict.toUpperCase())}</strong><p>${report.summary.failed} of ${report.summary.actions} action release gates blocked</p></div><dl class="score-facts"><div><dt>Release gates passed</dt><dd>${report.summary.passed}/${report.summary.actions}<small>${report.summary.unknown} need review</small></dd></div><div><dt>Unique findings</dt><dd>${report.summary.findings}<small>Consolidated across actions</small></dd></div><div><dt>Evidence available</dt><dd>${availableArtifacts}/${report.summary.artifacts}<small>${escapeHtml(report.completeness.status)}</small></dd></div></dl></section><p class="score-note">Transparent result and completeness counts—not an automated WCAG conformance percentage. Missing evidence never becomes a pass.</p>
+<main id="report-content" class="page-shell"><section class="scoreboard" aria-labelledby="score-heading"><div class="score-primary ${report.verdict}"><h2 class="score-label" id="score-heading">Overall result</h2><strong>${escapeHtml(report.verdict.toUpperCase())}</strong><p>${report.synthesis.directJudgments.passed} direct checks passed; ${report.synthesis.directJudgments.failed} failed</p></div><dl class="score-facts"><div><dt>Direct checks</dt><dd>${report.synthesis.directJudgments.passed}/${report.synthesis.directJudgments.passed + report.synthesis.directJudgments.failed + report.synthesis.directJudgments.unknown}<small>passed across all lanes</small></dd></div><div><dt>Confirmed issues</dt><dd>${report.summary.findings}<small>${report.synthesis.findingOccurrences} checkpoint occurrences</small></dd></div><div><dt>Needs review</dt><dd>${report.synthesis.uniqueIncompleteRules.length}<small>${report.synthesis.incompleteRuleResults} incomplete rule results</small></dd></div><div><dt>Evidence</dt><dd>${availableArtifacts}/${report.summary.artifacts}<small>${escapeHtml(report.completeness.status)}</small></dd></div></dl></section><p class="score-note">This is a scoped release-policy verdict, not an automated WCAG conformance percentage. ${report.synthesis.releaseGates.passed} of ${report.summary.actions} action release gates passed. Passed behavior remains visible even when a repeated rule failure blocks release.</p>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
-<section id="panel-overview" class="tab-panel" data-tab-panel><h2>Overview</h2><section class="panel"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Completed lanes</dt><dd>${report.completeness.completedLanes} of ${report.completeness.plannedLanes}</dd></dl></section>
-<section class="panel"><h3>Consolidated findings</h3>${report.findings.length ? `<ol class="finding-list">${report.findings.map((finding) => `<li><strong>${escapeHtml(String(finding.ruleId ?? finding.id ?? "Finding"))}</strong><p>${escapeHtml(String(finding.message ?? "No message."))}</p>${finding.suggestedFix ? `<p><strong>Suggested next step:</strong> ${escapeHtml(String(finding.suggestedFix))}</p>` : ""}</li>`).join("")}</ol>` : '<p class="empty">No findings were emitted.</p>'}</section>
+<section id="panel-overview" class="tab-panel" data-tab-panel><h2>What the evidence says</h2><p class="conclusion">${escapeHtml(report.synthesis.conclusion)}</p>${renderLaneCoverage(report)}<section class="panel"><h3>Confirmed issues and unresolved checks</h3>${renderFindingIndex(report)}${report.synthesis.uniqueIncompleteRules.length ? `<p><strong>Still requiring review:</strong> ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. Incomplete Axe checks are not passes and are not included in the confirmed-issue count.</p>` : ""}</section><section class="panel"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Completed lanes</dt><dd>${report.completeness.completedLanes} of ${report.completeness.plannedLanes}</dd></dl></section>
 <div class="notice-grid"><section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></div></section>
-<section id="panel-actions" class="tab-panel" data-tab-panel><h2>Individual action reports</h2><p>Each card translates one machine-readable action report into judgments and observer notes. Raw JSON remains available for audit and tooling.</p>${renderActionReportViews(views.actionReports)}</section>
+<section id="panel-findings" class="tab-panel" data-tab-panel><h2>Consolidated finding dossiers</h2><p>Each conclusion joins every occurrence with its after-state DOM, accessibility tree, focus record, rendered page, Axe nodes, and any relevant keyboard or virtual-reader judgment. A passing behavior check does not erase an independent rule failure.</p>${renderFindingDossiers(report)}</section>
+<section id="panel-keyboard" class="tab-panel" data-tab-panel><h2>Keyboard and pointer overview</h2><p>Keyboard results are compared with the equivalent pointer path from isolated browser contexts, then checked against the user-declared expected outcome.</p>${renderKeyboardOverview(report, views)}</section>
+<section id="panel-reader" class="tab-panel" data-tab-panel><h2>Virtual screen-reader report</h2><p>The portable reader is evaluated against the same-checkpoint DOM, full accessibility tree, rendered bounds, full-page visual, and DOM focus. It is a semantic simulation, not VoiceOver or NVDA.</p>${renderReaderOverview(report, views)}</section>
 <section id="panel-axe" class="tab-panel" data-tab-panel><h2>Axe reports</h2><p>Axe results are shown per authored action. Violations and incomplete checks are separate; incomplete results require review and are not passes.</p>${renderAxeReportViews(views.axeReports)}</section>
-<section id="panel-reader" class="tab-panel" data-tab-panel><h2>Virtual screen-reader transcript</h2><p>This portable transcript is correlated with DOM, accessibility-tree, visual, and focus evidence. It is not VoiceOver or NVDA output.</p>${views.transcripts.length ? views.transcripts.map((transcript) => `<article class="result-card"><h3>${escapeHtml(humanFileName(transcript.path))}</h3><pre>${escapeHtml(transcript.content)}</pre><p><a class="raw-link" href="${encodeURI(transcript.path)}">Open transcript file</a></p></article>`).join("") : '<p class="empty">No virtual-reader transcript was requested.</p>'}</section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
     videos.length
       ? videos
@@ -877,17 +1462,162 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 </script></body></html>`;
 }
 
-function renderActionReportViews(views: ActionReportView[]): string {
-  if (views.length === 0) return '<p class="empty">No action reports were produced.</p>';
-  return views
-    .map(({ action, judgments, observerSummaries, readError }) => {
-      const judgmentRows = judgments
+function renderLaneCoverage(report: ScenarioIntegratedReport): string {
+  const rows = report.synthesis.lanes
+    .map(
+      (lane) =>
+        `<tr><th scope="row">${escapeHtml(humanDriverName(lane.driver))}</th><td>${lane.actions}</td><td>${lane.passed}</td><td>${lane.failed}</td><td>${lane.unknown}</td><td>${escapeHtml(lane.summary)}</td></tr>`
+    )
+    .join("");
+  return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
+function renderFindingIndex(report: ScenarioIntegratedReport): string {
+  if (report.synthesis.findings.length === 0) {
+    return '<p class="empty">No confirmed findings were emitted in this authored scope.</p>';
+  }
+  return `<ol class="finding-index">${report.synthesis.findings
+    .map(
+      (finding) =>
+        `<li><a href="#finding-${escapeAttribute(finding.ruleId)}">${escapeHtml(finding.ruleId)}</a><p>${finding.checkpointCount} of ${report.actions.length} checkpoints · up to ${finding.maximumAffectedNodes} affected nodes</p><p>${escapeHtml(finding.title)}</p></li>`
+    )
+    .join(
+      ""
+    )}</ol><p><a href="#panel-findings">Review the evidence and remediation for every finding</a></p>`;
+}
+
+function renderFindingDossiers(report: ScenarioIntegratedReport): string {
+  if (report.synthesis.findings.length === 0) {
+    return '<p class="empty">No confirmed findings were emitted.</p>';
+  }
+  return report.synthesis.findings
+    .map((finding) => {
+      const representative = finding.checkpoints[0];
+      const checkpointRows = finding.checkpoints
         .map(
-          (judgment) =>
-            `<tr><td>${escapeHtml(judgment.judgeId)}</td><td><span class="badge ${judgment.verdict}">${escapeHtml(judgment.verdict)}</span></td><td>${escapeHtml(judgment.summary)}${judgment.suggestedFix ? `<br><strong>Suggested next step:</strong> ${escapeHtml(judgment.suggestedFix)}` : ""}</td></tr>`
+          (checkpoint) =>
+            `<tr><th scope="row">${escapeHtml(humanActionName(checkpoint.actionId))}<div class="technical-id">${escapeHtml(checkpoint.laneId)}</div></th><td><span class="badge ${checkpoint.behaviorVerdict}">${escapeHtml(checkpoint.behaviorVerdict)}</span> <strong>${escapeHtml(behaviorLabelForDriver(checkpoint.driver))}</strong><details><summary>Read judgment</summary><p>${escapeHtml(checkpoint.behaviorSummary)}</p></details></td><td>${checkpoint.nodeCount}</td><td>${renderEvidenceLinks(checkpoint)}</td></tr>`
         )
         .join("");
-      return `<article class="result-card"><div class="card-heading"><div><h3>${escapeHtml(humanActionName(action.actionId))}</h3><div class="technical-id">${escapeHtml(action.actionId)}</div></div><span class="badge ${action.releaseVerdict}">${escapeHtml(action.releaseVerdict)}</span></div><p class="metrics"><span><strong>Lane:</strong> ${escapeHtml(humanDriverName(action.driver))}</span><span><strong>Checks:</strong> ${action.results.pass} passed, ${action.results.fail} failed, ${action.results.unknown} unknown</span></p>${readError ? `<p class="notice"><strong>Report could not be summarized:</strong> ${escapeHtml(readError)}</p>` : `<div class="table-wrap"><table><caption>Judgments for ${escapeHtml(humanActionName(action.actionId))}</caption><thead><tr><th scope="col">Judge</th><th scope="col">Result</th><th scope="col">Explanation</th></tr></thead><tbody>${judgmentRows}</tbody></table></div><details><summary>${observerSummaries.length} observer capture notes</summary><ul>${observerSummaries.map((summary) => `<li>${escapeHtml(summary)}</li>`).join("")}</ul></details>`}<p><a class="raw-link" href="${encodeURI(action.reportPath)}">View raw action JSON</a></p></article>`;
+      const sample = representative?.htmlSamples[0];
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a href="${encodeURI(representative.screenshotPath)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · <a href="${encodeURI(representative.screenshotPath)}">open full-size visual</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+    })
+    .join("");
+}
+
+function renderEvidenceLinks(checkpoint: FindingCheckpointSynthesis): string {
+  const links = [
+    [checkpoint.domPath, "DOM"],
+    [checkpoint.accessibilityTreePath, "Accessibility tree"],
+    [checkpoint.screenshotPath, "Full-page visual"],
+    [checkpoint.viewportPath, "Viewport visual"],
+    [checkpoint.focusPath, "Focus"],
+    [checkpoint.readerTranscriptPath, "Reader state"],
+    [checkpoint.axePath, "Axe"]
+  ].filter((entry): entry is [string, string] => Boolean(entry[0]));
+  return links.length
+    ? `<ul class="evidence-links">${links.map(([href, label]) => `<li><a href="${encodeURI(href)}">${escapeHtml(label)}</a></li>`).join("")}</ul>`
+    : '<span class="empty">No linked evidence</span>';
+}
+
+function renderKeyboardOverview(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews
+): string {
+  if (views.comparisons.length === 0) {
+    return '<p class="empty">No pointer/keyboard comparison was authored for this scenario. Permissions do not create tests.</p>';
+  }
+  return views.comparisons
+    .map((comparison) => {
+      const actions = report.actions.filter(
+        ({ actionId }) =>
+          comparison.pointer.actionIds.includes(actionId) ||
+          comparison.keyboard.actionIds.includes(actionId)
+      );
+      const actionViews = actions
+        .map((action) => {
+          const actionView = views.actionReports.find(
+            (candidate) => candidate.action.runId === action.runId
+          );
+          return renderInputActionEvidence(report, action, actionView);
+        })
+        .join("");
+      return `<article class="finding-dossier"><header><div><h3>${escapeHtml(comparison.name)}</h3><p>${escapeHtml(comparison.isolation.replaceAll("-", " "))}</p></div><span class="badge ${comparison.status === "completed" ? "pass" : "unknown"}">${escapeHtml(comparison.status)}</span></header>${comparison.readError ? `<p>${escapeHtml(comparison.readError)}</p>` : `<div class="outcome-pair"><section class="outcome"><h4>Equivalent outcome <span class="badge ${comparison.equivalence.verdict}">${escapeHtml(comparison.equivalence.verdict)}</span></h4><p>${escapeHtml(comparison.equivalence.summary)}</p></section><section class="outcome"><h4>Expected outcome <span class="badge ${comparison.expectation.verdict}">${escapeHtml(comparison.expectation.verdict)}</span></h4><p>${escapeHtml(comparison.expectation.summary)}</p></section></div><div class="table-wrap"><table><caption>Observed result in each isolated lane</caption><thead><tr><th scope="col">Lane</th><th scope="col">Authored actions</th><th scope="col">URL</th><th scope="col">Visible</th><th scope="col">Text</th></tr></thead><tbody>${renderComparisonLaneRow("Pointer", comparison.pointer)}${renderComparisonLaneRow("Keyboard", comparison.keyboard)}</tbody></table></div>${actionViews}`}<p><a class="raw-link" href="${encodeURI(comparison.path)}">Open complete interaction trace</a></p></article>`;
+    })
+    .join("");
+}
+
+function renderComparisonLaneRow(label: string, lane: InputComparisonView["keyboard"]): string {
+  return `<tr><th scope="row">${escapeHtml(label)}</th><td>${lane.actionIds.map((id) => escapeHtml(humanActionName(id))).join(", ")}</td><td>${escapeHtml(lane.url ?? "Not recorded")}</td><td>${lane.visible === undefined ? "Not recorded" : lane.visible ? "Yes" : "No"}</td><td>${escapeHtml(lane.text ?? "Not recorded")}</td></tr>`;
+}
+
+function renderInputActionEvidence(
+  report: ScenarioIntegratedReport,
+  action: ScenarioActionReport,
+  view: ActionReportView | undefined
+): string {
+  const screenshot = actionArtifactPath(report, action, "viewport-screenshot", "after");
+  const fullPage = actionArtifactPath(report, action, "full-page-screenshot", "after");
+  const links = renderActionEvidenceLinks(report, action);
+  const behavior = view?.judgments.find(
+    ({ judgeId }) => judgeId !== "axe" && judgeId !== "release"
+  );
+  return `<section class="panel"><div class="card-heading"><div><h3>${escapeHtml(humanActionName(action.actionId))}</h3><div class="technical-id">${escapeHtml(action.laneId)}</div></div><span class="badge ${behavior?.verdict ?? "unknown"}">${escapeHtml(behavior?.verdict ?? "unknown")}</span></div><p>${escapeHtml(behavior?.summary ?? "No independent behavior judgment was available.")}</p><div class="lane-visuals">${screenshot ? `<figure><a href="${encodeURI(screenshot)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Viewport after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Viewport after action</figcaption></figure>` : ""}${fullPage ? `<figure><a href="${encodeURI(fullPage)}"><img loading="lazy" src="${encodeURI(fullPage)}" alt="Full page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Full page after action</figcaption></figure>` : ""}</div>${links}</section>`;
+}
+
+function renderActionEvidenceLinks(
+  report: ScenarioIntegratedReport,
+  action: ScenarioActionReport
+): string {
+  const links: Array<[string | undefined, string]> = [
+    [actionArtifactPath(report, action, "dom-snapshot", "after"), "DOM after"],
+    [actionArtifactPath(report, action, "accessibility-tree", "after"), "Accessibility tree after"],
+    [actionArtifactPath(report, action, "focus-state", "after"), "Focus after"],
+    [actionArtifactPath(report, action, "axe-result", "after"), "Axe after"],
+    [action.reportPath, "Raw action report"]
+  ];
+  return `<ul class="evidence-links">${links
+    .filter((entry): entry is [string, string] => Boolean(entry[0]))
+    .map(([href, label]) => `<li><a href="${encodeURI(href)}">${escapeHtml(label)}</a></li>`)
+    .join("")}</ul>`;
+}
+
+function renderReaderOverview(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews
+): string {
+  if (views.transcripts.length === 0) {
+    return '<p class="empty">No virtual-reader transcript was requested.</p>';
+  }
+  return views.transcripts
+    .map((transcript) => {
+      const rows = transcript.entries
+        .map((entry) => {
+          const actionId = `command-${entry.sequence}-${entry.command}`;
+          const action = report.actions.find((candidate) => candidate.actionId === actionId);
+          const actionView = views.actionReports.find(
+            (candidate) => candidate.action.actionId === actionId
+          );
+          const judgment = actionView?.judgments.find(({ judgeId }) => judgeId === "screen-reader");
+          const links = action ? renderActionEvidenceLinks(report, action) : "—";
+          const bounds = entry.visualBounds
+            ? `${entry.visualBounds.width} × ${entry.visualBounds.height} at ${entry.visualBounds.x}, ${entry.visualBounds.y}`
+            : "Not recorded";
+          return `<tr><th scope="row">${entry.sequence}. ${escapeHtml(entry.command)}</th><td><span class="reader-announcement">${escapeHtml(entry.announcement)}</span><div class="bounds">${escapeHtml(bounds)}</div></td><td>${entry.focusMoved ? "Moved — review" : "Stayed separate — correct"}<div class="technical-id">${escapeHtml(entry.focusBefore)} → ${escapeHtml(entry.focusAfter)}</div></td><td><span class="badge ${judgment?.verdict ?? "unknown"}">${escapeHtml(judgment?.verdict ?? "unknown")}</span><br>${escapeHtml(judgment?.summary ?? "No cross-evidence judgment was emitted.")}</td><td>${links}</td></tr>`;
+        })
+        .join("");
+      const readerActions = report.actions.filter(
+        ({ driver }) => driver === "portable-virtual-screen-reader"
+      );
+      const visuals = readerActions
+        .map((action) => {
+          const screenshot = actionArtifactPath(report, action, "viewport-screenshot", "after");
+          return screenshot
+            ? `<figure><a href="${encodeURI(screenshot)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Rendered page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>${escapeHtml(humanActionName(action.actionId))}</figcaption></figure>`
+            : "";
+        })
+        .join("");
+      return `<article class="finding-dossier"><header><div><h3>Guide-mode navigation</h3><p>${escapeHtml(transcript.pageUrl)} · ${escapeHtml(transcript.fidelity.replaceAll("-", " "))}</p></div><span class="badge ${report.synthesis.reader.failed ? "fail" : report.synthesis.reader.unknown ? "unknown" : "pass"}">${report.synthesis.reader.passed}/${report.synthesis.reader.commands} passed</span></header>${transcript.readError ? `<p>${escapeHtml(transcript.readError)}</p>` : `<div class="table-wrap"><table><caption>Announcements correlated with semantic, visual, and focus evidence</caption><thead><tr><th scope="col">Command</th><th scope="col">Virtual announcement and bounds</th><th scope="col">DOM focus</th><th scope="col">Cross-evidence result</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div><h4>Rendered checkpoints</h4><div class="media-grid">${visuals}</div>`}<p class="evidence-links"><a href="${encodeURI(transcript.path)}">Open transcript JSON</a>${transcript.textPath ? ` <a href="${encodeURI(transcript.textPath)}">Open readable transcript</a>` : ""}</p></article>`;
     })
     .join("");
 }
@@ -988,6 +1718,12 @@ function humanDriverName(driver: ScenarioActionReport["driver"]): string {
   return driver === "keyboard" ? "Keyboard" : "Pointer";
 }
 
+function behaviorLabelForDriver(driver: ScenarioActionReport["driver"]): string {
+  return driver === "portable-virtual-screen-reader"
+    ? "Reader semantic agreement"
+    : "Focus management";
+}
+
 function artifactKindLabel(kind: string): string {
   const labels: Record<string, string> = {
     "accessibility-tree": "Accessibility trees",
@@ -1081,6 +1817,10 @@ function escapeMarkdown(value: string): string {
   return value.replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
+function markdownEvidenceLink(value: string | undefined): string {
+  return value ? `[open](${encodeURI(value)})` : "—";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -1091,6 +1831,14 @@ function optionalStringField(value: Record<string, unknown>, field: string): str
 
 function stringField(value: Record<string, unknown>, field: string, fallback: string): string {
   return optionalStringField(value, field) ?? fallback;
+}
+
+function numberField(value: Record<string, unknown>, field: string, fallback = 0): number {
+  return typeof value[field] === "number" ? value[field] : fallback;
+}
+
+function optionalNumberField(value: Record<string, unknown>, field: string): number | undefined {
+  return typeof value[field] === "number" ? value[field] : undefined;
 }
 
 function verdictField(value: unknown): "pass" | "fail" | "unknown" {

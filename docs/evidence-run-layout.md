@@ -29,12 +29,17 @@ The editable Mermaid source is
    evidence, WCAG mappings, deterministic detection, the few allowlisted AI questions, and
    verification. AI output is clearly labeled, evidence-citing, provider-neutral, and advisory.
 6. **Publish one integrated report.** HTML is the primary review surface; JSON is canonical for
-   tools; Markdown works in GitHub. The HTML report presents transparent overall metrics and
-   keyboard-operable Overview, Actions, Axe, Screen reader, Media, and Evidence files tabs.
-   Individual machine-readable reports are summarized in place and remain linked as raw evidence.
+   tools; Markdown works in GitHub. The report synthesizes direct judgments separately from derived
+   release gates, preserves positive keyboard and virtual-reader outcomes, and distinguishes unique
+   findings, repeated checkpoint occurrences, and incomplete rule results. Each finding dossier
+   joins its Axe nodes with the same-action DOM, accessibility tree, focus state, full-page and
+   viewport visuals, and reader evidence before presenting deterministic remediation, the bounded
+   AI status, and rerun verification. Keyboard-operable Overview, Findings, Keyboard, Screen reader,
+   Axe, Media, and Evidence files tabs keep the analysis readable while raw artifacts remain linked.
 
 The overall result is a release-policy verdict, not an automated WCAG percentage. Its scorecard
-shows the exact number of action release gates passed, unique findings, and available artifacts.
+shows direct checks passed, confirmed issues, unresolved checks, and available artifacts. A failing
+release gate does not hide an independent passing keyboard, focus, or virtual-reader judgment.
 The tabs use progressive enhancement: without JavaScript they remain ordinary in-page links and all
 sections remain readable; with JavaScript they follow the ARIA tab keyboard pattern.
 

@@ -67,6 +67,12 @@ write one integrated HTML, JSON, and Markdown report:
 node packages/cli/dist/index.js run examples/melio/scenario.yml --output aee-output/scenarios
 ```
 
+The integrated report separates direct behavior checks from release gates, summarizes keyboard and
+virtual-reader outcomes, and builds one dossier per unique finding from its repeated Axe results and
+same-checkpoint DOM, accessibility-tree, focus, screenshot, and transcript evidence. Deterministic
+remediation is shown first; AI status explains whether contextual assistance was used, optional, or
+not appropriate, while final verification remains deterministic.
+
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
 comparisons authored in the YAML; allowed actions remain permissions rather than inferred steps.

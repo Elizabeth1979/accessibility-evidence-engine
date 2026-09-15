@@ -1,0 +1,179 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  buildScenarioSynthesisForTest,
+  type ScenarioActionReport,
+  type ScenarioIntegratedReport
+} from "./scenario-runner";
+
+function action(
+  driver: ScenarioActionReport["driver"],
+  actionId: string,
+  runId: string
+): ScenarioActionReport {
+  return {
+    journeyId: "journey",
+    laneId: `lane-${driver}`,
+    driver,
+    actionId,
+    sequence: 1,
+    runId,
+    pageUrl: "https://example.com/",
+    results: { pass: 1, fail: 1, unknown: 0 },
+    releaseVerdict: "fail",
+    reportPath: `${runId}/report.json`,
+    artifactPaths: []
+  };
+}
+
+test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, and visual evidence", () => {
+  const actions = [
+    action("portable-virtual-screen-reader", "command-1-next-heading", "reader-run"),
+    action("pointer", "pointer-hover", "pointer-run"),
+    action("keyboard", "keyboard-focus", "keyboard-run")
+  ];
+  const artifacts = actions.flatMap((item) =>
+    [
+      ["dom-snapshot", "dom.html"],
+      ["accessibility-tree", "aom.json"],
+      ["focus-state", "focus.json"],
+      ["full-page-screenshot", "full.png"],
+      ["viewport-screenshot", "viewport.png"]
+    ].map(([kind, name]) => ({
+      kind,
+      phase: "after",
+      path: `${item.runId}/${name}`,
+      provenance: { runId: item.runId }
+    }))
+  );
+  artifacts.push({
+    kind: "screen-reader-transcript",
+    phase: "after",
+    path: "reader-run/transcript-json-after.json",
+    provenance: { runId: "reader-run" }
+  });
+  const report = {
+    actions,
+    artifacts,
+    findings: [
+      { ruleId: "aria-required-parent", severity: "critical", occurrences: [{}, {}, {}] },
+      { ruleId: "color-contrast", severity: "serious", occurrences: [{}, {}, {}] }
+    ],
+    summary: { passed: 0, failed: 3, unknown: 0 }
+  } as unknown as ScenarioIntegratedReport;
+  const actionReports = actions.map((item) => ({
+    action: item,
+    observerSummaries: [],
+    judgments: [
+      {
+        judgeId:
+          item.driver === "portable-virtual-screen-reader" ? "screen-reader" : "focus-management",
+        verdict: "pass",
+        summary: `${item.driver} behavior matched the captured evidence.`
+      },
+      { judgeId: "axe", verdict: "fail", summary: "Confirmed automated violations." },
+      { judgeId: "release", verdict: "fail", summary: "Release blocked." }
+    ]
+  }));
+  const violation = (id: string) => ({
+    id,
+    impact: id === "aria-required-parent" ? "critical" : "serious",
+    help:
+      id === "aria-required-parent"
+        ? "Certain ARIA roles must be contained"
+        : "Elements must meet minimum color contrast ratio thresholds",
+    description: `${id} description`,
+    nodeCount: 2,
+    targets: ["footer a", ".low-contrast"],
+    htmlSamples: ['<a role="menuitem">Help</a>'],
+    tags: [id === "aria-required-parent" ? "wcag131" : "wcag143"],
+    failureSummary:
+      id === "color-contrast"
+        ? "Fix any of the following: Element has insufficient color contrast of 2.83"
+        : "Fix any of the following: Required ARIA parent role not present",
+    failureSummaries: [
+      id === "color-contrast"
+        ? "Fix any of the following: Element has insufficient color contrast of 2.83"
+        : "Fix any of the following: Required ARIA parent role not present"
+    ]
+  });
+  const axeReports = actions.map((item) => ({
+    path: `${item.runId}/axe.json`,
+    actionId: item.actionId,
+    laneId: item.laneId,
+    runId: item.runId,
+    violations: [violation("aria-required-parent"), violation("color-contrast")],
+    incomplete: [
+      {
+        ...violation("aria-valid-attr-value"),
+        id: "aria-valid-attr-value"
+      }
+    ],
+    passes: 20,
+    inapplicable: 5
+  }));
+  const comparisons = [
+    {
+      path: "comparison.json",
+      comparisonId: "comparison",
+      name: "Hover and focus",
+      status: "completed",
+      isolation: "separate contexts",
+      equivalence: { verdict: "pass", summary: "Equivalent" },
+      expectation: { verdict: "pass", summary: "Expected outcome matched" },
+      pointer: { actionIds: ["pointer-hover"], visible: true },
+      keyboard: { actionIds: ["keyboard-focus"], visible: true }
+    }
+  ];
+
+  const synthesis = buildScenarioSynthesisForTest(report, {
+    transcripts: [],
+    actionReports,
+    axeReports,
+    comparisons
+  });
+
+  assert.deepEqual(synthesis.directJudgments, { passed: 3, failed: 3, unknown: 0 });
+  assert.deepEqual(synthesis.releaseGates, { passed: 0, failed: 3, unknown: 0 });
+  assert.equal(synthesis.reader.passed, 1);
+  assert.equal(synthesis.findingOccurrences, 6);
+  assert.deepEqual(synthesis.uniqueIncompleteRules, ["aria-valid-attr-value"]);
+  assert.match(synthesis.conclusion, /pointer\/keyboard comparisons matched/);
+  assert.equal(synthesis.lanes.length, 3);
+
+  const aria = synthesis.findings.find(({ ruleId }) => ruleId === "aria-required-parent");
+  assert.equal(aria?.wcagCriteria[0], "WCAG 1.3.1");
+  assert.equal(aria?.checkpoints.length, 3);
+  assert.equal(aria?.checkpoints[0]?.domPath, "reader-run/dom.html");
+  assert.equal(aria?.checkpoints[0]?.accessibilityTreePath, "reader-run/aom.json");
+  assert.equal(aria?.checkpoints[0]?.screenshotPath, "reader-run/full.png");
+  assert.equal(aria?.checkpoints[0]?.readerTranscriptPath, "reader-run/transcript-json-after.json");
+  assert.equal(aria?.remediation.ai.status, "not-applicable");
+  assert.match(aria?.remediation.deterministic ?? "", /remove role="menuitem"/);
+
+  const contrast = synthesis.findings.find(({ ruleId }) => ruleId === "color-contrast");
+  assert.equal(contrast?.wcagCriteria[0], "WCAG 1.4.3");
+  assert.equal(contrast?.remediation.ai.status, "available-if-needed");
+  assert.match(contrast?.remediation.deterministic ?? "", /2\.83/);
+});
+
+test("scenario synthesis clearly reports an empty authored scope", () => {
+  const report = {
+    actions: [],
+    artifacts: [],
+    findings: [],
+    summary: { passed: 0, failed: 0, unknown: 0 }
+  } as unknown as ScenarioIntegratedReport;
+  const synthesis = buildScenarioSynthesisForTest(report, {
+    transcripts: [],
+    actionReports: [],
+    axeReports: [],
+    comparisons: []
+  });
+
+  assert.match(synthesis.conclusion, /no confirmed issues were emitted/);
+  assert.equal(synthesis.findings.length, 0);
+  assert.equal(synthesis.lanes.length, 0);
+  assert.deepEqual(synthesis.reader, { commands: 0, passed: 0, failed: 0, unknown: 0 });
+});

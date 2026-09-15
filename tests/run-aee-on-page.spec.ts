@@ -39,7 +39,9 @@ test("executeScenario integrates an approved real-page lane into one complete re
   const server = await startHtmlServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html><html lang="en"><head><title>Example</title></head><body>
+      <header><a href="/sign-in">Sign in</a></header>
       <main><h1>Account overview</h1><p>Review public information.</p></main>
+      <footer><a href="/help" role="menuitem" style="color:#aaa;background:#fff;font-size:14px">Help</a></footer>
     </body></html>`);
   });
   const scenarioPath = testInfo.outputPath("scenario.yml");
@@ -61,9 +63,28 @@ journeys:
     name: Read public page
     goal: Find the primary heading.
     startPath: /
-    allowedActions: [navigate]
+    allowedActions: [navigate, hover, focus]
     forbiddenActions: [submit]
     virtualScreenReaderCommands: [next-heading]
+    interactionComparisons:
+      - id: sign-in-hover-focus
+        name: Sign in remains available with pointer and keyboard
+        pointerActions:
+          - id: hover-sign-in
+            kind: hover
+            target: { role: link, name: Sign in }
+        keyboardActions:
+          - id: focus-sign-in
+            kind: focus
+            target: { role: link, name: Sign in }
+        observe:
+          target: { role: link, name: Sign in }
+          url: true
+          visible: true
+          text: true
+        expected:
+          visible: true
+          text: Sign in
 privacy:
   storage: local
   remoteUpload: forbidden
@@ -87,44 +108,90 @@ approval:
       completeness: { status: string; plannedLanes: number; completedLanes: number };
       summary: { actions: number; artifacts: number };
       ai: { present: boolean };
+      synthesis: {
+        directJudgments: { passed: number; failed: number; unknown: number };
+        comparisons: Array<{
+          equivalence: { verdict: string };
+          expectation: { verdict: string };
+        }>;
+        reader: { commands: number; passed: number };
+        findings: Array<{
+          ruleId: string;
+          checkpointCount: number;
+          checkpoints: Array<{
+            domPath?: string;
+            accessibilityTreePath?: string;
+            screenshotPath?: string;
+          }>;
+          remediation: { ai: { used: boolean } };
+        }>;
+      };
     };
     const html = await readFile(result.reportFiles.html, "utf8");
 
     expect(report.status).toBe("completed");
     expect(report.completeness).toMatchObject({
       status: "complete",
-      plannedLanes: 1,
-      completedLanes: 1
+      plannedLanes: 3,
+      completedLanes: 3
     });
-    expect(report.summary.actions).toBe(1);
+    expect(report.summary.actions).toBe(3);
     expect(report.summary.artifacts).toBeGreaterThan(0);
     expect(report.ai.present).toBe(false);
+    expect(report.synthesis.directJudgments).toEqual({ passed: 3, failed: 3, unknown: 0 });
+    expect(report.synthesis.comparisons).toMatchObject([
+      { equivalence: { verdict: "pass" }, expectation: { verdict: "pass" } }
+    ]);
+    expect(report.synthesis.reader).toMatchObject({ commands: 1, passed: 1 });
+    expect(report.synthesis.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleId: "aria-required-parent",
+          checkpointCount: 3,
+          remediation: expect.objectContaining({
+            ai: expect.objectContaining({ used: false })
+          }),
+          checkpoints: expect.arrayContaining([
+            expect.objectContaining({
+              domPath: expect.any(String),
+              accessibilityTreePath: expect.any(String),
+              screenshotPath: expect.any(String)
+            })
+          ])
+        })
+      ])
+    );
     expect(html).toContain("<video controls");
-    expect(html).toContain("Virtual screen-reader transcript");
+    expect(html).toContain("Virtual screen-reader report");
     expect(html).toContain('data-tab-list aria-label="Report sections"');
-    expect(html).toContain("Individual action reports");
-    expect(html).toContain("View raw action JSON");
+    expect(html).toContain("Keyboard and pointer overview");
+    expect(html).toContain("What the evidence says");
+    expect(html).toContain("Open complete interaction trace");
+    expect(html).toContain("Every checkpoint considered in this conclusion");
+    expect(html).toContain("Deterministic remediation");
     await access(result.manifestFile);
 
     await page.goto(pathToFileURL(result.reportFiles.html).href);
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveCount(7);
     await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
-    await expect(page.getByRole("heading", { name: "Assessment scope" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Individual action reports" })).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Coverage by active lane" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Keyboard and pointer overview" })).toBeHidden();
 
-    const actionsTab = page.getByRole("tab", { name: /Actions/ });
-    await actionsTab.click();
-    await expect(actionsTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("heading", { name: "Individual action reports" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "View raw action JSON" })).toBeVisible();
+    const keyboardTab = page.getByRole("tab", { name: "Keyboard" });
+    await keyboardTab.click();
+    await expect(keyboardTab).toHaveAttribute("aria-selected", "true");
+    await expect(
+      page.getByRole("heading", { name: "Keyboard and pointer overview" })
+    ).toBeVisible();
+    await expect(page.getByText("Both lanes matched", { exact: false })).toBeVisible();
 
-    await actionsTab.press("ArrowRight");
-    await expect(page.getByRole("tab", { name: /Axe/ })).toBeFocused();
-    await expect(page.getByRole("heading", { name: "Axe reports", exact: true })).toBeVisible();
+    await keyboardTab.press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "Screen reader" })).toBeFocused();
+    await expect(page.getByRole("heading", { name: "Virtual screen-reader report" })).toBeVisible();
 
     const accessibility = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"])
@@ -138,7 +205,7 @@ approval:
       const noScriptPage = await noScriptContext.newPage();
       await noScriptPage.goto(pathToFileURL(result.reportFiles.html).href);
       await expect(
-        noScriptPage.getByRole("heading", { name: "Individual action reports" })
+        noScriptPage.getByRole("heading", { name: "Keyboard and pointer overview" })
       ).toBeVisible();
       await expect(
         noScriptPage.getByRole("heading", { name: "Axe reports", exact: true })
