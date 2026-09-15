@@ -8,6 +8,8 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 
+const KEYBOARD_JUDGE_VERSION = "0.2.0";
+
 export const defaultJudgeManifests = [
   {
     id: "structure",
@@ -19,9 +21,14 @@ export const defaultJudgeManifests = [
   {
     id: "keyboard",
     displayName: "Keyboard Judge",
-    version: "0.1.0",
+    version: "0.2.0",
     kind: "judge" as const,
-    capabilities: ["focus-order", "tab-flow", "keyboard-activation"]
+    capabilities: [
+      "focus-order",
+      "tab-flow",
+      "role-aware-keyboard-activation",
+      "composite-key-matrix"
+    ]
   },
   {
     id: "focus-management",
@@ -541,7 +548,7 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
@@ -570,7 +577,7 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Keyboard focus did not advance. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
@@ -596,7 +603,7 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Keyboard focus moved in the wrong direction. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
@@ -631,7 +638,7 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
     {
       id: `keyboard:${bundle.interaction.id}`,
       judgeId: "keyboard",
-      judgeVersion: "0.1.0",
+      judgeVersion: KEYBOARD_JUDGE_VERSION,
       scope: "interaction",
       verdict: "pass",
       summary: `Keyboard focus ${directionText} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.${orderingSuffix}`,
@@ -641,6 +648,47 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
       artifactIds: collectArtifactIds([beforeRecord, afterRecord])
     }
   ];
+}
+
+function getRoleActivationExpectation(
+  focusTarget: unknown,
+  interactionKind: "enter" | "space"
+): { status: "evaluated" | "unsupported" | "unknown"; expectedKeys: string[] } {
+  if (!isRecord(focusTarget)) return { status: "unknown", expectedKeys: [] };
+  const role = getStringField(focusTarget, "role");
+  const tagName = getStringField(focusTarget, "tagName");
+  const type = getStringField(focusTarget, "type");
+  const keysByRole: Record<string, Array<"enter" | "space">> = {
+    button: ["enter", "space"],
+    link: ["enter"],
+    checkbox: ["space"],
+    radio: ["space"],
+    switch: ["space"],
+    menuitem: ["enter", "space"],
+    menuitemcheckbox: ["enter", "space"],
+    menuitemradio: ["enter", "space"],
+    tab: ["enter", "space"]
+  };
+  let expected = role ? keysByRole[role] : undefined;
+  if (!expected && tagName === "button") expected = ["enter", "space"];
+  if (!expected && tagName === "summary") expected = ["enter", "space"];
+  if (!expected && tagName === "a") expected = ["enter"];
+  if (!expected && tagName === "input") {
+    expected = ["button", "submit", "reset", "image"].includes(type ?? "")
+      ? ["enter", "space"]
+      : ["checkbox", "radio"].includes(type ?? "")
+        ? ["space"]
+        : undefined;
+  }
+  if (!expected) return { status: "unknown", expectedKeys: [] };
+  return {
+    status: expected.includes(interactionKind) ? "evaluated" : "unsupported",
+    expectedKeys: expected.map(formatKeyboardKey)
+  };
+}
+
+function formatKeyboardKey(key: "enter" | "space"): "Enter" | "Space" {
+  return key === "enter" ? "Enter" : "Space";
 }
 
 function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
@@ -662,6 +710,22 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
   const afterTarget = getFocusTarget(afterRecord);
   const beforeKey = serializeFocusTarget(beforeTarget);
   const afterKey = serializeFocusTarget(afterTarget);
+  const activationKind = bundle.interaction.kind as "enter" | "space";
+  const activationExpectation = getRoleActivationExpectation(beforeTarget, activationKind);
+
+  if (activationExpectation.status !== "evaluated") {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        activationExpectation.status === "unsupported"
+          ? `${formatKeyboardKey(activationKind)} is not an evaluated activation key for ${describeFocusTarget(beforeTarget)}. Evaluated key${activationExpectation.expectedKeys.length === 1 ? "" : "s"}: ${activationExpectation.expectedKeys.join(", ")}. This authored key/control combination remains untested rather than being treated as an accessibility failure.`
+          : `No deterministic Enter/Space activation matrix entry exists for ${describeFocusTarget(beforeTarget)}.`,
+        "info",
+        1,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
 
   if (!isActivatableKeyboardTarget(bundle.interaction.target, beforeTarget)) {
     return [
@@ -670,6 +734,22 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
         "Keyboard activation checks currently apply to activatable controls only.",
         "info",
         0.6,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (
+    isRecord(beforeTarget) &&
+    ((beforeTarget.role === "tab" && beforeTarget.ariaSelected === true) ||
+      (beforeTarget.role === "radio" && beforeTarget.ariaChecked === true))
+  ) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `${formatKeyboardKey(activationKind)} was applied to an already active ${String(beforeTarget.role)}. No additional observable change is required, so this action remains untested unless the scenario declares a more specific expected outcome.`,
+        "info",
+        1,
         [beforeRecord.id, afterRecord.id]
       )
     ];
@@ -691,7 +771,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Keyboard activation lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
@@ -722,7 +802,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.`,
@@ -759,7 +839,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     {
       id: `keyboard:${bundle.interaction.id}`,
       judgeId: "keyboard",
-      judgeVersion: "0.1.0",
+      judgeVersion: KEYBOARD_JUDGE_VERSION,
       scope: "interaction",
       verdict: "pass",
       summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}`,
@@ -821,6 +901,26 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
+  const compositeOrientation =
+    getStringField(beforeTarget, "compositeOrientation") ??
+    getStringField(afterTarget, "compositeOrientation");
+  const navigationExpectation = getCompositeNavigationExpectation(
+    compositeRole,
+    compositeOrientation,
+    arrowKey
+  );
+  if (navigationExpectation.status !== "evaluated") {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `${arrowKey} is not evaluated as a deterministic focus-movement key for a ${compositeOrientation ? `${compositeOrientation} ` : ""}${compositeRole}. Evaluated keys: ${navigationExpectation.expectedKeys.join(", ") || "none"}. Complex expand, collapse, and popup behavior requires an explicit outcome assertion.`,
+        "info",
+        1,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
   if (afterTarget === null) {
     const finding: Finding = {
       id: `keyboard:${bundle.interaction.id}:composite-focus-lost`,
@@ -837,7 +937,7 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Arrow-key navigation lost focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
@@ -851,7 +951,17 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  if (beforeKey === afterKey) {
+  const stationaryEndpointIsValid =
+    (arrowKey === "Home" || arrowKey === "End") &&
+    evaluateCompositeArrowDirection(
+      arrowKey,
+      getNumericField(beforeTarget, "compositeItemIndex"),
+      getNumericField(afterTarget, "compositeItemIndex"),
+      getNumericField(beforeTarget, "compositeItemCount") ??
+        getNumericField(afterTarget, "compositeItemCount")
+    ) === "correct-direction";
+
+  if (beforeKey === afterKey && !stationaryEndpointIsValid) {
     const finding: Finding = {
       id: `keyboard:${bundle.interaction.id}:composite-focus-stalled`,
       message: "Arrow-key navigation did not move focus to another item in the composite widget.",
@@ -866,7 +976,7 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Arrow-key navigation did not move focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
@@ -895,7 +1005,7 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Arrow-key navigation moved focus outside the expected ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
@@ -924,7 +1034,7 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
       {
         id: `keyboard:${bundle.interaction.id}`,
         judgeId: "keyboard",
-        judgeVersion: "0.1.0",
+        judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
         summary: `Arrow-key navigation moved in the wrong direction within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
@@ -957,10 +1067,10 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     {
       id: `keyboard:${bundle.interaction.id}`,
       judgeId: "keyboard",
-      judgeVersion: "0.1.0",
+      judgeVersion: KEYBOARD_JUDGE_VERSION,
       scope: "interaction",
       verdict: "pass",
-      summary: `Arrow-key navigation moved focus within the ${compositeRole} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)} using ${arrowKey}.${directionSuffix}`,
+      summary: `${arrowKey} navigation ${beforeKey === afterKey ? "kept focus at the requested endpoint" : "moved focus"} within the ${compositeRole} from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.${directionSuffix}`,
       severity: "info",
       confidence: directionVerdict === "direction-unverified" ? 0.75 : 0.95,
       evidenceRecordIds: [beforeRecord.id, afterRecord.id],
@@ -1592,7 +1702,7 @@ function buildKeyboardUnknownJudgment(
   return {
     id: `keyboard:${bundle.interaction.id}`,
     judgeId: "keyboard",
-    judgeVersion: "0.1.0",
+    judgeVersion: KEYBOARD_JUDGE_VERSION,
     scope: "interaction",
     verdict: "unknown",
     summary,
@@ -1845,7 +1955,7 @@ function isActivatableKeyboardTarget(
 
 function getArrowKey(
   bundle: EvidenceBundle
-): "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | undefined {
+): "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | "Home" | "End" | undefined {
   const candidates = [
     bundle.interaction.input,
     getStringMetaField(bundle.interaction.meta, "key"),
@@ -1857,13 +1967,38 @@ function getArrowKey(
       candidate === "ArrowRight" ||
       candidate === "ArrowLeft" ||
       candidate === "ArrowUp" ||
-      candidate === "ArrowDown"
+      candidate === "ArrowDown" ||
+      candidate === "Home" ||
+      candidate === "End"
     ) {
       return candidate;
     }
   }
 
   return undefined;
+}
+
+function getCompositeNavigationExpectation(
+  compositeRole: string,
+  orientation: string | undefined,
+  key: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | "Home" | "End"
+): { status: "evaluated" | "unsupported"; expectedKeys: string[] } {
+  const horizontal = ["ArrowLeft", "ArrowRight", "Home", "End"];
+  const vertical = ["ArrowUp", "ArrowDown", "Home", "End"];
+  const keysByRole: Record<string, string[]> = {
+    tablist: orientation === "vertical" ? vertical : horizontal,
+    radiogroup: ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"],
+    listbox: vertical,
+    menu: vertical,
+    menubar: horizontal,
+    tree: vertical,
+    grid: ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]
+  };
+  const expectedKeys = keysByRole[compositeRole] ?? [];
+  return {
+    status: expectedKeys.includes(key) ? "evaluated" : "unsupported",
+    expectedKeys
+  };
 }
 
 function getCompositeNavigationRole(
@@ -1938,7 +2073,7 @@ function getCompositeItemFamily(role: string | undefined): string | undefined {
 }
 
 function evaluateCompositeArrowDirection(
-  arrowKey: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown",
+  arrowKey: "ArrowRight" | "ArrowLeft" | "ArrowUp" | "ArrowDown" | "Home" | "End",
   beforeIndex: number | undefined,
   afterIndex: number | undefined,
   itemCount: number | undefined
@@ -1951,6 +2086,10 @@ function evaluateCompositeArrowDirection(
   ) {
     return "direction-unverified";
   }
+
+  if (arrowKey === "Home") return afterIndex === 0 ? "correct-direction" : "wrong-direction";
+  if (arrowKey === "End")
+    return afterIndex === itemCount - 1 ? "correct-direction" : "wrong-direction";
 
   const movesForward = arrowKey === "ArrowRight" || arrowKey === "ArrowDown";
   const movedForward =

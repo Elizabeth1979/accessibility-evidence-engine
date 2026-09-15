@@ -726,6 +726,80 @@ test("keyboard judge fails space activation when an activatable control has no o
   assert.equal(judgment.severity, "high");
 });
 
+test("keyboard judge leaves Space on a link untested instead of reporting a false failure", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const focusTarget = { tagName: "a", role: "link", name: "Details" };
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: { focusTarget }
+      }
+    ],
+    { kind: "space", target: { role: "link", name: "Details" } }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment.verdict, "unknown");
+  assert.match(judgment.summary, /Space is not an evaluated activation key/);
+  assert.match(judgment.summary, /Evaluated key: Enter/);
+  assert.match(judgment.summary, /remains untested/);
+});
+
+test("keyboard judge leaves activation of an already selected tab explicitly untested", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const focusTarget = {
+    tagName: "button",
+    role: "tab",
+    name: "Overview",
+    ariaSelected: true
+  };
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: { focusTarget }
+      }
+    ],
+    { kind: "enter", target: { role: "tab", name: "Overview" } }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment.verdict, "unknown");
+  assert.match(judgment.summary, /already active tab/);
+  assert.match(judgment.summary, /more specific expected outcome/);
+});
+
 test("keyboard judge passes arrow-key navigation within a tablist when focus moves to the next tab", async () => {
   const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
   const bundle = createBundle(
@@ -790,6 +864,80 @@ test("keyboard judge passes arrow-key navigation within a tablist when focus mov
   assert.equal(judgment.verdict, "pass");
   assert.match(judgment.summary, /moved focus within the tablist/);
   assert.match(judgment.summary, /ArrowRight/);
+});
+
+test("keyboard judge applies Home to the first item in a listbox", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const focusRecord = (phase: "before" | "after", index: number, name: string) => ({
+    id: `record-focus-${phase}`,
+    runId: "run-1",
+    observerId: "focus",
+    phase,
+    status: "ok" as const,
+    timestamp: "2026-06-21T10:00:01.000Z",
+    meta: {
+      focusTarget: {
+        tagName: "div",
+        role: "option",
+        name,
+        compositeRole: "listbox",
+        compositeOrientation: "vertical",
+        compositeItemIndex: index,
+        compositeItemCount: 3
+      }
+    }
+  });
+  const bundle = createBundle(
+    [focusRecord("before", 2, "Third"), focusRecord("after", 0, "First")],
+    { kind: "arrow-key", input: "Home", target: { role: "option", name: "Third" } }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /Home navigation moved focus within the listbox/);
+});
+
+test("keyboard judge leaves a horizontal key on a vertical tablist explicitly untested", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const target = {
+    tagName: "button",
+    role: "tab",
+    name: "Overview",
+    compositeRole: "tablist",
+    compositeOrientation: "vertical",
+    compositeItemIndex: 0,
+    compositeItemCount: 2
+  };
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget: target }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: { focusTarget: target }
+      }
+    ],
+    { kind: "arrow-key", input: "ArrowRight", target: { role: "tab", name: "Overview" } }
+  );
+
+  const [judgment] = await keyboardJudge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment.verdict, "unknown");
+  assert.match(judgment.summary, /not evaluated.*vertical tablist/);
+  assert.match(judgment.summary, /ArrowUp, ArrowDown, Home, End/);
 });
 
 test("keyboard judge fails arrow-key navigation when focus stalls in a tablist", async () => {

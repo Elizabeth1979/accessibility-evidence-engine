@@ -746,6 +746,20 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
     expect(
       comparison.lanes.keyboard.steps.every(({ artifactFiles }) => artifactFiles.length > 0)
     ).toBe(true);
+    const enterStep = comparison.lanes.keyboard.steps.find(
+      ({ action }) => action.id === "press-enter"
+    );
+    const enterReportPath = enterStep?.reporterFiles.find((filePath) =>
+      filePath.endsWith("aee-report.json")
+    );
+    const enterReport = JSON.parse(await readFile(enterReportPath!, "utf8")) as JsonReport;
+    expect(enterReport.judgments).toContainEqual(
+      expect.objectContaining({
+        judgeId: "keyboard",
+        verdict: "pass",
+        summary: expect.stringContaining("observable activation signals")
+      })
+    );
   } finally {
     await fixtureServer.close();
   }

@@ -882,10 +882,13 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         runId,
         policy: options.policy,
         observers: observerIds,
-        judges:
-          action.kind === "hover" || action.kind === "focus"
-            ? [...new Set([...judgeIds, "focus-management"])]
-            : judgeIds,
+        judges: [
+          ...new Set([
+            ...judgeIds,
+            ...(action.kind === "hover" || action.kind === "focus" ? ["focus-management"] : []),
+            ...(driver === "keyboard" && action.kind === "press" ? ["keyboard"] : [])
+          ])
+        ],
         checkpointName: `${driver}:${sequence}:${action.id}`,
         interaction: {
           kind: action.kind === "press" ? interactionKindForKey(action.key!) : action.kind,
@@ -1813,6 +1816,13 @@ async function createObserverPage(
                 ariaSelected: getBooleanAttribute(element, "aria-selected"),
                 ariaChecked: getBooleanAttribute(element, "aria-checked"),
                 compositeRole: compositeContext.compositeRole,
+                compositeOrientation: compositeContext.compositeRole
+                  ? (compositeContext.compositeElement?.getAttribute?.("aria-orientation") ??
+                    (compositeContext.compositeRole === "tablist" ||
+                    compositeContext.compositeRole === "menubar"
+                      ? "horizontal"
+                      : "vertical"))
+                  : undefined,
                 compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
                 compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
                 dialogContext: getDialogContext(element),

@@ -142,7 +142,7 @@ npm run demo:record
 | axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                                               |
 | Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                                              |
 | Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                         | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work        |
-| Keyboard judge          | Tab, shift-tab, arrow-key composites, enter, space                                | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                                                 |
+| Keyboard judge          | Tab, shift-tab, role-aware enter/space, composite arrows/Home/End                 | Evaluates user-authored keys against a bounded role/orientation matrix, deep focus, `aria-activedescendant`, and observable activation   |
 | Focus-management judge  | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                                                 |
 | Change-response judge   | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                                                       |
 | Structure judge         | Evidence completeness                                                             | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules                              |
@@ -181,6 +181,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 ## Known limitations
 
 - The YAML CLI executes only explicitly authored virtual-reader commands and pointer/keyboard comparisons; it does not infer broad page coverage from action permissions.
+- The keyboard matrix judges only keys the scenario author explicitly requests. Unsupported or context-dependent role/key combinations remain `unknown`; they do not become accessibility failures or claims of keyboard coverage.
 - A complete Core evidence run is still a bounded scenario result, not a full WCAG conformance claim for the target site.
 - `runAeeOnPage(...)` evaluates one interaction bundle per call; lane runners compose those calls into per-action journeys.
 - Stabilization is currently a fixed post-interaction delay, not network-idle, animation, or mutation detection.

@@ -63,9 +63,29 @@ await runAeeOnPage({
 });
 ```
 
+## Role-aware keyboard matrix
+
+The scenario author chooses every action. AEE does not infer which controls or keys to test. For an authored action, the keyboard judge uses the focused element's role, native element type, composite role, and orientation to select a bounded deterministic check.
+
+| Context                                  | Evaluated authored keys | Deterministic evidence check                                                                                                  |
+| ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Button                                   | Enter, Space            | An observable focus, DOM, or network response follows activation                                                              |
+| Link                                     | Enter                   | An observable response follows activation; Space remains `unknown`                                                            |
+| Checkbox, radio, switch                  | Space                   | An observable response follows activation                                                                                     |
+| Menu item                                | Enter, Space            | An observable response follows activation                                                                                     |
+| Manually activated tab                   | Enter, Space            | An observable response follows activation; an already selected tab remains `unknown` without a more specific expected outcome |
+| Horizontal tablist or menubar            | Left, Right, Home, End  | Focus stays within peer items and moves in the requested direction or to the requested endpoint                               |
+| Vertical tablist, listbox, menu, or tree | Up, Down, Home, End     | Focus stays within peer items and moves in the requested direction or to the requested endpoint                               |
+| Radiogroup                               | Left, Right, Up, Down   | Focus stays within the radio group and moves in the requested direction                                                       |
+| Grid                                     | Left, Right, Up, Down   | Focus stays within grid cells and moves in the requested direction                                                            |
+
+The matrix follows the keyboard conventions in the [WAI-ARIA Authoring Practices keyboard interface guidance](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/) and the applicable [button](https://www.w3.org/WAI/ARIA/apg/patterns/button/), [tabs](https://www.w3.org/WAI/ARIA/apg/patterns/tabs/), and [listbox](https://www.w3.org/WAI/ARIA/apg/patterns/listbox/) patterns. Authoring a role does not implement its keyboard behavior; the evidence verifies what the page actually did. Optional pattern keys such as Home and End are evaluated only when the user authors them.
+
+Context-dependent behavior remains explicit. For example, Space selection in a listbox depends on its selection model, and Left/Right on a tree can expand, collapse, or move focus. These combinations return `unknown` unless the scenario supplies a specific outcome assertion.
+
 ## Keyboard activation example
 
-The keyboard judge can also evaluate simple `enter` and `space` activation when focus evidence is available and another observer captures an observable response.
+The keyboard judge evaluates supported `enter` and `space` activation when focus evidence identifies the control and another observer captures an observable response.
 
 ```ts
 await page.focus("#save");
@@ -91,7 +111,7 @@ await runAeeOnPage({
 
 ## Composite navigation example
 
-The keyboard judge can also evaluate simple roving-focus arrow-key navigation in detectable composite widgets such as tablists.
+The keyboard judge can evaluate role- and orientation-aware roving-focus navigation in detectable composite widgets such as tablists.
 
 ```ts
 await page.focus("#tab-overview");
@@ -419,7 +439,7 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - The focus observer snapshots `document.activeElement`, the deepest active element through open shadow roots and same-origin frames, the complete focus chain, focus-visible computed styles, `aria-activedescendant`, and the browser accessibility tree's focused node.
 - Focus snapshots include the containing dialog context when the active element is inside a native or ARIA dialog.
 - The focus-management judge supports explicit `inside-dialog`, `preserve`, and `target` expectations. Pointer hover is required to preserve focus; an authored focus action must resolve to its requested target.
-- The keyboard judge currently relies on focus evidence for tab order, simple roving arrow-key navigation, basic `aria-activedescendant` composites, and basic enter/space activation checks.
+- The keyboard judge relies on deep focus evidence for tab order, role- and orientation-aware composite navigation, `aria-activedescendant`, and role-aware Enter/Space activation. It evaluates only user-authored actions; unsupported or context-dependent combinations return `unknown`.
 - The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
 - The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.
 - The axe observer pins `@axe-core/playwright` 4.13.0, runs the cumulative WCAG 2.0/2.1/2.2 A/AA tag selection, and retains every raw result category.
