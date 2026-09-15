@@ -190,6 +190,16 @@ test("validateSchema accepts a portable virtual screen-reader transcript", () =>
         timestamp: "2026-09-13T00:00:00.000Z",
         command: "next-heading",
         announcement: "Invoices, heading, level 1",
+        item: {
+          key: "main > h1",
+          nodePath: "main > h1",
+          tagName: "h1",
+          role: "heading",
+          name: "Invoices",
+          level: 1,
+          states: [],
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+        },
         focusMoved: false
       }
     ]

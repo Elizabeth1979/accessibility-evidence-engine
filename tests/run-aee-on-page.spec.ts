@@ -495,6 +495,11 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
       "Pay invoice, button"
     ]);
     expect(lane.transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
+    expect(
+      lane.transcript.entries.every(
+        ({ item }) => (item?.visualBounds.width ?? 0) > 0 && (item?.visualBounds.height ?? 0) > 0
+      )
+    ).toBe(true);
     expect(lane.steps.every(({ reporterFiles }) => reporterFiles.length === 2)).toBe(true);
     expect(lane.steps.every(({ releaseVerdict }) => releaseVerdict === "pass")).toBe(true);
 
@@ -508,6 +513,17 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
         )
       ).toBe(true);
       expect(step.artifactFiles.some((filePath) => filePath.endsWith("axe-after.json"))).toBe(true);
+      const reportPath = step.reporterFiles.find((filePath) =>
+        filePath.endsWith("aee-report.json")
+      );
+      const report = JSON.parse(await readFile(reportPath!, "utf8")) as JsonReport;
+      expect(report.judgments).toContainEqual(
+        expect.objectContaining({
+          judgeId: "screen-reader",
+          verdict: "pass",
+          summary: expect.stringContaining("same-checkpoint accessibility tree")
+        })
+      );
     }
 
     await Promise.all([

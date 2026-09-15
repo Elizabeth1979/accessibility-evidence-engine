@@ -16,6 +16,12 @@ export interface VirtualScreenReaderItem {
   name?: string;
   level?: number;
   states: string[];
+  visualBounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
 }
 
 export interface VirtualScreenReaderEntry {
@@ -244,7 +250,7 @@ function describeItem(item: VirtualScreenReaderItem): string {
 }
 
 function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
-  return { ...item, states: [...item.states] };
+  return { ...item, states: [...item.states], visualBounds: { ...item.visualBounds } };
 }
 
 function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
@@ -271,6 +277,12 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
       labels?: Iterable<unknown>;
       getAttribute?: (name: string) => string | null;
       getClientRects?: () => { length?: number };
+      getBoundingClientRect?: () => {
+        left?: number;
+        top?: number;
+        width?: number;
+        height?: number;
+      };
     };
     type DocumentLike = {
       title?: unknown;
@@ -281,6 +293,8 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
     };
     const globalRef = globalThis as unknown as {
       document?: DocumentLike;
+      scrollX?: number;
+      scrollY?: number;
       getComputedStyle?: (element: ElementLike) => {
         display?: string;
         visibility?: string;
@@ -502,6 +516,7 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
           : undefined;
       const nodePath = getNodePath(element);
       const name = getName(element, role);
+      const rect = element.getBoundingClientRect?.();
 
       if (tagName === "form" && role === "form" && !name) {
         role = "group";
@@ -514,7 +529,13 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
         role,
         name,
         level,
-        states: getStates(element)
+        states: getStates(element),
+        visualBounds: {
+          x: (rect?.left ?? 0) + (globalRef.scrollX ?? 0),
+          y: (rect?.top ?? 0) + (globalRef.scrollY ?? 0),
+          width: rect?.width ?? 0,
+          height: rect?.height ?? 0
+        }
       };
     });
     const activeElement = isElement(documentRef?.activeElement)

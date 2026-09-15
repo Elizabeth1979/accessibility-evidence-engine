@@ -10,7 +10,7 @@ Schema JSON files are exposed through `@aee/schemas/json/*` in addition to the m
 
 `interaction-video.schema.json` validates the lane recording sidecar, action timing, caption linkage, execution status, and conservative privacy state.
 
-`focus-state.schema.json` validates document and deepest active elements, shadow/iframe focus chains, focus-indicator metadata, `aria-activedescendant`, and accessibility-tree focus.
+`focus-state.schema.json` validates document and deepest active elements, shadow/iframe focus chains, focus-indicator metadata, `aria-activedescendant`, and accessibility-tree focus. Portable-reader items may also include document-relative rendered bounds used to correlate the semantic target with full-page visual evidence.
 
 `scenario-report.schema.json` validates the integrated report's separate verdict and evidence-completeness states, action summaries, raw evidence index, privacy boundary, and explicit AI-output label.
 

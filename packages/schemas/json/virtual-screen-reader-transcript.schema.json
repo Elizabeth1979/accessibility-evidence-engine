@@ -40,7 +40,18 @@
         "role": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
         "level": { "type": "integer", "minimum": 1 },
-        "states": { "type": "array", "items": { "type": "string" } }
+        "states": { "type": "array", "items": { "type": "string" } },
+        "visualBounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
       },
       "additionalProperties": false
     },

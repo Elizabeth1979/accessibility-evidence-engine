@@ -141,7 +141,7 @@ npm run demo:record
 | Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                                                |
 | axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                                               |
 | Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                                              |
-| Screen-reader judge     | Transcript presence and virtual-cursor/focus separation                           | Does not yet validate every announcement against full visual, DOM, and accessibility-tree context                                        |
+| Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                         | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work        |
 | Keyboard judge          | Tab, shift-tab, arrow-key composites, enter, space                                | Focus direction, simple roving focus, `aria-activedescendant`, and observable activation                                                 |
 | Focus-management judge  | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                                                 |
 | Change-response judge   | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                                                       |
@@ -157,7 +157,7 @@ npm run demo:record
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                           |
 | Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace        |
 
-The Guidepup observer plus the interaction and visual judges remain unsupported or unknown extension points. The portable virtual-reader lane and transcripts are implemented, but full cross-evidence announcement validation remains partial. Virtual-reader evidence must not be presented as VoiceOver or NVDA output.
+The Guidepup observer plus the interaction and standalone visual judges remain unsupported or unknown extension points. The portable virtual-reader lane deterministically checks same-checkpoint DOM/AOM semantic agreement and rendered visual presence, but it does not infer pixel meaning. Virtual-reader evidence must not be presented as VoiceOver or NVDA output.
 
 ## Package layout
 

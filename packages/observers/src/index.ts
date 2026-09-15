@@ -14,9 +14,9 @@ export const defaultObserverManifests = [
   {
     id: "accessibility-tree",
     displayName: "Accessibility Tree Observer",
-    version: "0.1.0",
+    version: "0.2.0",
     kind: "observer" as const,
-    capabilities: ["accessibility-tree"]
+    capabilities: ["accessibility-tree", "semantic-index"]
   },
   {
     id: "focus",
@@ -56,9 +56,15 @@ export const defaultObserverManifests = [
   {
     id: "virtual-screen-reader",
     displayName: "Portable Virtual Screen Reader Observer",
-    version: "0.1.0",
+    version: "0.2.0",
     kind: "observer" as const,
-    capabilities: ["guide-navigation", "json-transcript", "text-transcript", "focus-separation"]
+    capabilities: [
+      "guide-navigation",
+      "json-transcript",
+      "text-transcript",
+      "focus-separation",
+      "semantic-target"
+    ]
   }
 ];
 
@@ -372,7 +378,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.1.0",
+      observerVersion: "0.2.0",
       phase,
       status: "unsupported",
       timestamp: getTimestamp(),
@@ -391,7 +397,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.1.0",
+      observerVersion: "0.2.0",
       phase,
       status: "observer_error",
       timestamp: getTimestamp(),
@@ -404,6 +410,7 @@ async function captureAccessibilityRecord(
   }
 
   const content = JSON.stringify(snapshot ?? null, null, 2);
+  const semanticIndex = buildAccessibilitySemanticIndex(snapshot);
   const artifact = await maybeWriteArtifact(
     context,
     "accessibility-tree",
@@ -420,14 +427,92 @@ async function captureAccessibilityRecord(
     checkpointId: context.checkpointId,
     interactionId: context.interactionId,
     observerId: "accessibility-tree",
-    observerVersion: "0.1.0",
+    observerVersion: "0.2.0",
     phase,
     status: "ok",
     timestamp: getTimestamp(),
     summary: `Captured accessibility tree ${phase} state.`,
     ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
-    artifacts: artifact ? [artifact] : []
+    artifacts: artifact ? [artifact] : [],
+    meta: {
+      semanticNodeCount: semanticIndex.nodes.length,
+      semanticIndexTruncated: semanticIndex.truncated,
+      semanticNodes: semanticIndex.nodes
+    }
   };
+}
+
+interface AccessibilitySemanticNode {
+  role: string;
+  name?: string;
+  level?: number;
+}
+
+function buildAccessibilitySemanticIndex(snapshot: unknown): {
+  nodes: AccessibilitySemanticNode[];
+  truncated: boolean;
+} {
+  const maximumNodes = 5_000;
+  const nodes: AccessibilitySemanticNode[] = [];
+  const seen = new Set<string>();
+  const visited = new WeakSet<object>();
+  let truncated = false;
+
+  const visit = (value: unknown): void => {
+    if (nodes.length >= maximumNodes) {
+      truncated = true;
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (!isRecord(value) || visited.has(value)) return;
+    visited.add(value);
+
+    const role = readAccessibilityValue(value.role);
+    if (role) {
+      const name = readAccessibilityValue(value.name);
+      const level = readAccessibilityLevel(value);
+      const normalizedRole = normalizeSemanticText(role);
+      const normalizedName = name ? normalizeSemanticText(name) : undefined;
+      const key = `${normalizedRole}\u0000${normalizedName ?? ""}\u0000${level ?? ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        nodes.push({
+          role: normalizedRole,
+          ...(normalizedName ? { name: normalizedName } : {}),
+          ...(level !== undefined ? { level } : {})
+        });
+      }
+    }
+
+    Object.values(value).forEach(visit);
+  };
+
+  visit(snapshot);
+  return { nodes, truncated };
+}
+
+function readAccessibilityValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (isRecord(value) && typeof value.value === "string") return value.value;
+  return undefined;
+}
+
+function readAccessibilityLevel(node: Record<string, unknown>): number | undefined {
+  if (typeof node.level === "number" && Number.isFinite(node.level)) return node.level;
+  if (!Array.isArray(node.properties)) return undefined;
+  const property = node.properties.find(
+    (candidate) => isRecord(candidate) && candidate.name === "level"
+  );
+  if (!isRecord(property)) return undefined;
+  const value = isRecord(property.value) ? property.value.value : property.value;
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function normalizeSemanticText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
 async function captureFocusRecord(
@@ -775,7 +860,7 @@ async function captureVirtualScreenReaderRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "virtual-screen-reader",
-      observerVersion: "0.1.0",
+      observerVersion: "0.2.0",
       phase,
       status: "ok",
       timestamp: getTimestamp(),
@@ -797,7 +882,9 @@ async function captureVirtualScreenReaderRecord(
         entryCount,
         newEntryCount: newEntries.length,
         focusMovedCount,
-        lastAnnouncement: readString(lastEntry?.announcement)
+        lastAnnouncement: readString(lastEntry?.announcement),
+        lastCommand: readString(lastEntry?.command),
+        lastItem: isRecord(lastEntry?.item) ? lastEntry.item : undefined
       }
     };
   } catch (error) {
@@ -807,7 +894,7 @@ async function captureVirtualScreenReaderRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "virtual-screen-reader",
-      observerVersion: "0.1.0",
+      observerVersion: "0.2.0",
       phase,
       status: "observer_error",
       timestamp: getTimestamp(),
@@ -830,7 +917,7 @@ function unsupportedVirtualScreenReaderRecord(
     checkpointId: context.checkpointId,
     interactionId: context.interactionId,
     observerId: "virtual-screen-reader",
-    observerVersion: "0.1.0",
+    observerVersion: "0.2.0",
     phase,
     status: "unsupported",
     timestamp: getTimestamp(),

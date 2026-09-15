@@ -5,12 +5,50 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  createAccessibilityTreeObserver,
   createAxeObserver,
   createNetworkObserver,
   createVirtualScreenReaderObserver,
   createVisualObserver,
   type RuntimeObserverContext
 } from "./index";
+
+test("createAccessibilityTreeObserver builds a normalized semantic index", async () => {
+  const observer = createAccessibilityTreeObserver();
+  const [record] = await observer.captureAfter!({
+    runId: "run-accessibility",
+    checkpointId: "checkpoint-accessibility",
+    interactionId: "interaction-accessibility",
+    page: {
+      async content() {
+        return "<h1>Invoices</h1>";
+      },
+      async snapshotAccessibilityTree() {
+        return {
+          nodes: [
+            {
+              role: { type: "role", value: "heading" },
+              name: { type: "computedString", value: "  Invoices  " },
+              properties: [{ name: "level", value: { type: "integer", value: 1 } }]
+            },
+            { role: "button", name: "PAY NOW" }
+          ]
+        };
+      }
+    }
+  } as RuntimeObserverContext);
+
+  assert.equal(record.status, "ok");
+  assert.equal(record.observerVersion, "0.2.0");
+  assert.deepEqual(record.meta, {
+    semanticNodeCount: 2,
+    semanticIndexTruncated: false,
+    semanticNodes: [
+      { role: "heading", name: "invoices", level: 1 },
+      { role: "button", name: "pay now" }
+    ]
+  });
+});
 
 test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-virtual-reader-"));

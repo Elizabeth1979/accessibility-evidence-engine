@@ -60,6 +60,62 @@ function createJudgment(overrides: Partial<Judgment>): Judgment {
   };
 }
 
+function createSemanticSupportRecords(
+  semanticNodes: Array<{ role: string; name?: string; level?: number }>
+): EvidenceBundle["records"] {
+  return [
+    {
+      id: "record-dom-after",
+      runId: "run-1",
+      observerId: "dom",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      artifacts: [
+        {
+          id: "dom-after",
+          kind: "dom-snapshot",
+          path: "/tmp/dom-after.html",
+          mediaType: "text/html"
+        }
+      ]
+    },
+    {
+      id: "record-accessibility-after",
+      runId: "run-1",
+      observerId: "accessibility-tree",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      artifacts: [
+        {
+          id: "accessibility-after",
+          kind: "accessibility-tree",
+          path: "/tmp/accessibility-tree-after.json",
+          mediaType: "application/json"
+        }
+      ],
+      meta: { semanticNodes, semanticIndexTruncated: false }
+    },
+    {
+      id: "record-visual-after",
+      runId: "run-1",
+      observerId: "visual",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      artifacts: [
+        {
+          id: "visual-full-page-after",
+          kind: "screenshot",
+          path: "/tmp/visual-full-page-after.png",
+          mediaType: "image/png"
+        }
+      ]
+    }
+  ];
+}
+
 test("axe judge fails violations and preserves incomplete checks as unresolved context", async () => {
   const judge = createDefaultJudgePlugins(["axe"])[0];
   const bundle = createBundle([
@@ -111,16 +167,92 @@ test("screen-reader judge passes virtual navigation that does not move DOM focus
       meta: {
         newEntryCount: 1,
         focusMovedCount: 0,
-        lastAnnouncement: "Invoices, heading, level 1"
+        lastAnnouncement: "Invoices, heading, level 1",
+        lastItem: {
+          role: "heading",
+          name: "Invoices",
+          level: 1,
+          nodePath: "main > h1",
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+        }
       }
-    }
+    },
+    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /without moving DOM focus/);
-  assert.match(judgment?.summary ?? "", /not VoiceOver or NVDA fidelity/);
+  assert.match(judgment?.summary ?? "", /match the same-checkpoint accessibility tree/);
+  assert.match(judgment?.summary ?? "", /not pixel meaning or VoiceOver\/NVDA fidelity/);
+});
+
+test("screen-reader judge fails a DOM and accessibility-tree semantic contradiction", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: "Invoices, heading, level 1",
+        lastItem: {
+          role: "heading",
+          name: "Invoices",
+          level: 1,
+          nodePath: "main > h1",
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+        }
+      }
+    },
+    ...createSemanticSupportRecords([{ role: "heading", name: "Payments", level: 1 }])
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
+  assert.match(judgment?.summary ?? "", /not found.*accessibility tree/);
+});
+
+test("screen-reader judge returns unknown when same-checkpoint visual evidence is absent", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+  const records = [
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after" as const,
+      status: "ok" as const,
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: "Invoices, heading, level 1",
+        lastItem: {
+          role: "heading",
+          name: "Invoices",
+          level: 1,
+          nodePath: "main > h1",
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+        }
+      }
+    },
+    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }]).filter(
+      ({ observerId }) => observerId !== "visual"
+    )
+  ];
+
+  const [judgment] = await judge!.judge(createBundle(records), { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /same-checkpoint visual evidence is missing/);
 });
 
 test("screen-reader judge fails when virtual navigation moves DOM focus", async () => {

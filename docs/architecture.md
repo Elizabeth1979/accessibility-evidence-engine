@@ -47,7 +47,7 @@ Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, pin
 
 ### `@aee/judges`
 
-Owns judge manifests and the built-in structure, keyboard, focus-management, change-response, virtual screen-reader, axe, and release judges. The screen-reader judge currently checks transcript presence and virtual-cursor/focus separation only. Interaction and visual judges remain extension scaffolds.
+Owns judge manifests and the built-in structure, keyboard, focus-management, change-response, virtual screen-reader, axe, and release judges. The screen-reader judge checks transcript presence, virtual-cursor/focus separation, same-checkpoint DOM/AOM role-name-level agreement, and rendered visual presence. It does not infer pixel meaning. Interaction and standalone visual judges remain extension scaffolds.
 
 ### `@aee/reporter`
 

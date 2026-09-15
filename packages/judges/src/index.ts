@@ -40,9 +40,14 @@ export const defaultJudgeManifests = [
   {
     id: "screen-reader",
     displayName: "Screen Reader Judge",
-    version: "0.1.0",
+    version: "0.2.0",
     kind: "judge" as const,
-    capabilities: ["virtual-cursor-focus-separation", "transcript-presence"]
+    capabilities: [
+      "virtual-cursor-focus-separation",
+      "transcript-presence",
+      "dom-aom-semantic-agreement",
+      "rendered-visual-presence"
+    ]
   },
   {
     id: "visual",
@@ -1106,7 +1111,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.1.0",
+            judgeVersion: "0.2.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1133,7 +1138,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.1.0",
+            judgeVersion: "0.2.0",
             scope: "interaction",
             verdict: "fail",
             summary: `The virtual-reader command moved DOM focus during ${focusMovedCount} transcript entr${focusMovedCount === 1 ? "y" : "ies"}; virtual cursor movement and focus movement must remain separate.`,
@@ -1152,7 +1157,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.1.0",
+            judgeVersion: "0.2.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1165,22 +1170,173 @@ function createScreenReaderJudge(): JudgePlugin {
         ];
       }
 
+      const lastItem = isRecord(record.meta?.lastItem) ? record.meta.lastItem : undefined;
+      const supportingRecords = ["dom", "accessibility-tree", "visual"].map((observerId) =>
+        bundle.records.find(
+          (candidate) =>
+            candidate.observerId === observerId &&
+            candidate.phase === "after" &&
+            candidate.status === "ok"
+        )
+      );
+      const missingObservers = ["dom", "accessibility-tree", "visual"].filter(
+        (_observerId, index) => !supportingRecords[index]
+      );
+      const availableSupportingRecords = supportingRecords.filter(
+        (candidate): candidate is EvidenceRecord => Boolean(candidate)
+      );
+      const correlatedRecords = [record, ...availableSupportingRecords];
+
+      if (!lastItem || missingObservers.length > 0) {
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.2.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: lastItem
+              ? `Portable-reader semantic agreement cannot be evaluated because same-checkpoint ${missingObservers.join(", ")} evidence is missing.`
+              : `The portable reader announced “${lastAnnouncement}”, but no semantic target was present to compare with the DOM, accessibility tree, and full-page visual context.`,
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+            artifactIds: collectArtifactIds(correlatedRecords)
+          }
+        ];
+      }
+
+      const domRecord = supportingRecords[0]!;
+      const accessibilityRecord = supportingRecords[1]!;
+      const visualRecord = supportingRecords[2]!;
+      const domSnapshotPresent = recordHasArtifact(domRecord, "dom-snapshot");
+      const fullPageVisualPresent = recordHasArtifactPath(visualRecord, "full-page");
+      const renderedBoundsPresent = hasPositiveVisualBounds(lastItem.visualBounds);
+      const accessibilityMatch = findAccessibilitySemanticMatch(
+        accessibilityRecord.meta?.semanticNodes,
+        lastItem
+      );
+      const accessibilityIndexTruncated = accessibilityRecord.meta?.semanticIndexTruncated === true;
+
+      if (!domSnapshotPresent || !fullPageVisualPresent || !renderedBoundsPresent) {
+        const unavailable = [
+          !domSnapshotPresent ? "full DOM snapshot" : undefined,
+          !fullPageVisualPresent ? "full-page screenshot" : undefined,
+          !renderedBoundsPresent ? "non-zero rendered bounds" : undefined
+        ].filter((value): value is string => Boolean(value));
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.2.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: `The portable-reader target could not be fully correlated because ${unavailable.join(", ")} evidence was unavailable.`,
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+            artifactIds: collectArtifactIds(correlatedRecords)
+          }
+        ];
+      }
+
+      if (!accessibilityMatch) {
+        const role = getStringField(lastItem, "role") ?? "unknown role";
+        const name = getStringField(lastItem, "name");
+        const summary = accessibilityIndexTruncated
+          ? `The accessibility-tree semantic index was truncated before the portable-reader target ${role}${name ? ` “${name}”` : ""} could be matched.`
+          : `The live DOM exposed ${role}${name ? ` “${name}”` : ""} to the portable reader, but the same role, name, and heading level were not found in the same-checkpoint accessibility tree.`;
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.2.0",
+            scope: "interaction",
+            verdict: accessibilityIndexTruncated ? "unknown" : "fail",
+            summary,
+            severity: accessibilityIndexTruncated ? "medium" : "high",
+            confidence: 1,
+            evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+            artifactIds: collectArtifactIds(correlatedRecords),
+            ...(!accessibilityIndexTruncated
+              ? {
+                  findings: [
+                    {
+                      id: `screen-reader-semantic-mismatch:${bundle.interaction.id}`,
+                      ruleId: "portable-reader-semantic-agreement",
+                      message: summary,
+                      severity: "high" as const,
+                      target: {
+                        role: getStringField(lastItem, "role"),
+                        name: getStringField(lastItem, "name"),
+                        nodePath: getStringField(lastItem, "nodePath")
+                      },
+                      evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+                      artifactIds: collectArtifactIds(correlatedRecords),
+                      suggestedFix:
+                        "Reconcile the rendered control's DOM semantics with the browser accessibility tree, then rerun the same reader command."
+                    }
+                  ]
+                }
+              : {})
+          }
+        ];
+      }
+
       return [
         {
           id: `screen-reader:${bundle.interaction.id}`,
           judgeId: "screen-reader",
-          judgeVersion: "0.1.0",
+          judgeVersion: "0.2.0",
           scope: "interaction",
           verdict: "pass",
-          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus. This verifies virtual-cursor separation, not VoiceOver or NVDA fidelity.`,
+          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus; its live-DOM role, name, and heading level match the same-checkpoint accessibility tree, and non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
           severity: "info",
           confidence: 1,
-          evidenceRecordIds: [record.id],
-          artifactIds
+          evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+          artifactIds: collectArtifactIds(correlatedRecords)
         }
       ];
     }
   };
+}
+
+function recordHasArtifact(record: EvidenceRecord, kind: string): boolean {
+  return (record.artifacts ?? []).some((artifact) => artifact.kind === kind);
+}
+
+function recordHasArtifactPath(record: EvidenceRecord, pathPart: string): boolean {
+  return (record.artifacts ?? []).some((artifact) => artifact.path.includes(pathPart));
+}
+
+function hasPositiveVisualBounds(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.width === "number" &&
+    value.width > 0 &&
+    typeof value.height === "number" &&
+    value.height > 0
+  );
+}
+
+function findAccessibilitySemanticMatch(nodes: unknown, target: Record<string, unknown>): boolean {
+  if (!Array.isArray(nodes)) return false;
+  const targetRole = normalizeSemanticValue(getStringField(target, "role"));
+  const targetName = normalizeSemanticValue(getStringField(target, "name"));
+  const targetLevel = getNumericField(target, "level");
+
+  return nodes.some((candidate) => {
+    if (!isRecord(candidate)) return false;
+    if (normalizeSemanticValue(getStringField(candidate, "role")) !== targetRole) return false;
+    if (targetName && normalizeSemanticValue(getStringField(candidate, "name")) !== targetName) {
+      return false;
+    }
+    return targetLevel === undefined || getNumericField(candidate, "level") === targetLevel;
+  });
+}
+
+function normalizeSemanticValue(value: string | undefined): string | undefined {
+  return value?.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
 function createAxeJudge(): JudgePlugin {

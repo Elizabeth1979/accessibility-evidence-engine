@@ -19,7 +19,7 @@ same-checkpoint evidence and missing evidence cannot pass.
 ## Milestone 2 — Portable automated lanes (in progress)
 
 - Maintain pinned axe 4.13 capture with the cumulative WCAG 2.0/2.1/2.2 A/AA selection and full raw results.
-- Expand cross-evidence semantic validation for the portable virtual-screen-reader lane. The Playwright driver, automatic dedicated-context orchestration, per-command recapture, origin enforcement, JSON/TXT transcript, focus-separation judge, and schemas are available.
+- Expand cross-evidence validation beyond the implemented deterministic portable-reader check. The current judge requires focus separation, a same-checkpoint DOM target, matching accessibility-tree role/name/heading level, non-zero rendered bounds, and a full-page screenshot. Pixel-level meaning and contextual interpretation remain review work.
 - Expand the implemented user-authored pointer/hover and keyboard journey runner with role-aware keyboard matrices.
 - Expand the implemented per-lane WebM persistence, JSON sidecars, and WebVTT captions with scenario-level retention policy.
 - Enforce dependency-aware `untested` plus `blockedBy` behavior.
