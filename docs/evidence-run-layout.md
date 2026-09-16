@@ -34,8 +34,12 @@ The editable Mermaid source is
    findings, repeated checkpoint occurrences, and incomplete rule results. Each finding dossier
    joins its Axe nodes with the same-action DOM, accessibility tree, focus state, full-page and
    viewport visuals, and reader evidence before presenting deterministic remediation, the bounded
-   AI status, and rerun verification. Keyboard-operable Overview, Findings, Keyboard, Screen reader,
-   Axe, Media, and Evidence files tabs keep the analysis readable while raw artifacts remain linked.
+   AI status, effort, and rerun verification. The keyboard-operable Status & plan, Fix review, Tested
+   journeys, Visuals & video, and Technical annex tabs separate decisions from implementation detail.
+   The first view communicates scoped product health and fix order; the visual review compares current
+   evidence with a proposed change; a local evidence-grounded question interface explains status,
+   priority, effort, and tested behavior without uploading artifacts. Raw DOM, accessibility-tree,
+   focus, Axe, and evidence files remain linked in the annex.
 
 The overall result is a release-policy verdict, not an automated WCAG percentage. Its scorecard
 shows direct checks passed, confirmed issues, unresolved checks, and available artifacts. A failing

@@ -165,7 +165,11 @@ approval:
     expect(html).toContain("Virtual screen-reader report");
     expect(html).toContain('data-tab-list aria-label="Report sections"');
     expect(html).toContain("Keyboard and pointer overview");
-    expect(html).toContain("What the evidence says");
+    expect(html).toContain("Your accessibility status");
+    expect(html).toContain("Ask this report");
+    expect(html).toContain("Visual fix review");
+    expect(html).toContain("Current issue");
+    expect(html).toContain("Proposed fix");
     expect(html).toContain("Open complete interaction trace");
     expect(html).toContain("Every checkpoint considered in this conclusion");
     expect(html).toContain("Deterministic remediation");
@@ -173,25 +177,32 @@ approval:
 
     await page.goto(pathToFileURL(result.reportFiles.html).href);
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(7);
-    await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute(
+    await expect(tabs).toHaveCount(5);
+    await expect(page.getByRole("tab", { name: "Status & plan" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
-    await expect(page.getByRole("heading", { name: "Coverage by active lane" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your accessibility status" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Keyboard and pointer overview" })).toBeHidden();
 
-    const keyboardTab = page.getByRole("tab", { name: "Keyboard" });
-    await keyboardTab.click();
-    await expect(keyboardTab).toHaveAttribute("aria-selected", "true");
+    const fixTab = page.getByRole("tab", { name: /Fix review/ });
+    await fixTab.click();
+    await expect(fixTab).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("heading", { name: "Visual fix review" })).toBeVisible();
+    await expect(page.getByText("Proposed fix", { exact: true }).first()).toBeVisible();
+
+    await fixTab.press("ArrowRight");
+    const journeysTab = page.getByRole("tab", { name: "Tested journeys" });
+    await expect(journeysTab).toBeFocused();
     await expect(
       page.getByRole("heading", { name: "Keyboard and pointer overview" })
     ).toBeVisible();
     await expect(page.getByText("Both lanes matched", { exact: false })).toBeVisible();
 
-    await keyboardTab.press("ArrowRight");
-    await expect(page.getByRole("tab", { name: "Screen reader" })).toBeFocused();
     await expect(page.getByRole("heading", { name: "Virtual screen-reader report" })).toBeVisible();
+
+    await page.getByRole("button", { name: "How bad is it?" }).click();
+    await expect(page.getByRole("status")).toContainText("Release is blocked in the tested scope");
 
     const accessibility = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"])
@@ -208,8 +219,9 @@ approval:
         noScriptPage.getByRole("heading", { name: "Keyboard and pointer overview" })
       ).toBeVisible();
       await expect(
-        noScriptPage.getByRole("heading", { name: "Axe reports", exact: true })
+        noScriptPage.getByRole("heading", { name: "Axe results", exact: true })
       ).toBeVisible();
+      await expect(noScriptPage.getByRole("heading", { name: "Technical annex" })).toBeVisible();
     } finally {
       await noScriptContext.close();
     }

@@ -67,11 +67,14 @@ write one integrated HTML, JSON, and Markdown report:
 node packages/cli/dist/index.js run examples/melio/scenario.yml --output aee-output/scenarios
 ```
 
-The integrated report separates direct behavior checks from release gates, summarizes keyboard and
-virtual-reader outcomes, and builds one dossier per unique finding from its repeated Axe results and
-same-checkpoint DOM, accessibility-tree, focus, screenshot, and transcript evidence. Deterministic
-remediation is shown first; AI status explains whether contextual assistance was used, optional, or
-not appropriate, while final verification remains deterministic.
+The integrated report opens as an accessibility triage room: it explains the scoped page status,
+preserves successful keyboard and virtual-reader behavior, prioritizes confirmed issues, and gives a
+focused effort estimate. A filterable visual fix review places the captured page beside an honest
+proposed semantic or color-token change, links the relevant journey video, and keeps every conclusion
+traceable. “Ask this report” answers common status, priority, effort, and evidence questions locally
+without uploading captured data. Detailed DOM, accessibility-tree, focus, Axe, and raw-file views live
+in the technical annex. Deterministic remediation leads; AI is explicitly marked as unused or
+available only for bounded contextual assistance.
 
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
@@ -142,26 +145,26 @@ npm run demo:record
 
 ## Current capabilities
 
-| Area                    | Implemented                                                                       | Current scope                                                                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                                                 |
-| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                                                |
-| Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                                               |
-| Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                         | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work         |
-| Keyboard judge          | Tab, shift-tab, role-aware enter/space, composite arrows/Home/End                 | Evaluates user-authored keys against a bounded role/orientation matrix, deep focus, `aria-activedescendant`, and observable activation    |
-| Focus-management judge  | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                                                  |
-| Change-response judge   | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                                                        |
-| Structure judge         | Evidence completeness                                                             | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules                               |
-| Release judge           | Policy gate                                                                       | Applies severity, confidence, and unknown-result policy to prior judgments                                                                |
-| Validation              | JSON Schema and YAML scenario planning                                            | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads                                        |
-| Reporting               | Tabbed HTML review surface plus canonical JSON and Markdown                       | Shows transparent result/completeness metrics and readable action, Axe, transcript, media, and evidence-file views; raw files stay linked |
-| Evidence manifest       | Relative paths, SHA-256 integrity, provenance, execution status, and privacy      | Re-hashes child-lane evidence into one scenario manifest; omissions make the manifest partial                                             |
-| Interaction video       | WebM, JSON action timeline, and WebVTT captions                                   | Records each active lane, labels action timing, and indexes all three privacy-sensitive files in the manifest                             |
-| Deep focus state        | Document/deep active element, shadow/iframe chain, focus-visible styles, AX focus | Preserves synchronized focus evidence and deterministically checks explicit preserve, target, and dialog-transfer expectations            |
-| AI review routing       | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                       |
-| AI fix proposals        | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun                                            |
-| Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                            |
-| Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace         |
+| Area                    | Implemented                                                                       | Current scope                                                                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                                                                          |
+| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                                                                         |
+| Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                                                                        |
+| Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                         | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work                                  |
+| Keyboard judge          | Tab, shift-tab, role-aware enter/space, composite arrows/Home/End                 | Evaluates user-authored keys against a bounded role/orientation matrix, deep focus, `aria-activedescendant`, and observable activation                             |
+| Focus-management judge  | Modal opening                                                                     | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                                                                           |
+| Change-response judge   | Click, enter, space, submit                                                       | Detects observable DOM, focus, or network outcomes                                                                                                                 |
+| Structure judge         | Evidence completeness                                                             | Confirms successful DOM and accessibility-tree capture; it does not yet evaluate individual structure rules                                                        |
+| Release judge           | Policy gate                                                                       | Applies severity, confidence, and unknown-result policy to prior judgments                                                                                         |
+| Validation              | JSON Schema and YAML scenario planning                                            | Validates fixture config, user-controlled scenarios, compiled plans, and emitted evidence payloads                                                                 |
+| Reporting               | Interactive HTML triage room plus canonical JSON and Markdown                     | Leads with scoped status, visual before/proposed-fix review, effort, and local evidence Q&A; action, Axe, transcript, media, and raw files stay linked in an annex |
+| Evidence manifest       | Relative paths, SHA-256 integrity, provenance, execution status, and privacy      | Re-hashes child-lane evidence into one scenario manifest; omissions make the manifest partial                                                                      |
+| Interaction video       | WebM, JSON action timeline, and WebVTT captions                                   | Records each active lane, labels action timing, and indexes all three privacy-sensitive files in the manifest                                                      |
+| Deep focus state        | Document/deep active element, shadow/iframe chain, focus-visible styles, AX focus | Preserves synchronized focus evidence and deterministically checks explicit preserve, target, and dialog-transfer expectations                                     |
+| AI review routing       | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                |
+| AI fix proposals        | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun                                                                     |
+| Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                                                     |
+| Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace                                  |
 
 The Guidepup observer plus the interaction and standalone visual judges remain unsupported or unknown extension points. The portable virtual-reader lane deterministically checks same-checkpoint DOM/AOM semantic agreement and rendered visual presence, but it does not infer pixel meaning. Virtual-reader evidence must not be presented as VoiceOver or NVDA output.
 

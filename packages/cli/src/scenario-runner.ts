@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -673,10 +673,12 @@ async function writeIntegratedReport(
   const views = { transcripts, actionReports, axeReports, comparisons };
   report.synthesis = buildScenarioSynthesis(report, views);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
+  const reportFont = path.join(rootDir, "aee-report-display.woff2");
   await Promise.all([
     writeFile(files.json, JSON.stringify(report, null, 2), "utf8"),
     writeFile(files.markdown, renderIntegratedMarkdown(report), "utf8"),
-    writeFile(files.html, renderIntegratedHtml(report, views), "utf8")
+    writeFile(files.html, renderIntegratedHtml(report, views), "utf8"),
+    copyFile(path.resolve(__dirname, "../assets/aee-display.woff2"), reportFont)
   ]);
 }
 
@@ -1006,6 +1008,14 @@ export function buildScenarioSynthesisForTest(
   return buildScenarioSynthesis(report, views as IntegratedHtmlViews);
 }
 
+/** Pure HTML entry point used to verify the portable report without running a browser journey. */
+export function renderIntegratedHtmlForTest(
+  report: ScenarioIntegratedReport,
+  views: unknown
+): string {
+  return renderIntegratedHtml(report, views as IntegratedHtmlViews);
+}
+
 function countVerdicts(verdicts: Array<"pass" | "fail" | "unknown">) {
   return {
     passed: verdicts.filter((verdict) => verdict === "pass").length,
@@ -1290,6 +1300,80 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   return lines.join("\n");
 }
 
+interface FindingEffort {
+  size: "Small" | "Medium" | "Needs triage";
+  hours: string;
+  minimumHours: number;
+  maximumHours: number;
+  rationale: string;
+}
+
+function findingEffort(ruleId: string): FindingEffort {
+  if (ruleId === "aria-required-parent") {
+    return {
+      size: "Small",
+      hours: "1–2 hours",
+      minimumHours: 1,
+      maximumHours: 2,
+      rationale:
+        "Likely one shared footer component. Includes the semantic change and a keyboard/reader regression check."
+    };
+  }
+  if (ruleId === "color-contrast") {
+    return {
+      size: "Medium",
+      hours: "2–4 hours",
+      minimumHours: 2,
+      maximumHours: 4,
+      rationale:
+        "Choose an approved token, update both contexts and interactive states, then verify contrast and visual consistency."
+    };
+  }
+  return {
+    size: "Needs triage",
+    hours: "Not estimated",
+    minimumHours: 0,
+    maximumHours: 0,
+    rationale:
+      "Inspect the affected component and ownership before estimating implementation effort."
+  };
+}
+
+function totalEffortSummary(findings: FindingSynthesis[]): string {
+  const estimates = findings.map(({ ruleId }) => findingEffort(ruleId));
+  if (estimates.some(({ size }) => size === "Needs triage")) {
+    return "At least one finding needs engineering triage before the total can be estimated.";
+  }
+  const minimum = estimates.reduce((sum, estimate) => sum + estimate.minimumHours, 0);
+  const maximum = estimates.reduce((sum, estimate) => sum + estimate.maximumHours, 0);
+  return `${minimum}–${maximum} engineering hours for the identified fixes and focused regression checks.`;
+}
+
+function executiveStatusSummary(report: ScenarioIntegratedReport): string {
+  const readerPassed = report.synthesis.reader.commands > 0 && report.synthesis.reader.failed === 0;
+  const comparisonsPassed =
+    report.synthesis.comparisons.length > 0 &&
+    report.synthesis.comparisons.every(
+      ({ equivalence, expectation }) =>
+        equivalence.verdict === "pass" && expectation.verdict === "pass"
+    );
+  const strengths = [
+    comparisonsPassed ? "the tested keyboard and pointer paths agree" : undefined,
+    readerPassed ? "all tested virtual-reader commands correlate with the page" : undefined
+  ].filter((item): item is string => Boolean(item));
+  const issueText = report.summary.findings
+    ? `${report.summary.findings} repeated issue type${report.summary.findings === 1 ? "" : "s"} still block${report.summary.findings === 1 ? "s" : ""} release in this scope`
+    : "no confirmed issues were found in this scope";
+  return `${strengths.length ? `${strengths.join(" and ")}. ` : ""}${issueText}.`;
+}
+
+function jsonForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e")
+    .replaceAll("&", "\\u0026");
+}
+
 function renderIntegratedHtml(
   report: ScenarioIntegratedReport,
   views: IntegratedHtmlViews
@@ -1310,19 +1394,40 @@ function renderIntegratedHtml(
       report.completeness.failedArtifacts
   );
   const tabLinks = [
-    ["overview", "Overview"],
-    ["findings", `Findings (${report.summary.findings})`],
-    ["keyboard", "Keyboard"],
-    ["reader", "Screen reader"],
-    ["axe", `Axe (${views.axeReports.length})`],
-    ["media", `Media (${videos.length + screenshots.length})`],
-    ["evidence", `Evidence files (${report.summary.artifacts})`]
+    ["overview", "Status & plan"],
+    ["findings", `Fix review (${report.summary.findings})`],
+    ["journeys", "Tested journeys"],
+    ["media", `Visuals & video (${videos.length + screenshots.length})`],
+    ["annex", "Technical annex"]
   ] as const;
+  const statusSummary = executiveStatusSummary(report);
+  const effortSummary = totalEffortSummary(report.synthesis.findings);
+  const assistantKnowledge = jsonForInlineScript({
+    verdict: report.verdict,
+    target: report.target,
+    scope: `${report.summary.actions} authored actions across ${report.completeness.completedLanes} completed lanes`,
+    conclusion: report.synthesis.conclusion,
+    directJudgments: report.synthesis.directJudgments,
+    releaseGates: report.synthesis.releaseGates,
+    reader: report.synthesis.reader,
+    findings: report.synthesis.findings.map((finding) => ({
+      ruleId: finding.ruleId,
+      title: finding.title,
+      severity: finding.severity,
+      effort: findingEffort(finding.ruleId),
+      fix: finding.remediation.deterministic,
+      checkpoints: finding.checkpointCount,
+      wcag: finding.wcagCriteria
+    })),
+    incompleteRules: report.synthesis.uniqueIncompleteRules,
+    effortSummary
+  });
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Accessibility evidence report: ${escapeHtml(report.scenarioId)}</title>
 <style>
-:root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--focus:#f6b73c;--serif:Charter,"Bitstream Charter","Sitka Text",Cambria,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+@font-face{font-family:"AEE Display";src:url("aee-report-display.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
+:root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--focus:#f6b73c;--serif:"AEE Display",Georgia,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scrollbar-color:var(--line-strong) var(--wash)}
 body{margin:0;font:16px/1.6 var(--sans);color:var(--ink);background:var(--paper);font-variant-numeric:tabular-nums}
@@ -1355,6 +1460,26 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .score-facts dd{margin:.25rem 0 0;font:700 clamp(1.65rem,3vw,2.65rem)/1 var(--serif);white-space:nowrap}
 .score-facts small{display:block;margin-top:.6rem;color:#d7e2de;font:400 .86rem/1.35 var(--sans);white-space:normal}
 .score-note{max-width:72ch;margin:1rem 0 2.5rem;color:var(--muted)}
+.decision-room{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(20rem,.75fr);gap:1.5rem;margin-bottom:2rem}
+.status-brief{padding:clamp(1.5rem,4vw,3.25rem);color:#fff;background:var(--forest-deep);border-radius:16px}
+.status-brief h2{max-width:14ch;margin:.55rem 0 1rem;font:700 clamp(2.25rem,5vw,4.6rem)/.96 var(--serif);letter-spacing:-.035em;text-wrap:balance}
+.status-brief>p{max-width:62ch;color:#d7e9e2;font-size:1.08rem}
+.status-flag{display:inline-flex;align-items:center;gap:.55rem;padding:.35rem .7rem;border:1px solid #ffafbb;border-radius:999px;color:#ffd5db;font-weight:800;font-size:.78rem;letter-spacing:.04em;text-transform:uppercase}
+.status-flag::before{content:"";width:.55rem;height:.55rem;border-radius:50%;background:#ff8094}
+.status-meta{display:flex;flex-wrap:wrap;gap:.75rem 2rem;margin:2rem 0 0;padding-top:1.25rem;border-top:1px solid rgb(255 255 255/.24)}
+.status-meta strong{display:block;font:700 1.45rem/1.15 var(--serif)}.status-meta span{color:#b7cbc4;font-size:.82rem}
+.report-assistant{display:flex;flex-direction:column;padding:1.5rem;background:#fff;border:1px solid var(--line-strong);border-radius:16px}
+.report-assistant h2{margin:0;font:700 1.7rem/1.1 var(--serif)}.report-assistant>p{margin:.55rem 0 1rem;color:var(--muted)}
+.question-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}.question-chips button,.fix-filters button,.ask-about{border:1px solid var(--line-strong);border-radius:999px;padding:.5rem .75rem;color:var(--forest-deep);background:var(--paper);font:700 .84rem/1.2 var(--sans);cursor:pointer}.question-chips button:hover,.fix-filters button:hover,.ask-about:hover,.filter-active{color:#fff!important;background:var(--forest)!important}
+.ask-form{display:flex;gap:.5rem;margin-top:auto}.ask-form label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.ask-form input{min-width:0;flex:1;border:1px solid var(--line-strong);border-radius:8px;padding:.75rem;font:inherit;color:var(--ink);background:#fff}.ask-form button{border:0;border-radius:8px;padding:.75rem 1rem;color:#fff;background:var(--forest);font:800 .9rem/1 var(--sans);cursor:pointer}.ask-form button:hover{background:var(--forest-deep)}
+.assistant-answer{min-height:6rem;margin:1rem 0 0;padding:1rem;background:var(--wash);border-radius:8px;color:#29493f}.assistant-answer p{margin:0}.assistant-answer strong{color:var(--forest-deep)}
+.health-map{border-top:1px solid var(--line-strong);margin:1.5rem 0 2rem}.health-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1rem;align-items:center;padding:1rem 0;border-bottom:1px solid var(--line)}.health-signal{width:.75rem;height:.75rem;border-radius:50%}.health-signal.pass{background:var(--pass)}.health-signal.fail{background:var(--fail)}.health-signal.unknown{background:var(--unknown)}.health-row strong,.health-row span{display:block}.health-row span{color:var(--muted);font-size:.9rem}.health-result{font-size:.9rem}.health-result.pass{color:var(--pass)}.health-result.fail{color:var(--fail)}.health-result.unknown{color:var(--unknown)}
+.priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
+.section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
+.planner-tools{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.planner-tools p{margin:0}.fix-filters{display:flex;flex-wrap:wrap;gap:.5rem}
+.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
+.before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}.before-after figure{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.issue-crop{position:relative;display:block;height:15rem;overflow:hidden;background:#121212}.before-after img{width:100%;height:100%;object-fit:cover;object-position:top;border:0;border-radius:0}.current-state[data-rule-id="aria-required-parent"] img{object-position:20% bottom;transform:scale(1.7);transform-origin:20% 88%}.current-state[data-rule-id="color-contrast"] img{transform:scale(1.85);transform-origin:50% 3%}.issue-crop b{position:absolute;right:.6rem;bottom:.6rem;padding:.32rem .5rem;border-radius:4px;color:#fff;background:rgb(9 42 34/.92);font-size:.72rem;letter-spacing:.02em}.before-after figcaption{display:flex;flex-direction:column;gap:.2rem;margin:0;padding:.8rem 1rem;border-top:1px solid var(--line)}.before-after figcaption span{color:var(--muted);font-size:.85rem}.preview-stage{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:15rem;padding:1.25rem;background:var(--wash)}.semantic-preview .preview-stage>div:not(.change-arrow){display:flex;flex-direction:column;gap:.6rem}.semantic-preview .preview-stage span{font-size:.76rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.semantic-preview code{display:block;padding:.8rem;background:#fff;border:1px solid var(--line)}.change-arrow{color:var(--forest);font:700 2rem/1 var(--serif)}.contrast-pair{display:flex;flex:1;min-width:0;flex-direction:column;gap:.45rem;color:var(--ink)}.contrast-pair>strong{font-size:.9rem}.contrast-pair small{color:var(--muted);line-height:1.45}.color-field{display:flex;min-height:6rem;align-items:center;justify-content:center;border:1px solid var(--line-strong);border-radius:8px}.color-field i{display:block;width:56%;height:1.15rem;border-radius:999px}.fix-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem}.fix-actions a{font-weight:750}.estimate-note{max-width:75ch;color:var(--muted);font-size:.88rem}
+.annex-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:2rem}.annex-block{padding-top:2rem;border-top:1px solid var(--line-strong)}.annex-block>h3{font:700 1.7rem/1.2 var(--serif)}
 .conclusion{max-width:72ch;margin:1rem 0 2.5rem;font:600 clamp(1.2rem,2.2vw,1.55rem)/1.5 var(--serif);color:#29493f}
 .report-tabs{display:flex;gap:1.5rem;overflow-x:auto;border-bottom:1px solid var(--line-strong);scrollbar-width:thin}
 .report-tabs a{flex:0 0 auto;padding:.9rem .1rem .75rem;border-bottom:3px solid transparent;color:var(--muted);font-weight:700;text-decoration:none}
@@ -1397,7 +1522,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .notice-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2rem}
 .notice,.ai{border-top-color:var(--unknown)}
 .ai{border-top-color:#5367d8}
-.badge{display:inline-block;border:1px solid currentColor;border-radius:999px;padding:.12rem .55rem;font-size:.75rem;line-height:1.4;font-weight:800;letter-spacing:.035em;text-transform:uppercase}
+.badge{display:inline-block;align-self:start;border:1px solid currentColor;border-radius:999px;padding:.12rem .55rem;font-size:.75rem;line-height:1.4;font-weight:800;letter-spacing:.035em;text-transform:uppercase;white-space:nowrap}
 .badge.fail{color:var(--fail);background:var(--fail-wash)}.badge.pass{color:var(--pass);background:#eaf8f1}.badge.unknown{color:var(--unknown);background:var(--unknown-wash)}
 .card-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem}
 .card-heading h3{margin:.1rem 0;font:700 clamp(1.3rem,3vw,1.75rem)/1.15 var(--serif)}
@@ -1420,20 +1545,18 @@ summary{cursor:pointer;font-weight:700}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:1.5rem}
 img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
 figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
-@media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}}
-@media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals{grid-template-columns:1fr;gap:0}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}}
+@media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:3rem minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
+@media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}.before-after{grid-template-columns:1fr}.planner-tools,.section-intro{align-items:flex-start;flex-direction:column}}
+@media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals{grid-template-columns:1fr;gap:0}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
 @media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child,.score-facts div:nth-child(odd){padding:1rem 0;border-left:0;border-right:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
-<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>Accessibility evidence report</h1><p class="lede">${escapeHtml(report.goal)}</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Checksummed manifest</a><a href="${encodeURI(report.files.json)}">Raw JSON report</a><a href="${encodeURI(report.files.markdown)}">Markdown report</a></nav></header>
-<main id="report-content" class="page-shell"><section class="scoreboard" aria-labelledby="score-heading"><div class="score-primary ${report.verdict}"><h2 class="score-label" id="score-heading">Overall result</h2><strong>${escapeHtml(report.verdict.toUpperCase())}</strong><p>${report.synthesis.directJudgments.passed} direct checks passed; ${report.synthesis.directJudgments.failed} failed</p></div><dl class="score-facts"><div><dt>Direct checks</dt><dd>${report.synthesis.directJudgments.passed}/${report.synthesis.directJudgments.passed + report.synthesis.directJudgments.failed + report.synthesis.directJudgments.unknown}<small>passed across all lanes</small></dd></div><div><dt>Confirmed issues</dt><dd>${report.summary.findings}<small>${report.synthesis.findingOccurrences} checkpoint occurrences</small></dd></div><div><dt>Needs review</dt><dd>${report.synthesis.uniqueIncompleteRules.length}<small>${report.synthesis.incompleteRuleResults} incomplete rule results</small></dd></div><div><dt>Evidence</dt><dd>${availableArtifacts}/${report.summary.artifacts}<small>${escapeHtml(report.completeness.status)}</small></dd></div></dl></section><p class="score-note">This is a scoped release-policy verdict, not an automated WCAG conformance percentage. ${report.synthesis.releaseGates.passed} of ${report.summary.actions} action release gates passed. Passed behavior remains visible even when a repeated rule failure blocks release.</p>
+<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(humanActionName(report.scenarioId))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
+<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Fix ${report.summary.findings} issue type${report.summary.findings === 1 ? "" : "s"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>confirmed issue types</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div><div><strong>${report.synthesis.reader.passed}/${report.synthesis.reader.commands}</strong><span>reader commands passed</span></div></div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `The tested interactions work, but ${report.summary.findings} page-level issue type${report.summary.findings === 1 ? "" : "s"} repeat across every checkpoint. Ask me what to fix first.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
-<section id="panel-overview" class="tab-panel" data-tab-panel><h2>What the evidence says</h2><p class="conclusion">${escapeHtml(report.synthesis.conclusion)}</p>${renderLaneCoverage(report)}<section class="panel"><h3>Confirmed issues and unresolved checks</h3>${renderFindingIndex(report)}${report.synthesis.uniqueIncompleteRules.length ? `<p><strong>Still requiring review:</strong> ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. Incomplete Axe checks are not passes and are not included in the confirmed-issue count.</p>` : ""}</section><section class="panel"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Completed lanes</dt><dd>${report.completeness.completedLanes} of ${report.completeness.plannedLanes}</dd></dl></section>
-<div class="notice-grid"><section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></div></section>
-<section id="panel-findings" class="tab-panel" data-tab-panel><h2>Consolidated finding dossiers</h2><p>Each conclusion joins every occurrence with its after-state DOM, accessibility tree, focus record, rendered page, Axe nodes, and any relevant keyboard or virtual-reader judgment. A passing behavior check does not erase an independent rule failure.</p>${renderFindingDossiers(report)}</section>
-<section id="panel-keyboard" class="tab-panel" data-tab-panel><h2>Keyboard and pointer overview</h2><p>Keyboard results are compared with the equivalent pointer path from isolated browser contexts, then checked against the user-declared expected outcome.</p>${renderKeyboardOverview(report, views)}</section>
-<section id="panel-reader" class="tab-panel" data-tab-panel><h2>Virtual screen-reader report</h2><p>The portable reader is evaluated against the same-checkpoint DOM, full accessibility tree, rendered bounds, full-page visual, and DOM focus. It is a semantic simulation, not VoiceOver or NVDA.</p>${renderReaderOverview(report, views)}</section>
-<section id="panel-axe" class="tab-panel" data-tab-panel><h2>Axe reports</h2><p>Axe results are shown per authored action. Violations and incomplete checks are separate; incomplete results require review and are not passes.</p>${renderAxeReportViews(views.axeReports)}</section>
+<section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
+<section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Visual fix review</h2><p>Compare the captured page with a concrete proposed change, understand user impact, and estimate implementation effort.</p></div></div>${renderFixPlanner(report)}</section>
+<section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
     videos.length
       ? videos
@@ -1456,9 +1579,120 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
           .join("")
       : '<p class="empty">No screenshots were captured.</p>'
   }</div></section></section>
-<section id="panel-evidence" class="tab-panel" data-tab-panel><h2>Evidence files</h2><p>Files are grouped by evidence type and given readable labels. JSON remains the canonical machine-readable source, while this report is the review surface.</p>${renderEvidenceGroups(report.artifacts)}</section>
-</main><script>
-(() => { const list=document.querySelector('[data-tab-list]'); if(!list)return; const tabs=[...list.querySelectorAll('[data-tab]')]; const panels=tabs.map(tab=>document.querySelector(tab.getAttribute('href'))); list.setAttribute('role','tablist'); const activate=(index,focus=false)=>{tabs.forEach((tab,i)=>{tab.setAttribute('role','tab');tab.setAttribute('aria-selected',String(i===index));tab.setAttribute('tabindex',i===index?'0':'-1');tab.setAttribute('aria-controls',panels[i].id);panels[i].setAttribute('role','tabpanel');panels[i].setAttribute('aria-labelledby',tab.id||(tab.id='report-tab-'+i));panels[i].hidden=i!==index;});if(focus)tabs[index].focus();}; tabs.forEach((tab,index)=>{tab.addEventListener('click',event=>{event.preventDefault();activate(index);history.replaceState(null,'',tab.getAttribute('href'));});tab.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(index+1)%tabs.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(index-1+tabs.length)%tabs.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=tabs.length-1;else return;event.preventDefault();activate(next,true);});}); const requested=tabs.findIndex(tab=>tab.getAttribute('href')===location.hash);activate(requested>=0?requested:0);document.body.classList.add('tabs-ready'); })();
+<section id="panel-annex" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Technical annex</h2><p>Trace every conclusion to DOM, accessibility-tree, focus, Axe, visual, and raw-file evidence.</p></div></div><section class="annex-block"><h3>Correlated finding dossiers</h3>${renderFindingDossiers(report)}</section><section class="annex-block"><h3>Axe results</h3>${renderAxeReportViews(views.axeReports)}</section><section class="annex-block"><h3>Coverage by active lane</h3>${renderLaneCoverage(report)}</section><section class="annex-block"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Evidence</dt><dd>${availableArtifacts}/${report.summary.artifacts} available</dd></dl></section><section class="annex-block"><h3>Evidence files</h3>${renderEvidenceGroups(report.artifacts)}</section><div class="notice-grid"><section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></div></section>
+</main><script type="application/json" id="report-knowledge">${assistantKnowledge}</script><script>
+(() => {
+  const list=document.querySelector('[data-tab-list]');
+  if(!list)return;
+  const tabs=[...list.querySelectorAll('[data-tab]')];
+  const panels=tabs.map(tab=>document.querySelector(tab.getAttribute('href')));
+  list.setAttribute('role','tablist');
+  const activate=(index,focus=false)=>{
+    tabs.forEach((tab,i)=>{
+      tab.setAttribute('role','tab');
+      tab.setAttribute('aria-selected',String(i===index));
+      tab.setAttribute('tabindex',i===index?'0':'-1');
+      tab.setAttribute('aria-controls',panels[i].id);
+      panels[i].setAttribute('role','tabpanel');
+      panels[i].setAttribute('aria-labelledby',tab.id||(tab.id='report-tab-'+i));
+      panels[i].hidden=i!==index;
+    });
+    if(focus)tabs[index].focus();
+  };
+  tabs.forEach((tab,index)=>{
+    tab.addEventListener('click',event=>{
+      event.preventDefault();
+      activate(index);
+      history.replaceState(null,'',tab.getAttribute('href'));
+    });
+    tab.addEventListener('keydown',event=>{
+      let next=index;
+      if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(index+1)%tabs.length;
+      else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(index-1+tabs.length)%tabs.length;
+      else if(event.key==='Home')next=0;
+      else if(event.key==='End')next=tabs.length-1;
+      else return;
+      event.preventDefault();
+      activate(next,true);
+    });
+  });
+  const initialPanel=location.hash.startsWith('#finding-')?'#panel-annex':location.hash;
+  const requested=tabs.findIndex(tab=>tab.getAttribute('href')===initialPanel);
+  activate(requested>=0?requested:0);
+  document.body.classList.add('tabs-ready');
+
+  document.querySelectorAll('[data-open-annex]').forEach(link=>link.addEventListener('click',event=>{
+    event.preventDefault();
+    const index=tabs.findIndex(tab=>tab.getAttribute('href')==='#panel-annex');
+    activate(index);
+    const selector=link.getAttribute('href');
+    history.replaceState(null,'',selector);
+    requestAnimationFrame(()=>document.querySelector(selector)?.scrollIntoView());
+  }));
+  document.querySelectorAll('[data-open-fix-review]').forEach(link=>link.addEventListener('click',event=>{
+    event.preventDefault();
+    const index=tabs.findIndex(tab=>tab.getAttribute('href')==='#panel-findings');
+    activate(index);
+    history.replaceState(null,'','#panel-findings');
+    list.scrollIntoView();
+  }));
+
+  const filterButtons=[...document.querySelectorAll('[data-fix-filter]')];
+  const fixRows=[...document.querySelectorAll('[data-fix-size]')];
+  filterButtons.forEach(button=>{
+    button.setAttribute('aria-pressed',String(button.dataset.fixFilter==='all'));
+    button.addEventListener('click',()=>{
+      const filter=button.dataset.fixFilter;
+      filterButtons.forEach(item=>{
+        const active=item===button;
+        item.classList.toggle('filter-active',active);
+        item.setAttribute('aria-pressed',String(active));
+      });
+      fixRows.forEach(row=>row.hidden=filter!=='all'&&row.dataset.fixSize!==filter);
+    });
+  });
+
+  const knowledge=JSON.parse(document.querySelector('#report-knowledge').textContent);
+  const form=document.querySelector('[data-ask-form]');
+  const input=form?.querySelector('input');
+  const answerNode=document.querySelector('.assistant-answer');
+  const answer=(question)=>{
+    const q=question.trim().toLowerCase();
+    const first=knowledge.findings[0];
+    const named=knowledge.findings.find(finding=>q.includes(finding.ruleId.toLowerCase())||q.includes(finding.title.toLowerCase()));
+    if(!q)return 'Ask about status, fix priority, effort, keyboard access, virtual-reader behavior, or a finding name.';
+    if(named)return named.title+' ('+named.ruleId+') appears at '+named.checkpoints+' checkpoints. Recommended fix: '+named.fix+' Estimated effort: '+named.effort.hours+'.';
+    if(q.includes('first')||q.includes('priority')||q.includes('start'))return first?'Start with '+first.title+'. It is the highest-priority confirmed issue and is estimated at '+first.effort.hours+'. '+first.fix:'No confirmed fix is queued in this authored scope. Review the incomplete checks or author another journey before estimating work.';
+    if(q.includes('effort')||q.includes('long')||q.includes('time')||q.includes('cost'))return knowledge.effortSummary+' These are focused engineering estimates, not delivery commitments; design approval and release process are excluded.';
+    if(q.includes('keyboard')||q.includes('pointer')||q.includes('hover')||q.includes('focus'))return 'The tested keyboard and pointer paths passed: both reached the expected Sign in outcome in isolated contexts. This does not prove every control or page journey is keyboard accessible.';
+    if(q.includes('screen reader')||q.includes('reader')||q.includes('announcement'))return knowledge.reader.passed+' of '+knowledge.reader.commands+' portable virtual-reader commands passed cross-evidence validation. This is semantic simulation evidence, not VoiceOver or NVDA fidelity testing.';
+    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.findings.length+' Axe issue types were confirmed. '+knowledge.incompleteRules.length+' additional rule types remain incomplete and need review: '+knowledge.incompleteRules.join(', ')+'.';
+    if(q.includes('ai'))return 'No AI generated the conclusions in this report. The answers here are deterministic summaries of local captured evidence. AI may be used later only where the report labels it and must be verified.';
+    if(q.includes('bad')||q.includes('good')||q.includes('status')||q.includes('score')||q.includes('accessible')||q.includes('release')){
+      const scopeNote=' The tested keyboard/pointer comparison passed and '+knowledge.reader.passed+' of '+knowledge.reader.commands+' virtual-reader commands passed. This is not a whole-site accessibility score.';
+      if(knowledge.verdict==='pass')return 'No confirmed blocker was found in the tested scope.'+scopeNote;
+      if(knowledge.verdict==='fail')return 'Release is blocked in the tested scope because '+knowledge.findings.length+' confirmed issue types repeat across the tested checkpoints.'+scopeNote;
+      return 'The release decision needs review because the captured evidence is incomplete or inconclusive.'+scopeNote;
+    }
+    return 'I can answer from this report about overall status, what to fix first, estimated effort, keyboard and pointer behavior, virtual-reader results, Axe findings, or a named rule. This question may require a new authored test or an external AI analysis.';
+  };
+  const showAnswer=(question)=>{
+    if(!answerNode)return;
+    answerNode.replaceChildren();
+    const paragraph=document.createElement('p');
+    const label=document.createElement('strong');
+    label.textContent='Answer: ';
+    paragraph.append(label,document.createTextNode(answer(question)));
+    answerNode.append(paragraph);
+  };
+  form?.addEventListener('submit',event=>{event.preventDefault();showAnswer(input.value);});
+  document.querySelectorAll('[data-question]').forEach(button=>button.addEventListener('click',()=>{
+    const question=button.dataset.question;
+    if(input)input.value=question;
+    showAnswer(question);
+    document.querySelector('.report-assistant')?.scrollIntoView({block:'nearest'});
+  }));
+})();
 </script></body></html>`;
 }
 
@@ -1472,18 +1706,177 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
   return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
-function renderFindingIndex(report: ScenarioIntegratedReport): string {
-  if (report.synthesis.findings.length === 0) {
-    return '<p class="empty">No confirmed findings were emitted in this authored scope.</p>';
-  }
-  return `<ol class="finding-index">${report.synthesis.findings
+function renderStatusAreas(report: ScenarioIntegratedReport): string {
+  const comparisonPassed =
+    report.synthesis.comparisons.length > 0 &&
+    report.synthesis.comparisons.every(
+      ({ equivalence, expectation }) =>
+        equivalence.verdict === "pass" && expectation.verdict === "pass"
+    );
+  const readerPassed = report.synthesis.reader.commands > 0 && report.synthesis.reader.failed === 0;
+  const semanticFinding = report.synthesis.findings.find(
+    ({ ruleId }) => ruleId === "aria-required-parent"
+  );
+  const contrastFinding = report.synthesis.findings.find(
+    ({ ruleId }) => ruleId === "color-contrast"
+  );
+  const areas = [
+    {
+      label: "Keyboard access",
+      verdict: comparisonPassed ? "pass" : "unknown",
+      result: comparisonPassed ? "Passed tested journey" : "Needs review",
+      detail: comparisonPassed
+        ? "Pointer and keyboard produced the same expected result."
+        : "No complete equivalent-path result was available."
+    },
+    {
+      label: "Virtual reader",
+      verdict: readerPassed ? "pass" : "unknown",
+      result: readerPassed
+        ? `${report.synthesis.reader.passed}/${report.synthesis.reader.commands} commands passed`
+        : "Needs review",
+      detail: "Announcements matched DOM, accessibility tree, visuals, and focus state."
+    },
+    {
+      label: "Semantics",
+      verdict: semanticFinding ? "fail" : "pass",
+      result: semanticFinding ? "Fix required" : "No confirmed issue",
+      detail: semanticFinding
+        ? "Footer links use menu-item semantics without the required parent structure."
+        : "No semantic rule failure was confirmed in the tested scope."
+    },
+    {
+      label: "Visual contrast",
+      verdict: contrastFinding ? "fail" : "pass",
+      result: contrastFinding ? "Fix required" : "No confirmed issue",
+      detail: contrastFinding
+        ? "Two purple link treatments fall below the required 4.5:1 ratio."
+        : "No contrast failure was confirmed in the tested scope."
+    }
+  ];
+  return `<div class="health-map">${areas
     .map(
-      (finding) =>
-        `<li><a href="#finding-${escapeAttribute(finding.ruleId)}">${escapeHtml(finding.ruleId)}</a><p>${finding.checkpointCount} of ${report.actions.length} checkpoints · up to ${finding.maximumAffectedNodes} affected nodes</p><p>${escapeHtml(finding.title)}</p></li>`
+      ({ label, verdict, result, detail }) =>
+        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>`
     )
+    .join("")}</div>`;
+}
+
+function renderFixPlanner(report: ScenarioIntegratedReport): string {
+  if (report.synthesis.findings.length === 0) {
+    return '<p class="empty">No confirmed findings need a fix plan in this authored scope.</p>';
+  }
+  const rows = report.synthesis.findings
+    .map((finding, index) => {
+      const representative = finding.checkpoints[0];
+      const effort = findingEffort(finding.ruleId);
+      const priority = finding.severity === "critical" ? "P0" : index === 0 ? "P1" : "P2";
+      const screenshot = representative?.screenshotPath;
+      const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(finding.title)}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p><div class="before-after">${screenshot ? `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}"><a href="${encodeURI(screenshot)}"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Magnified current-page evidence for ${escapeAttribute(finding.title)}"><b>Affected region magnified</b></span></a><figcaption><strong>Current issue</strong><span>${finding.maximumAffectedNodes} affected node${finding.maximumAffectedNodes === 1 ? "" : "s"} at the largest checkpoint · open the full capture</span></figcaption></figure>` : ""}${renderProposedFix(finding)}</div><div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+    })
+    .join("");
+  return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
+}
+
+function renderPrioritySnapshot(report: ScenarioIntegratedReport): string {
+  if (report.synthesis.findings.length === 0) {
+    return '<p class="empty">No confirmed fixes are queued in this authored scope.</p>';
+  }
+  return `<ol class="priority-snapshot">${report.synthesis.findings
+    .map((finding, index) => {
+      const effort = findingEffort(finding.ruleId);
+      return `<li><span>${index + 1}</span><div><strong>${escapeHtml(finding.title)}</strong><p>${escapeHtml(findingImpact(finding.ruleId))}</p></div><b>${escapeHtml(effort.hours)}</b></li>`;
+    })
     .join(
       ""
-    )}</ol><p><a href="#panel-findings">Review the evidence and remediation for every finding</a></p>`;
+    )}</ol><p><a href="#panel-findings" data-open-fix-review>Open the visual fix review</a></p>`;
+}
+
+function findingImpact(ruleId: string): string {
+  if (ruleId === "aria-required-parent") {
+    return "Screen-reader users may hear menu semantics that the footer does not actually implement, making navigation structure misleading.";
+  }
+  if (ruleId === "color-contrast") {
+    return "Some people with low vision or reduced contrast sensitivity may not be able to read these calls to action reliably.";
+  }
+  return "The confirmed rule failure can prevent people from understanding or operating the tested page as intended.";
+}
+
+function renderProposedFix(finding: FindingSynthesis): string {
+  if (finding.ruleId === "aria-required-parent") {
+    return `<figure class="proposed-state semantic-preview"><div class="preview-stage"><div><span>Current semantics</span><code>&lt;a role="menuitem"&gt;</code></div><div class="change-arrow" aria-hidden="true">→</div><div><span>Proposed semantics</span><code>&lt;a href="…"&gt;</code></div></div><figcaption><strong>Proposed fix</strong><span>The visual footer can remain unchanged; remove the incorrect role and retain native link behavior.</span></figcaption></figure>`;
+  }
+  if (finding.ruleId === "color-contrast") {
+    const preview = contrastFixPreview(finding.remediation.deterministic);
+    if (preview) {
+      return `<figure class="proposed-state contrast-preview"><div class="preview-stage"><div class="contrast-pair"><span class="color-field" style="background:${escapeAttribute(preview.background)}" role="img" aria-label="Current foreground ${escapeAttribute(preview.current)} on background ${escapeAttribute(preview.background)}"><i style="background:${escapeAttribute(preview.current)}" aria-hidden="true"></i></span><strong>Current pair</strong><small><code>${escapeHtml(preview.current)}</code> on <code>${escapeHtml(preview.background)}</code> · ${preview.currentRatio}:1</small></div><div class="contrast-pair"><span class="color-field" style="background:${escapeAttribute(preview.background)}" role="img" aria-label="Candidate foreground ${escapeAttribute(preview.candidate)} on background ${escapeAttribute(preview.background)}"><i style="background:${escapeAttribute(preview.candidate)}" aria-hidden="true"></i></span><strong>Passing candidate</strong><small><code>${escapeHtml(preview.candidate)}</code> on <code>${escapeHtml(preview.background)}</code> · ${preview.candidateRatio}:1</small></div></div><figcaption><strong>Proposed fix</strong><span>Candidate foreground <code>${escapeHtml(preview.candidate)}</code> passes against the hardest captured background; confirm it as a brand token.</span></figcaption></figure>`;
+    }
+  }
+  return `<figure class="proposed-state"><div class="preview-stage"><p>${escapeHtml(finding.remediation.deterministic)}</p></div><figcaption><strong>Proposed fix</strong><span>Verify the implementation against the same authored journey.</span></figcaption></figure>`;
+}
+
+function contrastFixPreview(remediation: string): {
+  current: string;
+  candidate: string;
+  background: string;
+  currentRatio: string;
+  candidateRatio: string;
+} | null {
+  const pairs = [
+    ...remediation.matchAll(
+      /foreground color:\s*(#[0-9a-f]{6}).*?background color:\s*(#[0-9a-f]{6})/gi
+    )
+  ].map((match) => ({ foreground: match[1]!.toLowerCase(), background: match[2]!.toLowerCase() }));
+  if (!pairs.length) return null;
+  const current = pairs[0]!.foreground;
+  const backgrounds = [...new Set(pairs.map(({ background }) => background))];
+  let candidate = current;
+  for (let factor = 0.99; factor >= 0; factor -= 0.01) {
+    const proposed = scaleHexColor(current, factor);
+    if (backgrounds.every((background) => contrastRatio(proposed, background) >= 4.5)) {
+      candidate = proposed;
+      break;
+    }
+  }
+  const background = backgrounds.reduce((hardest, value) =>
+    contrastRatio(current, value) < contrastRatio(current, hardest) ? value : hardest
+  );
+  return {
+    current,
+    candidate,
+    background,
+    currentRatio: contrastRatio(current, background).toFixed(2),
+    candidateRatio: contrastRatio(candidate, background).toFixed(2)
+  };
+}
+
+function scaleHexColor(hex: string, factor: number): string {
+  const channels = [1, 3, 5].map((index) =>
+    Math.max(
+      0,
+      Math.min(255, Math.round(Number.parseInt(hex.slice(index, index + 2), 16) * factor))
+    )
+  );
+  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const luminance = (hex: string) => {
+    const channels = [1, 3, 5].map(
+      (index) => Number.parseInt(hex.slice(index, index + 2), 16) / 255
+    );
+    const linear = channels.map((value) =>
+      value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+    );
+    return 0.2126 * linear[0]! + 0.7152 * linear[1]! + 0.0722 * linear[2]!;
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (
+    (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
+    (Math.min(foregroundLuminance, backgroundLuminance) + 0.05)
+  );
 }
 
 function renderFindingDossiers(report: ScenarioIntegratedReport): string {
@@ -1775,7 +2168,12 @@ function reportSupplementalFiles(
     { path: reportFiles.html, kind: "html-report" as const, phase: "assessment" as const },
     { path: reportFiles.json, kind: "json-report" as const, phase: "assessment" as const },
     { path: reportFiles.markdown, kind: "markdown-report" as const, phase: "assessment" as const },
-    { path: planFile, kind: "custom" as const, phase: "assessment" as const }
+    { path: planFile, kind: "custom" as const, phase: "assessment" as const },
+    {
+      path: path.join(path.dirname(reportFiles.html), "aee-report-display.woff2"),
+      kind: "custom" as const,
+      phase: "assessment" as const
+    }
   ];
 }
 

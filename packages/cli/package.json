@@ -26,7 +26,9 @@
     "dist/scenario.d.ts",
     "dist/scenario-runner.js",
     "dist/scenario-runner.js.map",
-    "dist/scenario-runner.d.ts"
+    "dist/scenario-runner.d.ts",
+    "assets/aee-display.woff2",
+    "assets/Fraunces-OFL.txt"
   ],
   "engines": {
     "node": ">=22"

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildScenarioSynthesisForTest,
+  renderIntegratedHtmlForTest,
   type ScenarioActionReport,
   type ScenarioIntegratedReport
 } from "./scenario-runner";
@@ -54,13 +55,47 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     provenance: { runId: "reader-run" }
   });
   const report = {
+    assessmentId: "assessment",
+    scenarioId: "example-page",
+    scenarioDigest: `sha256:${"a".repeat(64)}`,
+    planDigest: `sha256:${"b".repeat(64)}`,
+    profile: "core",
+    target: "https://example.com/",
+    goal: "Review the example page.",
+    standard: "WCAG 2.2 A/AA",
+    status: "completed",
+    verdict: "fail",
+    startedAt: "2026-09-16T00:00:00.000Z",
+    finishedAt: "2026-09-16T00:01:00.000Z",
+    completeness: {
+      status: "complete",
+      plannedLanes: 3,
+      completedLanes: 3,
+      missingArtifacts: 0,
+      failedArtifacts: 0
+    },
     actions,
     artifacts,
     findings: [
       { ruleId: "aria-required-parent", severity: "critical", occurrences: [{}, {}, {}] },
       { ruleId: "color-contrast", severity: "serious", occurrences: [{}, {}, {}] }
     ],
-    summary: { passed: 0, failed: 3, unknown: 0 }
+    summary: { actions: 3, passed: 0, failed: 3, unknown: 0, findings: 2, artifacts: 16 },
+    journeys: [],
+    diagnostics: [],
+    files: {
+      html: "aee-report.html",
+      json: "aee-report.json",
+      markdown: "aee-report.md",
+      manifest: "manifest.json",
+      plan: "scenario-plan.json"
+    },
+    privacy: {
+      classification: "sensitive",
+      reviewedForSharing: false,
+      remoteUploadAuthorized: false
+    },
+    ai: { present: false, label: "No AI-generated analysis was used." }
   } as unknown as ScenarioIntegratedReport;
   const actionReports = actions.map((item) => ({
     action: item,
@@ -156,6 +191,22 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   assert.equal(contrast?.wcagCriteria[0], "WCAG 1.4.3");
   assert.equal(contrast?.remediation.ai.status, "available-if-needed");
   assert.match(contrast?.remediation.deterministic ?? "", /2\.83/);
+
+  report.synthesis = synthesis;
+  const html = renderIntegratedHtmlForTest(report, {
+    transcripts: [],
+    actionReports,
+    axeReports,
+    comparisons
+  });
+  assert.match(html, /Your accessibility status/);
+  assert.match(html, /Ask this report/);
+  assert.match(html, /Visual fix review/);
+  assert.match(html, /Current issue/);
+  assert.match(html, /Proposed fix/);
+  assert.match(html, /3–6 engineering hours/);
+  assert.match(html, /Technical annex/);
+  assert.match(html, /data-fix-filter="small"/);
 });
 
 test("scenario synthesis clearly reports an empty authored scope", () => {

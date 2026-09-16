@@ -27,6 +27,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - A deterministic role-aware keyboard matrix for user-authored actions, including activation-key filtering, orientation-aware composite navigation, Home/End endpoints, automatic keyboard judging in isolated input lanes, and explicit `unknown` results for unsupported or context-dependent combinations.
 - An accessible, editorial evidence-dossier HTML review surface with a transparent overall scorecard, readable action names, keyboard-operable tabs, consolidated and per-checkpoint Axe summaries, transcripts, media, categorized evidence files, progressive enhancement, print styling, and secondary raw JSON links.
 - Deterministic cross-evidence synthesis in the integrated JSON, Markdown, and HTML reports, including lane-level direct judgments, pointer/keyboard equivalence, structured virtual-reader results, unique-versus-repeated findings, incomplete Axe checks, same-checkpoint DOM/accessibility-tree/focus/visual links, remediation boundaries, and verified rerun instructions.
+- An interactive accessibility triage report that leads with scoped page health, prioritized remediation and effort, filterable current-versus-proposed visual reviews, journey videos, and local evidence-grounded questions while moving raw technical detail into an annex.
 
 ## [0.1.0] - 2026-08-30
 
