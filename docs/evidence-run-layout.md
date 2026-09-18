@@ -38,7 +38,9 @@ The editable Mermaid source is
    joins its Axe nodes with the same-action DOM, accessibility tree, focus state, full-page and
    viewport visuals, and reader evidence before presenting deterministic remediation, the bounded
    AI status, effort, and rerun verification. The keyboard-operable Status & plan, Fix review, Tested
-   journeys, Visuals & video, and Technical annex tabs separate decisions from implementation detail.
+   journeys, Visuals & video, and Technical annex tabs separate decisions from implementation detail. When a keyboard comparison has a recording, the Status view also embeds that keyboard lane beside its result, with action descriptions, timed JSON, and a download link.
+   Clicking an evidence preview opens an accessible enlarged view of that same crop or screenshot;
+   opening the underlying complete page capture is always a separate labeled action.
    The first view communicates scoped product health and fix order; the fix review uses visual context
    for visible defects and DOM semantics for invisible defects before comparing a proposed change; a
    local evidence-grounded question interface explains status,

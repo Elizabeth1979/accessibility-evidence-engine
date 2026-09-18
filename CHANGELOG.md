@@ -6,6 +6,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- An inline keyboard-journey player in the status overview, with the captured focus-state poster,
+  authored action list, WebVTT descriptions, timed JSON, and recording download.
+- An accessible evidence-image lightbox that enlarges the exact displayed crop and issue marker,
+  while keeping the underlying complete page capture as a separate, explicitly labeled link.
 - Grouped remediation counts that separate shared component or token fixes from every affected page
   location, with complete expandable instance lists and semantic evidence for defects that cannot be
   identified honestly in a screenshot.

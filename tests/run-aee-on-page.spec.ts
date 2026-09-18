@@ -183,6 +183,21 @@ approval:
       "true"
     );
     await expect(page.getByRole("heading", { name: "Your accessibility status" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Keyboard journey recording" })).toBeVisible();
+    const keyboardRecording = page.locator(".journey-proof video");
+    await expect(keyboardRecording).toBeVisible();
+    await expect(keyboardRecording.locator("source")).toHaveAttribute(
+      "src",
+      /keyboard\/video\.webm$/
+    );
+    await expect(keyboardRecording).toHaveAttribute(
+      "poster",
+      /keyboard-001\/artifacts\/visual-viewport-after\.png$/
+    );
+    await expect(
+      page.getByRole("link", { name: "Read action descriptions" }).first()
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "Inspect timed action data" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Keyboard and pointer overview" })).toBeHidden();
 
     const fixTab = page.getByRole("tab", { name: /Fix review/ });
@@ -190,6 +205,19 @@ approval:
     await expect(fixTab).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { name: "Grouped fix review" })).toBeVisible();
     await expect(page.getByText("Proposed fix", { exact: true }).first()).toBeVisible();
+
+    const affectedCrop = page.locator(".target-crop").first();
+    const completeCapturePath = await affectedCrop.getAttribute("href");
+    await affectedCrop.click();
+    const imageDialog = page.getByRole("dialog");
+    await expect(imageDialog).toBeVisible();
+    await expect(imageDialog.locator(".target-crop")).toBeVisible();
+    await expect(
+      imageDialog.getByRole("link", { name: "Open complete page capture" })
+    ).toHaveAttribute("href", new URL(completeCapturePath!, page.url()).href);
+    await imageDialog.getByRole("button", { name: "Close" }).click();
+    await expect(imageDialog).toBeHidden();
+    await expect(affectedCrop).toBeFocused();
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator(".instance-list summary").first().click();

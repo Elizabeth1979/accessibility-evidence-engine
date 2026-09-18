@@ -1609,6 +1609,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .ask-form{display:flex;gap:.5rem;margin-top:auto}.ask-form label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.ask-form input{min-width:0;flex:1;border:1px solid var(--line-strong);border-radius:8px;padding:.75rem;font:inherit;color:var(--ink);background:#fff}.ask-form button{border:0;border-radius:8px;padding:.75rem 1rem;color:#fff;background:var(--forest);font:800 .9rem/1 var(--sans);cursor:pointer}.ask-form button:hover{background:var(--forest-deep)}
 .assistant-answer{min-height:6rem;margin:1rem 0 0;padding:1rem;background:var(--wash);border-radius:8px;color:#29493f}.assistant-answer p{margin:0}.assistant-answer strong{color:var(--forest-deep)}
 .health-map{border-top:1px solid var(--line-strong);margin:1.5rem 0 2rem}.health-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1rem;align-items:center;padding:1rem 0;border-bottom:1px solid var(--line)}.health-signal{width:.75rem;height:.75rem;border-radius:50%}.health-signal.pass{background:var(--pass)}.health-signal.fail{background:var(--fail)}.health-signal.unknown{background:var(--unknown)}.health-row strong,.health-row span{display:block}.health-row span{color:var(--muted);font-size:.9rem}.health-result{font-size:.9rem}.health-result.pass{color:var(--pass)}.health-result.fail{color:var(--fail)}.health-result.unknown{color:var(--unknown)}
+.journey-proof{display:grid;grid-template-columns:minmax(15rem,.72fr) minmax(0,1.28fr);gap:clamp(1.25rem,4vw,3rem);align-items:center;margin:0 0 1.5rem;padding:clamp(1.25rem,3vw,2rem);color:#fff;background:var(--forest-deep);border-radius:12px}.journey-proof h3{margin:0 0 .55rem;font:700 clamp(1.45rem,3vw,2rem)/1.1 var(--serif)}.journey-proof p{margin:.45rem 0;color:#d7e9e2}.journey-proof ol{margin:.8rem 0;padding-left:1.25rem}.journey-proof li{margin:.25rem 0}.journey-proof a{color:var(--mint);font-weight:750}.journey-proof video{width:100%;border-color:var(--line-strong);background:#000}.journey-proof-links{display:flex;flex-wrap:wrap;gap:.4rem 1rem;margin-top:1rem!important;font-size:.88rem}
 .priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
 .section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
 .planner-tools{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.planner-tools p{margin:0}.fix-filters{display:flex;flex-wrap:wrap;gap:.5rem}
@@ -1681,9 +1682,10 @@ summary{cursor:pointer;font-weight:700}
 .media-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:1.5rem}
 img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
 figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
+.image-viewer-trigger{display:block;cursor:zoom-in}.image-viewer-trigger:focus-visible{outline:3px solid var(--focus);outline-offset:3px}.image-dialog{width:min(94vw,76rem);max-width:none;max-height:92vh;margin:auto;padding:0;border:1px solid var(--line-strong);border-radius:12px;color:var(--ink);background:var(--paper)}.image-dialog::backdrop{background:rgb(9 42 34/.82)}.image-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;border-bottom:1px solid var(--line);background:#fff}.image-dialog-header h2{margin:0;font:700 clamp(1.25rem,3vw,1.75rem)/1.1 var(--serif)}.image-dialog-close{border:1px solid var(--line-strong);border-radius:8px;padding:.55rem .8rem;color:var(--forest-deep);background:var(--paper);font:750 .9rem/1 var(--sans);cursor:pointer}.image-dialog-close:hover{color:#fff;background:var(--forest)}.image-dialog-visual{display:grid;min-height:18rem;max-height:72vh;place-items:center;overflow:auto;padding:1rem;background:var(--wash)}.image-dialog-visual>img{max-width:none;width:auto;max-height:68vh;object-fit:contain}.image-dialog-visual .target-crop,.image-dialog-visual .issue-crop{width:min(100%,70rem);height:auto;aspect-ratio:var(--viewer-aspect);pointer-events:none;cursor:default}.image-dialog-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 1rem;margin:0;padding:.85rem 1.25rem;border-top:1px solid var(--line);background:#fff}.image-dialog-footer span{color:var(--muted)}.image-dialog-footer a{font-weight:750}
 @media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:3rem minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}.before-after{grid-template-columns:1fr}.planner-tools,.section-intro{align-items:flex-start;flex-direction:column}}
-@media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals{grid-template-columns:1fr;gap:0}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
+@media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals,.journey-proof{grid-template-columns:1fr;gap:1rem}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
 @media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child,.score-facts div:nth-child(odd){padding:1rem 0;border-left:0;border-right:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
@@ -1710,15 +1712,58 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
           .map((artifact) => {
             const artifactPath = String(artifact.path);
             const label = artifactLabel(artifact, "an action");
-            return `<figure><a href="${encodeURI(artifactPath)}"><img loading="lazy" src="${encodeURI(artifactPath)}" alt="Full-page view after ${escapeAttribute(label)}"></a><figcaption>${escapeHtml(label)} · <a href="${encodeURI(artifactPath)}">Open full-size image</a></figcaption></figure>`;
+            return `<figure><a class="image-viewer-trigger" href="${encodeURI(artifactPath)}" data-image-viewer data-view-title="${escapeAttribute(label)}"><img loading="lazy" src="${encodeURI(artifactPath)}" alt="Full-page view after ${escapeAttribute(label)}"></a><figcaption>${escapeHtml(label)} · Click the preview to enlarge · <a href="${encodeURI(artifactPath)}">Open complete page capture</a></figcaption></figure>`;
           })
           .join("")
       : '<p class="empty">No screenshots were captured.</p>'
   }</div></section></section>
 <section id="panel-annex" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Technical annex</h2><p>Trace every conclusion to DOM, accessibility-tree, focus, Axe, visual, and raw-file evidence.</p></div></div><section class="annex-block"><h3>Correlated finding dossiers</h3>${renderFindingDossiers(report)}</section><section class="annex-block"><h3>Axe results</h3>${renderAxeReportViews(views.axeReports)}</section><section class="annex-block"><h3>Coverage by active lane</h3>${renderLaneCoverage(report)}</section><section class="annex-block"><h3>Assessment scope</h3><dl class="meta"><dt>Scenario</dt><dd>${escapeHtml(report.scenarioId)}</dd><dt>Profile</dt><dd>${escapeHtml(report.profile)}</dd><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Standard</dt><dd>${escapeHtml(report.standard)}</dd><dt>Actions tested</dt><dd>${report.summary.actions} user-authored actions</dd><dt>Evidence</dt><dd>${availableArtifacts}/${report.summary.artifacts} available</dd></dl></section><section class="annex-block"><h3>Evidence files</h3>${renderEvidenceGroups(report.artifacts)}</section><div class="notice-grid"><section class="panel notice"><h3>Privacy</h3><p>Evidence is sensitive, unreviewed, and not authorized for remote upload or sharing.</p></section><section class="panel ai"><h3>AI-generated output</h3><p>${escapeHtml(report.ai.label)}</p></section></div></section>
-</main><script type="application/json" id="report-knowledge">${assistantKnowledge}</script><script>
+</main><dialog class="image-dialog" data-image-dialog aria-labelledby="image-dialog-title"><div class="image-dialog-header"><h2 id="image-dialog-title" data-image-dialog-title>Enlarged evidence view</h2><button type="button" class="image-dialog-close" data-image-dialog-close>Close</button></div><div class="image-dialog-visual" data-image-dialog-visual></div><p class="image-dialog-footer"><span>This view preserves the crop and issue marker shown in the report.</span><a href="" data-image-dialog-original>Open complete page capture</a></p></dialog><script type="application/json" id="report-knowledge">${assistantKnowledge}</script><script>
 (() => {
   const list=document.querySelector('[data-tab-list]');
+  const imageDialog=document.querySelector('[data-image-dialog]');
+  const imageDialogVisual=document.querySelector('[data-image-dialog-visual]');
+  const imageDialogTitle=document.querySelector('[data-image-dialog-title]');
+  const imageDialogOriginal=document.querySelector('[data-image-dialog-original]');
+  const imageDialogClose=document.querySelector('[data-image-dialog-close]');
+  let lastImageTrigger;
+  document.querySelectorAll('[data-image-viewer]').forEach(trigger=>trigger.addEventListener('click',event=>{
+    if(!imageDialog?.showModal||!imageDialogVisual||!imageDialogTitle||!imageDialogOriginal)return;
+    event.preventDefault();
+    lastImageTrigger=trigger;
+    const image=trigger.querySelector('img');
+    const triggerBounds=trigger.getBoundingClientRect();
+    let visual;
+    if(trigger.classList.contains('target-crop')){
+      visual=trigger.cloneNode(true);
+      visual.removeAttribute('href');
+      visual.removeAttribute('data-image-viewer');
+      visual.classList.remove('image-viewer-trigger');
+      visual.setAttribute('role','img');
+      visual.setAttribute('aria-label',image?.alt||'Enlarged evidence crop');
+      visual.style.setProperty('--viewer-aspect',triggerBounds.width+' / '+triggerBounds.height);
+      visual.querySelector('img')?.setAttribute('alt','');
+    }else if(trigger.querySelector('.issue-crop')){
+      visual=trigger.querySelector('.issue-crop').cloneNode(true);
+      visual.setAttribute('role','img');
+      visual.setAttribute('aria-label',image?.alt||'Enlarged evidence crop');
+      visual.style.setProperty('--viewer-aspect',triggerBounds.width+' / '+triggerBounds.height);
+      visual.querySelector('img')?.setAttribute('alt','');
+    }else{
+      visual=image?.cloneNode(true);
+      visual?.removeAttribute('loading');
+    }
+    if(!visual)return;
+    imageDialogVisual.replaceChildren(visual);
+    imageDialogTitle.textContent=trigger.dataset.viewTitle||image?.alt||'Enlarged evidence view';
+    imageDialogOriginal.href=trigger.href;
+    imageDialogOriginal.textContent=trigger.dataset.originalLabel||'Open original image';
+    imageDialog.showModal();
+  }));
+  const closeImageDialog=()=>imageDialog?.close();
+  imageDialogClose?.addEventListener('click',closeImageDialog);
+  imageDialog?.addEventListener('click',event=>{if(event.target===imageDialog)closeImageDialog();});
+  imageDialog?.addEventListener('close',()=>lastImageTrigger?.focus());
   if(!list)return;
   const tabs=[...list.querySelectorAll('[data-tab]')];
   const panels=tabs.map(tab=>document.querySelector(tab.getAttribute('href')));
@@ -1856,6 +1901,26 @@ function renderStatusAreas(report: ScenarioIntegratedReport): string {
   const contrastFinding = report.synthesis.findings.find(
     ({ ruleId }) => ruleId === "color-contrast"
   );
+  const keyboardArtifact = (kind: string) =>
+    report.artifacts.find((artifact) => {
+      const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
+      return artifact.kind === kind && stringField(provenance, "laneId", "").endsWith("-keyboard");
+    });
+  const keyboardVideo = keyboardArtifact("interaction-video");
+  const keyboardCaptions = keyboardArtifact("video-captions");
+  const keyboardTimeline = keyboardArtifact("video-sidecar");
+  const keyboardPoster = report.artifacts.find((artifact) => {
+    const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
+    return (
+      artifact.kind === "viewport-screenshot" &&
+      artifact.phase === "after" &&
+      stringField(provenance, "laneId", "").endsWith("-keyboard")
+    );
+  });
+  const keyboardActions = report.actions.filter(({ driver }) => driver === "keyboard");
+  const keyboardRecording = keyboardVideo
+    ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">Keyboard journey recording</h3><p>Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page.</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
+    : "";
   const areas = [
     {
       label: "Keyboard access",
@@ -1892,8 +1957,8 @@ function renderStatusAreas(report: ScenarioIntegratedReport): string {
   ];
   return `<div class="health-map">${areas
     .map(
-      ({ label, verdict, result, detail }) =>
-        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>`
+      ({ label, verdict, result, detail }, index) =>
+        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${index === 0 ? keyboardRecording : ""}`
     )
     .join("")}</div>`;
 }
@@ -1942,11 +2007,11 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
             const centerY = ((targetBox.y + targetBox.height / 2) / targetBox.pageHeight) * 100;
             const left = (targetBox.x / targetBox.pageWidth) * 100;
             const width = Math.max((targetBox.width / targetBox.pageWidth) * 100, 4);
-            return `<a class="target-crop" href="${encodeURI(screenshot)}" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></a>`;
+            return `<a class="target-crop image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`${instance.label} in ${instance.component}`)}" data-original-label="Open complete page capture" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></a>`;
           })
           .join("")}</div>`
-      : `<a href="${encodeURI(screenshot)}"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding.ruleId))}"><b>Visual context only</b></span></a>`;
-    return `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}">${targetCrops}<figcaption><strong>Exact affected locations</strong>${visibleTargets ? `<ol class="visual-targets">${visibleTargets}</ol>` : ""}<span>Each numbered crop links to the full-page capture; exact selectors remain listed below.</span></figcaption></figure>`;
+      : `<a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(findingFixLabel(finding.ruleId))}" data-original-label="Open complete page capture"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding.ruleId))}"><b>Visual context only</b></span></a>`;
+    return `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}">${targetCrops}<figcaption><strong>Exact affected locations</strong>${visibleTargets ? `<ol class="visual-targets">${visibleTargets}</ol>` : ""}<span>Click a crop to enlarge that exact view. · <a href="${encodeURI(screenshot)}">Open complete page capture</a></span></figcaption></figure>`;
   }
   return `<figure class="current-state"><div class="semantic-evidence"><strong>No visual capture was available</strong><p>Use the exact element locations below with the DOM and Axe evidence.</p></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"}</span></figcaption></figure>`;
 }
@@ -2081,7 +2146,7 @@ function renderFindingDossiers(report: ScenarioIntegratedReport): string {
         )
         .join("");
       const sample = representative?.htmlSamples[0];
-      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a href="${encodeURI(representative.screenshotPath)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · <a href="${encodeURI(representative.screenshotPath)}">open full-size visual</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
     })
     .join("");
 }
@@ -2143,7 +2208,7 @@ function renderInputActionEvidence(
   const behavior = view?.judgments.find(
     ({ judgeId }) => judgeId !== "axe" && judgeId !== "release"
   );
-  return `<section class="panel"><div class="card-heading"><div><h3>${escapeHtml(humanActionName(action.actionId))}</h3><div class="technical-id">${escapeHtml(action.laneId)}</div></div><span class="badge ${behavior?.verdict ?? "unknown"}">${escapeHtml(behavior?.verdict ?? "unknown")}</span></div><p>${escapeHtml(behavior?.summary ?? "No independent behavior judgment was available.")}</p><div class="lane-visuals">${screenshot ? `<figure><a href="${encodeURI(screenshot)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Viewport after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Viewport after action</figcaption></figure>` : ""}${fullPage ? `<figure><a href="${encodeURI(fullPage)}"><img loading="lazy" src="${encodeURI(fullPage)}" alt="Full page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Full page after action</figcaption></figure>` : ""}</div>${links}</section>`;
+  return `<section class="panel"><div class="card-heading"><div><h3>${escapeHtml(humanActionName(action.actionId))}</h3><div class="technical-id">${escapeHtml(action.laneId)}</div></div><span class="badge ${behavior?.verdict ?? "unknown"}">${escapeHtml(behavior?.verdict ?? "unknown")}</span></div><p>${escapeHtml(behavior?.summary ?? "No independent behavior judgment was available.")}</p><div class="lane-visuals">${screenshot ? `<figure><a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`Viewport after ${humanActionName(action.actionId)}`)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Viewport after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Viewport after action · Click to enlarge · <a href="${encodeURI(screenshot)}">open original capture</a></figcaption></figure>` : ""}${fullPage ? `<figure><a class="image-viewer-trigger" href="${encodeURI(fullPage)}" data-image-viewer data-view-title="${escapeAttribute(`Full page after ${humanActionName(action.actionId)}`)}"><img loading="lazy" src="${encodeURI(fullPage)}" alt="Full page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>Full page after action · Click to enlarge · <a href="${encodeURI(fullPage)}">open complete page capture</a></figcaption></figure>` : ""}</div>${links}</section>`;
 }
 
 function renderActionEvidenceLinks(
@@ -2194,7 +2259,7 @@ function renderReaderOverview(
         .map((action) => {
           const screenshot = actionArtifactPath(report, action, "viewport-screenshot", "after");
           return screenshot
-            ? `<figure><a href="${encodeURI(screenshot)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Rendered page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>${escapeHtml(humanActionName(action.actionId))}</figcaption></figure>`
+            ? `<figure><a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`Rendered page after ${humanActionName(action.actionId)}`)}"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Rendered page after ${escapeAttribute(humanActionName(action.actionId))}"></a><figcaption>${escapeHtml(humanActionName(action.actionId))} · Click to enlarge · <a href="${encodeURI(screenshot)}">open complete page capture</a></figcaption></figure>`
             : "";
         })
         .join("");
