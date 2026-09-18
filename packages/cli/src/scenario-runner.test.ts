@@ -111,28 +111,54 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
       { judgeId: "release", verdict: "fail", summary: "Release blocked." }
     ]
   }));
-  const violation = (id: string) => ({
-    id,
-    impact: id === "aria-required-parent" ? "critical" : "serious",
-    help:
+  const violation = (id: string) => {
+    const failureSummary =
+      id === "color-contrast"
+        ? "Fix any of the following: Element has insufficient color contrast of 2.83"
+        : "Fix any of the following: Required ARIA parent role not present";
+    const nodes =
       id === "aria-required-parent"
-        ? "Certain ARIA roles must be contained"
-        : "Elements must meet minimum color contrast ratio thresholds",
-    description: `${id} description`,
-    nodeCount: 2,
-    targets: ["footer a", ".low-contrast"],
-    htmlSamples: ['<a role="menuitem">Help</a>'],
-    tags: [id === "aria-required-parent" ? "wcag131" : "wcag143"],
-    failureSummary:
-      id === "color-contrast"
-        ? "Fix any of the following: Element has insufficient color contrast of 2.83"
-        : "Fix any of the following: Required ARIA parent role not present",
-    failureSummaries: [
-      id === "color-contrast"
-        ? "Fix any of the following: Element has insufficient color contrast of 2.83"
-        : "Fix any of the following: Required ARIA parent role not present"
-    ]
-  });
+        ? [
+            {
+              target: "#footer a:nth-child(1)",
+              html: '<a role="menuitem">Help</a>',
+              failureSummary
+            },
+            {
+              target: "#footer a:nth-child(2)",
+              html: '<a role="menuitem">Pricing</a>',
+              failureSummary
+            }
+          ]
+        : [
+            {
+              target: "#announcement_bar_button_cta",
+              html: '<a id="announcement_bar_button_cta">Start now</a>',
+              failureSummary
+            },
+            {
+              target: "#mid_page_banner_button1_cta",
+              html: '<a id="mid_page_banner_button1_cta">Learn more</a>',
+              failureSummary
+            }
+          ];
+    return {
+      id,
+      impact: id === "aria-required-parent" ? "critical" : "serious",
+      help:
+        id === "aria-required-parent"
+          ? "Certain ARIA roles must be contained"
+          : "Elements must meet minimum color contrast ratio thresholds",
+      description: `${id} description`,
+      nodeCount: nodes.length,
+      targets: nodes.map(({ target }) => target),
+      htmlSamples: nodes.map(({ html }) => html),
+      nodes,
+      tags: [id === "aria-required-parent" ? "wcag131" : "wcag143"],
+      failureSummary,
+      failureSummaries: [failureSummary]
+    };
+  };
   const axeReports = actions.map((item) => ({
     path: `${item.runId}/axe.json`,
     actionId: item.actionId,
@@ -173,6 +199,7 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   assert.deepEqual(synthesis.releaseGates, { passed: 0, failed: 3, unknown: 0 });
   assert.equal(synthesis.reader.passed, 1);
   assert.equal(synthesis.findingOccurrences, 6);
+  assert.equal(synthesis.affectedInstancesAtLargestCheckpoint, 4);
   assert.deepEqual(synthesis.uniqueIncompleteRules, ["aria-valid-attr-value"]);
   assert.match(synthesis.conclusion, /pointer\/keyboard comparisons matched/);
   assert.equal(synthesis.lanes.length, 3);
@@ -180,6 +207,9 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   const aria = synthesis.findings.find(({ ruleId }) => ruleId === "aria-required-parent");
   assert.equal(aria?.wcagCriteria[0], "WCAG 1.3.1");
   assert.equal(aria?.checkpoints.length, 3);
+  assert.equal(aria?.instanceCount, 2);
+  assert.equal(aria?.componentCount, 1);
+  assert.equal(aria?.instances[0]?.label, "Help");
   assert.equal(aria?.checkpoints[0]?.domPath, "reader-run/dom.html");
   assert.equal(aria?.checkpoints[0]?.accessibilityTreePath, "reader-run/aom.json");
   assert.equal(aria?.checkpoints[0]?.screenshotPath, "reader-run/full.png");
@@ -189,6 +219,8 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
 
   const contrast = synthesis.findings.find(({ ruleId }) => ruleId === "color-contrast");
   assert.equal(contrast?.wcagCriteria[0], "WCAG 1.4.3");
+  assert.equal(contrast?.instanceCount, 2);
+  assert.equal(contrast?.componentCount, 2);
   assert.equal(contrast?.remediation.ai.status, "available-if-needed");
   assert.match(contrast?.remediation.deterministic ?? "", /2\.83/);
 
@@ -201,8 +233,9 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   });
   assert.match(html, /Your accessibility status/);
   assert.match(html, /Ask this report/);
-  assert.match(html, /Visual fix review/);
-  assert.match(html, /Current issue/);
+  assert.match(html, /Grouped fix review/);
+  assert.match(html, /This defect is not visible in a screenshot/);
+  assert.match(html, /Show all 2 affected page locations/);
   assert.match(html, /Proposed fix/);
   assert.match(html, /3–6 engineering hours/);
   assert.match(html, /Technical annex/);
@@ -223,7 +256,8 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
     comparisons: []
   });
 
-  assert.match(synthesis.conclusion, /no confirmed issues were emitted/);
+  assert.match(synthesis.conclusion, /no confirmed fixes were emitted/);
+  assert.equal(synthesis.affectedInstancesAtLargestCheckpoint, 0);
   assert.equal(synthesis.findings.length, 0);
   assert.equal(synthesis.lanes.length, 0);
   assert.deepEqual(synthesis.reader, { commands: 0, passed: 0, failed: 0, unknown: 0 });

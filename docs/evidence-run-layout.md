@@ -30,14 +30,18 @@ The editable Mermaid source is
    verification. AI output is clearly labeled, evidence-citing, provider-neutral, and advisory.
 6. **Publish one integrated report.** HTML is the primary review surface; JSON is canonical for
    tools; Markdown works in GitHub. The report synthesizes direct judgments separately from derived
-   release gates, preserves positive keyboard and virtual-reader outcomes, and distinguishes unique
-   findings, repeated checkpoint occurrences, and incomplete rule results. Each finding dossier
+   release gates, preserves positive keyboard and virtual-reader outcomes, and distinguishes grouped
+   component fixes, affected page locations, repeated checkpoint occurrences, and incomplete rule
+   results. Repeated instances remain collapsed under the shared component or token fix that should
+   resolve them, while every distinct selector and visible label stays available in the instance list.
+   Each finding dossier
    joins its Axe nodes with the same-action DOM, accessibility tree, focus state, full-page and
    viewport visuals, and reader evidence before presenting deterministic remediation, the bounded
    AI status, effort, and rerun verification. The keyboard-operable Status & plan, Fix review, Tested
    journeys, Visuals & video, and Technical annex tabs separate decisions from implementation detail.
-   The first view communicates scoped product health and fix order; the visual review compares current
-   evidence with a proposed change; a local evidence-grounded question interface explains status,
+   The first view communicates scoped product health and fix order; the fix review uses visual context
+   for visible defects and DOM semantics for invisible defects before comparing a proposed change; a
+   local evidence-grounded question interface explains status,
    priority, effort, and tested behavior without uploading artifacts. Raw DOM, accessibility-tree,
    focus, Axe, and evidence files remain linked in the annex.
 

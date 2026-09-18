@@ -68,10 +68,12 @@ node packages/cli/dist/index.js run examples/melio/scenario.yml --output aee-out
 ```
 
 The integrated report opens as an accessibility triage room: it explains the scoped page status,
-preserves successful keyboard and virtual-reader behavior, prioritizes confirmed issues, and gives a
-focused effort estimate. A filterable visual fix review places the captured page beside an honest
-proposed semantic or color-token change, links the relevant journey video, and keeps every conclusion
-traceable. “Ask this report” answers common status, priority, effort, and evidence questions locally
+preserves successful keyboard and virtual-reader behavior, groups repeated failures by the shared
+component or token that needs one fix, and gives a focused effort estimate. Each grouped fix states
+how many affected page locations it covers and provides an expandable list of every distinct element
+found at the largest checkpoint. Semantic defects use DOM evidence instead of pretending they are
+visible in a screenshot; visual defects pair page context with named targets and measurements.
+“Ask this report” answers common status, priority, effort, and evidence questions locally
 without uploading captured data. Detailed DOM, accessibility-tree, focus, Axe, and raw-file views live
 in the technical annex. Deterministic remediation leads; AI is explicitly marked as unused or
 available only for bounded contextual assistance.

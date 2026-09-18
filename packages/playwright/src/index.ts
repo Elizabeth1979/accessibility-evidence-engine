@@ -1464,7 +1464,10 @@ interface CdpEnabledPageLike extends PlaywrightPageLike {
 }
 
 interface EvaluatablePageLike extends PlaywrightPageLike {
-  evaluate?(pageFunction: () => unknown): Promise<unknown>;
+  evaluate?<TArgument>(
+    pageFunction: (argument: TArgument) => unknown,
+    argument?: TArgument
+  ): Promise<unknown>;
 }
 
 interface RequestLike {
@@ -1974,12 +1977,97 @@ async function createObserverPage(
   const runAxeAnalysis = customRunAxeAnalysis
     ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
     : evaluatablePage.evaluate
-      ? async (options: { tags: string[] }) =>
-          new AxeBuilder({
+      ? async (options: { tags: string[] }) => {
+          const result = await new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
             .withTags(options.tags)
-            .analyze()
+            .analyze();
+          const targets = result.violations.flatMap((rule, ruleIndex) =>
+            rule.nodes.map((node, nodeIndex) => ({
+              key: `${ruleIndex}:${nodeIndex}`,
+              selector: String(node.target[0] ?? "")
+            }))
+          );
+          const locations = (await evaluatablePage.evaluate?.(
+            (requestedTargets: Array<{ key: string; selector: string }>) => {
+              const browserGlobal = globalThis as unknown as {
+                document: {
+                  documentElement: { scrollWidth: number; scrollHeight: number };
+                  body?: { scrollWidth: number; scrollHeight: number };
+                  querySelector(selector: string): unknown;
+                };
+                scrollX: number;
+                scrollY: number;
+              };
+              const documentRef = browserGlobal.document;
+              const pageWidth = Math.max(
+                documentRef.documentElement.scrollWidth,
+                documentRef.body?.scrollWidth ?? 0
+              );
+              const pageHeight = Math.max(
+                documentRef.documentElement.scrollHeight,
+                documentRef.body?.scrollHeight ?? 0
+              );
+              return requestedTargets.flatMap(({ key, selector }) => {
+                if (!selector) return [];
+                try {
+                  const element = documentRef.querySelector(selector) as
+                    | {
+                        getBoundingClientRect?: () => {
+                          left: number;
+                          top: number;
+                          width: number;
+                          height: number;
+                        };
+                      }
+                    | undefined;
+                  if (!element?.getBoundingClientRect) return [];
+                  const rect = element.getBoundingClientRect();
+                  return [
+                    {
+                      key,
+                      x: rect.left + browserGlobal.scrollX,
+                      y: rect.top + browserGlobal.scrollY,
+                      width: rect.width,
+                      height: rect.height,
+                      pageWidth,
+                      pageHeight
+                    }
+                  ];
+                } catch {
+                  return [];
+                }
+              });
+            },
+            targets
+          )) as
+            | Array<{
+                key: string;
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+                pageWidth: number;
+                pageHeight: number;
+              }>
+            | undefined;
+          const locationByKey = new Map(
+            (locations ?? []).map((location) => [location.key, location])
+          );
+          return {
+            ...result,
+            violations: result.violations.map((rule, ruleIndex) => ({
+              ...rule,
+              nodes: rule.nodes.map((node, nodeIndex) => ({
+                ...node,
+                ...(locationByKey.has(`${ruleIndex}:${nodeIndex}`)
+                  ? { aeeTarget: locationByKey.get(`${ruleIndex}:${nodeIndex}`) }
+                  : {})
+              }))
+            }))
+          };
+        }
       : undefined;
   const setupNetworkTracking =
     customSetupNetworkTracking ??

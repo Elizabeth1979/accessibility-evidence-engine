@@ -470,6 +470,7 @@ test("validateSchema accepts an integrated scenario report", () => {
       directJudgments: { passed: 1, failed: 0, unknown: 0 },
       releaseGates: { passed: 1, failed: 0, unknown: 0 },
       findingOccurrences: 0,
+      affectedInstancesAtLargestCheckpoint: 0,
       incompleteRuleResults: 0,
       uniqueIncompleteRules: [],
       lanes: [],

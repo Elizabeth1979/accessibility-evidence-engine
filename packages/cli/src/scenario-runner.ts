@@ -123,6 +123,23 @@ interface AxeRuleView {
   tags: string[];
   failureSummary?: string;
   failureSummaries: string[];
+  nodes: AxeNodeView[];
+}
+
+interface AxeNodeView {
+  target: string;
+  html?: string;
+  failureSummary?: string;
+  targetBox?: AxeTargetBox;
+}
+
+interface AxeTargetBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  pageWidth: number;
+  pageHeight: number;
 }
 
 interface AxeReportView {
@@ -202,6 +219,9 @@ interface FindingSynthesis {
   occurrenceCount: number;
   checkpointCount: number;
   maximumAffectedNodes: number;
+  instanceCount: number;
+  componentCount: number;
+  instances: FindingInstanceSynthesis[];
   checkpoints: FindingCheckpointSynthesis[];
   remediation: {
     deterministic: string;
@@ -210,11 +230,20 @@ interface FindingSynthesis {
   };
 }
 
+interface FindingInstanceSynthesis {
+  component: string;
+  label: string;
+  selector: string;
+  detail?: string;
+  targetBox?: AxeTargetBox;
+}
+
 export interface ScenarioSynthesis {
   conclusion: string;
   directJudgments: { passed: number; failed: number; unknown: number };
   releaseGates: { passed: number; failed: number; unknown: number };
   findingOccurrences: number;
+  affectedInstancesAtLargestCheckpoint: number;
   incompleteRuleResults: number;
   uniqueIncompleteRules: string[];
   lanes: Array<{
@@ -650,6 +679,7 @@ function emptyScenarioSynthesis(): ScenarioSynthesis {
     directJudgments: { passed: 0, failed: 0, unknown: 0 },
     releaseGates: { passed: 0, failed: 0, unknown: 0 },
     findingOccurrences: 0,
+    affectedInstancesAtLargestCheckpoint: 0,
     incompleteRuleResults: 0,
     uniqueIncompleteRules: [],
     lanes: [],
@@ -900,17 +930,21 @@ async function loadAxeReportViews(
 function axeRuleViews(value: unknown): AxeRuleView[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).map((rule) => {
-    const nodes = Array.isArray(rule.nodes) ? rule.nodes.filter(isRecord) : [];
-    const targets = nodes.flatMap((node) =>
-      Array.isArray(node.target) ? node.target.map(String) : []
-    );
+    const rawNodes = Array.isArray(rule.nodes) ? rule.nodes.filter(isRecord) : [];
+    const nodes = rawNodes.map((node) => ({
+      target: Array.isArray(node.target) ? node.target.map(String).join(" → ") : "",
+      html: optionalStringField(node, "html"),
+      failureSummary: optionalStringField(node, "failureSummary"),
+      targetBox: axeTargetBox(node.aeeTarget)
+    }));
+    const targets = nodes.map(({ target }) => target).filter(Boolean);
     const htmlSamples = nodes
-      .map((node) => optionalStringField(node, "html"))
+      .map(({ html }) => html)
       .filter((sample): sample is string => Boolean(sample));
     const failureSummaries = [
       ...new Set(
         nodes
-          .map((node) => optionalStringField(node, "failureSummary"))
+          .map(({ failureSummary }) => failureSummary)
           .filter((summary): summary is string => Boolean(summary))
       )
     ];
@@ -920,13 +954,13 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       help: stringField(rule, "help", "No help text was provided."),
       description: stringField(rule, "description", "No description was provided."),
       helpUrl: optionalStringField(rule, "helpUrl"),
-      nodeCount: nodes.length,
+      nodeCount: rawNodes.length,
       targets,
       htmlSamples,
       tags: Array.isArray(rule.tags) ? rule.tags.map(String) : [],
-      failureSummary:
-        nodes.length > 0 ? optionalStringField(nodes[0]!, "failureSummary") : undefined,
-      failureSummaries
+      failureSummary: nodes.length > 0 ? nodes[0]!.failureSummary : undefined,
+      failureSummaries,
+      nodes
     };
   });
 }
@@ -964,6 +998,10 @@ function buildScenarioSynthesis(
     })
     .filter(({ actions }) => actions > 0);
   const findings = report.findings.map((finding) => buildFindingSynthesis(report, views, finding));
+  const affectedInstancesAtLargestCheckpoint = findings.reduce(
+    (total, finding) => total + finding.maximumAffectedNodes,
+    0
+  );
   const passedComparisons = views.comparisons.filter(
     ({ equivalence, expectation }) =>
       equivalence.verdict === "pass" && expectation.verdict === "pass"
@@ -977,8 +1015,8 @@ function buildScenarioSynthesis(
       : undefined
   ].filter((item): item is string => Boolean(item));
   const negative = findings.length
-    ? `${findings.length} unique confirmed issue${findings.length === 1 ? "" : "s"} produced ${findingOccurrences} finding occurrence${findingOccurrences === 1 ? "" : "s"} across ${report.actions.length} action checkpoint${report.actions.length === 1 ? "" : "s"}`
-    : "no confirmed issues were emitted";
+    ? `${findings.length} grouped fix${findings.length === 1 ? "" : "es"} cover ${affectedInstancesAtLargestCheckpoint} affected element-rule instance${affectedInstancesAtLargestCheckpoint === 1 ? "" : "s"} at the largest captured checkpoint and repeated across ${findingOccurrences} checkpoint result${findingOccurrences === 1 ? "" : "s"}`
+    : "no confirmed fixes were emitted";
   const unresolved = uniqueIncompleteRules.length
     ? ` ${uniqueIncompleteRules.length} distinct Axe rule${uniqueIncompleteRules.length === 1 ? " remains" : "s remain"} unresolved and require review.`
     : "";
@@ -991,6 +1029,7 @@ function buildScenarioSynthesis(
       unknown: report.summary.unknown
     },
     findingOccurrences,
+    affectedInstancesAtLargestCheckpoint,
     incompleteRuleResults: incompleteRules.length,
     uniqueIncompleteRules,
     lanes,
@@ -1057,7 +1096,10 @@ function buildFindingSynthesis(
       Boolean(entry.rule)
     );
   const allRules = matchingReports.map(({ rule }) => rule);
-  const representative = allRules[0];
+  const representative = allRules.reduce<AxeRuleView | undefined>(
+    (largest, rule) => (!largest || rule.nodeCount > largest.nodeCount ? rule : largest),
+    undefined
+  );
   const checkpoints = matchingReports.map(({ axeReport, rule }) => {
     const action = report.actions.find(
       (candidate) => candidate.runId === axeReport.runId && candidate.laneId === axeReport.laneId
@@ -1108,6 +1150,8 @@ function buildFindingSynthesis(
     ...new Set(allRules.flatMap(({ tags }) => tags.map(wcagCriterionFromTag).filter(Boolean)))
   ] as string[];
   const maximumAffectedNodes = Math.max(0, ...allRules.map(({ nodeCount }) => nodeCount));
+  const instances = findingInstances(ruleId, representative);
+  const componentCount = new Set(instances.map(({ component }) => component)).size;
   const remediation = findingRemediation(ruleId, representative);
   return {
     ruleId,
@@ -1118,6 +1162,9 @@ function buildFindingSynthesis(
     occurrenceCount,
     checkpointCount: checkpoints.length,
     maximumAffectedNodes,
+    instanceCount: instances.length,
+    componentCount,
+    instances,
     checkpoints,
     remediation
   };
@@ -1151,6 +1198,77 @@ function driverFromLaneId(laneId: string): ScenarioActionReport["driver"] {
 function wcagCriterionFromTag(tag: string): string | undefined {
   const match = /^wcag(\d)(\d)(\d+)$/.exec(tag);
   return match ? `WCAG ${match[1]}.${match[2]}.${match[3]}` : undefined;
+}
+
+function findingInstances(
+  ruleId: string,
+  rule: AxeRuleView | undefined
+): FindingInstanceSynthesis[] {
+  if (!rule) return [];
+  const nodeViews = Array.isArray(rule.nodes) ? rule.nodes : [];
+  const nodes = nodeViews.length
+    ? nodeViews
+    : rule.targets.map((target, index) => ({
+        target,
+        html: rule.htmlSamples[index],
+        failureSummary: rule.failureSummary,
+        targetBox: undefined
+      }));
+  const seen = new Set<string>();
+  return nodes.flatMap((node, index) => {
+    const selector = node.target || `Affected element ${index + 1}`;
+    if (seen.has(selector)) return [];
+    seen.add(selector);
+    return [
+      {
+        component: affectedComponentName(ruleId, selector, node.html),
+        label: elementLabel(node.html, selector, index),
+        selector,
+        targetBox: node.targetBox,
+        detail: node.failureSummary
+          ?.replace(/^Fix any of the following:\s*/i, "")
+          .replace(/\s+/g, " ")
+          .trim()
+      }
+    ];
+  });
+}
+
+function axeTargetBox(value: unknown): AxeTargetBox | undefined {
+  if (!isRecord(value)) return undefined;
+  const keys = ["x", "y", "width", "height", "pageWidth", "pageHeight"] as const;
+  if (keys.some((key) => typeof value[key] !== "number" || !Number.isFinite(value[key]))) {
+    return undefined;
+  }
+  return Object.fromEntries(keys.map((key) => [key, value[key]])) as unknown as AxeTargetBox;
+}
+
+function affectedComponentName(ruleId: string, selector: string, html?: string): string {
+  const normalized = `${selector} ${html ?? ""}`.toLowerCase();
+  if (normalized.includes("footer")) return "Footer navigation component";
+  if (normalized.includes("announcement")) return "Announcement bar";
+  if (normalized.includes("mid_page_banner") || normalized.includes("blog-banner")) {
+    return "Mid-page banner";
+  }
+  if (ruleId === "color-contrast") return "Shared color treatment";
+  const id = /#([a-z0-9_-]+)/i.exec(selector)?.[1];
+  if (id) return humanActionName(id.replaceAll("_", "-"));
+  const className = /\.([a-z0-9_-]+)/i.exec(selector)?.[1];
+  return className ? humanActionName(className.replaceAll("_", "-")) : "Page component";
+}
+
+function elementLabel(html: string | undefined, selector: string, index: number): string {
+  const text = html
+    ?.replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;|&#160;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (text) return text;
+  const id = /#([a-z0-9_-]+)/i.exec(selector)?.[1];
+  return id ? humanActionName(id.replaceAll("_", "-")) : `Affected element ${index + 1}`;
 }
 
 function findingRemediation(
@@ -1250,7 +1368,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     "",
     `- ${report.summary.actions} user-authored actions evaluated across ${report.synthesis.lanes.length} active lanes`,
     `- ${report.synthesis.directJudgments.passed} direct judgments passed, ${report.synthesis.directJudgments.failed} failed, ${report.synthesis.directJudgments.unknown} unresolved`,
-    `- ${report.summary.findings} unique findings across ${report.synthesis.findingOccurrences} checkpoint occurrences`,
+    `- ${report.summary.findings} grouped fixes covering ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected element-rule instances at the largest checkpoint`,
     `- ${report.synthesis.uniqueIncompleteRules.length} unique incomplete Axe rules across ${report.synthesis.incompleteRuleResults} checkpoint results`,
     `- ${report.summary.artifacts} indexed artifacts`,
     "",
@@ -1279,6 +1397,19 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
       "",
       `**AI:** Not used — ${finding.remediation.ai.reason}`,
       "",
+      `**Affected instances:** ${finding.instanceCount} distinct page locations in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}; repeated at ${finding.checkpointCount} checkpoints.`,
+      "",
+      ...(finding.instances.length
+        ? [
+            "| Component | Element | Selector |",
+            "| --- | --- | --- |",
+            ...finding.instances.map(
+              (instance) =>
+                `| ${escapeMarkdown(instance.component)} | ${escapeMarkdown(instance.label)} | \`${escapeMarkdown(instance.selector)}\` |`
+            ),
+            ""
+          ]
+        : []),
       "| Lane | Action | Behavior | Nodes | DOM | Accessibility tree | Visual | Focus | Axe |",
       "| --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
       ...finding.checkpoints.map(
@@ -1362,8 +1493,8 @@ function executiveStatusSummary(report: ScenarioIntegratedReport): string {
     readerPassed ? "all tested virtual-reader commands correlate with the page" : undefined
   ].filter((item): item is string => Boolean(item));
   const issueText = report.summary.findings
-    ? `${report.summary.findings} repeated issue type${report.summary.findings === 1 ? "" : "s"} still block${report.summary.findings === 1 ? "s" : ""} release in this scope`
-    : "no confirmed issues were found in this scope";
+    ? `${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint and still block release in this scope`
+    : "no confirmed fixes were found in this scope";
   return `${strengths.length ? `${strengths.join(" and ")}. ` : ""}${issueText}.`;
 }
 
@@ -1413,12 +1544,16 @@ function renderIntegratedHtml(
     findings: report.synthesis.findings.map((finding) => ({
       ruleId: finding.ruleId,
       title: finding.title,
+      fixLabel: findingFixLabel(finding.ruleId),
       severity: finding.severity,
       effort: findingEffort(finding.ruleId),
       fix: finding.remediation.deterministic,
       checkpoints: finding.checkpointCount,
+      instances: finding.instanceCount,
+      components: finding.componentCount,
       wcag: finding.wcagCriteria
     })),
+    affectedInstancesAtLargestCheckpoint: report.synthesis.affectedInstancesAtLargestCheckpoint,
     incompleteRules: report.synthesis.uniqueIncompleteRules,
     effortSummary
   });
@@ -1477,8 +1612,9 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
 .section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
 .planner-tools{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.planner-tools p{margin:0}.fix-filters{display:flex;flex-wrap:wrap;gap:.5rem}
-.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
-.before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}.before-after figure{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.issue-crop{position:relative;display:block;height:15rem;overflow:hidden;background:#121212}.before-after img{width:100%;height:100%;object-fit:cover;object-position:top;border:0;border-radius:0}.current-state[data-rule-id="aria-required-parent"] img{object-position:20% bottom;transform:scale(1.7);transform-origin:20% 88%}.current-state[data-rule-id="color-contrast"] img{transform:scale(1.85);transform-origin:50% 3%}.issue-crop b{position:absolute;right:.6rem;bottom:.6rem;padding:.32rem .5rem;border-radius:4px;color:#fff;background:rgb(9 42 34/.92);font-size:.72rem;letter-spacing:.02em}.before-after figcaption{display:flex;flex-direction:column;gap:.2rem;margin:0;padding:.8rem 1rem;border-top:1px solid var(--line)}.before-after figcaption span{color:var(--muted);font-size:.85rem}.preview-stage{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:15rem;padding:1.25rem;background:var(--wash)}.semantic-preview .preview-stage>div:not(.change-arrow){display:flex;flex-direction:column;gap:.6rem}.semantic-preview .preview-stage span{font-size:.76rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.semantic-preview code{display:block;padding:.8rem;background:#fff;border:1px solid var(--line)}.change-arrow{color:var(--forest);font:700 2rem/1 var(--serif)}.contrast-pair{display:flex;flex:1;min-width:0;flex-direction:column;gap:.45rem;color:var(--ink)}.contrast-pair>strong{font-size:.9rem}.contrast-pair small{color:var(--muted);line-height:1.45}.color-field{display:flex;min-height:6rem;align-items:center;justify-content:center;border:1px solid var(--line-strong);border-radius:8px}.color-field i{display:block;width:56%;height:1.15rem;border-radius:999px}.fix-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem}.fix-actions a{font-weight:750}.estimate-note{max-width:75ch;color:var(--muted);font-size:.88rem}
+.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main{min-width:0}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
+.fix-scope{display:flex;flex-wrap:wrap;gap:.25rem .65rem;margin:1rem 0;padding:.8rem 1rem;background:var(--wash);border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.fix-scope strong{color:var(--forest)}.fix-scope span{color:var(--muted)}
+.before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}.before-after figure{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.issue-crop{position:relative;display:block;height:15rem;overflow:hidden;background:#121212}.before-after img{width:100%;height:100%;object-fit:cover;object-position:top;border:0;border-radius:0}.current-state[data-rule-id="color-contrast"] .issue-crop img{transform:scale(1.85);transform-origin:50% 3%}.issue-crop b{position:absolute;left:.6rem;bottom:.6rem;padding:.32rem .5rem;border-radius:4px;color:#fff;background:rgb(9 42 34/.94);font-size:.72rem;letter-spacing:.02em}.target-crop-grid{display:grid;gap:.65rem;padding:.65rem;background:var(--wash)}.target-crop{position:relative;display:block;height:8.4rem;overflow:hidden;border:1px solid var(--line-strong);border-radius:8px;background:var(--forest-deep);color:#fff}.target-crop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:var(--target-x) var(--target-y);filter:brightness(.78)}.target-crop i{position:absolute;left:var(--target-left);top:var(--target-y);width:var(--target-width);min-width:3rem;height:2rem;transform:translateY(-50%);border:3px solid var(--focus);border-radius:4px;background:rgb(246 183 60/.12)}.target-crop b,.target-crop span{position:absolute;left:.6rem;z-index:1;padding:.2rem .4rem;border-radius:4px;background:rgb(9 42 34/.94)}.target-crop b{top:.55rem}.target-crop span{bottom:.55rem;font-size:.72rem}.before-after figcaption{display:flex;flex-direction:column;gap:.35rem;margin:0;padding:.8rem 1rem;border-top:1px solid var(--line)}.before-after figcaption span{color:var(--muted);font-size:.85rem}.visual-targets{display:grid;gap:.35rem;margin:.25rem 0;padding:0;list-style:none}.visual-targets li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.2rem .75rem;padding:.4rem 0;border-top:1px solid var(--line)}.visual-targets b{font-size:.82rem}.visual-targets span{font-size:.78rem}.semantic-evidence{display:flex;min-height:15rem;flex-direction:column;justify-content:center;gap:.7rem;padding:1.25rem;background:var(--wash)}.semantic-evidence>strong{font:700 1.35rem/1.15 var(--serif)}.semantic-evidence p{margin:0;color:var(--muted)}.semantic-evidence code{display:block;margin-top:.35rem;padding:.65rem;background:#fff;border:1px solid var(--line);font-size:.74rem}.instance-chips{display:flex;flex-wrap:wrap;gap:.4rem}.instance-chips span{padding:.28rem .55rem;border:1px solid var(--line-strong);border-radius:999px;background:#fff;font-size:.72rem;font-weight:750}.preview-stage{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:15rem;padding:1.25rem;background:var(--wash)}.semantic-preview .preview-stage>div:not(.change-arrow){display:flex;flex-direction:column;gap:.6rem}.semantic-preview .preview-stage span{font-size:.76rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.semantic-preview code{display:block;padding:.8rem;background:#fff;border:1px solid var(--line)}.change-arrow{color:var(--forest);font:700 2rem/1 var(--serif)}.contrast-pair{display:flex;flex:1;min-width:0;flex-direction:column;gap:.45rem;color:var(--ink)}.contrast-pair>strong{font-size:.9rem}.contrast-pair small{color:var(--muted);line-height:1.45}.color-field{display:flex;min-height:6rem;align-items:center;justify-content:center;border:1px solid var(--line-strong);border-radius:8px}.color-field i{display:block;width:56%;height:1.15rem;border-radius:999px}.instance-list{width:100%;min-width:0;max-width:100%;overflow:hidden;margin:1.2rem 0;padding:1rem;background:#fff;border:1px solid var(--line-strong);border-radius:8px}.instance-list summary{color:var(--forest);font-weight:800}.instance-list>p{max-width:75ch;color:var(--muted)}.instance-list .table-wrap{width:100%;min-width:0;max-width:100%;overflow-x:auto}.instance-list table{font-size:.84rem}.instance-list th:first-child,.instance-list td:first-child{width:3rem;text-align:right}.instance-list td:nth-child(2){min-width:12rem}.instance-list td:nth-child(3){min-width:12rem}.instance-list td:last-child{min-width:24rem}.instance-list td small{display:block;margin-top:.45rem;color:var(--muted);line-height:1.4}.fix-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem}.fix-actions a{font-weight:750}.estimate-note{max-width:75ch;color:var(--muted);font-size:.88rem}
 .annex-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:2rem}.annex-block{padding-top:2rem;border-top:1px solid var(--line-strong)}.annex-block>h3{font:700 1.7rem/1.2 var(--serif)}
 .conclusion{max-width:72ch;margin:1rem 0 2.5rem;font:600 clamp(1.2rem,2.2vw,1.55rem)/1.5 var(--serif);color:#29493f}
 .report-tabs{display:flex;gap:1.5rem;overflow-x:auto;border-bottom:1px solid var(--line-strong);scrollbar-width:thin}
@@ -1530,7 +1666,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .metrics{display:flex;flex-wrap:wrap;gap:.4rem 1.5rem;color:var(--muted)}
 dl.meta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:.5rem 1.5rem;max-width:58rem}
 dt{font-weight:750}dd{margin:0;overflow-wrap:anywhere}
-.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}.table-wrap:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
 table{border-collapse:collapse;width:100%;min-width:640px}
 caption{text-align:left;font-weight:700;padding:.75rem 1rem;background:var(--wash)}
 th,td{padding:.8rem 1rem;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
@@ -1552,10 +1688,10 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
 <body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(humanActionName(report.scenarioId))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
-<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Fix ${report.summary.findings} issue type${report.summary.findings === 1 ? "" : "s"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>confirmed issue types</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div><div><strong>${report.synthesis.reader.passed}/${report.synthesis.reader.commands}</strong><span>reader commands passed</span></div></div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `The tested interactions work, but ${report.summary.findings} page-level issue type${report.summary.findings === 1 ? "" : "s"} repeat across every checkpoint. Ask me what to fix first.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
+<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div><div><strong>${report.synthesis.reader.passed}/${report.synthesis.reader.commands}</strong><span>reader commands passed</span></div></div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
-<section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Visual fix review</h2><p>Compare the captured page with a concrete proposed change, understand user impact, and estimate implementation effort.</p></div></div>${renderFixPlanner(report)}</section>
+<section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report)}</section>
 <section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
     videos.length
@@ -1661,17 +1797,17 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
     const first=knowledge.findings[0];
     const named=knowledge.findings.find(finding=>q.includes(finding.ruleId.toLowerCase())||q.includes(finding.title.toLowerCase()));
     if(!q)return 'Ask about status, fix priority, effort, keyboard access, virtual-reader behavior, or a finding name.';
-    if(named)return named.title+' ('+named.ruleId+') appears at '+named.checkpoints+' checkpoints. Recommended fix: '+named.fix+' Estimated effort: '+named.effort.hours+'.';
-    if(q.includes('first')||q.includes('priority')||q.includes('start'))return first?'Start with '+first.title+'. It is the highest-priority confirmed issue and is estimated at '+first.effort.hours+'. '+first.fix:'No confirmed fix is queued in this authored scope. Review the incomplete checks or author another journey before estimating work.';
+    if(named)return named.fixLabel+' ('+named.ruleId+') is one grouped fix covering '+named.instances+' affected page locations in '+named.components+' component group'+(named.components===1?'':'s')+' and repeated at '+named.checkpoints+' checkpoints. Recommended fix: '+named.fix+' Estimated effort: '+named.effort.hours+'.';
+    if(q.includes('first')||q.includes('priority')||q.includes('start'))return first?'Start with '+first.fixLabel+'. It is the highest-priority grouped fix, covers '+first.instances+' affected locations, and is estimated at '+first.effort.hours+'. '+first.fix:'No confirmed fix is queued in this authored scope. Review the incomplete checks or author another journey before estimating work.';
     if(q.includes('effort')||q.includes('long')||q.includes('time')||q.includes('cost'))return knowledge.effortSummary+' These are focused engineering estimates, not delivery commitments; design approval and release process are excluded.';
     if(q.includes('keyboard')||q.includes('pointer')||q.includes('hover')||q.includes('focus'))return 'The tested keyboard and pointer paths passed: both reached the expected Sign in outcome in isolated contexts. This does not prove every control or page journey is keyboard accessible.';
     if(q.includes('screen reader')||q.includes('reader')||q.includes('announcement'))return knowledge.reader.passed+' of '+knowledge.reader.commands+' portable virtual-reader commands passed cross-evidence validation. This is semantic simulation evidence, not VoiceOver or NVDA fidelity testing.';
-    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.findings.length+' Axe issue types were confirmed. '+knowledge.incompleteRules.length+' additional rule types remain incomplete and need review: '+knowledge.incompleteRules.join(', ')+'.';
+    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.findings.length+' Axe rule types were consolidated into '+knowledge.findings.length+' grouped fixes covering '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint. '+knowledge.incompleteRules.length+' additional rule types remain incomplete and need review: '+knowledge.incompleteRules.join(', ')+'.';
     if(q.includes('ai'))return 'No AI generated the conclusions in this report. The answers here are deterministic summaries of local captured evidence. AI may be used later only where the report labels it and must be verified.';
     if(q.includes('bad')||q.includes('good')||q.includes('status')||q.includes('score')||q.includes('accessible')||q.includes('release')){
       const scopeNote=' The tested keyboard/pointer comparison passed and '+knowledge.reader.passed+' of '+knowledge.reader.commands+' virtual-reader commands passed. This is not a whole-site accessibility score.';
       if(knowledge.verdict==='pass')return 'No confirmed blocker was found in the tested scope.'+scopeNote;
-      if(knowledge.verdict==='fail')return 'Release is blocked in the tested scope because '+knowledge.findings.length+' confirmed issue types repeat across the tested checkpoints.'+scopeNote;
+      if(knowledge.verdict==='fail')return 'Release is blocked in the tested scope because '+knowledge.findings.length+' grouped fixes cover '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint. Fixing the shared components may resolve many repeated locations, but every listed instance must be retested.'+scopeNote;
       return 'The release decision needs review because the captured evidence is incomplete or inconclusive.'+scopeNote;
     }
     return 'I can answer from this report about overall status, what to fix first, estimated effort, keyboard and pointer behavior, virtual-reader results, Axe findings, or a named rule. This question may require a new authored test or an external AI analysis.';
@@ -1703,7 +1839,7 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
         `<tr><th scope="row">${escapeHtml(humanDriverName(lane.driver))}</th><td>${lane.actions}</td><td>${lane.passed}</td><td>${lane.failed}</td><td>${lane.unknown}</td><td>${escapeHtml(lane.summary)}</td></tr>`
     )
     .join("");
-  return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap" tabindex="0"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function renderStatusAreas(report: ScenarioIntegratedReport): string {
@@ -1773,10 +1909,62 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
       const priority = finding.severity === "critical" ? "P0" : index === 0 ? "P1" : "P2";
       const screenshot = representative?.screenshotPath;
       const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
-      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(finding.title)}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p><div class="before-after">${screenshot ? `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}"><a href="${encodeURI(screenshot)}"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Magnified current-page evidence for ${escapeAttribute(finding.title)}"><b>Affected region magnified</b></span></a><figcaption><strong>Current issue</strong><span>${finding.maximumAffectedNodes} affected node${finding.maximumAffectedNodes === 1 ? "" : "s"} at the largest checkpoint · open the full capture</span></figcaption></figure>` : ""}${renderProposedFix(finding)}</div><div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding.ruleId))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p><div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
     })
     .join("");
   return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
+}
+
+function findingFixLabel(ruleId: string): string {
+  if (ruleId === "aria-required-parent") return "Repair the shared footer navigation semantics";
+  if (ruleId === "color-contrast") return "Replace the shared low-contrast link color";
+  return humanActionName(ruleId);
+}
+
+function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): string {
+  if (finding.ruleId === "aria-required-parent") {
+    const samples = finding.instances.slice(0, 6);
+    return `<figure class="current-state semantic-current"><div class="semantic-evidence"><strong>This defect is not visible in a screenshot</strong><p>The pixels look normal. The failure is in the DOM semantics applied to the affected links.</p><div class="instance-chips">${samples.map(({ label }) => `<span>${escapeHtml(label)}</span>`).join("")}${finding.instanceCount > samples.length ? `<span>+${finding.instanceCount - samples.length} more</span>` : ""}</div><code>link + role=&quot;menuitem&quot; + no menu parent</code></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} instances share the same incorrect component pattern${screenshot ? ` · <a href="${encodeURI(screenshot)}">open page context</a>` : ""}</span></figcaption></figure>`;
+  }
+  if (screenshot) {
+    const locatedTargets = finding.instances.filter(({ targetBox }) => Boolean(targetBox));
+    const visibleTargets = finding.instances
+      .map(
+        (instance, index) =>
+          `<li><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></li>`
+      )
+      .join("");
+    const targetCrops = locatedTargets.length
+      ? `<div class="target-crop-grid">${locatedTargets
+          .map((instance, index) => {
+            const targetBox = instance.targetBox!;
+            const centerX = ((targetBox.x + targetBox.width / 2) / targetBox.pageWidth) * 100;
+            const centerY = ((targetBox.y + targetBox.height / 2) / targetBox.pageHeight) * 100;
+            const left = (targetBox.x / targetBox.pageWidth) * 100;
+            const width = Math.max((targetBox.width / targetBox.pageWidth) * 100, 4);
+            return `<a class="target-crop" href="${encodeURI(screenshot)}" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></a>`;
+          })
+          .join("")}</div>`
+      : `<a href="${encodeURI(screenshot)}"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding.ruleId))}"><b>Visual context only</b></span></a>`;
+    return `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}">${targetCrops}<figcaption><strong>Exact affected locations</strong>${visibleTargets ? `<ol class="visual-targets">${visibleTargets}</ol>` : ""}<span>Each numbered crop links to the full-page capture; exact selectors remain listed below.</span></figcaption></figure>`;
+  }
+  return `<figure class="current-state"><div class="semantic-evidence"><strong>No visual capture was available</strong><p>Use the exact element locations below with the DOM and Axe evidence.</p></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"}</span></figcaption></figure>`;
+}
+
+function instanceMeasurement(detail?: string): string | undefined {
+  return /contrast of\s+([0-9.]+)/i.exec(detail ?? "")?.[1]?.concat(":1");
+}
+
+function renderFindingInstances(finding: FindingSynthesis): string {
+  if (!finding.instances.length) return "";
+  const groups = [...new Set(finding.instances.map(({ component }) => component))];
+  const rows = finding.instances
+    .map(
+      (instance, index) =>
+        `<tr><td>${index + 1}</td><td><strong>${escapeHtml(instance.component)}</strong></td><td>${escapeHtml(instance.label)}</td><td><code>${escapeHtml(instance.selector)}</code>${instance.detail ? `<small>${escapeHtml(instance.detail)}</small>` : ""}</td></tr>`
+    )
+    .join("");
+  return `<details class="instance-list"><summary>Show all ${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"}</summary><p>Grouped into ${groups.length} component group${groups.length === 1 ? "" : "s"}: ${groups.map(escapeHtml).join(", ")}. These are listed once from the largest checkpoint; the same pattern repeated at ${finding.checkpointCount} checkpoints.</p><div class="table-wrap" tabindex="0"><table><caption>Every distinct affected location in the representative checkpoint</caption><thead><tr><th scope="col">#</th><th scope="col">Component</th><th scope="col">Visible element</th><th scope="col">Exact locator and measurement</th></tr></thead><tbody>${rows}</tbody></table></div></details>`;
 }
 
 function renderPrioritySnapshot(report: ScenarioIntegratedReport): string {
@@ -1893,7 +2081,7 @@ function renderFindingDossiers(report: ScenarioIntegratedReport): string {
         )
         .join("");
       const sample = representative?.htmlSamples[0];
-      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a href="${encodeURI(representative.screenshotPath)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · <a href="${encodeURI(representative.screenshotPath)}">open full-size visual</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a href="${encodeURI(representative.screenshotPath)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · <a href="${encodeURI(representative.screenshotPath)}">open full-size visual</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
     })
     .join("");
 }
@@ -1935,7 +2123,7 @@ function renderKeyboardOverview(
           return renderInputActionEvidence(report, action, actionView);
         })
         .join("");
-      return `<article class="finding-dossier"><header><div><h3>${escapeHtml(comparison.name)}</h3><p>${escapeHtml(comparison.isolation.replaceAll("-", " "))}</p></div><span class="badge ${comparison.status === "completed" ? "pass" : "unknown"}">${escapeHtml(comparison.status)}</span></header>${comparison.readError ? `<p>${escapeHtml(comparison.readError)}</p>` : `<div class="outcome-pair"><section class="outcome"><h4>Equivalent outcome <span class="badge ${comparison.equivalence.verdict}">${escapeHtml(comparison.equivalence.verdict)}</span></h4><p>${escapeHtml(comparison.equivalence.summary)}</p></section><section class="outcome"><h4>Expected outcome <span class="badge ${comparison.expectation.verdict}">${escapeHtml(comparison.expectation.verdict)}</span></h4><p>${escapeHtml(comparison.expectation.summary)}</p></section></div><div class="table-wrap"><table><caption>Observed result in each isolated lane</caption><thead><tr><th scope="col">Lane</th><th scope="col">Authored actions</th><th scope="col">URL</th><th scope="col">Visible</th><th scope="col">Text</th></tr></thead><tbody>${renderComparisonLaneRow("Pointer", comparison.pointer)}${renderComparisonLaneRow("Keyboard", comparison.keyboard)}</tbody></table></div>${actionViews}`}<p><a class="raw-link" href="${encodeURI(comparison.path)}">Open complete interaction trace</a></p></article>`;
+      return `<article class="finding-dossier"><header><div><h3>${escapeHtml(comparison.name)}</h3><p>${escapeHtml(comparison.isolation.replaceAll("-", " "))}</p></div><span class="badge ${comparison.status === "completed" ? "pass" : "unknown"}">${escapeHtml(comparison.status)}</span></header>${comparison.readError ? `<p>${escapeHtml(comparison.readError)}</p>` : `<div class="outcome-pair"><section class="outcome"><h4>Equivalent outcome <span class="badge ${comparison.equivalence.verdict}">${escapeHtml(comparison.equivalence.verdict)}</span></h4><p>${escapeHtml(comparison.equivalence.summary)}</p></section><section class="outcome"><h4>Expected outcome <span class="badge ${comparison.expectation.verdict}">${escapeHtml(comparison.expectation.verdict)}</span></h4><p>${escapeHtml(comparison.expectation.summary)}</p></section></div><div class="table-wrap" tabindex="0"><table><caption>Observed result in each isolated lane</caption><thead><tr><th scope="col">Lane</th><th scope="col">Authored actions</th><th scope="col">URL</th><th scope="col">Visible</th><th scope="col">Text</th></tr></thead><tbody>${renderComparisonLaneRow("Pointer", comparison.pointer)}${renderComparisonLaneRow("Keyboard", comparison.keyboard)}</tbody></table></div>${actionViews}`}<p><a class="raw-link" href="${encodeURI(comparison.path)}">Open complete interaction trace</a></p></article>`;
     })
     .join("");
 }
@@ -2010,7 +2198,7 @@ function renderReaderOverview(
             : "";
         })
         .join("");
-      return `<article class="finding-dossier"><header><div><h3>Guide-mode navigation</h3><p>${escapeHtml(transcript.pageUrl)} · ${escapeHtml(transcript.fidelity.replaceAll("-", " "))}</p></div><span class="badge ${report.synthesis.reader.failed ? "fail" : report.synthesis.reader.unknown ? "unknown" : "pass"}">${report.synthesis.reader.passed}/${report.synthesis.reader.commands} passed</span></header>${transcript.readError ? `<p>${escapeHtml(transcript.readError)}</p>` : `<div class="table-wrap"><table><caption>Announcements correlated with semantic, visual, and focus evidence</caption><thead><tr><th scope="col">Command</th><th scope="col">Virtual announcement and bounds</th><th scope="col">DOM focus</th><th scope="col">Cross-evidence result</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div><h4>Rendered checkpoints</h4><div class="media-grid">${visuals}</div>`}<p class="evidence-links"><a href="${encodeURI(transcript.path)}">Open transcript JSON</a>${transcript.textPath ? ` <a href="${encodeURI(transcript.textPath)}">Open readable transcript</a>` : ""}</p></article>`;
+      return `<article class="finding-dossier"><header><div><h3>Guide-mode navigation</h3><p>${escapeHtml(transcript.pageUrl)} · ${escapeHtml(transcript.fidelity.replaceAll("-", " "))}</p></div><span class="badge ${report.synthesis.reader.failed ? "fail" : report.synthesis.reader.unknown ? "unknown" : "pass"}">${report.synthesis.reader.passed}/${report.synthesis.reader.commands} passed</span></header>${transcript.readError ? `<p>${escapeHtml(transcript.readError)}</p>` : `<div class="table-wrap" tabindex="0"><table><caption>Announcements correlated with semantic, visual, and focus evidence</caption><thead><tr><th scope="col">Command</th><th scope="col">Virtual announcement and bounds</th><th scope="col">DOM focus</th><th scope="col">Cross-evidence result</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div><h4>Rendered checkpoints</h4><div class="media-grid">${visuals}</div>`}<p class="evidence-links"><a href="${encodeURI(transcript.path)}">Open transcript JSON</a>${transcript.textPath ? ` <a href="${encodeURI(transcript.textPath)}">Open readable transcript</a>` : ""}</p></article>`;
     })
     .join("");
 }
@@ -2056,7 +2244,7 @@ function renderAxeReportViews(views: AxeReportView[]): string {
       return `<details class="result-card"><summary><span>${escapeHtml(humanActionName(view.actionId))}</span> <span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span></summary><div class="technical-id">${escapeHtml(view.actionId)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
     })
     .join("");
-  return `<section class="panel"><h3>Unique rules across checkpoints</h3><p>Repeated page-level results are consolidated here. “Reports” shows how many after-action Axe runs contained the rule; “Nodes” is the largest affected-node count in one run.</p><div class="table-wrap"><table><caption>Consolidated Axe rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Result</th><th scope="col">Reports</th><th scope="col">Nodes</th><th scope="col">Guidance</th></tr></thead><tbody>${consolidatedRows}</tbody></table></div></section><section aria-labelledby="individual-axe-heading"><h3 id="individual-axe-heading">Individual Axe reports</h3><p>Expand a checkpoint to review its full rule summary.</p>${individualReports}</section>`;
+  return `<section class="panel"><h3>Unique rules across checkpoints</h3><p>Repeated page-level results are consolidated here. “Reports” shows how many after-action Axe runs contained the rule; “Nodes” is the largest affected-node count in one run.</p><div class="table-wrap" tabindex="0"><table><caption>Consolidated Axe rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Result</th><th scope="col">Reports</th><th scope="col">Nodes</th><th scope="col">Guidance</th></tr></thead><tbody>${consolidatedRows}</tbody></table></div></section><section aria-labelledby="individual-axe-heading"><h3 id="individual-axe-heading">Individual Axe reports</h3><p>Expand a checkpoint to review its full rule summary.</p>${individualReports}</section>`;
 }
 
 function renderAxeRule(rule: AxeRuleView): string {

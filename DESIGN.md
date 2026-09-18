@@ -247,7 +247,8 @@ Each row keeps priority, finding, current evidence, honest proposed state, impac
 
 - **Do** lead with the scoped release decision, confirmed issue count, positive tested behaviors, and focused effort.
 - **Do** use ruled rows and tonal surfaces to organize dense evidence.
-- **Do** magnify or annotate affected regions and keep a route to the full capture.
+- **Do** magnify or annotate visible defects and keep a route to the full capture; for semantic defects,
+  show the DOM pattern and every affected element instead of implying the pixels reveal the problem.
 - **Do** preserve visible keyboard focus, semantic labels, and the same evidence in every responsive layout.
 - **Do** keep conversational answers local to captured evidence and visibly bounded by the authored scenario.
 

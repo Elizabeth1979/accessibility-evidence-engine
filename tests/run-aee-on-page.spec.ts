@@ -167,8 +167,8 @@ approval:
     expect(html).toContain("Keyboard and pointer overview");
     expect(html).toContain("Your accessibility status");
     expect(html).toContain("Ask this report");
-    expect(html).toContain("Visual fix review");
-    expect(html).toContain("Current issue");
+    expect(html).toContain("Grouped fix review");
+    expect(html).toContain("affected page location");
     expect(html).toContain("Proposed fix");
     expect(html).toContain("Open complete interaction trace");
     expect(html).toContain("Every checkpoint considered in this conclusion");
@@ -188,8 +188,16 @@ approval:
     const fixTab = page.getByRole("tab", { name: /Fix review/ });
     await fixTab.click();
     await expect(fixTab).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByRole("heading", { name: "Visual fix review" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Grouped fix review" })).toBeVisible();
     await expect(page.getByText("Proposed fix", { exact: true }).first()).toBeVisible();
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator(".instance-list summary").first().click();
+    const expandedWidths = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth
+    }));
+    expect(expandedWidths.scrollWidth).toBe(expandedWidths.clientWidth);
 
     await fixTab.press("ArrowRight");
     const journeysTab = page.getByRole("tab", { name: "Tested journeys" });
@@ -455,7 +463,9 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   );
 });
 
-test("runAeeOnPage preserves raw axe 4.13 WCAG results", async ({ page }, testInfo) => {
+test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements", async ({
+  page
+}, testInfo) => {
   await page.setContent(`
     <html>
       <head><title>Axe evidence</title></head>
@@ -486,6 +496,19 @@ test("runAeeOnPage preserves raw axe 4.13 WCAG results", async ({ page }, testIn
     expect(rawResult.testEngine.version).toBe("4.13.0");
     expect(rawResult.violations).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "button-name" })])
+    );
+    const buttonName = rawResult.violations.find(
+      (violation: { id?: string }) => violation.id === "button-name"
+    );
+    expect(buttonName?.nodes[0].aeeTarget).toEqual(
+      expect.objectContaining({
+        x: expect.any(Number),
+        y: expect.any(Number),
+        width: expect.any(Number),
+        height: expect.any(Number),
+        pageWidth: expect.any(Number),
+        pageHeight: expect.any(Number)
+      })
     );
     expect(rawResult).toEqual(
       expect.objectContaining({

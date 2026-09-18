@@ -6,6 +6,9 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- Grouped remediation counts that separate shared component or token fixes from every affected page
+  location, with complete expandable instance lists and semantic evidence for defects that cannot be
+  identified honestly in a screenshot.
 - A learner-controlled before-and-after slideshow for icon naming, heading structure, and modal focus, backed by published scanner output and paired AEE reports.
 - A focus-management judge that verifies explicit focus transfer into an opened dialog.
 - `@aee/ai-fixes`, with an injectable contextual-label provider and an optional OpenAI Responses adapter using strict structured output.
