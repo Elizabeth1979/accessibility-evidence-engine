@@ -11,6 +11,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
     <script src="demo.js" defer></script>
+    <script src="experiments.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -21,13 +22,13 @@
       </a>
       <nav aria-label="Primary navigation">
         <a href="#how-it-works">Evidence flow</a><a href="#examples">Examples</a>
-        <a href="test-lab.html">Test lab</a>
+        <a href="#experiments">Accessibility experiments</a>
         <a href="#boundaries">Boundaries</a
         ><a href="https://github.com/Elizabeth1979/accessibility-evidence-engine">GitHub</a>
       </nav>
     </header>
 
-    <main id="main">
+    <main id="main" tabindex="-1">
       <section class="hero" id="top" aria-labelledby="hero-title">
         <div class="hero-copy">
           <p class="eyebrow">Experimental open-source developer tool</p>
@@ -37,7 +38,8 @@
             the before-and-after evidence needed to verify a fix.
           </p>
           <div class="hero-actions">
-            <a class="button primary" href="#examples">See the examples</a>
+            <a class="button primary" href="#experiments">Try accessibility experiments</a>
+            <a class="button secondary" href="#examples">See the examples</a>
             <a
               class="button secondary"
               href="https://github.com/Elizabeth1979/accessibility-evidence-engine#quick-start"
@@ -73,6 +75,69 @@
             <span>rerun</span><strong>Evidence verifies behavior</strong>
           </div>
         </section>
+      </section>
+
+      <section class="section experiments" id="experiments" aria-labelledby="experiments-title">
+        <h2 id="experiments-title">Plant an accessibility Easter egg</h2>
+        <p>
+          This main page starts with the fixes in place. Activate a deliberate issue, test this same
+          URL, then reset and compare the evidence.
+        </p>
+        <p id="experiment-status" role="status">Baseline: no intentional issues enabled.</p>
+        <form action="index.html#experiments" method="get">
+          <fieldset>
+            <legend>Choose which issues to plant on this page</legend>
+            <label
+              ><input type="checkbox" name="issue" value="icon-labels" /> Remove the names of the
+              Previous and Next icon buttons</label
+            >
+            <label
+              ><input type="checkbox" name="issue" value="headings" /> Make Examples a child of
+              Evidence flow in the heading outline</label
+            >
+            <label
+              ><input type="checkbox" name="issue" value="body-hidden" /> Put aria-hidden="true" on
+              the body</label
+            >
+          </fieldset>
+          <p>
+            Body hiding affects the entire page, including these controls, and can mask other
+            findings. Press Escape to restore the baseline at any time.
+          </p>
+          <div class="hero-actions">
+            <button class="button primary" type="submit">Apply selected issues</button>
+            <a class="button secondary" id="reset-experiments" href="index.html#experiments"
+              >Reset to accessible baseline</a
+            >
+          </div>
+        </form>
+        <details>
+          <summary>What should each experiment reveal?</summary>
+          <ul>
+            <li>
+              <strong>Icon names:</strong> Axe should report two unnamed buttons. Test whether their
+              purpose is understandable with a screen reader.
+            </li>
+            <li>
+              <strong>Heading relationships:</strong> Evidence flow and Examples are peer sections.
+              Nesting Examples beneath Evidence flow is wrong even with no skipped heading level; a
+              contextual review is needed.
+            </li>
+            <li>
+              <strong>Hidden body:</strong> compare automated findings and the actual accessibility
+              tree. Browser and assistive-technology behavior can differ.
+            </li>
+          </ul>
+          <p>
+            The selected issues stay in the URL for repeatable runs. Nothing is saved between visits
+            to the clean URL. A passing automated check does not certify full accessibility.
+          </p>
+        </details>
+        <noscript
+          ><p>
+            JavaScript is required to plant issues. Without it, the baseline page is shown.
+          </p></noscript
+        >
       </section>
 
       <section class="section" id="how-it-works" aria-labelledby="how-title">
@@ -723,7 +788,9 @@
 
           <div class="slideshow-controls">
             <button type="button" id="previous-example" aria-label="Show previous example">
-              ← Previous
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M19 12H5m6-6-6 6 6 6" />
+              </svg>
             </button>
             <div class="slide-picker" role="group" aria-label="Choose an example">
               <button type="button" data-slide-target="0" aria-pressed="true">Icon label</button>
@@ -733,7 +800,11 @@
               <button type="button" data-slide-target="4" aria-pressed="false">Hover</button>
               <button type="button" data-slide-target="5" aria-pressed="false">Animation</button>
             </div>
-            <button type="button" id="next-example" aria-label="Show next example">Next →</button>
+            <button type="button" id="next-example" aria-label="Show next example">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M5 12h14m-6-6 6 6-6 6" />
+              </svg>
+            </button>
           </div>
           <p class="slideshow-status" id="slideshow-status" aria-live="polite">
             Example 1 of 6: Icon label

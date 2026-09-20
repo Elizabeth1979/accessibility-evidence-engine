@@ -30,7 +30,10 @@ previousButton.addEventListener("click", () => showSlide(activeIndex - 1));
 nextButton.addEventListener("click", () => showSlide(activeIndex + 1));
 
 document.querySelector(".example-slideshow").addEventListener("keydown", (event) => {
-  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+  if (
+    event.target.closest("[data-slide-target]") &&
+    (event.key === "ArrowLeft" || event.key === "ArrowRight")
+  ) {
     event.preventDefault();
     showSlide(activeIndex + (event.key === "ArrowRight" ? 1 : -1), { announce: false });
     slideButtons[activeIndex].focus();
