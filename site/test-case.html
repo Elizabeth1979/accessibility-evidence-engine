@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Controlled accessibility fixture · AEE</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="test-lab.css" />
+    <script src="test-case.js" defer></script>
+  </head>
+  <body>
+    <header class="site-header">
+      <a href="test-lab.html">Back to the test lab</a
+      ><a href="test-case.html?case=fixed">Open fixed baseline</a>
+    </header>
+    <main class="lab">
+      <p class="fixture-notice">
+        Intentional accessibility test fixture · Fictional data ·
+        <strong id="case-name">Fixed baseline</strong>
+      </p>
+      <h1>Workspace overview</h1>
+      <p class="lede">Manage your projects and workspace preferences.</p>
+      <div class="workspace-sections">
+        <section aria-labelledby="projects-heading">
+          <h2 id="projects-heading" class="peer-heading">Projects</h2>
+          <p>Work in this workspace.</p>
+          <div class="project-row" id="project-alpha">
+            <div>
+              <strong>Project Alpha</strong>
+              <p>Website accessibility review</p>
+            </div>
+            <button id="archive-project" type="button" aria-label="Archive Project Alpha">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6" />
+              </svg>
+            </button>
+          </div>
+          <button id="restore-project" type="button" hidden>Restore Project Alpha</button>
+        </section>
+        <section aria-labelledby="settings-heading">
+          <h2 id="settings-heading" class="peer-heading">Workspace settings</h2>
+          <p>Preferences for every project in this workspace.</p>
+          <div class="project-row">
+            <div>
+              <strong>Weekly digest</strong>
+              <p id="digest-state">Enabled</p>
+            </div>
+            <button
+              id="toggle-digest"
+              type="button"
+              aria-label="Toggle weekly digest"
+              aria-pressed="true"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M4 5h16v14H4zM4 6l8 7 8-7" />
+              </svg>
+            </button>
+          </div>
+        </section>
+      </div>
+      <p id="action-status" role="status">No changes made.</p>
+    </main>
+  </body>
+</html>

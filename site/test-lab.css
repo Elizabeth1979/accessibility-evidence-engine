@@ -1,0 +1,93 @@
+.lab {
+  max-width: 960px;
+  padding-block: 2rem 5rem;
+}
+.lab h1 {
+  font-size: clamp(2.3rem, 6vw, 4rem);
+  line-height: 1.1;
+}
+.lab p {
+  max-width: 70ch;
+}
+.lab h2 {
+  margin-top: 2rem;
+}
+.experiments {
+  margin-block: 2rem;
+}
+.experiments > div {
+  padding-block: 1.4rem;
+  border-top: 1px solid var(--line);
+}
+.experiments dt {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.experiments dd {
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  max-width: 70ch;
+}
+.fixture-notice {
+  padding: 1rem;
+  border: 1px solid var(--line);
+}
+.workspace-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3rem;
+  margin-block: 2rem;
+}
+.workspace-sections section {
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+.lab .peer-heading {
+  font-size: 1.6rem;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 1.5rem 0 0.5rem;
+}
+.project-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.5rem;
+}
+.project-row p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+.lab button {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0.7rem;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.lab button:hover {
+  background: var(--line);
+}
+.lab svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+[hidden] {
+  display: none !important;
+}
+@media (max-width: 650px) {
+  .workspace-sections {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}

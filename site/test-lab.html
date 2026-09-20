@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Accessibility test lab · AEE</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="test-lab.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header"><a href="index.html">Accessibility Evidence Engine</a></header>
+    <main id="main" class="lab">
+      <h1>Accessibility test lab</h1>
+      <p class="lede">Known failures. Repeatable URLs. Evidence we can compare.</p>
+      <p>
+        These deliberately broken pages use fictional workspace data. Open a case directly to test
+        it with AEE, Axe, a keyboard, or a screen reader. Each reload restores the same starting
+        state.
+      </p>
+      <h2>Choose an experiment</h2>
+      <dl class="experiments">
+        <div>
+          <dt>
+            <a href="test-case.html?case=body-hidden">Body hidden from assistive technology</a>
+          </dt>
+          <dd>
+            <code>aria-hidden="true"</code> on the body. Test how each browser and tool handles it;
+            do not assume identical accessibility-tree behavior.
+          </dd>
+        </div>
+        <div>
+          <dt><a href="test-case.html?case=icon-labels">Icon buttons without names</a></dt>
+          <dd>
+            Two working SVG buttons have no accessible names. The expected Axe rule is
+            <code>button-name</code>.
+          </dd>
+        </div>
+        <div>
+          <dt>
+            <a href="test-case.html?case=headings"
+              >A plausible sequence, an incorrect relationship</a
+            >
+          </dt>
+          <dd>
+            Projects is H2; Workspace settings is H3. These are peer sections, but the outline makes
+            settings a child of projects. There is no skipped level.
+          </dd>
+        </div>
+        <div>
+          <dt><a href="test-case.html?case=all">All three failures together</a></dt>
+          <dd>
+            Use this to investigate interactions. A hidden ancestor can suppress other findings;
+            compare with the isolated cases.
+          </dd>
+        </div>
+        <div>
+          <dt><a href="test-case.html?case=fixed">Fixed baseline</a></dt>
+          <dd>
+            The same content with a visible body, named buttons, and two H2 peer headings. A clean
+            automated result is only a baseline for this fixture.
+          </dd>
+        </div>
+      </dl>
+      <h2>Read the results in context</h2>
+      <p>
+        Compare violations, incomplete checks, the heading outline, focus, and the captured
+        accessibility tree. An empty violation list does not prove that the page is accessible. The
+        heading case requires a judgment about what the content means.
+      </p>
+      <p>
+        Case selection is encoded in the URL, with stable element IDs for repeatable scenarios.
+        <a href="test-lab-contract.json">Read the fixture contract</a>.
+      </p>
+    </main>
+  </body>
+</html>

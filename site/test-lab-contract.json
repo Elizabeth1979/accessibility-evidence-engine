@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "fixture": "test-case.html",
+  "defaultCase": "fixed",
+  "unknownCaseFallback": "fixed",
+  "validation": {
+    "engine": "axe-core 4.13.0",
+    "browser": "Playwright Chromium",
+    "scope": "Initial page state; observations are version-specific, not universal tool guarantees."
+  },
+  "headingExpectation": "Projects and Workspace settings are peers and should both be H2. H3 wrongly implies that workspace-wide settings belong to Projects.",
+  "selectors": {
+    "archive": "#archive-project",
+    "restore": "#restore-project",
+    "digest": "#toggle-digest",
+    "status": "#action-status",
+    "settingsHeading": "#settings-heading"
+  },
+  "reset": "Reload the URL; no storage or network writes.",
+  "cases": {
+    "fixed": {
+      "url": "test-case.html?case=fixed",
+      "observedAxeViolationIds": [],
+      "headingOutline": ["H1", "H2", "H2"]
+    },
+    "headings": {
+      "url": "test-case.html?case=headings",
+      "observedAxeViolationIds": [],
+      "headingOutline": ["H1", "H2", "H3"]
+    },
+    "icon-labels": {
+      "url": "test-case.html?case=icon-labels",
+      "observedAxeViolationIds": ["button-name"],
+      "headingOutline": ["H1", "H2", "H2"]
+    },
+    "body-hidden": {
+      "url": "test-case.html?case=body-hidden",
+      "observedAxeViolationIds": [
+        "aria-hidden-body",
+        "aria-hidden-focus",
+        "landmark-one-main",
+        "page-has-heading-one"
+      ],
+      "headingOutline": ["H1", "H2", "H2"]
+    },
+    "all": {
+      "url": "test-case.html?case=all",
+      "observedAxeViolationIds": [
+        "aria-hidden-body",
+        "aria-hidden-focus",
+        "landmark-one-main",
+        "page-has-heading-one"
+      ],
+      "headingOutline": ["H1", "H2", "H3"]
+    }
+  }
+}
