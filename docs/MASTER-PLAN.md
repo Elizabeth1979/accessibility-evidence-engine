@@ -1,0 +1,155 @@
+# Master plan: one accessibility toolkit
+
+This is the working plan for turning a dozen accessibility repos into one tool developers use on every pull request. It is the single source of truth for that cross-repo work. Engine internals keep their own detail in `docs/implementation-roadmap.md`; this plan links to it rather than repeating it.
+
+## How to use this file
+
+- **Start a session:** open a Claude Code session on `accessibility-evidence-engine` and say _"continue the master plan"_. `CLAUDE.md` points here, so a fresh chat picks up the context without any earlier conversation.
+- **One step per session.** Each step is sized for one sitting and has a "done when" line.
+- **Tick the box in the same PR that does the work.** The file is then always true, and git history is the log.
+- **Decisions go in the Decisions log below**, not in chat. Chat is lost; this file is not.
+
+## Goal
+
+A developer opens a PR. CI runs their Playwright journeys with the engine attached, then:
+
+1. **Deterministic checks fail the build** on real violations (axe plus AEE's own judges).
+2. **AI suggests the fix** for each violation, using a screenshot of the section and the page context. This is advisory, labelled as AI, and never fails the build.
+3. **Each finding links to the pattern** that explains it (a11y-skills).
+
+The first rules covered are unlabeled buttons, unlabeled links, missing alt text, missing form labels and empty headings. This is the exit test of Milestone 3 in `docs/implementation-roadmap.md`, widened from one rule to five.
+
+## Target shape
+
+```
+KNOWLEDGE   a11y-skills                     pattern explanations (markdown)
+               ▲ linked by id from the registry, pinned npm dependency
+ENGINE      accessibility-evidence-engine   scenario → evidence → judges (deterministic) → AI specialists (advisory) → report → fix
+              rules/remediation-registry.json = the one map of concept → WCAG → axe rules → detection → pattern
+               │
+SURFACES    CLI (--ci) · GitHub Action + PR comment · Playwright fixture · MCP server · HTML report (QA/design)
+
+SEPARATE PRODUCTS (keep; consume the engine or registry later)
+            screen-reader-cli (real/virtual screen readers) · clip-to-ticket (recordings → tickets)
+```
+
+**Why the registry is the map:** it already joins each concept to WCAG criteria, axe rules, required evidence, the AI allowlist and verification. Adding a `pattern` field that points at a11y-skills keeps every mapping in one file. a11y-skills stays pure explanation with no second rule map.
+
+## Inventory: every source and where its value goes
+
+Nothing is archived until its row says **harvested**. That is how no information gets lost.
+
+### Core (keep, active)
+
+| Repo                            | Role                             | Notes                                                   |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------- |
+| `accessibility-evidence-engine` | **The engine**                   | —                                                       |
+| `a11y-skills`                   | **The knowledge**                | Gains the alt-text and component-note improvements (M1) |
+| `screen-reader-cli`             | Separate product: screen readers | Later: `scan` calls the engine (M7)                     |
+| `a11y-engineering-toolkit`      | Portfolio page only              | Portfolio map updated at the end (M8)                   |
+
+### Merge into the engine, then archive
+
+| Repo                      | Value to harvest                                                                                                                                                                                                                                                                                                                                                                       | Goes to                                                                                                                                                 | Harvested |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `accessibility-engine`    | **The most to harvest.** Working AI provider layer (Claude, local Ollama with no API key, stub; this engine only has an OpenAI adapter). Naming, alt-text and vision judge prompts. MCP server (`@aee/mcp`). Apply-fix-to-source including JSX (`@aee/fix`). Triage CLI. The graph-guard test that keeps AI away from the live page. Content-addressed artifact store. ADRs 0002–0005. | Providers → `@aee/ai-fixes` (M2); prompts → specialists (M2); MCP → new package (M6); fix → `--fix` (M5); graph guard → tests (M2); ADRs → `docs/` (M2) | [ ]       |
+| `a11y-agent`              | Auto-scan on navigation; `A11Y_STRICT` severity threshold; axe-rule → skill map (stale filenames)                                                                                                                                                                                                                                                                                      | Fixture auto-checkpoint (M4); `fail-on` (M4); registry `pattern` fields (M1)                                                                            | [ ]       |
+| `a11y-expert-mcp`         | Tool ideas only; its patterns are a stale copy of a11y-skills                                                                                                                                                                                                                                                                                                                          | MCP `explain` tool (M6)                                                                                                                                 | [ ]       |
+| `accessibility-validator` | Nothing new; axe covers it                                                                                                                                                                                                                                                                                                                                                             | —                                                                                                                                                       | [ ]       |
+| `sr-visualizer`           | "Good" and "bad" sample pages; streaming SR-announcement UI                                                                                                                                                                                                                                                                                                                            | Samples → test lab (M3); UI → QA surface (M7)                                                                                                           | [ ]       |
+| `wcag-alt-generator`      | Image-role classification (decorative / functional / informative)                                                                                                                                                                                                                                                                                                                      | `image-purpose` specialist (M2)                                                                                                                         | [ ]       |
+| `alt-generation-claude`   | Alt-text best-practice rules and prompt; image + context input                                                                                                                                                                                                                                                                                                                         | `image-purpose` specialist (M2); image-labeling pattern (M1)                                                                                            | [ ]       |
+
+### Harvest from, keep live
+
+| Repo                  | Value                                                            | Goes to                                                                                   | Harvested |
+| --------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
+| `a11y-for-feds-intro` | A deliberately broken page with 16 listed issues and their fixes | Test-lab cases with known answers (M3); stays live as a workshop                          | [ ]       |
+| `bookmarklets`        | Visual overlays: headings, tab order, alt text, focus indicator  | QA/designer surface (M7)                                                                  | [ ]       |
+| `clip-to-ticket`      | Ticket format; WCAG 2.2 and APG data files                       | Ticket format → reporter (M7); data only if the registry's WCAG fields prove insufficient | [ ]       |
+
+### Private notes (read, scrub, then move)
+
+| Source                                                                   | Value                                                                                                                                   | Goes to                                       | Harvested |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | --------- |
+| `e11i-brain` → `Work old/2 - Resources/A11y` and `Accessible components` | Short notes on links, contrast, non-text contrast, mouse-only, RTL, mobile, cards, multi- vs single-select, drag and drop, autocomplete | Pattern improvements in a11y-skills (M1)      | [ ]       |
+| `e11i-brain` → `Clippings`                                               | ACT Rules Format, WCAG-EM, ARIA-AT, WCAG 3                                                                                              | References for registry and judge design (M2) | [ ]       |
+
+**Scrub rule:** anything that moves from a private note into a public repo is rewritten generically. No employer, product or partner names, and no internal links or screenshots. If a note only makes sense with that context, it doesn't move. `CONTRIBUTING.md` already forbids proprietary page evidence; this rule extends it to notes.
+
+### Out of scope (no action)
+
+`visua11y` (reading aid for end users, not a developer tool), `any-access` (three small 2020 scripts, all covered by a11y-skills), `accessible-search`, `a11y-first-ext`, `a11y-booth-game`, and the forks `a11y-memory-game`, `a11y-interactions`, `a11y-html-aria`. Also checked and unrelated to accessibility: `TTS`, `the-vault`, and the rest of the personal and family repos.
+
+## Milestones
+
+Each "day" is one focused session. Skipping days is fine; skipping order is not.
+
+### M0 — Home base (day 1)
+
+- [ ] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
+- [ ] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
+- [ ] **0.3** Replace `examples/melio/` with a generic example page, and remove the name from `package.json` scripts, the README, the CHANGELOG and the CLI tests. It names a real product in a public repo, which `CONTRIBUTING.md` forbids. _Done when:_ `grep -ri melio` finds nothing outside git history.
+
+### M1 — Knowledge link (days 2–4)
+
+- [ ] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
+- [ ] **1.2** a11y-skills: make the package publishable (drop `private`, set `files`) and publish it. The engine pins that version and checks every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
+- [ ] **1.3** a11y-skills: merge alt-text rules from `alt-generation-claude` and `wcag-alt-generator` into `image-labeling.instructions.md`, keeping only what isn't already there. _Done when:_ image-role classification (decorative / functional / informative) has good and bad examples.
+- [ ] **1.4** Scrub and move the private component notes into a11y-skills. This is several small PRs, one topic each; skip any note that is only a link. _Done when:_ each note row in the inventory is ticked or marked "nothing to move".
+
+### M2 — Harvest the AI layer (days 5–8)
+
+- [ ] **2.1** Port the provider seam from `accessibility-engine`: Claude, local (Ollama) and stub, next to the existing OpenAI adapter, all behind the existing `AccessibleLabelModelProvider` interface. With no key, the default is stub. _Done when:_ the unit tests pass with the stub, and a live test runs when a local model is present.
+- [ ] **2.2** Port the graph-guard test: the AI package must not import a browser driver. _Done when:_ adding a Playwright import to `ai-fixes` fails the tests.
+- [ ] **2.3** Port the naming and alt-text judge prompts into the allowlisted specialists (`accessible-name` icon-only, `image-purpose`), adding image-role classification. _Done when:_ the test-lab icon-button case gets a labelled AI name from the stub fixture.
+- [ ] **2.4** Carry the design decisions over as ADRs in `docs/`: accessibility-engine's ADRs 0002–0005, plus the ACT-rules shape of the registry. _Done when:_ the ADRs exist; this step changes no code.
+
+### M3 — Known-answer test cases (days 9–10)
+
+- [ ] **3.1** Add the `a11y-for-feds-intro` broken page and the sr-visualizer samples as test-lab cases with expected findings, following `site/test-lab-contract.json`. _Done when:_ `npm run test:playwright` fails if a known violation is missed or a good page gets a finding.
+
+### M4 — The PR experience (days 11–15)
+
+- [ ] **4.1** Reporter: a PR-comment variant of the Markdown report. Blocking findings come first, then AI suggestions labelled as AI; each finding is collapsed and shows the element, the problem, the fix and the pattern link. _Done when:_ a snapshot test on a test-lab page passes.
+- [ ] **4.2** Playwright fixture: a drop-in `test` export that captures a checkpoint automatically on page load (if decided in 0.2), so a team can adopt it without writing scenario YAML. _Done when:_ an existing spec with only the import swapped produces findings.
+- [ ] **4.3** A composite `action.yml` with inputs `run` (a scenario or test command), `fail-on` and `ai-provider` (default `stub`). It posts one sticky comment that later runs update. _Done when:_ running it twice leaves exactly one comment.
+- [ ] **4.4** A self-test workflow: every PR in this repo runs the Action against the test lab. _Done when:_ a PR that adds a nameless icon button gets red CI and a comment with the buttons pattern link.
+- [ ] **4.5** AI on in CI with a provider key secret. _Done when:_ the comment shows an AI-suggested button name, labelled as AI.
+
+### M5 — Ship and dogfood (days 16–19)
+
+- [ ] **5.1** Publish the packages under the chosen npm scope, with a publish workflow gated on the full CI suite. _Done when:_ installing in an empty project works.
+- [ ] **5.2** `--fix`: apply a reviewed label proposal to source, including JSX, using `@aee/fix` from accessibility-engine. Apply it on a branch and rerun the journey to verify. _Done when:_ Milestone 3's exit test in the roadmap passes.
+- [ ] **5.3** Adopt it in one of your own public apps. _Done when:_ that repo's PRs get the comment, and every friction point is filed as an issue.
+
+### M6 — One MCP (days 20–21)
+
+- [ ] **6.1** Port `@aee/mcp` from accessibility-engine, rewired to this engine, and add an `explain` tool: rule id or UI element in, the a11y-skills pattern out, through the registry. _Done when:_ a coding agent asked "explain button-name" gets the buttons pattern.
+- [ ] **6.2** a11y-expert-mcp: final PyPI release whose README points to the new MCP. _Done when:_ the PyPI page shows the notice.
+
+### M7 — QA and designer surface (later, after M5 is used for real)
+
+- [ ] **7.1** Design spec only: add bookmarklets-style overlays, the sr-visualizer announcement list and the clip-to-ticket ticket format to the existing HTML report. _Done when:_ a spec is in `docs/`.
+- [ ] **7.2** screen-reader-cli: have `scan` call the engine. This is an issue first, per that repo's rules. _Done when:_ the issue is filed with the proposed change.
+
+### M8 — Archive and re-map (last)
+
+- [ ] **8.1** For each repo marked "archive" whose inventory row is ticked: add a README banner saying it's superseded by accessibility-evidence-engine, then use GitHub's Archive button. _Done when:_ every archive row is ticked and archived.
+- [ ] **8.2** Update the portfolio map in `a11y-engineering-toolkit`. _Done when:_ the public page shows the new shape.
+
+## Open questions
+
+1. **npm scope:** both engines publish as `@aee/*`, and that clash goes away once accessibility-engine is archived. Is `@aee` free on npm? If not, what name?
+2. **Scenario YAML vs fixture:** today this engine runs approved YAML scenarios. Developers already have `.spec.ts` tests. Recommendation: keep scenarios for reviewers, and add the fixture (4.2) as the developer path.
+3. **Auto checkpoints:** scan automatically on page load (zero effort, noisier), or only at explicit checkpoints? Recommendation: automatic on load, plus explicit checkpoints after interactions.
+4. **Default `fail-on`:** `serious` (recommended, matches axe's severity), or only the five MVP rules for a gentler rollout.
+
+## Decisions log
+
+Newest first. One line each: date, decision, why.
+
+- 2026-09-24 — `accessibility-evidence-engine` is the engine; `accessibility-engine` is harvested, then archived. Why: it is the actively developed codebase (about 4× the code), and its registry, deterministic-first routing, evidence correlation and reports are the foundation. accessibility-engine contributes its AI providers, prompts, MCP and fix.
+- 2026-09-24 — The remediation registry is the only concept → WCAG → axe → pattern map; a11y-skills holds explanations only. Why: one mapping, no drift.
+- 2026-09-24 — AI output never fails CI; only deterministic checks do. Why: a false positive that blocks a merge gets the tool turned off.
+- 2026-09-24 — The CI default AI provider is `stub`; AI turns on with a key. Why: running a local model on CI runners is slow and heavy.
