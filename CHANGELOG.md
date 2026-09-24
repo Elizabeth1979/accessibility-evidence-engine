@@ -23,7 +23,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Deterministic palette-aware contrast proposals using measured contrast and OKLab distance between supplied design tokens.
 - Three generated public examples backed by those APIs: palette contrast, hover accessibility, and animation stopping.
 - User-authored pointer and keyboard journey comparisons with separate contexts sharing seeded browser storage and a verified landing URL, per-action synchronized evidence capture, deterministic expected-outcome and equivalence verdicts, and schema-validated interaction traces.
-- A safe Melio homepage comparison that exercises only the declared hover and focus actions while preserving Axe failures separately from interaction equivalence.
+- A safe public homepage comparison that exercises only the declared hover and focus actions while preserving Axe failures separately from interaction equivalence.
 - Schema-validated evidence manifests for pointer, keyboard, and portable-reader lanes, with relative paths, SHA-256 integrity, required-file completeness, action provenance, failure manifests, and privacy-conservative defaults.
 - Per-lane Playwright WebM recordings with schema-validated JSON action timelines, WebVTT captions, deterministic filenames, failure-state metadata, and manifest integrity coverage.
 - Schema-validated deep focus evidence spanning document and deepest active elements, shadow-root and same-origin iframe chains, focus-visible styles, `aria-activedescendant`, and browser accessibility focus, plus explicit preserve/target/dialog focus judgments.

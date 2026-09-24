@@ -89,7 +89,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 - [ ] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
 - [ ] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
-- [ ] **0.3** Replace `examples/melio/` with a generic example page, and remove the name from `package.json` scripts, the README, the CHANGELOG and the CLI tests. It names a real product in a public repo, which `CONTRIBUTING.md` forbids. _Done when:_ `grep -ri melio` finds nothing outside git history.
+- [x] **0.3** Replace the example that named a real product with a generic `examples/public-site/` scenario that targets this project's own demo site. The old name is removed from the scripts, README, CHANGELOG and CLI tests. _Done when:_ a case-insensitive grep for the old name finds nothing outside git history.
 
 ### M1 — Knowledge link (days 2–4)
 

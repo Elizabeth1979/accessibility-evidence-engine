@@ -33,11 +33,11 @@ test("loadFixture rejects malformed fixture payloads", async () => {
   }
 });
 
-test("loadScenario accepts the user-controlled Melio YAML scenario", async () => {
-  const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
+test("loadScenario accepts the user-controlled public site YAML scenario", async () => {
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
   const scenario = await loadScenario(scenarioPath);
 
-  assert.equal(scenario.id, "melio-public-homepage");
+  assert.equal(scenario.id, "public-site-homepage");
   assert.equal(scenario.profile, "core");
   assert.deepEqual(scenario.standard.levels, ["A", "AA"]);
   assert.deepEqual(scenario.journeys[0]?.forbiddenActions, [
@@ -46,7 +46,7 @@ test("loadScenario accepts the user-controlled Melio YAML scenario", async () =>
     "submit-personal-information",
     "initiate-payment"
   ]);
-  assert.equal(scenario.journeys[0]?.interactionComparisons?.[0]?.id, "sign-in-hover-focus");
+  assert.equal(scenario.journeys[0]?.interactionComparisons?.[0]?.id, "nav-link-hover-focus");
 });
 
 test("loadScenario rejects duplicate YAML keys", async () => {

@@ -105,7 +105,7 @@ test("runWithPage records the capture policy and filtered observer set", async (
 
 test("compileScenarioPlan expands user permissions into ready Core coverage", async () => {
   const scenario = await loadScenario(
-    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+    path.resolve(__dirname, "../../../examples/public-site/scenario.yml")
   );
   const plan = compileScenarioPlan(scenario);
 
@@ -138,8 +138,8 @@ test("compileScenarioPlan expands user permissions into ready Core coverage", as
       "reader-command-1-next-landmark",
       "reader-command-2-next-heading",
       "reader-command-3-next-control",
-      "comparison-sign-in-hover-focus-pointer-1",
-      "comparison-sign-in-hover-focus-keyboard-1"
+      "comparison-nav-link-hover-focus-pointer-1",
+      "comparison-nav-link-hover-focus-keyboard-1"
     ]
   );
   assert.deepEqual(plan.safety.forbiddenActions, [
@@ -148,14 +148,14 @@ test("compileScenarioPlan expands user permissions into ready Core coverage", as
     "sign-in",
     "submit-personal-information"
   ]);
-  assert.deepEqual(plan.safety.allowedOrigins, ["https://melio.com"]);
+  assert.deepEqual(plan.safety.allowedOrigins, ["https://elizabeth1979.github.io"]);
   assert.match(renderScenarioPlan(plan), /Readiness: READY/);
   assert.match(renderScenarioPlan(plan), /Integrated HTML, JSON, and Markdown report — available/);
 });
 
 test("compileScenarioPlan produces a stable plan digest that can be explicitly approved", async () => {
   const scenario = await loadScenario(
-    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+    path.resolve(__dirname, "../../../examples/public-site/scenario.yml")
   );
   const firstPlan = compileScenarioPlan(scenario);
   const approvedPlan = compileScenarioPlan({
@@ -173,7 +173,7 @@ test("compileScenarioPlan produces a stable plan digest that can be explicitly a
 
 test("compileScenarioPlan rejects actions that are both allowed and forbidden", async () => {
   const scenario = await loadScenario(
-    path.resolve(__dirname, "../../../examples/melio/scenario.yml")
+    path.resolve(__dirname, "../../../examples/public-site/scenario.yml")
   );
   const conflictingAction = scenario.journeys[0]?.allowedActions[0];
   assert.ok(conflictingAction);
@@ -195,7 +195,7 @@ test("compileScenarioPlan rejects actions that are both allowed and forbidden", 
 
 test("CLI plan emits a machine-readable user-controlled plan", async () => {
   const cliPath = path.resolve(__dirname, "index.js");
-  const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
   const { stdout, stderr } = await execFileAsync(process.execPath, [
     cliPath,
     "plan",
@@ -205,13 +205,13 @@ test("CLI plan emits a machine-readable user-controlled plan", async () => {
   const plan = JSON.parse(stdout) as { scenarioId: string; readiness: { status: string } };
 
   assert.equal(stderr, "");
-  assert.equal(plan.scenarioId, "melio-public-homepage");
+  assert.equal(plan.scenarioId, "public-site-homepage");
   assert.equal(plan.readiness.status, "ready");
 });
 
 test("CLI run refuses to execute a scenario until its exact plan is approved", async () => {
   const cliPath = path.resolve(__dirname, "index.js");
-  const scenarioPath = path.resolve(__dirname, "../../../examples/melio/scenario.yml");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-unapproved-"));
   const unapprovedScenarioPath = path.join(tempRoot, "scenario.yml");
   const scenarioYaml = await readFile(scenarioPath, "utf8");
@@ -226,7 +226,7 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
       () => execFileAsync(process.execPath, [cliPath, "run", unapprovedScenarioPath]),
       (error: unknown) => {
         const output = error as { stderr?: string };
-        assert.match(output.stderr ?? "", /Cannot run scenario “melio-public-homepage”/);
+        assert.match(output.stderr ?? "", /Cannot run scenario “public-site-homepage”/);
         assert.match(output.stderr ?? "", /until plan sha256:[a-f0-9]+ is approved/);
         return true;
       }
