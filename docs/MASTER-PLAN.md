@@ -88,7 +88,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 ### M0 — Home base (day 1)
 
 - [ ] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
-- [ ] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
+- [x] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
 - [x] **0.3** Replace the example that named a real product with a generic `examples/public-site/` scenario that targets this project's own demo site. The old name is removed from the scripts, README, CHANGELOG and CLI tests. _Done when:_ a case-insensitive grep for the old name finds nothing outside git history.
 
 ### M1 — Knowledge link (days 2–4)
@@ -112,14 +112,14 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 ### M4 — The PR experience (days 11–15)
 
 - [ ] **4.1** Reporter: a PR-comment variant of the Markdown report. Blocking findings come first, then AI suggestions labelled as AI; each finding is collapsed and shows the element, the problem, the fix and the pattern link. _Done when:_ a snapshot test on a test-lab page passes.
-- [ ] **4.2** Playwright fixture: a drop-in `test` export that captures a checkpoint automatically on page load (if decided in 0.2), so a team can adopt it without writing scenario YAML. _Done when:_ an existing spec with only the import swapped produces findings.
+- [ ] **4.2** Playwright fixture: a drop-in `test` export that captures a checkpoint automatically on page load, so a team can adopt it without writing scenario YAML. _Done when:_ an existing spec with only the import swapped produces findings.
 - [ ] **4.3** A composite `action.yml` with inputs `run` (a scenario or test command), `fail-on` and `ai-provider` (default `stub`). It posts one sticky comment that later runs update. _Done when:_ running it twice leaves exactly one comment.
 - [ ] **4.4** A self-test workflow: every PR in this repo runs the Action against the test lab. _Done when:_ a PR that adds a nameless icon button gets red CI and a comment with the buttons pattern link.
 - [ ] **4.5** AI on in CI with a provider key secret. _Done when:_ the comment shows an AI-suggested button name, labelled as AI.
 
 ### M5 — Ship and dogfood (days 16–19)
 
-- [ ] **5.1** Publish the packages under the chosen npm scope, with a publish workflow gated on the full CI suite. _Done when:_ installing in an empty project works.
+- [ ] **5.1** Publish the packages under the `@e11i` npm scope, with a publish workflow gated on the full CI suite. _Done when:_ installing in an empty project works.
 - [ ] **5.2** `--fix`: apply a reviewed label proposal to source, including JSX, using `@aee/fix` from accessibility-engine. Apply it on a branch and rerun the journey to verify. _Done when:_ Milestone 3's exit test in the roadmap passes.
 - [ ] **5.3** Adopt it in one of your own public apps. _Done when:_ that repo's PRs get the comment, and every friction point is filed as an issue.
 
@@ -140,15 +140,16 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ## Open questions
 
-1. **npm scope:** both engines publish as `@aee/*`, and that clash goes away once accessibility-engine is archived. Is `@aee` free on npm? If not, what name?
-2. **Scenario YAML vs fixture:** today this engine runs approved YAML scenarios. Developers already have `.spec.ts` tests. Recommendation: keep scenarios for reviewers, and add the fixture (4.2) as the developer path.
-3. **Auto checkpoints:** scan automatically on page load (zero effort, noisier), or only at explicit checkpoints? Recommendation: automatic on load, plus explicit checkpoints after interactions.
-4. **Default `fail-on`:** `serious` (recommended, matches axe's severity), or only the five MVP rules for a gentler rollout.
+None right now. Add new ones here and move each answer to the Decisions log.
 
 ## Decisions log
 
 Newest first. One line each: date, decision, why.
 
+- 2026-09-25 — Publish under the `@e11i` npm scope (the owner's existing npm account, which already publishes `screen-reader-cli`). Why: a user scope is guaranteed free and avoids the `@aee` clash with accessibility-engine.
+- 2026-09-25 — Developers get both paths: YAML scenarios stay for reviewers, and a drop-in Playwright fixture is added for existing `.spec.ts` tests (4.2). Why: developers adopt what fits their current tests.
+- 2026-09-25 — The fixture checkpoints automatically on page load, plus explicit checkpoints after interactions. Why: zero-effort adoption; explicit checkpoints cover states after interactions.
+- 2026-09-25 — The default `fail-on` is `serious` and above. Why: it matches axe's own severity, and teams can lower it.
 - 2026-09-24 — `accessibility-evidence-engine` is the engine; `accessibility-engine` is harvested, then archived. Why: it is the actively developed codebase (about 4× the code), and its registry, deterministic-first routing, evidence correlation and reports are the foundation. accessibility-engine contributes its AI providers, prompts, MCP and fix.
 - 2026-09-24 — The remediation registry is the only concept → WCAG → axe → pattern map; a11y-skills holds explanations only. Why: one mapping, no drift.
 - 2026-09-24 — AI output never fails CI; only deterministic checks do. Why: a false positive that blocks a merge gets the tool turned off.
