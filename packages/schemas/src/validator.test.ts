@@ -505,25 +505,56 @@ test("validateSchema accepts the canonical remediation registry", () => {
   assert.deepEqual(result.errors, []);
 });
 
-test("every MVP axe rule resolves to one registry entry and a pattern", () => {
-  const registry = remediationRegistry as {
-    entries: Array<{
-      id: string;
-      patterns: string[];
-      requirements: Array<{ standard: string; requirementId: string }>;
-    }>;
-  };
-  const mvpRules = ["button-name", "link-name", "image-alt", "label", "empty-heading"];
+type RegistryEntry = {
+  id: string;
+  patterns: string[];
+  requirements: Array<{
+    standard: string;
+    requirementId: string;
+    relationship: string;
+    pattern?: string;
+  }>;
+};
 
-  for (const rule of mvpRules) {
-    const owners = registry.entries.filter((entry) =>
-      entry.requirements.some(
-        (requirement) => requirement.standard === "axe-core" && requirement.requirementId === rule
-      )
+test("every MVP axe rule resolves to one registry entry and its own pattern", () => {
+  const registry = remediationRegistry as { entries: RegistryEntry[] };
+  const expected: Record<string, [entry: string, pattern: string]> = {
+    "button-name": ["accessible-name", "buttons"],
+    "link-name": ["accessible-name", "link"],
+    label: ["accessible-name", "forms"],
+    "image-alt": ["image-purpose", "image-labeling"],
+    "empty-heading": ["heading-structure", "headings"]
+  };
+
+  for (const [rule, mapping] of Object.entries(expected)) {
+    const owners = registry.entries.flatMap((entry) =>
+      entry.requirements
+        .filter((r) => r.standard === "axe-core" && r.requirementId === rule)
+        .map((r) => [entry.id, r.pattern])
     );
-    assert.equal(owners.length, 1, `${rule} should map to exactly one registry entry`);
-    assert.ok(owners[0]!.patterns.length > 0, `${rule} should resolve to a pattern`);
+    assert.deepEqual(owners, [mapping], `${rule} should map to one entry and its own pattern`);
   }
+
+  for (const entry of registry.entries) {
+    for (const r of entry.requirements) {
+      if (r.pattern) {
+        assert.ok(entry.patterns.includes(r.pattern), `${entry.id}: ${r.pattern} not in patterns`);
+      }
+    }
+  }
+});
+
+test("validateSchema rejects an axe detection rule without its own pattern", () => {
+  const invalidRegistry = structuredClone(remediationRegistry) as { entries: RegistryEntry[] };
+  const detection = invalidRegistry.entries[0]?.requirements.find(
+    (r) => r.relationship === "detection"
+  );
+  delete detection?.pattern;
+
+  const result = validateSchema("remediationRegistry", invalidRegistry);
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /missing required property "pattern"/);
 });
 
 test("validateSchema rejects a registry entry without patterns", () => {

@@ -32,7 +32,8 @@
           "requirementId": "button-name",
           "title": "Buttons must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name",
+          "pattern": "buttons"
         },
         {
           "standard": "axe-core",
@@ -40,7 +41,8 @@
           "requirementId": "link-name",
           "title": "Links must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name",
+          "pattern": "link"
         },
         {
           "standard": "axe-core",
@@ -48,7 +50,8 @@
           "requirementId": "label",
           "title": "Form elements must have labels",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/label"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/label",
+          "pattern": "forms"
         }
       ],
       "patterns": ["buttons", "link", "forms"],
@@ -99,7 +102,8 @@
           "requirementId": "image-alt",
           "title": "Images must have alternative text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt",
+          "pattern": "image-labeling"
         }
       ],
       "patterns": ["image-labeling"],
@@ -154,7 +158,8 @@
           "requirementId": "empty-heading",
           "title": "Headings should not be empty",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading",
+          "pattern": "headings"
         }
       ],
       "patterns": ["headings"],
