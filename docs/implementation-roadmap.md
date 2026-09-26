@@ -41,7 +41,7 @@ isolation, and deterministically verified with visual/DOM/AOM/screen-reader agre
 
 ## Milestone 4 — Optional AT fidelity (planned)
 
-- Run VoiceOver and NVDA in separate OS-specific workers through Guidepup where supported.
+- Run VoiceOver and NVDA in separate OS-specific workers through Guidepup where supported, reusing screen-reader-cli's live bridge rather than writing a second one (see the master plan's decisions log).
 - Preserve command and transcript evidence with OS, browser, AT, locale, and voice metadata.
 - Compare real-AT results with the portable lane without treating them as interchangeable.
 
