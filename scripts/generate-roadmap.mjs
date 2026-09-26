@@ -106,16 +106,17 @@ function renderMilestone(m) {
   const done = m.steps.filter((s) => s.done).length;
   const state = stateOf(m);
   const label = { done: "Done", now: "You are here", todo: "" }[state];
+  // The title is a real heading outside the <summary>: a summary is a button,
+  // and some browser + screen reader pairs flatten a heading inside a button.
   return `        <li class="milestone ${state}" id="${m.id.toLowerCase()}">
+          <div class="m-head">
+            <h2><span class="m-id">${m.id}</span> ${inline(m.title)}</h2>
+            ${label ? `<span class="m-tag">${label}</span>` : ""}
+            <span class="m-count"><span aria-hidden="true">${done}/${m.steps.length}</span><span class="visually-hidden">${done} of ${m.steps.length} steps done</span></span>
+          </div>
+          ${m.outcome ? `<p class="m-outcome">${inline(m.outcome)}</p>` : ""}
           <details${state === "now" ? " open" : ""}>
-            <summary>
-              <span class="m-id">${m.id}</span>
-              <span class="m-title">${inline(m.title)}</span>
-              ${label ? `<span class="m-tag">${label}</span>` : ""}
-              <span class="m-count"><span aria-hidden="true">${done}/${m.steps.length}</span><span class="visually-hidden">${done} of ${m.steps.length} steps done</span></span>
-              ${m.outcome ? `<span class="m-outcome">${inline(m.outcome)}</span>` : ""}
-            </summary>
-            ${m.when ? `<p class="m-when">${inline(m.when)}</p>` : ""}
+            <summary>${m.steps.length} step${m.steps.length === 1 ? "" : "s"}<span class="visually-hidden"> in ${m.id}</span>${m.when ? ` · ${inline(m.when)}` : ""}</summary>
             <ul class="steps">
 ${m.steps.map(renderStep).join("\n")}
             </ul>
