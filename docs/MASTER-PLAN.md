@@ -156,6 +156,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 - [x] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
 - [x] **1.2** Pin a11y-skills from GitHub (a git dependency at a fixed commit; no npm publish), and check every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
 - [x] **1.3** Reporter: show each finding's pattern link in the HTML, JSON and Markdown reports. Until this step, the link from 1.1 is data no reader sees. _Done when:_ the report for the test-lab `icon-labels` case links `button-name` to the buttons pattern.
+- [ ] **1.4** Map every axe rule that a11y-skills already covers to its pattern (its `patterns/INDEX.md` routes axe findings to files), not only the five MVP rules. _Done when:_ a test lists each mapped axe rule with its pattern, and a real run shows the link on findings beyond the MVP five.
 
 ### M2 — Known answers and a report you can trust (days 4–6)
 
@@ -164,7 +165,8 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 - [ ] **2.1** Add the `a11y-for-feds-intro` broken page and the sr-visualizer samples as test-lab cases with expected findings, following `site/test-lab-contract.json`. _Done when:_ `npm run test:playwright` fails if a known violation is missed or a good page gets a finding.
 - [ ] **2.2** The portable virtual screen reader takes each item's role and name from the browser's accessibility tree, which the engine already captures over CDP, and the hand-written tag → role map and name code are deleted. One helper fetches the tree; today it is fetched in two places. Why: the browser implements the W3C mappings (HTML-AAM, accname); the copy gets `<a>` without `href`, `<header>` inside `<article>`, `<img alt="">` and an unnamed `<form>` wrong. _Done when:_ test-lab cases for those four are announced as HTML-AAM says.
 - [ ] **2.3** The report tells one story: when a rule fails, the matching status row fails too, and the virtual-reader row says which items were announced without a name. A run on the `icon-labels` case today blocks release for `button-name` while showing "Semantics: no confirmed issue" and "Virtual reader: 3/3 commands passed". _Done when:_ a test on that case asserts both rows report the problem.
-- [ ] **2.4** Link the test lab from the site's home page, so the known-answer pages are visible, not only deployed. _Done when:_ `test-lab.html` is reachable from `index.html` by keyboard.
+- [ ] **2.4** Product shots: a script runs the engine on the test-lab pages and saves one highlighted crop of the report per feature (finds the bug, explains it, how to fix it, every affected spot, what a screen reader hears, release blocked; a short video for the keyboard pass), each with a one-line caption a non-technical reader understands. _Done when:_ one command regenerates every shot from a real run, so no image is hand-made or stale.
+- [ ] **2.5** Homepage features section: every feature of the tool as a card with its product shot, a plain-language caption and a link to try it (the test lab, a sample report), plus greyed "coming soon" cards generated from the unchecked milestones. Links the test lab from the home page. _Done when:_ each shipped feature has a card with a real shot, the section passes axe and a keyboard pass on desktop and phone, and a step that changes a feature also updates its card.
 
 ### M3 — Harvest the AI layer (days 7–10)
 
@@ -211,6 +213,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 **Outcome:** Every repo in the review list has its verdict carried out.
 
 - [ ] **8.1** Work the review list: archive each repo on the day its harvest row is ticked (README banner saying it is superseded by accessibility-evidence-engine, then GitHub's Archive button), and delete a "Delete" repo after the owner's last look. These steps block nothing and can run between milestones. _Done when:_ every review-list row is carried out.
+- [ ] **8.2** Restructure the homepage around the finished tool: one story from problem to fix, rebuilt from the features section and product shots, once the big changes of M2–M6 have landed. _Done when:_ the homepage passes axe, a keyboard pass and a virtual screen-reader pass on desktop and phone, and every claim on it links to a shot or a live page.
 
 ## Later (parked)
 
@@ -233,6 +236,8 @@ None right now. Add new ones here and move each answer to the Decisions log.
 
 Newest first. One line each: date, decision, why.
 
+- 2026-09-26 — Pattern links cover every axe rule a11y-skills already routes, not only the MVP five (1.4). Why: axe reports about 100 rules; a finding without a "how to build it right" link leaves the reader stuck.
+- 2026-09-26 — The homepage shows every feature with a real product shot for readers who do not know accessibility or code (2.4, 2.5); the shots are generated from real runs, never hand-made; the full homepage restructure waits until M2–M6 have landed (8.2). Why: owner's request; a picture of the product explains it better than text, and restructuring earlier would be redone.
 - 2026-09-26 — Tool first; publishing is parked. npm and PyPI releases, the public showcase and the portfolio map move to [Later](#later-parked), and a11y-skills is pinned from GitHub instead of npm. Why: the owner wants the tool working for her before anything is shared.
 - 2026-09-26 — Known answers and a trustworthy report (now M2) come before the AI harvest (now M3). Why: AI suggestions cannot be judged without pages whose answers are known, and a real run showed the report contradicting its own finding.
 - 2026-09-26 — The virtual screen reader takes role and name from the browser's accessibility tree; the engine keeps no hand-written copy of the W3C mapping rules. Why: one source of truth, and the copy was already wrong on four HTML-AAM cases.
