@@ -23,6 +23,7 @@
     "plan:public-site": "npm run build && node packages/cli/dist/index.js plan examples/public-site/scenario.yml",
     "site:generate": "node scripts/generate-site-registry.mjs",
     "site:check": "node scripts/generate-site-registry.mjs --check",
+    "site:roadmap": "node scripts/generate-roadmap.mjs",
     "playwright:install": "playwright install chromium",
     "test": "npm run test:unit && npm run test:playwright",
     "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test packages/ai-fixes/dist/index.test.js packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js packages/cli/dist/scenario-runner.test.js",

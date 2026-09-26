@@ -203,16 +203,13 @@ Review artifacts before sharing them and use test accounts and non-production en
 
 ## Roadmap
 
-1. Expand structure and composite-widget judgments.
-2. Add explicit minimum-evidence and observer-coverage policies.
-3. Enforce observer timeouts and error-continuation policy.
-4. Add richer stabilization strategies and report formats.
-5. Prepare the workspace packages for public distribution.
+See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-engine/roadmap.html). It is generated from [the master plan](docs/MASTER-PLAN.md) on every deploy.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Target evidence pipeline and artifact layout](docs/evidence-run-layout.md)
+- [Master plan](docs/MASTER-PLAN.md)
 - [Implementation roadmap](docs/implementation-roadmap.md)
 - [Detection, analysis, and remediation registry](rules/remediation-registry.json)
 - [Observer lifecycle](docs/observer-lifecycle.md)
