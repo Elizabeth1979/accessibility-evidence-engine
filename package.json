@@ -35,7 +35,7 @@
     "@axe-core/playwright": "4.13.0",
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.2",
     "a11y-skills": "github:Elizabeth1979/a11y-skills#e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",
