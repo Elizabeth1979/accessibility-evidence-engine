@@ -25,7 +25,18 @@ export function parsePlan(markdown) {
   for (const line of markdown.split("\n")) {
     const heading = line.match(/^### (M\d+) — (.+?)(?: \((.+)\))?$/);
     if (heading) {
-      result.push({ id: heading[1], title: heading[2], when: heading[3] ?? "", steps: [] });
+      result.push({
+        id: heading[1],
+        title: heading[2],
+        when: heading[3] ?? "",
+        outcome: "",
+        steps: []
+      });
+      continue;
+    }
+    const outcome = line.match(/^\*\*Outcome:\*\* (.+)$/);
+    if (outcome && result.length > 0) {
+      result.at(-1).outcome = outcome[1];
       continue;
     }
     const step = line.match(/^- \[( |x)\] \*\*(\d+\.\d+)\*\* (.+)$/);
@@ -55,6 +66,15 @@ function renderPage() {
       <p class="lede">${doneCount} of ${allSteps.length} steps done.${
         current ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.` : ""
       }</p>
+      <p>
+        <label for="progress">Progress</label>
+        <progress id="progress" max="${allSteps.length}" value="${doneCount}" aria-valuetext="${doneCount} of ${allSteps.length} steps done">${doneCount} of ${allSteps.length}</progress>
+      </p>
+      <nav class="glance" aria-label="Milestones at a glance">
+        <ol class="overview">
+${milestones.map(renderStation).join("\n")}
+        </ol>
+      </nav>
       <p>Generated from <a href="${planUrl}">the master plan</a> on every deploy. Open a milestone to see its steps.</p>
       <ol class="track">
 ${milestones.map(renderMilestone).join("\n")}
@@ -65,19 +85,38 @@ ${milestones.map(renderMilestone).join("\n")}
 `;
 }
 
+function stateOf(m) {
+  if (m.steps.every((s) => s.done)) return "done";
+  return m === current ? "now" : "todo";
+}
+
+function renderStation(m) {
+  const state = stateOf(m);
+  const status = { done: "done", now: "you are here", todo: "to do" }[state];
+  return `          <li class="station ${state}">
+            <a href="#${m.id.toLowerCase()}"${state === "now" ? ' aria-current="step"' : ""}>
+              <span class="m-id">${m.id}</span>
+              <span class="s-title">${inline(m.title)}</span>
+              <span class="visually-hidden">, ${status}</span>
+            </a>
+          </li>`;
+}
+
 function renderMilestone(m) {
   const done = m.steps.filter((s) => s.done).length;
-  const state = done === m.steps.length ? "done" : m === current ? "now" : "todo";
+  const state = stateOf(m);
   const label = { done: "Done", now: "You are here", todo: "" }[state];
-  return `        <li class="milestone ${state}">
+  // The title is a real heading outside the <summary>: a summary is a button,
+  // and some browser + screen reader pairs flatten a heading inside a button.
+  return `        <li class="milestone ${state}" id="${m.id.toLowerCase()}">
+          <div class="m-head">
+            <h2><span class="m-id">${m.id}</span> ${inline(m.title)}</h2>
+            ${label ? `<span class="m-tag">${label}</span>` : ""}
+            <span class="m-count"><span aria-hidden="true">${done}/${m.steps.length}</span><span class="visually-hidden">${done} of ${m.steps.length} steps done</span></span>
+          </div>
+          ${m.outcome ? `<p class="m-outcome">${inline(m.outcome)}</p>` : ""}
           <details${state === "now" ? " open" : ""}>
-            <summary>
-              <span class="m-id">${m.id}</span>
-              <span class="m-title">${inline(m.title)}</span>
-              ${label ? `<span class="m-tag">${label}</span>` : ""}
-              <span class="m-count">${done}/${m.steps.length}</span>
-            </summary>
-            ${m.when ? `<p class="m-when">${inline(m.when)}</p>` : ""}
+            <summary>${m.steps.length} step${m.steps.length === 1 ? "" : "s"}<span class="visually-hidden"> in ${m.id}</span>${m.when ? ` · ${inline(m.when)}` : ""}</summary>
             <ul class="steps">
 ${m.steps.map(renderStep).join("\n")}
             </ul>

@@ -58,28 +58,46 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 5px var(--accent-dark);
 }
+.m-head,
+.milestone > .m-outcome,
 .milestone details {
   border: 1px solid var(--line);
+  border-block: 0;
   background: var(--surface);
 }
-.milestone.now details {
-  border-color: var(--accent);
-}
-.milestone summary {
+.m-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem 0.75rem;
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 1rem 0.25rem;
+  border-top: 1px solid var(--line);
+}
+.milestone details {
+  border-bottom: 1px solid var(--line);
+}
+.milestone.now :is(.m-head, .m-outcome, details) {
+  border-color: var(--accent);
+}
+.milestone h2 {
+  /* not the home page's display headings (styles.css caps h2 at 19ch) */
+  max-width: none;
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: normal;
+  line-height: 1.3;
+}
+.milestone summary {
+  padding: 0.5rem 1rem 0.75rem;
+  color: var(--muted);
   cursor: pointer;
+}
+.milestone summary:hover {
+  color: var(--text);
 }
 .m-id {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--muted);
-}
-.m-title {
-  font-weight: 700;
-  font-size: 1.1rem;
 }
 .m-tag {
   padding: 0.1rem 0.5rem;
@@ -92,11 +110,6 @@
   margin-left: auto;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-}
-.m-when {
-  margin: 0;
-  padding: 0 1rem;
-  color: var(--muted);
 }
 .steps {
   list-style: none;
@@ -131,4 +144,59 @@
 .done-when {
   color: var(--muted);
   font-size: 0.95rem;
+}
+progress {
+  display: block;
+  width: 100%;
+  max-width: 70ch;
+  height: 0.75rem;
+  margin-top: 0.4rem;
+  accent-color: var(--accent);
+}
+.glance {
+  display: block;
+}
+.overview {
+  list-style: none;
+  margin: 1.5rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.station a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  height: 100%;
+  padding: 0.45rem;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+.station a:hover .s-title {
+  text-decoration: underline;
+}
+.station.done a {
+  border-top-color: var(--accent);
+}
+.station.now a {
+  border-color: var(--accent);
+  border-top-width: 4px;
+}
+.s-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+.milestone > .m-outcome {
+  margin-block: 0;
+  max-width: none;
+  padding: 0 1rem;
+  color: var(--muted);
+}
+.milestone {
+  scroll-margin-top: 1rem;
 }

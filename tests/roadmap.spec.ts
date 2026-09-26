@@ -19,6 +19,10 @@ test("roadmap is generated from the plan and opens the current milestone", async
   await expect(now.locator("details")).toHaveAttribute("open", "");
   await expect(now.locator(".m-tag")).toHaveText("You are here");
   await expect(browser.locator(".milestone")).toHaveCount(9);
+  await expect(browser.locator(".station")).toHaveCount(9);
+  await expect(browser.locator(".milestone .m-outcome")).toHaveCount(9);
+  // Each milestone title is a real heading, so screen reader users can jump between them.
+  await expect(browser.getByRole("heading", { level: 2 })).toHaveCount(9);
 
   const result = await new AxeBuilder({ page: browser }).analyze();
   expect(result.violations.map(({ id }) => id)).toEqual([]);
