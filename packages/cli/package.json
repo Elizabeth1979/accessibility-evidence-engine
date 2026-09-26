@@ -60,6 +60,6 @@
     "@aee/reporter": "0.1.0",
     "@aee/schemas": "0.1.0",
     "yaml": "^2.9.1",
-    "playwright": "^1.62.1"
+    "playwright": "^1.63.0"
   }
 }
