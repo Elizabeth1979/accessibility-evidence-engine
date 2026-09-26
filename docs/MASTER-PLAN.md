@@ -62,11 +62,11 @@ Nothing is archived until its row says **harvested**. That is how no information
 
 ### Harvest from, keep live
 
-| Repo                  | Value                                                            | Goes to                                                                                   | Harvested |
-| --------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | --------- |
-| `a11y-for-feds-intro` | A deliberately broken page with 16 listed issues and their fixes | Test-lab cases with known answers (M3); stays live as a workshop                          | [ ]       |
-| `bookmarklets`        | Visual overlays: headings, tab order, alt text, focus indicator  | QA/designer surface (M7)                                                                  | [ ]       |
-| `clip-to-ticket`      | Ticket format; WCAG 2.2 and APG data files                       | Ticket format → reporter (M7); data only if the registry's WCAG fields prove insufficient | [ ]       |
+| Repo                  | Value                                                            | Goes to                                                                                       | Harvested |
+| --------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------- |
+| `a11y-for-feds-intro` | A deliberately broken page with 16 listed issues and their fixes | Test-lab cases with known answers (M3); before/after showcase (4.6); stays live as a workshop | [ ]       |
+| `bookmarklets`        | Visual overlays: headings, tab order, alt text, focus indicator  | QA/designer surface (M7)                                                                      | [ ]       |
+| `clip-to-ticket`      | Ticket format; WCAG 2.2 and APG data files                       | Ticket format → reporter (M7); data only if the registry's WCAG fields prove insufficient     | [ ]       |
 
 ### Private notes (read, scrub, then move)
 
@@ -116,6 +116,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 - [ ] **4.3** A composite `action.yml` with inputs `run` (a scenario or test command), `fail-on` and `ai-provider` (default `stub`). It posts one sticky comment that later runs update. _Done when:_ running it twice leaves exactly one comment.
 - [ ] **4.4** A self-test workflow: every PR in this repo runs the Action against the test lab. _Done when:_ a PR that adds a nameless icon button gets red CI and a comment with the buttons pattern link.
 - [ ] **4.5** AI on in CI with a provider key secret. _Done when:_ the comment shows an AI-suggested button name, labelled as AI.
+- [ ] **4.6** Showcase on `a11y-for-feds-intro`: next to its broken page, show the PR comment the tool produces for each of the 16 issues (blocking finding, AI fix, pattern link), then the fixed page. The site stays a workshop; it links to the engine docs and does not copy them. _Done when:_ the site shows the tool's output for all 16 issues.
 
 ### M5 — Ship and dogfood (days 16–19)
 
@@ -146,6 +147,7 @@ None right now. Add new ones here and move each answer to the Decisions log.
 
 Newest first. One line each: date, decision, why.
 
+- 2026-09-26 — `a11y-for-feds-intro` becomes the developer showcase; no new demo site. Why: it already has a broken page, 16 known issues and their fixes.
 - 2026-09-26 — Dogfood before distributing: M5 installs from GitHub first; publishing waits for step 5.3. Why: publishing is hard to undo and closes off productising, so decide with real usage in hand.
 - 2026-09-25 — Publish under the `@e11i` npm scope (the owner's existing npm account, which already publishes `screen-reader-cli`). Why: a user scope is guaranteed free and avoids the `@aee` clash with accessibility-engine.
 - 2026-09-25 — Developers get both paths: YAML scenarios stay for reviewers, and a drop-in Playwright fixture is added for existing `.spec.ts` tests (4.2). Why: developers adopt what fits their current tests.
