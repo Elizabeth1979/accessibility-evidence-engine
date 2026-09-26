@@ -30,6 +30,7 @@
         "title",
         "implementationStatus",
         "ruleKind",
+        "patterns",
         "requirements",
         "applicability",
         "requiredEvidence",
@@ -42,6 +43,13 @@
         "title": { "type": "string", "minLength": 1 },
         "implementationStatus": { "enum": ["available", "partial", "planned"] },
         "ruleKind": { "enum": ["aee-act-compatible", "act-rule"] },
+        "patterns": {
+          "description": "a11y-skills pattern ids (patterns/<id>.instructions.md) that explain this concept.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/patternId" }
+        },
         "requirements": {
           "type": "array",
           "minItems": 1,
@@ -78,8 +86,19 @@
         "title": { "type": "string", "minLength": 1 },
         "level": { "enum": ["A", "AA", "AAA"] },
         "relationship": { "enum": ["primary", "secondary", "detection"] },
-        "url": { "type": "string", "format": "uri" }
-      }
+        "url": { "type": "string", "format": "uri" },
+        "pattern": { "$ref": "#/$defs/patternId" }
+      },
+      "if": {
+        "properties": { "relationship": { "const": "detection" } },
+        "required": ["relationship"]
+      },
+      "then": { "required": ["pattern"] }
+    },
+    "patternId": {
+      "description": "An a11y-skills pattern id: the file stem before .instructions.md.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
     },
     "aiPolicy": {
       "type": "object",

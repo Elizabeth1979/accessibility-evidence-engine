@@ -516,3 +516,48 @@ test("validateSchema rejects an AI-enabled registry entry without a specialist",
   assert.equal(result.valid, false);
   assert.match(result.errors.join(" "), /missing required property "specialistId"/);
 });
+
+type RegistryEntry = {
+  id: string;
+  patterns: string[];
+  requirements: Array<{ requirementId: string; relationship: string; pattern?: string }>;
+};
+
+test("validateSchema rejects an axe detection requirement without a pattern", () => {
+  const invalidRegistry = structuredClone(remediationRegistry) as { entries: RegistryEntry[] };
+  const detection = invalidRegistry.entries[0]?.requirements.find(
+    (requirement) => requirement.relationship === "detection"
+  );
+  delete detection?.pattern;
+
+  const result = validateSchema("remediationRegistry", invalidRegistry);
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /missing required property "pattern"/);
+});
+
+test("every MVP axe rule resolves to one registry entry and one of its patterns", () => {
+  const entries = (remediationRegistry as { entries: RegistryEntry[] }).entries;
+  const expected: Record<string, [entry: string, pattern: string]> = {
+    "button-name": ["accessible-name", "buttons"],
+    "link-name": ["accessible-name", "link"],
+    label: ["accessible-name", "forms"],
+    "image-alt": ["image-purpose", "image-labeling"],
+    "empty-heading": ["heading-structure", "headings"]
+  };
+
+  for (const [rule, [entryId, pattern]] of Object.entries(expected)) {
+    const matches = entries.flatMap((entry) =>
+      entry.requirements
+        .filter((r) => r.relationship === "detection" && r.requirementId === rule)
+        .map((r) => [entry.id, r.pattern])
+    );
+    assert.deepEqual(matches, [[entryId, pattern]], rule);
+  }
+
+  for (const entry of entries) {
+    for (const r of entry.requirements) {
+      if (r.pattern) assert.ok(entry.patterns.includes(r.pattern), `${entry.id}: ${r.pattern}`);
+    }
+  }
+});

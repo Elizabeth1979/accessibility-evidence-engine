@@ -16,6 +16,7 @@
       "title": "Missing or unsuitable accessible name",
       "implementationStatus": "partial",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["buttons", "link", "forms"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -32,7 +33,26 @@
           "requirementId": "button-name",
           "title": "Buttons must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name",
+          "pattern": "buttons"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "link-name",
+          "title": "Links must have discernible text",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name",
+          "pattern": "link"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "label",
+          "title": "Form elements must have labels",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/label",
+          "pattern": "forms"
         }
       ],
       "applicability": "Interactive controls and form elements whose accessible name is absent, generic, duplicated, or inconsistent with the visible purpose.",
@@ -66,6 +86,7 @@
       "title": "Image purpose and text alternative",
       "implementationStatus": "planned",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["image-labeling"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -75,6 +96,15 @@
           "level": "A",
           "relationship": "primary",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "image-alt",
+          "title": "Images must have alternative text",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt",
+          "pattern": "image-labeling"
         }
       ],
       "applicability": "Rendered images, SVGs, icons, and CSS images whose purpose depends on their relationship to surrounding content or controls.",
@@ -112,6 +142,7 @@
       "title": "Visual and semantic heading structure",
       "implementationStatus": "partial",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["headings"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -121,6 +152,15 @@
           "level": "A",
           "relationship": "primary",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "empty-heading",
+          "title": "Headings should not be empty",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading",
+          "pattern": "headings"
         }
       ],
       "applicability": "Pages where typography, spacing, grouping, or repeated regions imply a hierarchy that may differ from the semantic outline.",
@@ -157,6 +197,7 @@
       "title": "Text and component color contrast",
       "implementationStatus": "partial",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["color-contrast"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -213,6 +254,7 @@
       "title": "Keyboard operation and activation",
       "implementationStatus": "partial",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["accessibility"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -256,6 +298,7 @@
       "title": "Hover and keyboard-focus equivalence",
       "implementationStatus": "planned",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["tooltip"],
       "requirements": [
         {
           "standard": "WCAG",
@@ -299,6 +342,7 @@
       "title": "Focus management after interface changes",
       "implementationStatus": "partial",
       "ruleKind": "aee-act-compatible",
+      "patterns": ["focus-management", "live-regions"],
       "requirements": [
         {
           "standard": "WCAG",
