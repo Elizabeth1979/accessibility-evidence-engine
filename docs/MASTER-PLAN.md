@@ -119,9 +119,9 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ### M5 — Ship and dogfood (days 16–19)
 
-- [ ] **5.1** Publish the packages under the `@e11i` npm scope, with a publish workflow gated on the full CI suite. _Done when:_ installing in an empty project works.
+- [ ] **5.1** Adopt it in one of your own public apps, installed from GitHub (no npm publish yet). _Done when:_ that repo's PRs get the comment, and every friction point is filed as an issue.
 - [ ] **5.2** `--fix`: apply a reviewed label proposal to source, including JSX, using `@aee/fix` from accessibility-engine. Apply it on a branch and rerun the journey to verify. _Done when:_ Milestone 3's exit test in the roadmap passes.
-- [ ] **5.3** Adopt it in one of your own public apps. _Done when:_ that repo's PRs get the comment, and every friction point is filed as an issue.
+- [ ] **5.3** Decide distribution: open core, product, or npm only. Check the employment contract first. If publishing, add a publish workflow gated on the full CI suite under the `@e11i` scope. _Done when:_ the decision is in the Decisions log, and, if published, installing in an empty project works.
 
 ### M6 — One MCP (days 20–21)
 
@@ -146,6 +146,7 @@ None right now. Add new ones here and move each answer to the Decisions log.
 
 Newest first. One line each: date, decision, why.
 
+- 2026-09-26 — Dogfood before distributing: M5 installs from GitHub first; publishing waits for step 5.3. Why: publishing is hard to undo and closes off productising, so decide with real usage in hand.
 - 2026-09-25 — Publish under the `@e11i` npm scope (the owner's existing npm account, which already publishes `screen-reader-cli`). Why: a user scope is guaranteed free and avoids the `@aee` clash with accessibility-engine.
 - 2026-09-25 — Developers get both paths: YAML scenarios stay for reviewers, and a drop-in Playwright fixture is added for existing `.spec.ts` tests (4.2). Why: developers adopt what fits their current tests.
 - 2026-09-25 — The fixture checkpoints automatically on page load, plus explicit checkpoints after interactions. Why: zero-effort adoption; explicit checkpoints cover states after interactions.
