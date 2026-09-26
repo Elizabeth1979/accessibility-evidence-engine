@@ -132,3 +132,56 @@
   color: var(--muted);
   font-size: 0.95rem;
 }
+progress {
+  display: block;
+  width: 100%;
+  max-width: 70ch;
+  height: 0.75rem;
+  margin-top: 0.4rem;
+  accent-color: var(--accent);
+}
+.glance {
+  display: block;
+}
+.overview {
+  list-style: none;
+  margin: 1.5rem 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
+  gap: 0.5rem;
+}
+.station a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  height: 100%;
+  padding: 0.45rem;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+.station a:hover .s-title {
+  text-decoration: underline;
+}
+.station.done a {
+  border-top-color: var(--accent);
+}
+.station.now a {
+  border-color: var(--accent);
+  border-top-width: 4px;
+}
+.s-title {
+  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 1.25;
+}
+.m-outcome {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+.milestone {
+  scroll-margin-top: 1rem;
+}

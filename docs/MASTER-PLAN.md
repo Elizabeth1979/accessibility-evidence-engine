@@ -129,34 +129,21 @@ flowchart LR
 
 ## Milestones
 
-```mermaid
-flowchart TB
-  subgraph FOUND["Foundations"]
-    direction LR
-    M0["M0 · Home base<br/>day 1<br/><i>plan on main</i>"] --> M1["M1 · Knowledge link<br/>days 2–4<br/><i>findings link to patterns</i>"] --> M2["M2 · AI layer<br/>days 5–8<br/><i>Claude / local / stub</i>"] --> M3["M3 · Known-answer tests<br/>days 9–10<br/><i>misses fail the tests</i>"]
-  end
-  subgraph SHIP["Ship to developers"]
-    direction LR
-    M4["⭐ M4 · PR experience<br/>days 11–15<br/><i>goal met: red CI + PR comment</i>"] --> M5["M5 · Ship and dogfood<br/>days 16–19<br/><i>real app, --fix</i>"] --> M6["M6 · One MCP<br/>days 20–21<br/><i>agents can ask 'explain'</i>"]
-  end
-  subgraph LATER["Later"]
-    direction LR
-    M7["M7 · QA and designer surface<br/><i>after M5 is used for real</i>"] --> M8["M8 · Archive and re-map<br/><i>old repos retired</i>"]
-  end
-  FOUND --> SHIP --> LATER
-```
-
-The boxes show order only; the checkboxes below are the progress record.
+See it as a picture on the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-engine/roadmap.html), which is built from this section on every deploy. Each milestone's **Outcome** line is what the page shows.
 
 Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ### M0 — Home base (day 1)
+
+**Outcome:** The plan lives in this repo, and every session starts from it.
 
 - [ ] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
 - [x] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
 - [x] **0.3** Replace the example that named a real product with a generic `examples/public-site/` scenario that targets this project's own demo site. The old name is removed from the scripts, README, CHANGELOG and CLI tests. _Done when:_ a case-insensitive grep for the old name finds nothing outside git history.
 
 ### M1 — Knowledge link (days 2–4)
+
+**Outcome:** Every finding links to the pattern that explains it.
 
 - [ ] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
 - [ ] **1.2** a11y-skills: make the package publishable (drop `private`, set `files`) and publish it. The engine pins that version and checks every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
@@ -165,6 +152,8 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ### M2 — Harvest the AI layer (days 5–8)
 
+**Outcome:** AI suggestions run on Claude, a local model or a free stub.
+
 - [ ] **2.1** Port the provider seam from `accessibility-engine`: Claude, local (Ollama) and stub, next to the existing OpenAI adapter, all behind the existing `AccessibleLabelModelProvider` interface. With no key, the default is stub. _Done when:_ the unit tests pass with the stub, and a live test runs when a local model is present.
 - [ ] **2.2** Port the graph-guard test: the AI package must not import a browser driver. _Done when:_ adding a Playwright import to `ai-fixes` fails the tests.
 - [ ] **2.3** Port the naming and alt-text judge prompts into the allowlisted specialists (`accessible-name` icon-only, `image-purpose`), adding image-role classification. _Done when:_ the test-lab icon-button case gets a labelled AI name from the stub fixture.
@@ -172,9 +161,13 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ### M3 — Known-answer test cases (days 9–10)
 
+**Outcome:** Test pages with known answers catch any missed or false finding.
+
 - [ ] **3.1** Add the `a11y-for-feds-intro` broken page and the sr-visualizer samples as test-lab cases with expected findings, following `site/test-lab-contract.json`. _Done when:_ `npm run test:playwright` fails if a known violation is missed or a good page gets a finding.
 
 ### M4 — The PR experience (days 11–15)
+
+**Outcome:** ⭐ The goal: a PR with an accessibility bug gets red CI and one comment with the fix and the pattern.
 
 - [ ] **4.1** Reporter: a PR-comment variant of the Markdown report. Blocking findings come first, then AI suggestions labelled as AI; each finding is collapsed and shows the element, the problem, the fix and the pattern link. _Done when:_ a snapshot test on a test-lab page passes.
 - [ ] **4.2** Playwright fixture: a drop-in `test` export that captures a checkpoint automatically on page load, so a team can adopt it without writing scenario YAML. _Done when:_ an existing spec with only the import swapped produces findings.
@@ -185,21 +178,29 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 ### M5 — Ship and dogfood (days 16–19)
 
+**Outcome:** The tool runs on a real app and can apply fixes to the code.
+
 - [ ] **5.1** Adopt it in one of your own public apps, installed from GitHub (no npm publish yet). _Done when:_ that repo's PRs get the comment, and every friction point is filed as an issue.
 - [ ] **5.2** `--fix`: apply a reviewed label proposal to source, including JSX, using `@aee/fix` from accessibility-engine. Apply it on a branch and rerun the journey to verify. _Done when:_ Milestone 3's exit test in the roadmap passes.
 - [ ] **5.3** Decide distribution: open core, product, or npm only. Check the employment contract first. If publishing, add a publish workflow gated on the full CI suite under the `@e11i` scope. _Done when:_ the decision is in the Decisions log, and, if published, installing in an empty project works.
 
 ### M6 — One MCP (days 20–21)
 
+**Outcome:** A coding agent asks "explain button-name" and gets the pattern.
+
 - [ ] **6.1** Port `@aee/mcp` from accessibility-engine, rewired to this engine, and add an `explain` tool: rule id or UI element in, the a11y-skills pattern out, through the registry. _Done when:_ a coding agent asked "explain button-name" gets the buttons pattern.
 - [ ] **6.2** a11y-expert-mcp: final PyPI release whose README points to the new MCP. _Done when:_ the PyPI page shows the notice.
 
 ### M7 — QA and designer surface (later, after M5 is used for real)
 
+**Outcome:** QA and designers get a visual report, not only developers.
+
 - [ ] **7.1** Design spec only: add bookmarklets-style overlays, the sr-visualizer announcement list and the clip-to-ticket ticket format to the existing HTML report. _Done when:_ a spec is in `docs/`.
 - [ ] **7.2** screen-reader-cli: have `scan` call the engine. This is an issue first, per that repo's rules. _Done when:_ the issue is filed with the proposed change.
 
 ### M8 — Archive and re-map (last)
+
+**Outcome:** Old repos are archived, and the portfolio shows the new shape.
 
 - [ ] **8.1** For each repo marked "archive" whose inventory row is ticked: add a README banner saying it's superseded by accessibility-evidence-engine, then use GitHub's Archive button. _Done when:_ every archive row is ticked and archived.
 - [ ] **8.2** Update the portfolio map in `a11y-engineering-toolkit`. _Done when:_ the public page shows the new shape.
