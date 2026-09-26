@@ -17,20 +17,43 @@ A developer opens a PR. CI runs their Playwright journeys with the engine attach
 2. **AI suggests the fix** for each violation, using a screenshot of the section and the page context. This is advisory, labelled as AI, and never fails the build.
 3. **Each finding links to the pattern** that explains it (a11y-skills).
 
+```mermaid
+flowchart LR
+  PR["👩‍💻 Developer opens a PR"] --> CI["CI runs Playwright journeys<br/>with the engine attached"]
+  CI --> DET{"1 · Deterministic checks<br/>axe + AEE judges"}
+  DET -- "violation" --> RED["❌ Build fails"]
+  DET -- "clean" --> GREEN["✅ Build passes"]
+  CI --> AI["2 · 🤖 AI suggests the fix<br/>advisory, never fails the build"]
+  RED --> COMMENT["💬 One PR comment"]
+  AI --> COMMENT
+  COMMENT --> PAT["3 · 📘 Link to the a11y-skills pattern"]
+```
+
 The first rules covered are unlabeled buttons, unlabeled links, missing alt text, missing form labels and empty headings. This is the exit test of Milestone 3 in `docs/implementation-roadmap.md`, widened from one rule to five.
 
 ## Target shape
 
-```
-KNOWLEDGE   a11y-skills                     pattern explanations (markdown)
-               ▲ linked by id from the registry, pinned npm dependency
-ENGINE      accessibility-evidence-engine   scenario → evidence → judges (deterministic) → AI specialists (advisory) → report → fix
-              rules/remediation-registry.json = the one map of concept → WCAG → axe rules → detection → pattern
-               │
-SURFACES    CLI (--ci) · GitHub Action + PR comment · Playwright fixture · MCP server · HTML report (QA/design)
-
-SEPARATE PRODUCTS (keep; consume the engine or registry later)
-            screen-reader-cli (real/virtual screen readers) · clip-to-ticket (recordings → tickets)
+```mermaid
+flowchart TB
+  subgraph SEPARATE["Separate products · keep, consume the engine later"]
+    direction LR
+    SRC["screen-reader-cli"] ~~~ CTT["clip-to-ticket"]
+  end
+  subgraph ENGINE["⚙️ ENGINE · accessibility-evidence-engine"]
+    direction LR
+    S["scenario"] --> E["evidence"] --> J["judges<br/>deterministic"] --> A["AI specialists<br/>advisory"] --> R["report"] --> F["fix"]
+    REG[("remediation-registry.json<br/>concept → WCAG → axe → pattern")]
+  end
+  subgraph KNOWLEDGE["📘 KNOWLEDGE"]
+    SK["a11y-skills<br/>pattern explanations"]
+  end
+  subgraph SURFACES["🖥️ SURFACES"]
+    direction LR
+    CLI["CLI --ci"] ~~~ GHA["GitHub Action<br/>+ PR comment"] ~~~ FIX["Playwright fixture"] ~~~ MCP["MCP server"] ~~~ HTML["HTML report<br/>QA / design"]
+  end
+  SEPARATE -. "later" .-> ENGINE
+  ENGINE -- "registry links by pattern id<br/>pinned npm dependency" --> KNOWLEDGE
+  ENGINE --> SURFACES
 ```
 
 **Why the registry is the map:** it already joins each concept to WCAG criteria, axe rules, required evidence, the AI allowlist and verification. Adding a `pattern` field that points at a11y-skills keeps every mapping in one file. a11y-skills stays pure explanation with no second rule map.
@@ -38,6 +61,29 @@ SEPARATE PRODUCTS (keep; consume the engine or registry later)
 ## Inventory: every source and where its value goes
 
 Nothing is archived until its row says **harvested**. That is how no information gets lost.
+
+```mermaid
+flowchart LR
+  subgraph ENG["⚙️ Into the ENGINE"]
+    direction TB
+    e1["🗄️ accessibility-engine<br/><i>AI providers, prompts, MCP, fix</i>"] ~~~ e2["🗄️ a11y-agent<br/><i>auto-scan, fail-on</i>"] ~~~ e3["🗄️ wcag-alt-generator + alt-generation-claude<br/><i>image-purpose specialist</i>"] ~~~ e4["🗄️ a11y-expert-mcp<br/><i>explain tool idea</i>"] ~~~ e5["🔒 private notes<br/><i>ACT / WCAG-EM refs</i>"]
+  end
+  subgraph SKL["📘 Into a11y-skills"]
+    direction TB
+    k1["🗄️ wcag-alt-generator + alt-generation-claude<br/><i>alt-text rules</i>"] ~~~ k2["🗄️ a11y-agent<br/><i>rule → skill map</i>"] ~~~ k3["🔒 private notes<br/><i>component notes</i>"]
+  end
+  subgraph LAB["🧪 Into the test lab"]
+    direction TB
+    l1["a11y-for-feds-intro<br/><i>16 known issues</i>"] ~~~ l2["🗄️ sr-visualizer<br/><i>good / bad sample pages</i>"]
+  end
+  subgraph QA["🎨 Into the QA / designer surface"]
+    direction TB
+    q1["bookmarklets<br/><i>overlays</i>"] ~~~ q2["🗄️ sr-visualizer<br/><i>announcement UI</i>"] ~~~ q3["clip-to-ticket<br/><i>ticket format</i>"]
+  end
+  ENG ~~~ SKL ~~~ LAB ~~~ QA
+```
+
+🗄️ archived once harvested (so is `accessibility-validator`, which has nothing to take) · 🔒 scrubbed before it moves · no icon: stays live.
 
 ### Core (keep, active)
 
@@ -82,6 +128,25 @@ Nothing is archived until its row says **harvested**. That is how no information
 `visua11y` (reading aid for end users, not a developer tool), `any-access` (three small 2020 scripts, all covered by a11y-skills), `accessible-search`, `a11y-first-ext`, `a11y-booth-game`, and the forks `a11y-memory-game`, `a11y-interactions`, `a11y-html-aria`. Also checked and unrelated to accessibility: `TTS`, `the-vault`, and the rest of the personal and family repos.
 
 ## Milestones
+
+```mermaid
+flowchart TB
+  subgraph FOUND["Foundations"]
+    direction LR
+    M0["M0 · Home base<br/>day 1<br/><i>plan on main</i>"] --> M1["M1 · Knowledge link<br/>days 2–4<br/><i>findings link to patterns</i>"] --> M2["M2 · AI layer<br/>days 5–8<br/><i>Claude / local / stub</i>"] --> M3["M3 · Known-answer tests<br/>days 9–10<br/><i>misses fail the tests</i>"]
+  end
+  subgraph SHIP["Ship to developers"]
+    direction LR
+    M4["⭐ M4 · PR experience<br/>days 11–15<br/><i>goal met: red CI + PR comment</i>"] --> M5["M5 · Ship and dogfood<br/>days 16–19<br/><i>real app, --fix</i>"] --> M6["M6 · One MCP<br/>days 20–21<br/><i>agents can ask 'explain'</i>"]
+  end
+  subgraph LATER["Later"]
+    direction LR
+    M7["M7 · QA and designer surface<br/><i>after M5 is used for real</i>"] --> M8["M8 · Archive and re-map<br/><i>old repos retired</i>"]
+  end
+  FOUND --> SHIP --> LATER
+```
+
+The boxes show order only; the checkboxes below are the progress record.
 
 Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
