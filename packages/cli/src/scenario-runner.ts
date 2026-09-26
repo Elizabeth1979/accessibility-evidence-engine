@@ -12,7 +12,12 @@ import {
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
 } from "@aee/playwright";
-import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import {
+  assertValidSchema,
+  CURRENT_SCHEMA_VERSION,
+  patternForAxeRule,
+  type PatternLink
+} from "@aee/schemas";
 import { chromium, type Browser, type Page } from "playwright";
 
 import { compileScenarioPlan, loadScenario, type AeeScenario, type ScenarioPlan } from "./scenario";
@@ -215,6 +220,8 @@ interface FindingSynthesis {
   title: string;
   severity: string;
   wcagCriteria: string[];
+  /** The a11y-skills pattern that explains how to build this correctly, when the registry maps the rule. */
+  pattern?: PatternLink;
   conclusion: string;
   occurrenceCount: number;
   checkpointCount: number;
@@ -1158,6 +1165,7 @@ function buildFindingSynthesis(
     title: representative?.help ?? String(finding.message ?? ruleId),
     severity: String(finding.severity ?? representative?.impact ?? "review"),
     wcagCriteria,
+    pattern: patternForAxeRule(ruleId),
     conclusion: `${representative?.description ?? String(finding.message ?? "A confirmed issue was emitted.")} The same rule was observed at ${checkpoints.length} of ${views.axeReports.length} after-action checkpoints; the largest checkpoint affected ${maximumAffectedNodes} node${maximumAffectedNodes === 1 ? "" : "s"}. Independent behavior results remain shown separately and do not cancel this rule failure.`,
     occurrenceCount,
     checkpointCount: checkpoints.length,
@@ -1393,6 +1401,8 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
       "",
       `**WCAG:** ${finding.wcagCriteria.length ? finding.wcagCriteria.join(", ") : "Mapping not emitted"}`,
       "",
+      `**Pattern:** ${finding.pattern ? `[${finding.pattern.id}](${finding.pattern.url}) (a11y-skills)` : "No pattern is mapped for this rule yet."}`,
+      "",
       `**Deterministic remediation:** ${finding.remediation.deterministic}`,
       "",
       `**AI:** Not used — ${finding.remediation.ai.reason}`,
@@ -1551,7 +1561,8 @@ function renderIntegratedHtml(
       checkpoints: finding.checkpointCount,
       instances: finding.instanceCount,
       components: finding.componentCount,
-      wcag: finding.wcagCriteria
+      wcag: finding.wcagCriteria,
+      pattern: finding.pattern
     })),
     affectedInstancesAtLargestCheckpoint: report.synthesis.affectedInstancesAtLargestCheckpoint,
     incompleteRules: report.synthesis.uniqueIncompleteRules,
@@ -1974,7 +1985,7 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
       const priority = finding.severity === "critical" ? "P0" : index === 0 ? "P1" : "P2";
       const screenshot = representative?.screenshotPath;
       const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
-      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding.ruleId))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p><div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding.ruleId))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
     })
     .join("");
   return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
@@ -2018,6 +2029,11 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
 
 function instanceMeasurement(detail?: string): string | undefined {
   return /contrast of\s+([0-9.]+)/i.exec(detail ?? "")?.[1]?.concat(":1");
+}
+
+function renderPatternLink(finding: FindingSynthesis): string {
+  if (!finding.pattern) return "";
+  return `<p class="pattern-link"><strong>How to build it right:</strong> <a href="${escapeAttribute(finding.pattern.url)}">${escapeHtml(finding.pattern.id)} pattern</a> (a11y-skills)</p>`;
 }
 
 function renderFindingInstances(finding: FindingSynthesis): string {
@@ -2146,7 +2162,7 @@ function renderFindingDossiers(report: ScenarioIntegratedReport): string {
         )
         .join("");
       const sample = representative?.htmlSamples[0];
-      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p><div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p>${renderPatternLink(finding)}<div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
     })
     .join("");
 }

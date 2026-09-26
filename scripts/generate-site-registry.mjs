@@ -5,7 +5,7 @@ import process from "node:process";
 import prettier from "prettier";
 
 const root = process.cwd();
-const registryPath = path.join(root, "rules", "remediation-registry.json");
+const registryPath = path.join(root, "packages", "schemas", "json", "remediation-registry.json");
 const schemaPath = path.join(
   root,
   "packages",

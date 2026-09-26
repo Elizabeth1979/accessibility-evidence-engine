@@ -4,7 +4,14 @@
   "title": "AEE detection, analysis, and remediation registry",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "registryVersion", "title", "principles", "entries"],
+  "required": [
+    "schemaVersion",
+    "registryVersion",
+    "title",
+    "patternSource",
+    "principles",
+    "entries"
+  ],
   "properties": {
     "$schema": {
       "type": "string"
@@ -20,6 +27,26 @@
     "title": {
       "type": "string",
       "minLength": 1
+    },
+    "patternSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where every `pattern` id resolves: a11y-skills at one pinned commit, the same commit the engine installs.",
+      "required": ["repository", "commit", "path"],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[^/]+/[^/]+$"
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "\\{pattern\\}"
+        }
+      }
     },
     "principles": {
       "type": "array",
@@ -158,10 +185,16 @@
         }
       },
       "if": {
-        "properties": { "relationship": { "const": "detection" } },
+        "properties": {
+          "relationship": {
+            "const": "detection"
+          }
+        },
         "required": ["relationship"]
       },
-      "then": { "required": ["pattern"] }
+      "then": {
+        "required": ["pattern"]
+      }
     },
     "aiPolicy": {
       "type": "object",

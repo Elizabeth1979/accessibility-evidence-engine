@@ -22,6 +22,9 @@
     "dist/validator.js",
     "dist/validator.js.map",
     "dist/validator.d.ts",
+    "dist/remediation-registry.js",
+    "dist/remediation-registry.js.map",
+    "dist/remediation-registry.d.ts",
     "json"
   ],
   "engines": {

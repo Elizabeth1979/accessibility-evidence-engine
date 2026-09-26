@@ -90,7 +90,7 @@ passes. Retries are preserved as attempts, including flaky or contradictory resu
 
 ## Deterministic and AI responsibilities
 
-[`rules/remediation-registry.json`](../rules/remediation-registry.json) is the canonical mapping from
+[`packages/schemas/json/remediation-registry.json`](../packages/schemas/json/remediation-registry.json) is the canonical mapping from
 issue to requirements, evidence, detection, optional AI contribution, and rerun verification. It is
 validated by
 [`packages/schemas/json/remediation-registry.schema.json`](../packages/schemas/json/remediation-registry.schema.json).

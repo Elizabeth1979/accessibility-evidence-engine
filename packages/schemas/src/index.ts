@@ -28,3 +28,4 @@ export const schemaCatalog = {
 export type SchemaName = keyof typeof schemaCatalog;
 
 export * from "./validator";
+export * from "./remediation-registry";
