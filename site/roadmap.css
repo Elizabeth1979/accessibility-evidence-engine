@@ -1,0 +1,134 @@
+.roadmap {
+  max-width: 880px;
+  padding-block: 2rem 5rem;
+}
+.roadmap h1 {
+  font-size: clamp(2.3rem, 6vw, 4rem);
+  line-height: 1.1;
+}
+.roadmap p {
+  max-width: 70ch;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.track {
+  list-style: none;
+  margin: 2rem 0 0;
+  padding: 0;
+}
+.milestone {
+  position: relative;
+  padding-left: 2.5rem;
+  padding-bottom: 0.75rem;
+}
+.milestone::before {
+  content: "";
+  position: absolute;
+  left: 0.6rem;
+  top: 1.9rem;
+  bottom: 0;
+  width: 2px;
+  background: var(--line);
+}
+.milestone:last-child::before {
+  display: none;
+}
+.milestone::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.9rem;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  border: 3px solid var(--line);
+  background: var(--bg);
+}
+.milestone.done::after {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.milestone.now::after {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 5px var(--accent-dark);
+}
+.milestone details {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+.milestone.now details {
+  border-color: var(--accent);
+}
+.milestone summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+}
+.m-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+}
+.m-title {
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.m-tag {
+  padding: 0.1rem 0.5rem;
+  background: var(--accent);
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.m-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.m-when {
+  margin: 0;
+  padding: 0 1rem;
+  color: var(--muted);
+}
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0.75rem 1rem 1rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.steps p {
+  margin: 0;
+}
+.step-id {
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+}
+.step-done .step-id {
+  color: var(--accent);
+}
+.step-done .step-id::before {
+  content: "✓ ";
+}
+.step-done > div {
+  color: var(--muted);
+}
+.done-when {
+  color: var(--muted);
+  font-size: 0.95rem;
+}

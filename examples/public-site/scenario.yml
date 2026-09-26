@@ -1,11 +1,11 @@
 $schema: ../../packages/schemas/json/scenario.schema.json
 schemaVersion: 0.1.0
-id: melio-public-homepage
+id: public-site-homepage
 
 target:
-  url: https://melio.com/
+  url: https://elizabeth1979.github.io/accessibility-evidence-engine/
   allowedOrigins:
-    - https://melio.com/
+    - https://elizabeth1979.github.io/accessibility-evidence-engine/
 
 standard:
   name: WCAG
@@ -15,12 +15,12 @@ standard:
     - AA
 
 profile: core
-goal: Test the public Melio homepage and primary navigation without entering a private or financial workflow.
+goal: Test a public homepage and its primary navigation without entering an account or payment workflow.
 
 journeys:
   - id: explore-public-homepage
     name: Explore the public homepage
-    goal: Understand Melio and reach public information or the beginning of sign-up safely.
+    goal: Understand the product and reach public information safely.
     startPath: /
     allowedActions:
       - navigate
@@ -38,30 +38,30 @@ journeys:
       - next-heading
       - next-control
     interactionComparisons:
-      - id: sign-in-hover-focus
-        name: Sign in remains available on pointer hover and keyboard focus
+      - id: nav-link-hover-focus
+        name: The GitHub link remains available on pointer hover and keyboard focus
         pointerActions:
-          - id: hover-sign-in
+          - id: hover-github-link
             kind: hover
             target:
               role: link
-              name: Sign in
+              name: GitHub
         keyboardActions:
-          - id: focus-sign-in
+          - id: focus-github-link
             kind: focus
             target:
               role: link
-              name: Sign in
+              name: GitHub
         observe:
           target:
             role: link
-            name: Sign in
+            name: GitHub
           url: true
           visible: true
           text: true
         expected:
           visible: true
-          text: Sign in
+          text: GitHub
 
 privacy:
   storage: local
@@ -70,4 +70,4 @@ privacy:
 
 approval:
   required: true
-  approvedPlanDigest: sha256:8d8b84109f3108b00e68cf4f28630efcac13d941dc8dab48f663175d8d816134
+  approvedPlanDigest: sha256:4491facad41de0b4ed4b7de2787d9f1ba0a8811288fed90ce0401d857881a3d0

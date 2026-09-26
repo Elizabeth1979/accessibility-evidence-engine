@@ -49,13 +49,13 @@ npm run run:fixture
 
 The command reads [the example config](examples/basic-run-config.json) and [fixture](examples/basic-fixture.json), then writes a report to `aee-output/<run-id>/aee-report.md` alongside its JSON output and captured artifacts.
 
-Plan a user-controlled public Melio assessment without executing it:
+Plan a user-controlled assessment of a public page without executing it:
 
 ```bash
-npm run plan:melio
+npm run plan:public-site
 ```
 
-The [Melio scenario](examples/melio/scenario.yml) owns the goal, WCAG scope, safe actions,
+The [public site scenario](examples/public-site/scenario.yml) owns the goal, WCAG scope, safe actions,
 prohibited account and payment actions, privacy settings, and approval requirement. AEE expands it
 into a deterministic test plan and reports whether every capability required by the selected
 profile is implemented. A blocked or partial plan cannot become an overall pass.
@@ -64,7 +64,7 @@ After reviewing and approving that exact plan digest in the scenario, run its de
 write one integrated HTML, JSON, and Markdown report:
 
 ```bash
-node packages/cli/dist/index.js run examples/melio/scenario.yml --output aee-output/scenarios
+node packages/cli/dist/index.js run examples/public-site/scenario.yml --output aee-output/scenarios
 ```
 
 The integrated report opens as an accessibility triage room: it explains the scoped page status,
@@ -203,16 +203,13 @@ Review artifacts before sharing them and use test accounts and non-production en
 
 ## Roadmap
 
-1. Expand structure and composite-widget judgments.
-2. Add explicit minimum-evidence and observer-coverage policies.
-3. Enforce observer timeouts and error-continuation policy.
-4. Add richer stabilization strategies and report formats.
-5. Prepare the workspace packages for public distribution.
+See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-engine/roadmap.html). It is generated from [the master plan](docs/MASTER-PLAN.md) on every deploy.
 
 ## Documentation
 
 - [Architecture](docs/architecture.md)
 - [Target evidence pipeline and artifact layout](docs/evidence-run-layout.md)
+- [Master plan](docs/MASTER-PLAN.md)
 - [Implementation roadmap](docs/implementation-roadmap.md)
 - [Detection, analysis, and remediation registry](rules/remediation-registry.json)
 - [Observer lifecycle](docs/observer-lifecycle.md)

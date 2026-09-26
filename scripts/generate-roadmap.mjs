@@ -1,0 +1,112 @@
+// Builds site/roadmap.html from docs/MASTER-PLAN.md so the public roadmap can never drift
+// from the plan. Runs at deploy time (pages.yml); the output is not committed.
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+
+const root = process.cwd();
+const planPath = path.join(root, "docs", "MASTER-PLAN.md");
+const outPath = path.join(root, "site", "roadmap.html");
+const planUrl =
+  "https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/MASTER-PLAN.md";
+
+const milestones = parsePlan(await readFile(planPath, "utf8"));
+if (milestones.length === 0) throw new Error("No milestones found in docs/MASTER-PLAN.md");
+
+const current = milestones.find((m) => m.steps.some((s) => !s.done));
+const allSteps = milestones.flatMap((m) => m.steps);
+const doneCount = allSteps.filter((s) => s.done).length;
+
+await writeFile(outPath, renderPage());
+process.stdout.write(`Generated roadmap: ${doneCount}/${allSteps.length} steps done.\n`);
+
+export function parsePlan(markdown) {
+  const result = [];
+  for (const line of markdown.split("\n")) {
+    const heading = line.match(/^### (M\d+) — (.+?)(?: \((.+)\))?$/);
+    if (heading) {
+      result.push({ id: heading[1], title: heading[2], when: heading[3] ?? "", steps: [] });
+      continue;
+    }
+    const step = line.match(/^- \[( |x)\] \*\*(\d+\.\d+)\*\* (.+)$/);
+    if (step && result.length > 0) {
+      const [text, doneWhen = ""] = step[3].split(" _Done when:_ ");
+      result.at(-1).steps.push({ id: step[2], done: step[1] === "x", text, doneWhen });
+    }
+  }
+  return result;
+}
+
+function renderPage() {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roadmap · AEE</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="roadmap.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header"><a href="index.html">Accessibility Evidence Engine</a></header>
+    <main id="main" class="roadmap">
+      <h1>Roadmap</h1>
+      <p class="lede">${doneCount} of ${allSteps.length} steps done.${
+        current ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.` : ""
+      }</p>
+      <p>Generated from <a href="${planUrl}">the master plan</a> on every deploy. Open a milestone to see its steps.</p>
+      <ol class="track">
+${milestones.map(renderMilestone).join("\n")}
+      </ol>
+    </main>
+  </body>
+</html>
+`;
+}
+
+function renderMilestone(m) {
+  const done = m.steps.filter((s) => s.done).length;
+  const state = done === m.steps.length ? "done" : m === current ? "now" : "todo";
+  const label = { done: "Done", now: "You are here", todo: "" }[state];
+  return `        <li class="milestone ${state}">
+          <details${state === "now" ? " open" : ""}>
+            <summary>
+              <span class="m-id">${m.id}</span>
+              <span class="m-title">${inline(m.title)}</span>
+              ${label ? `<span class="m-tag">${label}</span>` : ""}
+              <span class="m-count">${done}/${m.steps.length}</span>
+            </summary>
+            ${m.when ? `<p class="m-when">${inline(m.when)}</p>` : ""}
+            <ul class="steps">
+${m.steps.map(renderStep).join("\n")}
+            </ul>
+          </details>
+        </li>`;
+}
+
+function renderStep(s) {
+  return `              <li class="${s.done ? "step-done" : "step-todo"}">
+                <span class="step-id"><span class="visually-hidden">${s.done ? "Done:" : "To do:"} </span>${s.id}</span>
+                <div>
+                  <p>${inline(s.text)}</p>
+                  ${s.doneWhen ? `<p class="done-when"><strong>Done when:</strong> ${inline(s.doneWhen)}</p>` : ""}
+                </div>
+              </li>`;
+}
+
+function inline(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|\s)_([^_]+)_(?=\s|[.,;:]|$)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
