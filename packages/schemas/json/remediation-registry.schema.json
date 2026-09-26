@@ -150,8 +150,18 @@
         "url": {
           "type": "string",
           "format": "uri"
+        },
+        "pattern": {
+          "description": "The one a11y-skills pattern a finding from this detection rule links to. Must be one of the entry's patterns.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$"
         }
-      }
+      },
+      "if": {
+        "properties": { "relationship": { "const": "detection" } },
+        "required": ["relationship"]
+      },
+      "then": { "required": ["pattern"] }
     },
     "aiPolicy": {
       "type": "object",

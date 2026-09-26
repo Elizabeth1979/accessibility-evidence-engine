@@ -214,6 +214,7 @@ None right now. Add new ones here and move each answer to the Decisions log.
 
 Newest first. One line each: date, decision, why.
 
+- 2026-09-26 — Each axe detection rule carries its own `pattern`, which must be one of its entry's `patterns`. Why: a `button-name` finding must link to buttons, not to the entry's whole list (buttons, link, forms).
 - 2026-09-26 — The engine gets one accessibility-engineer prompt (`packages/ai-fixes/prompts/accessibility-engineer.md`), auditor and fixer in one role: walk every pillar, a finding is where two pillars disagree, confirm with a second pillar, report how each finding was found, propose the smallest fix and the re-test that proves it. The keyboard is tested as an input device with no screen reader running, and every mouse interaction is replayed by keyboard. Why: that is how a human auditor finds what axe cannot, and it must be the product's behaviour, not a README.
 - 2026-09-26 — `a11y-for-feds-intro` becomes the developer showcase; no new demo site. Why: it already has a broken page, 16 known issues and their fixes.
 - 2026-09-26 — Dogfood before distributing: M5 installs from GitHub first; publishing waits for step 5.3. Why: publishing is hard to undo and closes off productising, so decide with real usage in hand.
