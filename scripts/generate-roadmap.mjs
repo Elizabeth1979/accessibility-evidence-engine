@@ -68,7 +68,7 @@ function renderPage() {
       }</p>
       <p>
         <label for="progress">Progress</label>
-        <progress id="progress" max="${allSteps.length}" value="${doneCount}">${doneCount} of ${allSteps.length}</progress>
+        <progress id="progress" max="${allSteps.length}" value="${doneCount}" aria-valuetext="${doneCount} of ${allSteps.length} steps done">${doneCount} of ${allSteps.length}</progress>
       </p>
       <nav class="glance" aria-label="Milestones at a glance">
         <ol class="overview">
@@ -112,7 +112,7 @@ function renderMilestone(m) {
               <span class="m-id">${m.id}</span>
               <span class="m-title">${inline(m.title)}</span>
               ${label ? `<span class="m-tag">${label}</span>` : ""}
-              <span class="m-count">${done}/${m.steps.length}</span>
+              <span class="m-count"><span aria-hidden="true">${done}/${m.steps.length}</span><span class="visually-hidden">${done} of ${m.steps.length} steps done</span></span>
               ${m.outcome ? `<span class="m-outcome">${inline(m.outcome)}</span>` : ""}
             </summary>
             ${m.when ? `<p class="m-when">${inline(m.when)}</p>` : ""}
