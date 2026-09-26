@@ -3,6 +3,11 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+import {
+  patternForAxeRule,
+  remediationRegistry,
+  type RemediationRegistry
+} from "./remediation-registry";
 import { assertValidSchema, validateSchema } from "./validator";
 
 const sampleArtifact = {
@@ -110,10 +115,6 @@ const sampleRun = {
     writeReports: true
   }
 };
-
-const remediationRegistry = JSON.parse(
-  readFileSync("rules/remediation-registry.json", "utf8")
-) as unknown;
 
 const evidenceManifestExample = JSON.parse(
   readFileSync("docs/examples/evidence-run-manifest.example.json", "utf8")
@@ -506,19 +507,8 @@ test("validateSchema accepts the canonical remediation registry", () => {
   assert.deepEqual(result.errors, []);
 });
 
-type RegistryEntry = {
-  id: string;
-  patterns: string[];
-  requirements: Array<{
-    standard: string;
-    requirementId: string;
-    relationship: string;
-    pattern?: string;
-  }>;
-};
-
 test("every MVP axe rule resolves to one registry entry and its own pattern", () => {
-  const registry = remediationRegistry as { entries: RegistryEntry[] };
+  const registry: RemediationRegistry = remediationRegistry;
   const expected: Record<string, [entry: string, pattern: string]> = {
     "button-name": ["accessible-name", "buttons"],
     "link-name": ["accessible-name", "link"],
@@ -548,7 +538,7 @@ test("every MVP axe rule resolves to one registry entry and its own pattern", ()
 // a11y-skills is pinned to a commit in the root package.json; each pattern id names a file there.
 const skillsRoot = path.dirname(require.resolve("a11y-skills/package.json"));
 
-function missingPatternFiles(registry: { entries: RegistryEntry[] }): string[] {
+function missingPatternFiles(registry: RemediationRegistry): string[] {
   const ids = registry.entries.flatMap((entry) => [
     ...entry.patterns,
     ...entry.requirements.flatMap((r) => (r.pattern ? [r.pattern] : []))
@@ -559,18 +549,35 @@ function missingPatternFiles(registry: { entries: RegistryEntry[] }): string[] {
 }
 
 test("every registry pattern points to a file in the pinned a11y-skills", () => {
-  assert.deepEqual(missingPatternFiles(remediationRegistry as { entries: RegistryEntry[] }), []);
+  assert.deepEqual(missingPatternFiles(remediationRegistry), []);
 });
 
 test("a renamed or missing pattern file is caught", () => {
-  const renamed = structuredClone(remediationRegistry) as { entries: RegistryEntry[] };
+  const renamed: RemediationRegistry = structuredClone(remediationRegistry);
   renamed.entries[0]!.patterns.push("buttons-renamed");
 
   assert.deepEqual(missingPatternFiles(renamed), ["buttons-renamed"]);
 });
 
+test("the registry links patterns at the same a11y-skills commit the engine installs", () => {
+  const rootPackage = JSON.parse(readFileSync("package.json", "utf8")) as {
+    devDependencies: Record<string, string>;
+  };
+  const pinned = rootPackage.devDependencies["a11y-skills"]!.split("#")[1];
+
+  assert.equal(remediationRegistry.patternSource.commit, pinned);
+});
+
+test("patternForAxeRule links a mapped rule to its pattern file", () => {
+  assert.deepEqual(patternForAxeRule("button-name"), {
+    id: "buttons",
+    url: `https://github.com/Elizabeth1979/a11y-skills/blob/${remediationRegistry.patternSource.commit}/patterns/buttons.instructions.md`
+  });
+  assert.equal(patternForAxeRule("not-a-mapped-rule"), undefined);
+});
+
 test("validateSchema rejects an axe detection rule without its own pattern", () => {
-  const invalidRegistry = structuredClone(remediationRegistry) as { entries: RegistryEntry[] };
+  const invalidRegistry: RemediationRegistry = structuredClone(remediationRegistry);
   const detection = invalidRegistry.entries[0]?.requirements.find(
     (r) => r.relationship === "detection"
   );

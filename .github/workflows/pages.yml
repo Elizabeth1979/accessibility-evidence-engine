@@ -6,7 +6,7 @@ name: Pages
       - main
     paths:
       - site/**
-      - rules/remediation-registry.json
+      - packages/schemas/json/remediation-registry.json
       - packages/schemas/json/remediation-registry.schema.json
       - scripts/generate-site-registry.mjs
       - scripts/generate-roadmap.mjs

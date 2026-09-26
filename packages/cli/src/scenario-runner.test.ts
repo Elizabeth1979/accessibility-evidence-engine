@@ -28,7 +28,8 @@ function action(
   };
 }
 
-test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, and visual evidence", () => {
+/** Three lanes on one page with two axe violations: the shared input for synthesis tests. */
+function exampleSynthesisInputs() {
   const actions = [
     action("portable-virtual-screen-reader", "command-1-next-heading", "reader-run"),
     action("pointer", "pointer-hover", "pointer-run"),
@@ -188,12 +189,13 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     }
   ];
 
-  const synthesis = buildScenarioSynthesisForTest(report, {
-    transcripts: [],
-    actionReports,
-    axeReports,
-    comparisons
-  });
+  return { report, views: { transcripts: [], actionReports, axeReports, comparisons } };
+}
+
+test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, and visual evidence", () => {
+  const { report, views } = exampleSynthesisInputs();
+  const { actionReports, axeReports, comparisons } = views;
+  const synthesis = buildScenarioSynthesisForTest(report, views);
 
   assert.deepEqual(synthesis.directJudgments, { passed: 3, failed: 3, unknown: 0 });
   assert.deepEqual(synthesis.releaseGates, { passed: 0, failed: 3, unknown: 0 });
@@ -240,6 +242,25 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   assert.match(html, /3–6 engineering hours/);
   assert.match(html, /Technical annex/);
   assert.match(html, /data-fix-filter="small"/);
+  assert.equal(aria?.pattern, undefined);
+  assert.doesNotMatch(html, /How to build it right/);
+});
+
+test("a finding the registry maps links to its a11y-skills pattern in the report", () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.findings[0]!.ruleId = "button-name";
+  for (const axeReport of views.axeReports) axeReport.violations[0]!.id = "button-name";
+
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const finding = report.synthesis.findings.find(({ ruleId }) => ruleId === "button-name");
+  const html = renderIntegratedHtmlForTest(report, views);
+
+  assert.equal(finding?.pattern?.id, "buttons");
+  assert.match(finding?.pattern?.url ?? "", /\/patterns\/buttons\.instructions\.md$/);
+  assert.match(
+    html,
+    /How to build it right:<\/strong> <a href="https:\/\/github\.com\/Elizabeth1979\/a11y-skills\/blob\/[0-9a-f]{40}\/patterns\/buttons\.instructions\.md">buttons pattern<\/a>/
+  );
 });
 
 test("scenario synthesis clearly reports an empty authored scope", () => {

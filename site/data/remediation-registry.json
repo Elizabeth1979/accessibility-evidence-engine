@@ -3,6 +3,11 @@
   "schemaVersion": "0.1.0",
   "registryVersion": "2026.09.13",
   "title": "AEE detection, analysis, and remediation registry",
+  "patternSource": {
+    "repository": "https://github.com/Elizabeth1979/a11y-skills",
+    "commit": "e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
+    "path": "patterns/{pattern}.instructions.md"
+  },
   "principles": [
     "Use deterministic detection and verification whenever possible.",
     "Route only allowlisted contextual questions to an AI specialist.",
