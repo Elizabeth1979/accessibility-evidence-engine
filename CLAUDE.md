@@ -11,6 +11,7 @@ Run what CI runs: `npm run check`, `npm run format:check`, `npm run site:check`,
 ## Rules
 
 - No credentials, personal data, or proprietary page evidence anywhere in the repo, issues or PRs (see `CONTRIBUTING.md`). Examples must be generic.
+- High-quality code only: fix the root cause with the idiomatic solution. No workarounds or patches — no suppressions (`eslint-disable`, `@ts-ignore`, skipped tests), no copy-paste; reuse what exists (DRY). If the proper fix is out of scope, say so and record it rather than patching around it.
 - Deterministic detection first. AI only for registry-allowlisted cases, always labelled as AI, and it never passes or fails anything on its own.
 
 ## Working with the owner
