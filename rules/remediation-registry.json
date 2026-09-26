@@ -33,8 +33,25 @@
           "title": "Buttons must have discernible text",
           "relationship": "detection",
           "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "link-name",
+          "title": "Links must have discernible text",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "label",
+          "title": "Form elements must have labels",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/label"
         }
       ],
+      "patterns": ["buttons", "link", "forms"],
       "applicability": "Interactive controls and form elements whose accessible name is absent, generic, duplicated, or inconsistent with the visible purpose.",
       "requiredEvidence": [
         "axe-result",
@@ -75,8 +92,17 @@
           "level": "A",
           "relationship": "primary",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "image-alt",
+          "title": "Images must have alternative text",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt"
         }
       ],
+      "patterns": ["image-labeling"],
       "applicability": "Rendered images, SVGs, icons, and CSS images whose purpose depends on their relationship to surrounding content or controls.",
       "requiredEvidence": [
         "full-page-screenshot",
@@ -121,8 +147,17 @@
           "level": "A",
           "relationship": "primary",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "empty-heading",
+          "title": "Headings should not be empty",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading"
         }
       ],
+      "patterns": ["headings"],
       "applicability": "Pages where typography, spacing, grouping, or repeated regions imply a hierarchy that may differ from the semantic outline.",
       "requiredEvidence": [
         "full-page-screenshot",
@@ -177,6 +212,7 @@
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html"
         }
       ],
+      "patterns": ["color-contrast"],
       "applicability": "Visible text, icons, focus indicators, controls, and meaningful graphics whose foreground and background colors can be sampled or inferred.",
       "requiredEvidence": [
         "axe-result",
@@ -224,6 +260,7 @@
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html"
         }
       ],
+      "patterns": ["focus-management"],
       "applicability": "Every visible or inferred interactive candidate, including elements discovered visually even when semantics are missing.",
       "requiredEvidence": [
         "keyboard-trace",
@@ -267,6 +304,7 @@
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html"
         }
       ],
+      "patterns": ["tooltip"],
       "applicability": "Content or controls revealed, changed, or made available on pointer hover, keyboard focus, or activation.",
       "requiredEvidence": [
         "pointer-trace",
@@ -319,6 +357,7 @@
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
         }
       ],
+      "patterns": ["focus-management", "dialog-modal"],
       "applicability": "Dialogs, route changes, inserted or removed content, validation, async updates, composite widgets, and other meaningful state changes.",
       "requiredEvidence": [
         "interaction-trace",

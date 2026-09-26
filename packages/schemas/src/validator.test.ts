@@ -505,6 +505,39 @@ test("validateSchema accepts the canonical remediation registry", () => {
   assert.deepEqual(result.errors, []);
 });
 
+test("every MVP axe rule resolves to one registry entry and a pattern", () => {
+  const registry = remediationRegistry as {
+    entries: Array<{
+      id: string;
+      patterns: string[];
+      requirements: Array<{ standard: string; requirementId: string }>;
+    }>;
+  };
+  const mvpRules = ["button-name", "link-name", "image-alt", "label", "empty-heading"];
+
+  for (const rule of mvpRules) {
+    const owners = registry.entries.filter((entry) =>
+      entry.requirements.some(
+        (requirement) => requirement.standard === "axe-core" && requirement.requirementId === rule
+      )
+    );
+    assert.equal(owners.length, 1, `${rule} should map to exactly one registry entry`);
+    assert.ok(owners[0]!.patterns.length > 0, `${rule} should resolve to a pattern`);
+  }
+});
+
+test("validateSchema rejects a registry entry without patterns", () => {
+  const invalidRegistry = structuredClone(remediationRegistry) as {
+    entries: Array<{ patterns?: string[] }>;
+  };
+  delete invalidRegistry.entries[0]?.patterns;
+
+  const result = validateSchema("remediationRegistry", invalidRegistry);
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /missing required property "patterns"/);
+});
+
 test("validateSchema rejects an AI-enabled registry entry without a specialist", () => {
   const invalidRegistry = structuredClone(remediationRegistry) as {
     entries: Array<{ ai: { specialistId?: string } }>;
