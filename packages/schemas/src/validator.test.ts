@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 
 import { assertValidSchema, validateSchema } from "./validator";
@@ -542,6 +543,30 @@ test("every MVP axe rule resolves to one registry entry and its own pattern", ()
       }
     }
   }
+});
+
+// a11y-skills is pinned to a commit in the root package.json; each pattern id names a file there.
+const skillsRoot = path.dirname(require.resolve("a11y-skills/package.json"));
+
+function missingPatternFiles(registry: { entries: RegistryEntry[] }): string[] {
+  const ids = registry.entries.flatMap((entry) => [
+    ...entry.patterns,
+    ...entry.requirements.flatMap((r) => (r.pattern ? [r.pattern] : []))
+  ]);
+  return [...new Set(ids)].filter(
+    (id) => !existsSync(path.join(skillsRoot, "patterns", `${id}.instructions.md`))
+  );
+}
+
+test("every registry pattern points to a file in the pinned a11y-skills", () => {
+  assert.deepEqual(missingPatternFiles(remediationRegistry as { entries: RegistryEntry[] }), []);
+});
+
+test("a renamed or missing pattern file is caught", () => {
+  const renamed = structuredClone(remediationRegistry) as { entries: RegistryEntry[] };
+  renamed.entries[0]!.patterns.push("buttons-renamed");
+
+  assert.deepEqual(missingPatternFiles(renamed), ["buttons-renamed"]);
 });
 
 test("validateSchema rejects an axe detection rule without its own pattern", () => {

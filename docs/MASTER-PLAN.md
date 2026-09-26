@@ -154,7 +154,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 **Outcome:** Every finding links to the pattern that explains it.
 
 - [x] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
-- [ ] **1.2** Pin a11y-skills from GitHub (a git dependency at a fixed commit; no npm publish), and check every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
+- [x] **1.2** Pin a11y-skills from GitHub (a git dependency at a fixed commit; no npm publish), and check every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
 - [ ] **1.3** Reporter: show each finding's pattern link in the HTML, JSON and Markdown reports. Until this step, the link from 1.1 is data no reader sees. _Done when:_ the report for the test-lab `icon-labels` case links `button-name` to the buttons pattern.
 
 ### M2 — Known answers and a report you can trust (days 4–6)
