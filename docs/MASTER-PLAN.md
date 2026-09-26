@@ -137,7 +137,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 **Outcome:** The plan lives in this repo, and every session starts from it.
 
-- [ ] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
+- [x] **0.1** Review and merge the PR that adds this file and `CLAUDE.md`. Close accessibility-engine PR #1, which had the plan in the wrong repo. _Done when:_ this file is on `main`.
 - [x] **0.2** Answer the open questions (below) and record the answers in the Decisions log. _Done when:_ no open question blocks M1–M4.
 - [x] **0.3** Replace the example that named a real product with a generic `examples/public-site/` scenario that targets this project's own demo site. The old name is removed from the scripts, README, CHANGELOG and CLI tests. _Done when:_ a case-insensitive grep for the old name finds nothing outside git history.
 
@@ -145,7 +145,7 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 
 **Outcome:** Every finding links to the pattern that explains it.
 
-- [ ] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
+- [x] **1.1** Registry: add a `pattern` field to each entry (for example `accessible-name` → `buttons`, `link`, `forms`) and extend the axe mappings for the MVP rules: `link-name`, `image-alt`, `label` and `empty-heading`. Only `button-name` is mapped today. Update the registry schema. _Done when:_ `npm run check` and the unit tests pass, and every MVP axe rule resolves to a registry entry and a pattern.
 - [ ] **1.2** a11y-skills: make the package publishable (drop `private`, set `files`) and publish it. The engine pins that version and checks every registry `pattern` points to a file that exists. _Done when:_ a test fails if a pattern file is renamed.
 - [ ] **1.3** a11y-skills: merge alt-text rules from `alt-generation-claude` and `wcag-alt-generator` into `image-labeling.instructions.md`, keeping only what isn't already there. _Done when:_ image-role classification (decorative / functional / informative) has good and bad examples.
 - [ ] **1.4** Scrub and move the private component notes into a11y-skills. This is several small PRs, one topic each; skip any note that is only a link. _Done when:_ each note row in the inventory is ticked or marked "nothing to move".
