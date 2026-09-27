@@ -16,6 +16,8 @@ Run what CI runs: `npm run check`, `npm run format:check`, `npm run site:check`,
 
 ## Working with the owner
 
+- **Never say something can't be done.** Show how to do it, step by step with the exact setting, command or file, or do it yourself.
+
 - **Visuals at every step, made for a product manager.** Each step the owner is told about ships with an image or video of the product itself: the page or report before and after, with the change highlighted, and a video for anything over time. Show what a user sees and what it means for them, not code; code diffs are for reviewers and stay a link. Text alone is not a status update.
 - **Show, don't describe.** Send the owner what you see in the browser as you go. A screenshot (desktop and phone) for how a page looks; a video for anything that happens over time: keyboard tab stops, a screen reader reading the page, clicks and state changes. A screenshot plus a transcript is not enough there. `screen-reader-cli audit --record` makes the screen-reader video. The owner reads screenshots and videos, not code.
 - **Say what you're on.** Before each piece of work, one short line: which page or file, and what you're changing in it. After it, one line on the result. Every change the owner is told about comes with a GitHub link to each changed file (and the PR), so she sees the code, not a description of it.

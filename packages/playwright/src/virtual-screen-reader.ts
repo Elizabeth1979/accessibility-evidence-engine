@@ -164,6 +164,14 @@ const SILENT_ROLES = new Set([
 /** Chromium's own role names that platforms expose as an ARIA role; HTML-AAM maps summary to a button. */
 const SPOKEN_INTERNAL_ROLES = new Map([["DisclosureTriangle", "button"]]);
 
+/**
+ * Roles announced only when they have an accessible name. Core-AAM and HTML-AAM expose a form or a
+ * region as a landmark only when it is named, and recent Chromium leaves that rule to the platform
+ * (its tree calls every <form> a form), so the reader applies it. An unnamed group, such as a
+ * details element, is not announced either.
+ */
+const NAMED_ONLY_ROLES = new Set(["form", "region", "group"]);
+
 /** Roles the accessible-name rules give no name, so their content is what is read. */
 const CONTENT_ROLES = new Set(["paragraph", "listitem", "status", "alert"]);
 
@@ -351,10 +359,9 @@ function readableItem(
 ): VirtualScreenReaderItem | undefined {
   const role = textValue(node.role);
   const name = textValue(node.name);
-  // An unnamed group, such as a details element, is not announced.
   const spoken =
     node.role?.type === "role"
-      ? !SILENT_ROLES.has(role ?? "") && !(role === "group" && !name)
+      ? !SILENT_ROLES.has(role ?? "") && !(NAMED_ONLY_ROLES.has(role ?? "") && !name)
       : SPOKEN_INTERNAL_ROLES.has(role ?? "");
   const element =
     spoken && node.backendDOMNodeId !== undefined ? dom.element(node.backendDOMNodeId) : undefined;
