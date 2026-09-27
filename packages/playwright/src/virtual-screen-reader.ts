@@ -1,3 +1,12 @@
+import {
+  fetchAccessibilityTree,
+  withCdpSession,
+  type AccessibilityNode,
+  type AccessibilityValue,
+  type CdpContext,
+  type CdpSession
+} from "./accessibility-tree";
+
 export type VirtualScreenReaderCommand =
   | "start"
   | "next-item"
@@ -12,11 +21,16 @@ export interface VirtualScreenReaderItem {
   key: string;
   nodePath: string;
   tagName: string;
+  /** The role in the browser's accessibility tree. */
   role: string;
+  /** The accessible name the browser computed. */
   name?: string;
+  /** What is read for an item whose content, not a name, is spoken: a paragraph or a list item. */
+  text?: string;
   level?: number;
   states: string[];
-  visualBounds: {
+  /** Page coordinates; absent when the element has no rendered box. */
+  visualBounds?: {
     x: number;
     y: number;
     width: number;
@@ -80,7 +94,7 @@ export interface PortableVirtualScreenReader {
 
 export interface VirtualScreenReaderPage {
   url(): string;
-  evaluate<Result>(pageFunction: () => Result | Promise<Result>): Promise<Result>;
+  context(): CdpContext;
 }
 
 interface PageSemanticState {
@@ -100,6 +114,7 @@ const LANDMARK_ROLES = new Set([
 ]);
 
 const CONTROL_ROLES = new Set([
+  "DisclosureTriangle",
   "button",
   "checkbox",
   "combobox",
@@ -117,6 +132,40 @@ const CONTROL_ROLES = new Set([
   "tab",
   "textbox"
 ]);
+
+/**
+ * ARIA roles a screen reader passes over when it reads item by item: containers with no meaning of
+ * their own, the header and footer of a section (ARIA 1.3 roles, not landmarks), words inside a
+ * sentence, and the inside of a table, which is read as one table.
+ */
+const SILENT_ROLES = new Set([
+  "generic",
+  "none",
+  "presentation",
+  "sectionheader",
+  "sectionfooter",
+  "strong",
+  "emphasis",
+  "code",
+  "mark",
+  "time",
+  "subscript",
+  "superscript",
+  "insertion",
+  "deletion",
+  "row",
+  "rowgroup",
+  "cell",
+  "columnheader",
+  "rowheader",
+  "caption"
+]);
+
+/** Chromium's own role names that platforms expose as an ARIA role; HTML-AAM maps summary to a button. */
+const SPOKEN_INTERNAL_ROLES = new Map([["DisclosureTriangle", "button"]]);
+
+/** Roles the accessible-name rules give no name, so their content is what is read. */
+const CONTENT_ROLES = new Set(["paragraph", "listitem", "status", "alert"]);
 
 /**
  * Creates a deterministic semantic navigator. It reads the page but never focuses, clicks, types,
@@ -238,8 +287,7 @@ function describeBoundary(command: VirtualScreenReaderCommand, hasNoCursor: bool
 }
 
 function describeItem(item: VirtualScreenReaderItem): string {
-  const name = item.name?.trim();
-  const parts = [name, item.role];
+  const parts = [item.name ?? item.text, SPOKEN_INTERNAL_ROLES.get(item.role) ?? item.role];
 
   if (item.role === "heading" && item.level) {
     parts.push(`level ${item.level}`);
@@ -250,7 +298,11 @@ function describeItem(item: VirtualScreenReaderItem): string {
 }
 
 function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
-  return { ...item, states: [...item.states], visualBounds: { ...item.visualBounds } };
+  return {
+    ...item,
+    states: [...item.states],
+    ...(item.visualBounds ? { visualBounds: { ...item.visualBounds } } : {})
+  };
 }
 
 function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
@@ -266,285 +318,207 @@ function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
   };
 }
 
+/** Roles, names and states come from the browser's accessibility tree; the DOM supplies where. */
 async function captureSemanticState(page: VirtualScreenReaderPage): Promise<PageSemanticState> {
-  return page.evaluate(() => {
-    type ElementLike = {
-      tagName?: unknown;
-      id?: unknown;
-      textContent?: unknown;
-      parentElement?: ElementLike | null;
-      children?: Iterable<unknown>;
-      labels?: Iterable<unknown>;
-      getAttribute?: (name: string) => string | null;
-      getClientRects?: () => { length?: number };
-      getBoundingClientRect?: () => {
-        left?: number;
-        top?: number;
-        width?: number;
-        height?: number;
-      };
-    };
-    type DocumentLike = {
-      title?: unknown;
-      body?: ElementLike;
-      activeElement?: unknown;
-      getElementById?: (id: string) => unknown;
-      querySelectorAll?: (selector: string) => Iterable<unknown>;
-    };
-    const globalRef = globalThis as unknown as {
-      document?: DocumentLike;
-      scrollX?: number;
-      scrollY?: number;
-      getComputedStyle?: (element: ElementLike) => {
-        display?: string;
-        visibility?: string;
-      };
-    };
-    const documentRef = globalRef.document;
-    const isElement = (value: unknown): value is ElementLike =>
-      typeof value === "object" &&
-      value !== null &&
-      typeof (value as ElementLike).tagName === "string";
-    const getAttribute = (element: ElementLike, name: string) =>
-      element.getAttribute?.(name) ?? undefined;
-    const getTagName = (element: ElementLike) =>
-      typeof element.tagName === "string" ? element.tagName.toLowerCase() : "unknown";
-    const getNodePath = (element: ElementLike) => {
-      if (typeof element.id === "string" && element.id.length > 0) {
-        return `#${element.id}`;
-      }
-
-      const segments: string[] = [];
-      let current: ElementLike | null | undefined = element;
-
-      while (current && segments.length < 8) {
-        const tagName = getTagName(current);
-        const parent: ElementLike | null | undefined = current.parentElement;
-        const siblings = parent
-          ? Array.from(parent.children ?? []).filter(
-              (candidate): candidate is ElementLike =>
-                isElement(candidate) && getTagName(candidate) === tagName
-            )
-          : [];
-        const index = siblings.indexOf(current);
-        segments.unshift(`${tagName}${siblings.length > 1 ? `:nth-of-type(${index + 1})` : ""}`);
-        current = parent;
-      }
-
-      return segments.join(" > ");
-    };
-    const isVisible = (element: ElementLike) => {
-      let current: ElementLike | null | undefined = element;
-
-      while (current) {
-        if (
-          getAttribute(current, "aria-hidden") === "true" ||
-          getAttribute(current, "hidden") !== undefined
-        ) {
-          return false;
-        }
-
-        current = current.parentElement;
-      }
-
-      const style = globalRef.getComputedStyle?.(element);
-      if (style?.display === "none" || style?.visibility === "hidden") {
-        return false;
-      }
-
-      const rects = element.getClientRects?.();
-      return typeof rects?.length === "number" ? rects.length > 0 : true;
-    };
-    const inferRole = (element: ElementLike) => {
-      const explicitRole = getAttribute(element, "role")?.split(/\s+/)[0];
-      if (explicitRole) {
-        return explicitRole;
-      }
-
-      const tagName = getTagName(element);
-      const inputType = getAttribute(element, "type")?.toLowerCase() ?? "text";
-      const roles: Record<string, string> = {
-        a: "link",
-        button: "button",
-        nav: "navigation",
-        main: "main",
-        header: "banner",
-        footer: "contentinfo",
-        aside: "complementary",
-        form: "form",
-        img: "img",
-        p: "paragraph",
-        ul: "list",
-        ol: "list",
-        li: "listitem",
-        table: "table",
-        summary: "button",
-        select: "combobox",
-        textarea: "textbox"
-      };
-
-      if (/^h[1-6]$/.test(tagName)) {
-        return "heading";
-      }
-
-      if (tagName === "input") {
-        if (["button", "submit", "reset"].includes(inputType)) return "button";
-        if (inputType === "checkbox") return "checkbox";
-        if (inputType === "radio") return "radio";
-        if (inputType === "range") return "slider";
-        if (inputType === "number") return "spinbutton";
-        if (inputType === "search") return "searchbox";
-        return "textbox";
-      }
-
-      return roles[tagName] ?? "group";
-    };
-    const getName = (element: ElementLike, role: string) => {
-      const labelledBy = getAttribute(element, "aria-labelledby");
-      const labelledByText = labelledBy
-        ?.split(/\s+/)
-        .flatMap((id) => {
-          const candidate = documentRef?.getElementById?.(id);
-          return isElement(candidate) && typeof candidate.textContent === "string"
-            ? [candidate.textContent.trim()]
-            : [];
-        })
-        .filter(Boolean)
-        .join(" ");
-      const text = typeof element.textContent === "string" ? element.textContent.trim() : "";
-      const nativeLabelText = Array.from(element.labels ?? [])
-        .filter(isElement)
-        .flatMap((label) =>
-          typeof label.textContent === "string" ? [label.textContent.trim()] : []
-        )
-        .filter(Boolean)
-        .join(" ");
-      const permitsNameFromContent = new Set([
-        "button",
-        "heading",
-        "link",
-        "listitem",
-        "menuitem",
-        "option",
-        "paragraph",
-        "tab"
-      ]).has(role);
-      const tagName = getTagName(element);
-      const inputType = getAttribute(element, "type")?.toLowerCase();
-      const valueNamesInput =
-        tagName === "input" && ["button", "submit", "reset"].includes(inputType ?? "");
-      const candidates = [
-        labelledByText,
-        getAttribute(element, "aria-label"),
-        nativeLabelText,
-        getAttribute(element, "alt"),
-        valueNamesInput ? getAttribute(element, "value") : undefined,
-        permitsNameFromContent ? text.slice(0, 240) : undefined,
-        getAttribute(element, "title"),
-        getAttribute(element, "placeholder")
-      ];
-
-      return candidates.find(
-        (candidate): candidate is string =>
-          typeof candidate === "string" && candidate.trim().length > 0
-      );
-    };
-    const getStates = (element: ElementLike) => {
-      const states: string[] = [];
-      const addBooleanState = (attribute: string, label: string) => {
-        const value = getAttribute(element, attribute);
-        if (value === "true") states.push(label);
-        if (value === "false" && attribute === "aria-expanded") states.push("collapsed");
-      };
-      addBooleanState("aria-expanded", "expanded");
-      addBooleanState("aria-checked", "checked");
-      addBooleanState("aria-selected", "selected");
-      addBooleanState("aria-pressed", "pressed");
-      addBooleanState("aria-disabled", "disabled");
-      if (getAttribute(element, "disabled") !== undefined) states.push("disabled");
-      if (
-        getAttribute(element, "required") !== undefined ||
-        getAttribute(element, "aria-required") === "true"
-      ) {
-        states.push("required");
-      }
-      const current = getAttribute(element, "aria-current");
-      if (current && current !== "false")
-        states.push(current === "true" ? "current" : `current ${current}`);
-      return states;
-    };
-    const selector = [
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "header",
-      "nav",
-      "main",
-      "aside",
-      "footer",
-      "form",
-      "a[href]",
-      "button",
-      "input:not([type='hidden'])",
-      "select",
-      "textarea",
-      "summary",
-      "p",
-      "ul",
-      "ol",
-      "li",
-      "img",
-      "table",
-      "[role]"
-    ].join(",");
-    const candidates = Array.from(documentRef?.querySelectorAll?.(selector) ?? []).filter(
-      isElement
-    );
-    const items = candidates.filter(isVisible).map((element) => {
-      const tagName = getTagName(element);
-      let role = inferRole(element);
-      const explicitLevel = Number(getAttribute(element, "aria-level"));
-      const nativeLevel = /^h[1-6]$/.test(tagName) ? Number(tagName.slice(1)) : undefined;
-      const level =
-        role === "heading"
-          ? Number.isFinite(explicitLevel) && explicitLevel > 0
-            ? explicitLevel
-            : nativeLevel
-          : undefined;
-      const nodePath = getNodePath(element);
-      const name = getName(element, role);
-      const rect = element.getBoundingClientRect?.();
-
-      if (tagName === "form" && role === "form" && !name) {
-        role = "group";
-      }
-
-      return {
-        key: nodePath,
-        nodePath,
-        tagName,
-        role,
-        name,
-        level,
-        states: getStates(element),
-        visualBounds: {
-          x: (rect?.left ?? 0) + (globalRef.scrollX ?? 0),
-          y: (rect?.top ?? 0) + (globalRef.scrollY ?? 0),
-          width: rect?.width ?? 0,
-          height: rect?.height ?? 0
-        }
-      };
-    });
-    const activeElement = isElement(documentRef?.activeElement)
-      ? documentRef?.activeElement
-      : undefined;
-
-    return {
-      items,
-      focusKey: activeElement ? getNodePath(activeElement) : undefined
-    };
+  return withCdpSession(page.context(), page, async (session) => {
+    const [tree, dom, focused] = await Promise.all([
+      fetchAccessibilityTree(session),
+      captureDom(session),
+      activeElementNode(session)
+    ]);
+    const focusKey = focused === undefined ? undefined : dom.element(focused)?.nodePath;
+    return { items: readableItems(tree.nodes, dom), ...(focusKey ? { focusKey } : {}) };
   });
+}
+
+function readableItems(nodes: AccessibilityNode[], dom: CapturedDom): VirtualScreenReaderItem[] {
+  const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+  const items: VirtualScreenReaderItem[] = [];
+  const visit = (node: AccessibilityNode | undefined): void => {
+    if (!node) return;
+    const item = node.ignored ? undefined : readableItem(node, byId, dom);
+    if (item) items.push(item);
+    node.childIds?.forEach((id) => visit(byId.get(id)));
+  };
+  visit(nodes[0]);
+  return items;
+}
+
+function readableItem(
+  node: AccessibilityNode,
+  byId: Map<string, AccessibilityNode>,
+  dom: CapturedDom
+): VirtualScreenReaderItem | undefined {
+  const role = textValue(node.role);
+  const name = textValue(node.name);
+  // An unnamed group, such as a details element, is not announced.
+  const spoken =
+    node.role?.type === "role"
+      ? !SILENT_ROLES.has(role ?? "") && !(role === "group" && !name)
+      : SPOKEN_INTERNAL_ROLES.has(role ?? "");
+  const element =
+    spoken && node.backendDOMNodeId !== undefined ? dom.element(node.backendDOMNodeId) : undefined;
+  if (!role || !element) return undefined;
+  const text = !name && CONTENT_ROLES.has(role) ? spokenText(node, byId) : undefined;
+  const level = role === "heading" ? propertyValue(node, "level") : undefined;
+
+  return {
+    key: element.nodePath,
+    nodePath: element.nodePath,
+    tagName: element.tagName,
+    role,
+    ...(name ? { name } : {}),
+    ...(text ? { text } : {}),
+    ...(typeof level === "number" ? { level } : {}),
+    states: itemStates(node, element),
+    ...(element.visualBounds ? { visualBounds: element.visualBounds } : {})
+  };
+}
+
+function spokenText(
+  node: AccessibilityNode,
+  byId: Map<string, AccessibilityNode>
+): string | undefined {
+  const parts: string[] = [];
+  const visit = (current: AccessibilityNode | undefined): void => {
+    if (!current) return;
+    if (current.role?.value === "StaticText") {
+      if (!current.ignored && typeof current.name?.value === "string")
+        parts.push(current.name.value);
+      return;
+    }
+    current.childIds?.forEach((id) => visit(byId.get(id)));
+  };
+  node.childIds?.forEach((id) => visit(byId.get(id)));
+  const text = parts.join("").replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, 240) : undefined;
+}
+
+function itemStates(node: AccessibilityNode, element: CapturedElement): string[] {
+  const states: string[] = [];
+  const expanded = propertyValue(node, "expanded");
+  if (expanded === true) states.push("expanded");
+  if (expanded === false) states.push("collapsed");
+  const checked = propertyValue(node, "checked");
+  if (checked === "true") states.push("checked");
+  if (checked === "mixed") states.push("partially checked");
+  if (propertyValue(node, "selected") === true) states.push("selected");
+  const pressed = propertyValue(node, "pressed");
+  if (pressed === "true") states.push("pressed");
+  if (pressed === "mixed") states.push("partially pressed");
+  if (propertyValue(node, "disabled") === true) states.push("disabled");
+  if (propertyValue(node, "required") === true) states.push("required");
+  // The tree has no aria-current property, so it is read from the element.
+  const current = element.attribute("aria-current");
+  if (current && current !== "false") {
+    states.push(current === "true" ? "current" : `current ${current}`);
+  }
+  return states;
+}
+
+function propertyValue(node: AccessibilityNode, name: string): unknown {
+  return node.properties?.find((property) => property.name === name)?.value.value;
+}
+
+function textValue(value: AccessibilityValue | undefined): string | undefined {
+  const text = typeof value?.value === "string" ? value.value.trim() : "";
+  return text || undefined;
+}
+
+interface CapturedElement {
+  tagName: string;
+  nodePath: string;
+  attribute(name: string): string | undefined;
+  visualBounds?: VirtualScreenReaderItem["visualBounds"];
+}
+
+interface CapturedDom {
+  element(backendNodeId: number): CapturedElement | undefined;
+}
+
+interface DomSnapshot {
+  strings: string[];
+  documents: Array<{
+    nodes: {
+      parentIndex: number[];
+      nodeType: number[];
+      nodeName: number[];
+      backendNodeId: number[];
+      attributes: number[][];
+    };
+    layout: { nodeIndex: number[]; bounds: number[][] };
+  }>;
+}
+
+/** One CDP snapshot of the DOM: every element's tag, attributes, place in the tree and layout box. */
+async function captureDom(session: CdpSession): Promise<CapturedDom> {
+  const { strings, documents } = (await session.send("DOMSnapshot.captureSnapshot", {
+    computedStyles: []
+  })) as DomSnapshot;
+  const { nodes, layout } = documents[0]!;
+  const indexByBackendId = new Map(nodes.backendNodeId.map((id, index) => [id, index]));
+  const boxes = new Map(layout.nodeIndex.map((node, index) => [node, layout.bounds[index]!]));
+  const tagName = (index: number) => strings[nodes.nodeName[index]!]!.toLowerCase();
+  const isElement = (index: number) =>
+    nodes.nodeType[index] === 1 && !tagName(index).startsWith("::");
+  const attribute = (index: number, name: string) => {
+    const pairs = nodes.attributes[index] ?? [];
+    for (let at = 0; at < pairs.length; at += 2) {
+      if (strings[pairs[at]!] === name) return strings[pairs[at + 1]!];
+    }
+    return undefined;
+  };
+  const elementChildren = new Map<number, number[]>();
+  nodes.parentIndex.forEach((parent, index) => {
+    if (!isElement(index)) return;
+    const siblings = elementChildren.get(parent) ?? [];
+    siblings.push(index);
+    elementChildren.set(parent, siblings);
+  });
+  // An element's id, or up to eight tag steps with their position among same-tag siblings.
+  const nodePath = (index: number) => {
+    const id = attribute(index, "id");
+    if (id) return `#${id}`;
+    const segments: string[] = [];
+    for (
+      let current = index;
+      current >= 0 && isElement(current) && segments.length < 8;
+      current = nodes.parentIndex[current]!
+    ) {
+      const tag = tagName(current);
+      const sameTag = (elementChildren.get(nodes.parentIndex[current]!) ?? []).filter(
+        (sibling) => tagName(sibling) === tag
+      );
+      segments.unshift(
+        sameTag.length > 1 ? `${tag}:nth-of-type(${sameTag.indexOf(current) + 1})` : tag
+      );
+    }
+    return segments.join(" > ");
+  };
+
+  return {
+    element(backendNodeId) {
+      const index = indexByBackendId.get(backendNodeId);
+      if (index === undefined || !isElement(index)) return undefined;
+      const [x = 0, y = 0, width = 0, height = 0] = boxes.get(index) ?? [];
+      return {
+        tagName: tagName(index),
+        nodePath: nodePath(index),
+        attribute: (name) => attribute(index, name),
+        ...(width > 0 && height > 0 ? { visualBounds: { x, y, width, height } } : {})
+      };
+    }
+  };
+}
+
+/** The DOM node that has focus, found the way the page sees it: document.activeElement. */
+async function activeElementNode(session: CdpSession): Promise<number | undefined> {
+  const { result } = (await session.send("Runtime.evaluate", {
+    expression: "document.activeElement"
+  })) as { result: { objectId?: string } };
+  if (!result.objectId) return undefined;
+  const { node } = (await session.send("DOM.describeNode", { objectId: result.objectId })) as {
+    node: { backendNodeId: number };
+  };
+  return node.backendNodeId;
 }

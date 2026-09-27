@@ -32,6 +32,7 @@ import {
   type VirtualScreenReaderPage,
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
+import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
 import {
   locateElements,
   type ElementLocation,
@@ -54,6 +55,7 @@ import {
   type InteractionVideoEvidence,
   type PlaywrightVideoLike
 } from "./interaction-video";
+export * from "./accessibility-tree";
 export * from "./element-locations";
 export * from "./evidence-manifest";
 export * from "./interaction-video";
@@ -1613,17 +1615,8 @@ function waitFor(durationMs: number): Promise<void> {
   });
 }
 
-interface CdpSessionLike {
-  send(method: string, params?: Record<string, unknown>): Promise<unknown>;
-  detach?(): Promise<void>;
-}
-
-interface CdpContextLike {
-  newCDPSession(page: unknown): Promise<CdpSessionLike>;
-}
-
 interface CdpEnabledPageLike extends PlaywrightPageLike {
-  context?(): CdpContextLike;
+  context?(): CdpContext;
 }
 
 interface EvaluatablePageLike extends PlaywrightPageLike {
@@ -1693,15 +1686,7 @@ async function createObserverPage(
     : page.accessibility?.snapshot
       ? async () => page.accessibility?.snapshot?.()
       : cdpPage.context
-        ? async () => {
-            const session = await cdpPage.context!().newCDPSession(page);
-
-            try {
-              return await session.send("Accessibility.getFullAXTree");
-            } finally {
-              await session.detach?.();
-            }
-          }
+        ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
         : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
@@ -2210,35 +2195,27 @@ async function createObserverPage(
 }
 
 async function captureAccessibilityFocus(
-  context: CdpContextLike | undefined,
+  context: CdpContext | undefined,
   page: PlaywrightPageLike
 ): Promise<Record<string, unknown>> {
   if (!context) return { status: "unsupported" };
-  const session = await context.newCDPSession(page);
 
   try {
-    const response = await session.send("Accessibility.getFullAXTree");
-    const nodes = getRecordArrayField(response, "nodes");
+    const { nodes } = await withCdpSession(context, page, fetchAccessibilityTree);
     const focusedNodes = nodes.filter((node) =>
-      getRecordArrayField(node, "properties").some(
-        (property) =>
-          property.name === "focused" && getNestedRecordValue(property, "value", "value") === true
-      )
+      node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
     );
     const focusedNode =
-      focusedNodes.find(
-        (node) =>
-          !["RootWebArea", "WebArea"].includes(String(getNestedRecordValue(node, "role", "value")))
-      ) ?? focusedNodes.at(-1);
+      focusedNodes.find((node) => !["RootWebArea", "WebArea"].includes(String(node.role?.value))) ??
+      focusedNodes.at(-1);
 
     if (!focusedNode) return { status: "not-exposed" };
     return {
       status: "matched",
-      nodeId: getStringField(focusedNode, "nodeId"),
-      backendDOMNodeId:
-        typeof focusedNode.backendDOMNodeId === "number" ? focusedNode.backendDOMNodeId : undefined,
-      role: getNestedRecordValue(focusedNode, "role", "value"),
-      name: getNestedRecordValue(focusedNode, "name", "value")
+      nodeId: focusedNode.nodeId,
+      backendDOMNodeId: focusedNode.backendDOMNodeId,
+      role: focusedNode.role?.value,
+      name: focusedNode.name?.value
     };
   } catch (error) {
     return {
@@ -2249,34 +2226,7 @@ async function captureAccessibilityFocus(
           : "Accessibility focus capture failed."
       ]
     };
-  } finally {
-    await session.detach?.();
   }
-}
-
-function getRecordArrayField(value: unknown, field: string): Array<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null) return [];
-  const candidate = (value as Record<string, unknown>)[field];
-  return Array.isArray(candidate)
-    ? candidate.filter(
-        (item): item is Record<string, unknown> => typeof item === "object" && item !== null
-      )
-    : [];
-}
-
-function getNestedRecordValue(
-  value: Record<string, unknown>,
-  field: string,
-  nestedField: string
-): unknown {
-  const nested = value[field];
-  return typeof nested === "object" && nested !== null
-    ? (nested as Record<string, unknown>)[nestedField]
-    : undefined;
-}
-
-function getStringField(value: Record<string, unknown>, field: string): string | undefined {
-  return typeof value[field] === "string" ? value[field] : undefined;
 }
 
 function createNetworkTracker(page: EventedPageLike) {
