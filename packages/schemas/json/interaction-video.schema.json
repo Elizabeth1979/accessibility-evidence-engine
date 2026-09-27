@@ -18,7 +18,9 @@
   "properties": {
     "schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
-    "driver": { "enum": ["pointer", "keyboard", "portable-virtual-screen-reader"] },
+    "driver": {
+      "enum": ["pointer", "keyboard", "keyboard-pointer-sweep", "portable-virtual-screen-reader"]
+    },
     "status": { "enum": ["completed", "blocked", "failed"] },
     "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
     "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
