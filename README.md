@@ -147,7 +147,9 @@ npm run demo:record
 
 ### Product shots and videos
 
-`npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature and two videos: the keyboard sweep's own recording, and a screen reader reading the page (screen-reader-cli `audit --record`). `site/shots/shots.json` lists each file with a plain-language caption and alt text. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
+`npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature, two videos with text versions (the keyboard sweep's own recording, and a screen reader reading the page with screen-reader-cli `audit --record`) and the run's full report as a sample. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
+
+The homepage's feature cards come from `site/features.json`, the one list of what each feature is called, what its shot shows and what its caption says; the shots are cropped from the same file. Its "coming soon" cards come from the master-plan milestones that have not started. `npm run site:generate` rebuilds the cards and `npm run site:check` (in CI) fails when they drift, so a change to a feature or to the plan updates its card in the same PR.
 
 ## Current capabilities
 

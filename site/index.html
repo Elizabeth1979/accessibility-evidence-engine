@@ -21,7 +21,8 @@
         ><span>Accessibility Evidence Engine</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a href="#how-it-works">Evidence flow</a><a href="#examples">Examples</a>
+        <a href="#features">What it does</a><a href="#how-it-works">Evidence flow</a
+        ><a href="#examples">Examples</a>
         <a href="#experiments">Accessibility experiments</a>
         <a href="#boundaries">Boundaries</a><a href="test-lab.html">Test lab</a
         ><a href="roadmap.html">Roadmap</a
@@ -76,6 +77,166 @@
             <span>rerun</span><strong>Evidence verifies behavior</strong>
           </div>
         </section>
+      </section>
+
+      <section class="section features" id="features" aria-labelledby="features-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">What it does</p>
+            <h2 id="features-title">Every feature, shown from a real run</h2>
+          </div>
+          <p>
+            Each picture and video comes from running the tool on the test lab's demo page. They are
+            made again from the current code every time the site is published.
+          </p>
+        </div>
+        <!-- features:start -->
+        <ul class="feature-grid">
+          <li class="feature-card">
+            <h3 id="feature-release-blocked">Says whether the page can ship</h3>
+            <img
+              src="shots/release-blocked.png"
+              alt="The report&#39;s headline: the release verdict and the number of fixes needed first."
+              loading="lazy"
+            />
+            <p>It says whether the page is ready to ship, and how many fixes stand in the way.</p>
+            <p class="feature-links">
+              <a href="shots/release-blocked.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-finds-the-bug">Checks what people rely on</h3>
+            <img
+              src="shots/finds-the-bug.png"
+              alt="Four report rows, keyboard access, virtual reader, semantics and visual contrast, each with its result."
+              loading="lazy"
+            />
+            <p>
+              It checks keyboard use, screen-reader use, page structure and colour contrast, and
+              marks what needs fixing.
+            </p>
+            <p class="feature-links">
+              <a href="shots/finds-the-bug.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-screen-reader-hears">Hears what a screen reader hears</h3>
+            <img
+              src="shots/screen-reader-hears.png"
+              alt="The report&#39;s virtual reader row, listing each item announced without a name."
+              loading="lazy"
+            />
+            <p>
+              It lists what a screen reader announces with no name, where a blind user cannot tell
+              what a control does.
+            </p>
+            <p class="feature-links">
+              <a href="shots/screen-reader-hears.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-explains-it">Explains who each problem affects</h3>
+            <img
+              src="shots/explains-it.png"
+              alt="A fix in the report: its title and a sentence on who the problem affects."
+              loading="lazy"
+            />
+            <p>Each problem says, in plain words, who it affects.</p>
+            <p class="feature-links">
+              <a href="shots/explains-it.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-how-to-fix">Proposes a fix you can check</h3>
+            <img
+              src="shots/how-to-fix.png"
+              alt="The current text colour next to a proposed colour, each with its contrast ratio."
+              loading="lazy"
+            />
+            <p>
+              It proposes a fix you can check: a colour that passes, next to the one that fails.
+            </p>
+            <p class="feature-links">
+              <a href="shots/how-to-fix.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-every-affected-spot">Points to every affected spot</h3>
+            <img
+              src="shots/every-affected-spot.png"
+              alt="A crop of the tested page with the affected text outlined and labelled."
+              loading="lazy"
+            />
+            <p>It marks each affected spot on a picture of the page.</p>
+            <p class="feature-links">
+              <a href="shots/every-affected-spot.png">Open the shot full size</a
+              ><a href="shots/report/aee-report.html">Open the sample report</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-keyboard">Uses the page with a keyboard alone</h3>
+            <video controls preload="metadata" aria-labelledby="feature-keyboard">
+              <source src="shots/keyboard.webm" type="video/webm" />
+              <track kind="captions" src="shots/keyboard.vtt" srclang="en" label="Steps" default />
+            </video>
+            <p>
+              Using only the keyboard, it tabs to every control, then presses each one to check it
+              does what a click does.
+            </p>
+            <p class="feature-links">
+              <a href="shots/keyboard.txt">Read the steps</a
+              ><a href="test-lab.html">See the page it tested</a>
+            </p>
+          </li>
+          <li class="feature-card">
+            <h3 id="feature-screen-reader">Reads the page like a screen reader</h3>
+            <video controls preload="metadata" aria-labelledby="feature-screen-reader">
+              <source src="shots/screen-reader.webm" type="video/webm" />
+            </video>
+            <p>What a blind user hears: a screen reader reads the page from top to bottom.</p>
+            <p class="feature-links">
+              <a href="shots/screen-reader.txt">Read what it says</a
+              ><a href="test-lab.html">See the page it tested</a>
+            </p>
+          </li>
+        </ul>
+        <h3 class="coming-soon-title">Coming soon</h3>
+        <ul class="feature-grid">
+          <li class="feature-card coming-soon">
+            <p class="coming-soon-label">Coming soon · M3</p>
+            <h4>Harvest the AI layer</h4>
+            <p>AI suggestions run on Claude, a local model or a free stub.</p>
+          </li>
+          <li class="feature-card coming-soon">
+            <p class="coming-soon-label">Coming soon · M4</p>
+            <h4>The PR experience</h4>
+            <p>
+              ⭐ The goal: a PR with an accessibility bug gets red CI and one comment with the fix
+              and the pattern.
+            </p>
+          </li>
+          <li class="feature-card coming-soon">
+            <p class="coming-soon-label">Coming soon · M5</p>
+            <h4>Dogfood</h4>
+            <p>The tool runs on a real app and can apply fixes to the code.</p>
+          </li>
+          <li class="feature-card coming-soon">
+            <p class="coming-soon-label">Coming soon · M6</p>
+            <h4>One MCP</h4>
+            <p>A coding agent asks &quot;explain button-name&quot; and gets the pattern.</p>
+          </li>
+          <li class="feature-card coming-soon">
+            <p class="coming-soon-label">Coming soon · M7</p>
+            <h4>QA and designer surface</h4>
+            <p>QA and designers get a visual report, not only developers.</p>
+          </li>
+        </ul>
+        <!-- features:end -->
       </section>
 
       <section class="section experiments" id="experiments" aria-labelledby="experiments-title">

@@ -44,7 +44,8 @@ a {
 a:focus-visible,
 button:focus-visible,
 summary:focus-visible,
-pre:focus-visible {
+pre:focus-visible,
+video:focus-visible {
   outline: 3px solid #ffffff;
   outline-offset: 4px;
 }
@@ -290,6 +291,62 @@ pre {
 .section {
   padding: 7rem 0;
   border-top: 1px solid var(--line);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: 1rem;
+  margin: 3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-card {
+  display: grid;
+  align-content: start;
+  gap: 0.9rem;
+  padding: 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--surface);
+}
+
+.feature-card h3,
+.feature-card h4,
+.feature-card p {
+  margin: 0;
+}
+
+.feature-card img,
+.feature-card video {
+  width: 100%;
+  height: auto;
+  border-radius: 0.55rem;
+  background: #000;
+}
+
+.feature-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+}
+
+.coming-soon-title {
+  margin: 4rem 0 0;
+}
+
+.feature-card.coming-soon {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+}
+
+.coming-soon-label {
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .pipeline {

@@ -1,5 +1,6 @@
 // Shared frame and text helpers for the site pages generated from repo data
-// (the roadmap from the master plan, the test lab from its contract).
+// (the roadmap from the master plan, the test lab from its contract, and the
+// homepage sections generated from the registry and the feature list).
 
 export function renderSitePage({ title, stylesheets, mainClass, body }) {
   return `<!doctype html>
@@ -36,5 +37,19 @@ export function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+// Swaps the generated part of a hand-written page: everything between
+// <!-- name:start --> and <!-- name:end -->. Prettier formats the result afterwards.
+export function replaceBetweenMarkers(source, name, replacement) {
+  const startMarker = `<!-- ${name}:start -->`;
+  const endMarker = `<!-- ${name}:end -->`;
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error(`Could not find the ${name} markers.`);
+  }
+  return `${source.slice(0, start + startMarker.length)}\n${replacement}\n${source.slice(end)}`;
 }

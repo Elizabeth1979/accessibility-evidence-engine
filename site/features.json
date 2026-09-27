@@ -1,0 +1,109 @@
+{
+  "tryLinks": {
+    "report": {
+      "href": "shots/report/aee-report.html",
+      "label": "Open the sample report"
+    },
+    "lab": {
+      "href": "test-lab.html",
+      "label": "See the page it tested"
+    }
+  },
+  "internalMilestones": {
+    "M8": "Repository housekeeping, not something the tool does for its users."
+  },
+  "features": [
+    {
+      "id": "release-blocked",
+      "title": "Says whether the page can ship",
+      "caption": "It says whether the page is ready to ship, and how many fixes stand in the way.",
+      "alt": "The report's headline: the release verdict and the number of fixes needed first.",
+      "try": "report",
+      "shot": {
+        "panel": "overview",
+        "targets": [".status-brief"]
+      }
+    },
+    {
+      "id": "finds-the-bug",
+      "title": "Checks what people rely on",
+      "caption": "It checks keyboard use, screen-reader use, page structure and colour contrast, and marks what needs fixing.",
+      "alt": "Four report rows, keyboard access, virtual reader, semantics and visual contrast, each with its result.",
+      "try": "report",
+      "shot": {
+        "panel": "overview",
+        "targets": [".health-map"]
+      }
+    },
+    {
+      "id": "screen-reader-hears",
+      "title": "Hears what a screen reader hears",
+      "caption": "It lists what a screen reader announces with no name, where a blind user cannot tell what a control does.",
+      "alt": "The report's virtual reader row, listing each item announced without a name.",
+      "try": "report",
+      "shot": {
+        "panel": "overview",
+        "targets": ["[data-status=\"reader\"]"]
+      }
+    },
+    {
+      "id": "explains-it",
+      "title": "Explains who each problem affects",
+      "caption": "Each problem says, in plain words, who it affects.",
+      "alt": "A fix in the report: its title and a sentence on who the problem affects.",
+      "try": "report",
+      "shot": {
+        "panel": "findings",
+        "targets": [
+          "#review-color-contrast .fix-main > header",
+          "#review-color-contrast .fix-main > header + p"
+        ]
+      }
+    },
+    {
+      "id": "how-to-fix",
+      "title": "Proposes a fix you can check",
+      "caption": "It proposes a fix you can check: a colour that passes, next to the one that fails.",
+      "alt": "The current text colour next to a proposed colour, each with its contrast ratio.",
+      "try": "report",
+      "shot": {
+        "panel": "findings",
+        "targets": ["#review-color-contrast .contrast-preview"]
+      }
+    },
+    {
+      "id": "every-affected-spot",
+      "title": "Points to every affected spot",
+      "caption": "It marks each affected spot on a picture of the page.",
+      "alt": "A crop of the tested page with the affected text outlined and labelled.",
+      "try": "report",
+      "shot": {
+        "panel": "findings",
+        "targets": ["#review-color-contrast .current-state"]
+      }
+    },
+    {
+      "id": "keyboard",
+      "title": "Uses the page with a keyboard alone",
+      "caption": "Using only the keyboard, it tabs to every control, then presses each one to check it does what a click does.",
+      "try": "lab",
+      "video": {
+        "file": "keyboard.webm",
+        "captions": "keyboard.vtt",
+        "text": "keyboard.txt",
+        "textLabel": "Read the steps"
+      }
+    },
+    {
+      "id": "screen-reader",
+      "title": "Reads the page like a screen reader",
+      "caption": "What a blind user hears: a screen reader reads the page from top to bottom.",
+      "try": "lab",
+      "video": {
+        "file": "screen-reader.webm",
+        "text": "screen-reader.txt",
+        "textLabel": "Read what it says"
+      }
+    }
+  ]
+}

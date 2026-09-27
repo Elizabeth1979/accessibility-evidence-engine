@@ -4,6 +4,8 @@ import process from "node:process";
 
 import prettier from "prettier";
 
+import { escapeHtml, replaceBetweenMarkers } from "./site-page.mjs";
+
 const root = process.cwd();
 const registryPath = path.join(root, "packages", "schemas", "json", "remediation-registry.json");
 const schemaPath = path.join(
@@ -16,8 +18,6 @@ const schemaPath = path.join(
 const siteJsonPath = path.join(root, "site", "data", "remediation-registry.json");
 const siteSchemaPath = path.join(root, "site", "data", "remediation-registry.schema.json");
 const siteHtmlPath = path.join(root, "site", "index.html");
-const startMarker = "<!-- remediation-registry:start -->";
-const endMarker = "<!-- remediation-registry:end -->";
 
 const registryText = await readFile(registryPath, "utf8");
 const schemaText = await readFile(schemaPath, "utf8");
@@ -25,10 +25,13 @@ const registry = JSON.parse(registryText);
 const rows = registry.entries.map(renderEntry).join("\n");
 const currentHtml = await readFile(siteHtmlPath, "utf8");
 const prettierConfig = (await prettier.resolveConfig(siteHtmlPath)) ?? {};
-const expectedHtml = await prettier.format(replaceBetweenMarkers(currentHtml, rows), {
-  ...prettierConfig,
-  parser: "html"
-});
+const expectedHtml = await prettier.format(
+  replaceBetweenMarkers(currentHtml, "remediation-registry", rows),
+  {
+    ...prettierConfig,
+    parser: "html"
+  }
+);
 const publicRegistry = {
   ...registry,
   $schema: "./remediation-registry.schema.json"
@@ -93,27 +96,6 @@ function renderEntry(entry) {
 
 function renderList(items) {
   return `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
-}
-
-function replaceBetweenMarkers(source, replacement) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker);
-
-  if (start === -1 || end === -1 || end < start) {
-    throw new Error("Could not find remediation registry markers in site/index.html");
-  }
-
-  const contentStart = start + startMarker.length;
-  return `${source.slice(0, contentStart)}\n${replacement}\n            ${source.slice(end)}`;
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
 }
 
 function escapeAttribute(value) {
