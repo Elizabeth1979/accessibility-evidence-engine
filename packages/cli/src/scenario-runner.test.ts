@@ -155,7 +155,10 @@ function exampleSynthesisInputs() {
       targets: nodes.map(({ target }) => target),
       htmlSamples: nodes.map(({ html }) => html),
       nodes,
-      tags: [id === "aria-required-parent" ? "wcag131" : "wcag143"],
+      tags:
+        id === "aria-required-parent"
+          ? ["cat.aria", "wcag2a", "wcag131"]
+          : ["cat.color", "wcag2aa", "wcag143"],
       failureSummary,
       failureSummaries: [failureSummary]
     };
@@ -226,6 +229,14 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   assert.equal(contrast?.remediation.ai.status, "available-if-needed");
   assert.match(contrast?.remediation.deterministic ?? "", /2\.83/);
 
+  const row = (id: string) => synthesis.status.find((area) => area.id === id);
+  assert.equal(row("keyboard")?.verdict, "unknown");
+  assert.equal(row("reader")?.verdict, "pass");
+  assert.equal(row("semantics")?.verdict, "fail");
+  assert.match(row("semantics")?.detail ?? "", /Certain ARIA roles must be contained/);
+  assert.equal(row("contrast")?.verdict, "fail");
+  assert.equal(row("contrast")?.detail, "2 links fall below the required contrast ratio.");
+
   report.synthesis = synthesis;
   const html = renderIntegratedHtmlForTest(report, {
     transcripts: [],
@@ -251,6 +262,87 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   )?.[0];
   assert.ok(ariaRow);
   assert.doesNotMatch(ariaRow, /How to build it right/);
+});
+
+test("a contrast failure on plain text is called text, not a link", () => {
+  const { report, views } = exampleSynthesisInputs();
+  for (const axeReport of views.axeReports) {
+    const contrast = axeReport.violations.find(({ id }) => id === "color-contrast")!;
+    contrast.nodes = contrast.nodes.map((node) => ({
+      ...node,
+      html: node.html.replace(/^<a /, "<p ").replace(/<\/a>$/, "</p>")
+    }));
+    contrast.htmlSamples = contrast.nodes.map(({ html }) => html);
+  }
+
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const contrastRow = report.synthesis.status.find(({ id }) => id === "contrast");
+  const html = renderIntegratedHtmlForTest(report, views);
+  const fixRow = html.match(/<article [^>]*id="review-color-contrast">[\s\S]*?<\/article>/)?.[0];
+
+  assert.equal(contrastRow?.detail, "2 text elements fall below the required contrast ratio.");
+  assert.ok(fixRow);
+  assert.match(fixRow, /<h3>Replace the low-contrast text color<\/h3>/);
+  assert.match(fixRow, /may not be able to read this text\.<\/p>/);
+});
+
+test("a contrast failure on a dark background proposes a lighter color that passes", () => {
+  const { report, views } = exampleSynthesisInputs();
+  const failureSummary =
+    "Fix any of the following: Element has insufficient color contrast of 2.13 (foreground color: #3f4c48, background color: #07110f, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1";
+  for (const axeReport of views.axeReports) {
+    const contrast = axeReport.violations.find(({ id }) => id === "color-contrast")!;
+    contrast.nodes = contrast.nodes.map((node) => ({ ...node, failureSummary }));
+    contrast.failureSummaries = [failureSummary];
+  }
+
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const fixRow = renderIntegratedHtmlForTest(report, views).match(
+    /<article [^>]*id="review-color-contrast">[\s\S]*?<\/article>/
+  )?.[0];
+
+  assert.match(fixRow ?? "", /<code>#3f4c48<\/code> on <code>#07110f<\/code> · 2\.13:1/);
+  assert.match(fixRow ?? "", /<code>#757e7b<\/code> on <code>#07110f<\/code> · 4\.59:1/);
+});
+
+test("a best-practice result is reported as advisory and never blocks release", () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.findings.push({
+    ruleId: "empty-heading",
+    severity: "low",
+    tags: ["best-practice"],
+    occurrences: [{}]
+  } as unknown as ScenarioIntegratedReport["findings"][number]);
+  for (const axeReport of views.axeReports) {
+    axeReport.violations.push({
+      id: "empty-heading",
+      impact: "minor",
+      help: "Headings should not be empty",
+      description: "empty-heading description",
+      nodeCount: 1,
+      targets: ["h2"],
+      htmlSamples: ["<h2></h2>"],
+      nodes: [{ target: "h2", html: "<h2></h2>", failureSummary: "Element does not have text" }],
+      tags: ["cat.name-role-value", "best-practice"],
+      failureSummary: "Element does not have text",
+      failureSummaries: ["Element does not have text"]
+    });
+  }
+
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const advisory = report.synthesis.findings.at(-1);
+  const semantics = report.synthesis.status.find(({ id }) => id === "semantics");
+  const html = renderIntegratedHtmlForTest(report, views);
+
+  assert.equal(advisory?.ruleId, "empty-heading");
+  assert.equal(advisory?.advisory, true);
+  assert.equal(report.synthesis.affectedInstancesAtLargestCheckpoint, 4);
+  assert.match(report.synthesis.conclusion, /1 best-practice result is advisory/);
+  assert.match(semantics?.detail ?? "", /Best practice, advisory: Headings should not be empty/);
+  assert.match(
+    html.match(/<article [^>]*id="review-empty-heading">[\s\S]*?<\/article>/)?.[0] ?? "",
+    /<span class="badge unknown">Best practice<\/span>/
+  );
 });
 
 test("a finding the registry maps links to its a11y-skills pattern in the report", () => {

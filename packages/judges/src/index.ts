@@ -1490,6 +1490,21 @@ function createAxeJudge(): JudgePlugin {
       const violationRuleIds = getStringArrayMetaField(record.meta, "violationRuleIds");
       const incompleteRuleIds = getStringArrayMetaField(record.meta, "incompleteRuleIds");
       const artifactIds = collectArtifactIds([record]);
+      // Best-practice results are findings on whatever verdict the WCAG rules give; they never
+      // decide it, so they never block release.
+      const advisoryRuleIds = getStringArrayMetaField(record.meta, "advisoryRuleIds");
+      const advisoryFindings: Finding[] = advisoryRuleIds.map((ruleId) => ({
+        id: `axe:${bundle.interaction.id}:${ruleId}`,
+        message: `axe reported the ${ruleId} best-practice rule as a violation.`,
+        severity: "low",
+        ruleId,
+        tags: ["best-practice"],
+        evidenceRecordIds: [record.id],
+        artifactIds,
+        suggestedFix:
+          "Review the raw axe nodes; a best-practice result is advisory and does not block release."
+      }));
+      const advisory = advisoryFindings.length ? { findings: advisoryFindings } : {};
 
       if (violations > 0) {
         const findings: Finding[] = violationRuleIds.map((ruleId) => ({
@@ -1515,7 +1530,7 @@ function createAxeJudge(): JudgePlugin {
             confidence: 1,
             evidenceRecordIds: [record.id],
             artifactIds,
-            findings,
+            findings: [...findings, ...advisoryFindings],
             suggestedFix:
               "Resolve the reported axe violations and manually evaluate incomplete checks using the correlated evidence."
           }
@@ -1535,6 +1550,7 @@ function createAxeJudge(): JudgePlugin {
             confidence: 1,
             evidenceRecordIds: [record.id],
             artifactIds,
+            ...advisory,
             suggestedFix:
               "Evaluate incomplete axe checks with the DOM, accessibility tree, screenshots, and full-page context."
           }
@@ -1548,12 +1564,12 @@ function createAxeJudge(): JudgePlugin {
           judgeVersion: "0.1.0",
           scope: "interaction",
           verdict: "pass",
-          summary:
-            "axe found no violations or incomplete checks in the cumulative WCAG 2.0/2.1/2.2 A/AA rule selection.",
+          summary: `axe found no violations or incomplete checks in the cumulative WCAG 2.0/2.1/2.2 A/AA rule selection.${advisoryFindings.length ? ` ${advisoryFindings.length} best-practice result${advisoryFindings.length === 1 ? " is" : "s are"} advisory${formatRuleIds(advisoryRuleIds)}.` : ""}`,
           severity: "info",
           confidence: 1,
           evidenceRecordIds: [record.id],
-          artifactIds
+          artifactIds,
+          ...advisory
         }
       ];
     }

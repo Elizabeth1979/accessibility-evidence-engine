@@ -133,6 +133,22 @@ const CONTROL_ROLES = new Set([
   "textbox"
 ]);
 
+/** Roles that need an accessible name (ARIA: "accessible name required"). */
+const NAME_REQUIRED_ROLES = new Set([
+  ...CONTROL_ROLES,
+  "alertdialog",
+  "dialog",
+  "heading",
+  "image"
+]);
+
+/** Whether the reader announced an item whose role needs a name without one. */
+export function announcedWithoutName(
+  item: Pick<VirtualScreenReaderItem, "role" | "name">
+): boolean {
+  return NAME_REQUIRED_ROLES.has(item.role) && !item.name;
+}
+
 /**
  * ARIA roles a screen reader passes over when it reads item by item: containers with no meaning of
  * their own, the header and footer of a section (ARIA 1.3 roles, not landmarks), words inside a

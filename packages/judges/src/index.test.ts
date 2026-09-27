@@ -154,6 +154,36 @@ test("axe judge fails violations and preserves incomplete checks as unresolved c
   );
 });
 
+test("axe judge reports best-practice results as advisory findings that never fail", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-axe-after",
+      runId: "run-1",
+      observerId: "axe",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        violations: 0,
+        incomplete: 0,
+        violationRuleIds: [],
+        advisoryRuleIds: ["empty-heading"],
+        incompleteRuleIds: []
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /1 best-practice result is advisory \(empty-heading\)/);
+  assert.deepEqual(
+    judgment?.findings?.map(({ ruleId, severity, tags }) => ({ ruleId, severity, tags })),
+    [{ ruleId: "empty-heading", severity: "low", tags: ["best-practice"] }]
+  );
+});
+
 test("screen-reader judge passes virtual navigation that does not move DOM focus", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const bundle = createBundle([

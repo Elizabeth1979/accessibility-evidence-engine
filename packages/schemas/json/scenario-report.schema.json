@@ -65,13 +65,14 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["actions", "passed", "failed", "unknown", "findings", "artifacts"],
+      "required": ["actions", "passed", "failed", "unknown", "findings", "advisories", "artifacts"],
       "properties": {
         "actions": { "type": "integer", "minimum": 0 },
         "passed": { "type": "integer", "minimum": 0 },
         "failed": { "type": "integer", "minimum": 0 },
         "unknown": { "type": "integer", "minimum": 0 },
         "findings": { "type": "integer", "minimum": 0 },
+        "advisories": { "type": "integer", "minimum": 0 },
         "artifacts": { "type": "integer", "minimum": 0 }
       }
     },
@@ -92,6 +93,7 @@
         "lanes",
         "comparisons",
         "reader",
+        "status",
         "findings"
       ],
       "properties": {
@@ -117,6 +119,21 @@
             "passed": { "type": "integer", "minimum": 0 },
             "failed": { "type": "integer", "minimum": 0 },
             "unknown": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "status": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label", "verdict", "result", "detail"],
+            "properties": {
+              "id": { "enum": ["keyboard", "reader", "semantics", "contrast"] },
+              "label": { "type": "string", "minLength": 1 },
+              "verdict": { "enum": ["pass", "fail", "unknown"] },
+              "result": { "type": "string", "minLength": 1 },
+              "detail": { "type": "string", "minLength": 1 }
+            }
           }
         },
         "findings": { "type": "array", "items": { "type": "object" } }
