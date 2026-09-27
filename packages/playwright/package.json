@@ -24,6 +24,12 @@
     "dist/interaction-video.js",
     "dist/interaction-video.js.map",
     "dist/interaction-video.d.ts",
+    "dist/keyboard-pointer-sweep.js",
+    "dist/keyboard-pointer-sweep.js.map",
+    "dist/keyboard-pointer-sweep.d.ts",
+    "dist/pointer-keyboard-comparison.js",
+    "dist/pointer-keyboard-comparison.js.map",
+    "dist/pointer-keyboard-comparison.d.ts",
     "dist/virtual-screen-reader.js",
     "dist/virtual-screen-reader.js.map",
     "dist/virtual-screen-reader.d.ts"

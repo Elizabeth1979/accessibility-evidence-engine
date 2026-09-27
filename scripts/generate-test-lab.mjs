@@ -49,8 +49,14 @@ ${issues.map(renderIssue).join("\n")}
       </div>`
   })
 );
-const found = issues.filter((issue) => issue.axeRule).length;
+const found = issues.filter(isFoundToday).length;
 process.stdout.write(`Generated test lab: ${found} of ${issues.length} issues found today.\n`);
+
+// The lab tests prove each of these: axe rules on the demo page, sweep findings from the
+// keyboard and pointer sweep.
+function isFoundToday(issue) {
+  return Boolean(issue.axeRule || issue.sweepFinding);
+}
 
 function renderPageLink(page) {
   return `        <li>
@@ -60,7 +66,7 @@ function renderPageLink(page) {
 }
 
 function renderIssue(issue) {
-  const status = issue.axeRule
+  const status = isFoundToday(issue)
     ? `<span class="registry-status available">Yes</span>`
     : `<span class="registry-status planned">Not yet</span> Planned in ${escapeHtml(issue.plannedStep)}`;
   return `            <tr id="issue-${escapeHtml(issue.id)}">
