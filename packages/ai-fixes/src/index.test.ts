@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  createOpenAiResponsesLabelProvider,
   proposeAccessibleLabelFix,
   routeContextualReview,
-  suggestPaletteContrastFix
+  suggestPaletteContrastFix,
+  type ModelProvider
 } from "./index";
 
 const context = {
@@ -17,20 +17,29 @@ const context = {
   destinationText: "Delete Project Alpha? This action cannot be undone."
 };
 
-test("proposeAccessibleLabelFix returns a review-only contextual patch", async () => {
-  const fix = await proposeAccessibleLabelFix(context, {
+/** A model that gives one fixed answer. */
+function answering(answer: unknown): ModelProvider {
+  return {
     id: "test-model",
-    async suggestLabel() {
-      return {
-        label: "Delete Project Alpha",
-        rationale:
-          "The trash icon and confirmation dialog identify the destructive project action.",
-        confidence: 0.96
-      };
+    async ask() {
+      return answer;
     }
-  });
+  };
+}
+
+test("proposeAccessibleLabelFix returns a review-only contextual patch", async () => {
+  const fix = await proposeAccessibleLabelFix(
+    context,
+    answering({
+      suggestedName: "Delete Project Alpha",
+      rationale: "The trash icon and confirmation dialog identify the destructive project action.",
+      confidence: 0.96,
+      citedEvidenceIds: ["iconDescription", "destinationText"]
+    })
+  );
 
   assert.equal(fix.safety, "review");
+  assert.equal(fix.answer.suggestedName, "Delete Project Alpha");
   assert.deepEqual(fix.patches, ['#delete-project: add aria-label="Delete Project Alpha"']);
   assert.match(fix.rationale ?? "", /verified rerun/i);
 });
@@ -43,9 +52,9 @@ test("routine defects do not cross the AI review boundary", async () => {
       { selector: "#save", role: "button", nearbyText: "Save" },
       {
         id: "must-not-run",
-        async suggestLabel() {
+        async ask() {
           providerCalled = true;
-          return { label: "Save", rationale: "Visible text already supplies it.", confidence: 1 };
+          return {};
         }
       }
     ),
@@ -56,11 +65,11 @@ test("routine defects do not cross the AI review boundary", async () => {
 
 test("already-named icons and icons without bounded context do not call a provider", async () => {
   let providerCalls = 0;
-  const provider = {
+  const provider: ModelProvider = {
     id: "must-not-run",
-    async suggestLabel() {
+    async ask() {
       providerCalls += 1;
-      return { label: "Delete", rationale: "Unused.", confidence: 1 };
+      return {};
     }
   };
 
@@ -87,7 +96,7 @@ test("already-named icons and icons without bounded context do not call a provid
   assert.equal(providerCalls, 0);
 });
 
-test("only contextual heading and decorative decisions route to AI review", () => {
+test("only contextual heading and image-purpose decisions route to AI review", () => {
   assert.equal(
     routeContextualReview({
       kind: "heading-structure",
@@ -105,46 +114,24 @@ test("only contextual heading and decorative decisions route to AI review", () =
     "ai-review"
   );
   assert.equal(
-    routeContextualReview({
-      kind: "decorative-classification",
-      hasVisualContext: true,
-      meaningDependsOnRelationship: true
-    }).route,
+    routeContextualReview({ kind: "image-purpose", contextSignals: ["Usage this month"] }).route,
     "ai-review"
+  );
+  assert.equal(
+    routeContextualReview({
+      kind: "image-purpose",
+      markupRole: "decorative",
+      contextSignals: ["Usage this month"]
+    }).route,
+    "deterministic"
+  );
+  assert.equal(
+    routeContextualReview({ kind: "image-purpose", contextSignals: [" "] }).route,
+    "deterministic"
   );
   assert.equal(
     routeContextualReview({ kind: "deterministic-rule", ruleId: "button-name" }).route,
     "deterministic"
-  );
-});
-
-test("OpenAI Responses provider requests strict structured output", async () => {
-  let requestBody: Record<string, unknown> | undefined;
-  const provider = createOpenAiResponsesLabelProvider({
-    apiKey: "test-key",
-    model: "test-model",
-    async fetch(_input, init) {
-      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(
-        JSON.stringify({
-          output_text: JSON.stringify({
-            label: "Delete Project Alpha",
-            rationale: "The surrounding project card and confirmation copy establish intent.",
-            confidence: 0.94
-          })
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }
-  });
-
-  const suggestion = await provider.suggestLabel(context);
-
-  assert.equal(suggestion.label, "Delete Project Alpha");
-  assert.equal(requestBody?.store, false);
-  assert.equal(
-    ((requestBody?.text as Record<string, unknown>)?.format as Record<string, unknown>)?.type,
-    "json_schema"
   );
 });
 

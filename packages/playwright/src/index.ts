@@ -21,7 +21,7 @@ import {
 import { createDefaultJudgePlugins } from "@aee/judges";
 import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
-import { assertValidSchema } from "@aee/schemas";
+import { assertValidSchema, conceptForAxeRule } from "@aee/schemas";
 
 import {
   createPortableVirtualScreenReader,
@@ -33,6 +33,7 @@ import {
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import { describeElementContexts } from "./element-context";
 import {
   locateElements,
   type ElementLocation,
@@ -57,6 +58,7 @@ import {
   type PlaywrightVideoLike
 } from "./interaction-video";
 export * from "./accessibility-tree";
+export * from "./element-context";
 export * from "./element-locations";
 export * from "./evidence-manifest";
 export * from "./interaction-video";
@@ -2179,29 +2181,39 @@ async function createObserverPage(
           const targets = result.violations.flatMap((rule, ruleIndex) =>
             rule.nodes.map((node, nodeIndex) => ({
               key: `${ruleIndex}:${nodeIndex}`,
-              selector: String(node.target[0] ?? "")
+              selector: String(node.target[0] ?? ""),
+              // Only an element an AI specialist may be asked about gets its surroundings captured.
+              needsContext: Boolean(conceptForAxeRule(rule.id)?.ai.specialistId)
             }))
           );
-          const locations = await locateElements(
-            evaluatablePage as EvaluatablePageLike & ElementLocationPage,
-            targets.map(({ selector }) => selector)
+          const locatablePage = evaluatablePage as EvaluatablePageLike & ElementLocationPage;
+          const contextTargets = targets.filter(({ needsContext }) => needsContext);
+          const locationByKey = byTargetKey(
+            targets,
+            await locateElements(
+              locatablePage,
+              targets.map(({ selector }) => selector)
+            )
           );
-          const locationByKey = new Map(
-            targets.flatMap(({ key }, index) => {
-              const location = locations[index];
-              return location ? [[key, location] as const] : [];
-            })
+          const contextByKey = byTargetKey(
+            contextTargets,
+            await describeElementContexts(
+              locatablePage,
+              contextTargets.map(({ selector }) => selector)
+            )
           );
           return {
             ...result,
             violations: result.violations.map((rule, ruleIndex) => ({
               ...rule,
-              nodes: rule.nodes.map((node, nodeIndex) => ({
-                ...node,
-                ...(locationByKey.has(`${ruleIndex}:${nodeIndex}`)
-                  ? { aeeTarget: locationByKey.get(`${ruleIndex}:${nodeIndex}`) }
-                  : {})
-              }))
+              nodes: rule.nodes.map((node, nodeIndex) => {
+                const key = `${ruleIndex}:${nodeIndex}`;
+                return {
+                  ...node,
+                  ...(locationByKey.has(key) ? { aeeTarget: locationByKey.get(key) } : {}),
+                  ...(contextByKey.has(key) ? { aeeContext: contextByKey.get(key) } : {})
+                };
+              })
             }))
           };
         }
@@ -2272,6 +2284,19 @@ async function captureAccessibilityFocus(
       ]
     };
   }
+}
+
+/** Pairs each target's key with its result, dropping the targets the page could not find. */
+function byTargetKey<Result>(
+  targets: Array<{ key: string }>,
+  results: Array<Result | null>
+): Map<string, Result> {
+  return new Map(
+    targets.flatMap(({ key }, index) => {
+      const result = results[index];
+      return result ? [[key, result] as const] : [];
+    })
+  );
 }
 
 function createNetworkTracker(page: EventedPageLike) {

@@ -33,6 +33,7 @@ import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenari
 import { executeScenario, openScenarioReport } from "./scenario-runner";
 
 export {
+  aeeRunModelProvider,
   executeScenario,
   openScenarioReport,
   type ExecuteScenarioOptions,

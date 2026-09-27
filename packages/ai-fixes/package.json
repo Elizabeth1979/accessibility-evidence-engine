@@ -18,9 +18,12 @@
     "dist/index.js",
     "dist/index.js.map",
     "dist/index.d.ts",
-    "dist/label-providers.js",
-    "dist/label-providers.js.map",
-    "dist/label-providers.d.ts"
+    "dist/model-providers.js",
+    "dist/model-providers.js.map",
+    "dist/model-providers.d.ts",
+    "dist/specialists.js",
+    "dist/specialists.js.map",
+    "dist/specialists.d.ts"
   ],
   "engines": {
     "node": ">=22"

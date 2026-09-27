@@ -1,30 +1,32 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-export interface AccessibleLabelContext {
-  selector: string;
-  role: string;
-  currentAccessibleName?: string;
-  iconDescription?: string;
-  nearbyHeading?: string;
-  nearbyText?: string;
-  destinationText?: string;
+/** The JSON Schema of a specialist's answer: an object whose every field is required. */
+export type AnswerSchema = {
+  type: "object";
+  additionalProperties: false;
+  properties: Record<string, unknown>;
+  required: string[];
+};
+
+/** What a specialist asks a model: fixed instructions, the evidence as JSON, and the answer's shape. */
+export interface ModelRequest {
+  /** Names the answer's shape, for APIs that want one. */
+  name: string;
+  instructions: string;
+  input: unknown;
+  schema: AnswerSchema;
 }
 
-export interface AccessibleLabelSuggestion {
-  label: string;
-  rationale: string;
-  confidence: number;
-}
-
-export interface AccessibleLabelModelProvider {
+/** A model behind one seam. Its answer is parsed JSON, not yet checked: the specialist checks it. */
+export interface ModelProvider {
   id: string;
-  suggestLabel(context: AccessibleLabelContext): Promise<AccessibleLabelSuggestion>;
+  ask(request: ModelRequest): Promise<unknown>;
 }
 
-/** Which model suggests labels. "auto" is Claude when an Anthropic key is set, else the stub. */
-export type LabelProviderName = "auto" | "claude" | "openai" | "local" | "stub";
+/** Which model answers. "auto" is Claude when an Anthropic key is set, else the stub. */
+export type ModelProviderName = "auto" | "claude" | "openai" | "local" | "stub";
 
-const LABEL_PROVIDER_NAMES: readonly LabelProviderName[] = [
+export const MODEL_PROVIDER_NAMES: readonly ModelProviderName[] = [
   "auto",
   "claude",
   "openai",
@@ -32,37 +34,19 @@ const LABEL_PROVIDER_NAMES: readonly LabelProviderName[] = [
   "stub"
 ];
 
-const LABEL_INSTRUCTIONS =
-  "Suggest a concise accessible name for the unnamed control. Use only the supplied UI context. Do not claim certainty about purpose that the context does not support.";
-
-/**
- * The suggestion every provider returns. Its limits are checked by validateSuggestion on every
- * answer, because Claude's structured outputs accept no length or range limits in a schema.
- */
-const LABEL_SUGGESTION_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    label: { type: "string" },
-    rationale: { type: "string" },
-    confidence: { type: "number" }
-  },
-  required: ["label", "rationale", "confidence"]
-};
-
-/** Thrown by the stub: no model is configured, so there is no suggestion, never an invented one. */
+/** Thrown by the stub: no model is configured, so there is no answer, never an invented one. */
 export class AiNotConfiguredError extends Error {
   constructor() {
     super(
-      "AI label suggestions are not configured. Set ANTHROPIC_API_KEY for Claude, or AEE_LLM_PROVIDER=local for a local model, or AEE_LLM_PROVIDER=openai with OPENAI_API_KEY and AEE_LLM_MODEL."
+      "AI suggestions are not configured. Set ANTHROPIC_API_KEY for Claude, or AEE_LLM_PROVIDER=local for a local model, or AEE_LLM_PROVIDER=openai with OPENAI_API_KEY and AEE_LLM_MODEL."
     );
     this.name = "AiNotConfiguredError";
   }
 }
 
-export interface CreateLabelProviderOptions {
+export interface CreateModelProviderOptions {
   /** Defaults to AEE_LLM_PROVIDER, else "auto". */
-  provider?: LabelProviderName;
+  provider?: ModelProviderName;
   /** Where configuration is read from; defaults to process.env. */
   env?: Record<string, string | undefined>;
   /** A preconfigured Claude client (tests, a proxy). */
@@ -72,7 +56,7 @@ export interface CreateLabelProviderOptions {
 }
 
 /**
- * Picks the label provider from configuration, so switching models needs no code change:
+ * Picks the model provider from configuration, so switching models needs no code change:
  * - AEE_LLM_PROVIDER: auto (default), claude, openai, local or stub;
  * - AEE_LLM_MODEL: the model for whichever provider is chosen;
  * - ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN: makes "auto" choose Claude;
@@ -80,15 +64,13 @@ export interface CreateLabelProviderOptions {
  * - AEE_LLM_BASE_URL and AEE_LLM_API_KEY: the local server, Ollama by default.
  * With nothing set, the stub is chosen and no request leaves the machine.
  */
-export function createLabelProvider(
-  options: CreateLabelProviderOptions = {}
-): AccessibleLabelModelProvider {
+export function createModelProvider(options: CreateModelProviderOptions = {}): ModelProvider {
   const env = options.env ?? process.env;
-  const provider = options.provider ?? parseProviderName(env.AEE_LLM_PROVIDER);
+  const provider = options.provider ?? parseModelProviderName(env.AEE_LLM_PROVIDER) ?? "auto";
   const model = env.AEE_LLM_MODEL;
 
   if (provider === "local") {
-    return createLocalLabelProvider({
+    return createLocalModelProvider({
       baseUrl: env.AEE_LLM_BASE_URL,
       model,
       apiKey: env.AEE_LLM_API_KEY,
@@ -96,7 +78,7 @@ export function createLabelProvider(
     });
   }
   if (provider === "openai") {
-    return createOpenAiResponsesLabelProvider({
+    return createOpenAiResponsesModelProvider({
       apiKey: env.OPENAI_API_KEY ?? "",
       model: model ?? "",
       fetch: options.fetch
@@ -104,26 +86,27 @@ export function createLabelProvider(
   }
   const hasClaudeKey = Boolean(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
   if (provider === "claude" || (provider === "auto" && hasClaudeKey)) {
-    return createClaudeLabelProvider({ model, client: options.claudeClient });
+    return createClaudeModelProvider({ model, client: options.claudeClient });
   }
-  return createStubLabelProvider();
+  return createStubModelProvider();
 }
 
-function parseProviderName(value: string | undefined): LabelProviderName {
-  if (!value) return "auto";
-  if ((LABEL_PROVIDER_NAMES as readonly string[]).includes(value)) {
-    return value as LabelProviderName;
+/** Reads a provider name such as AEE_LLM_PROVIDER; unset is undefined, and an unknown name throws. */
+export function parseModelProviderName(value: string | undefined): ModelProviderName | undefined {
+  if (!value) return undefined;
+  if ((MODEL_PROVIDER_NAMES as readonly string[]).includes(value)) {
+    return value as ModelProviderName;
   }
   throw new Error(
-    `AEE_LLM_PROVIDER must be one of ${LABEL_PROVIDER_NAMES.join(", ")}; got "${value}".`
+    `AEE_LLM_PROVIDER must be one of ${MODEL_PROVIDER_NAMES.join(", ")}; got "${value}".`
   );
 }
 
-/** The provider used when no model is configured. It never suggests a label. */
-export function createStubLabelProvider(): AccessibleLabelModelProvider {
+/** The provider used when no model is configured. It never answers. */
+export function createStubModelProvider(): ModelProvider {
   return {
     id: "stub",
-    async suggestLabel() {
+    async ask() {
       throw new AiNotConfiguredError();
     }
   };
@@ -131,7 +114,7 @@ export function createStubLabelProvider(): AccessibleLabelModelProvider {
 
 export const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
 
-export interface ClaudeLabelProviderOptions {
+export interface ClaudeModelProviderOptions {
   /** Defaults to the SDK's own lookup: ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, a saved login. */
   apiKey?: string;
   /** Defaults to DEFAULT_CLAUDE_MODEL. */
@@ -140,37 +123,35 @@ export interface ClaudeLabelProviderOptions {
   client?: Anthropic;
 }
 
-/** Claude, through the Anthropic SDK, with the answer constrained to the suggestion schema. */
-export function createClaudeLabelProvider(
-  options: ClaudeLabelProviderOptions = {}
-): AccessibleLabelModelProvider {
+/** Claude, through the Anthropic SDK, with the answer constrained to the request's schema. */
+export function createClaudeModelProvider(options: ClaudeModelProviderOptions = {}): ModelProvider {
   const client = options.client ?? new Anthropic(options.apiKey ? { apiKey: options.apiKey } : {});
   const model = options.model ?? DEFAULT_CLAUDE_MODEL;
 
   return {
     id: `claude:${model}`,
-    async suggestLabel(context) {
+    async ask(request) {
       const response = await client.beta.messages.create({
         model,
         max_tokens: 16000,
         // A declined request is re-run on the model Anthropic recommends for that refusal category.
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
-        system: LABEL_INSTRUCTIONS,
-        messages: [{ role: "user", content: JSON.stringify(context) }],
-        output_config: { format: { type: "json_schema", schema: LABEL_SUGGESTION_SCHEMA } }
+        system: request.instructions,
+        messages: [{ role: "user", content: JSON.stringify(request.input) }],
+        output_config: { format: { type: "json_schema", schema: request.schema } }
       });
 
       if (response.stop_reason === "refusal") {
         throw new Error(
-          `Claude declined to suggest a label (${response.stop_details?.category ?? "no category given"}).`
+          `Claude declined to answer (${response.stop_details?.category ?? "no category given"}).`
         );
       }
       const text = response.content.find((block) => block.type === "text");
       if (!text) {
-        throw new Error("Claude returned no structured suggestion.");
+        throw new Error("Claude returned no structured answer.");
       }
-      return validateSuggestion(JSON.parse(text.text));
+      return JSON.parse(text.text);
     }
   };
 }
@@ -178,7 +159,7 @@ export function createClaudeLabelProvider(
 export const DEFAULT_LOCAL_BASE_URL = "http://localhost:11434/v1";
 export const DEFAULT_LOCAL_MODEL = "gemma4:e4b";
 
-export interface LocalLabelProviderOptions {
+export interface LocalModelProviderOptions {
   /** An OpenAI-compatible base URL; defaults to Ollama's. */
   baseUrl?: string;
   /** The model as the local runtime names it; defaults to DEFAULT_LOCAL_MODEL. */
@@ -192,19 +173,17 @@ export interface LocalLabelProviderOptions {
 
 /**
  * A model on this machine (Ollama, LM Studio, llama.cpp, vLLM) through the OpenAI-compatible chat
- * API: no key and no cloud. Local runtimes cannot enforce a schema, so the prompt asks for the
- * JSON object and validateSuggestion checks it.
+ * API: no key and no cloud. Local runtimes cannot enforce a schema, so the prompt carries it and
+ * the specialist checks the answer.
  */
-export function createLocalLabelProvider(
-  options: LocalLabelProviderOptions = {}
-): AccessibleLabelModelProvider {
+export function createLocalModelProvider(options: LocalModelProviderOptions = {}): ModelProvider {
   const baseUrl = withoutTrailingSlashes(options.baseUrl ?? DEFAULT_LOCAL_BASE_URL);
   const model = options.model ?? DEFAULT_LOCAL_MODEL;
   const activeFetch = options.fetch ?? globalThis.fetch;
 
   return {
     id: `local:${model}`,
-    async suggestLabel(context) {
+    async ask(request) {
       const response = await activeFetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
@@ -219,9 +198,9 @@ export function createLocalLabelProvider(
           messages: [
             {
               role: "system",
-              content: `${LABEL_INSTRUCTIONS}\nRespond with only a JSON object with the keys label, rationale and confidence (a number from 0 to 1), with no markdown.`
+              content: `${request.instructions}\nRespond with only a JSON object that matches this JSON Schema, with no markdown:\n${JSON.stringify(request.schema)}`
             },
-            { role: "user", content: JSON.stringify(context) }
+            { role: "user", content: JSON.stringify(request.input) }
           ]
         }),
         signal: AbortSignal.timeout(options.timeoutMs ?? 120_000)
@@ -237,21 +216,21 @@ export function createLocalLabelProvider(
       if (typeof content !== "string") {
         throw new Error("Local model response had no message content.");
       }
-      return validateSuggestion(JSON.parse(content));
+      return JSON.parse(content);
     }
   };
 }
 
-export interface OpenAiResponsesProviderOptions {
+export interface OpenAiResponsesModelProviderOptions {
   apiKey: string;
   model: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
 }
 
-export function createOpenAiResponsesLabelProvider(
-  options: OpenAiResponsesProviderOptions
-): AccessibleLabelModelProvider {
+export function createOpenAiResponsesModelProvider(
+  options: OpenAiResponsesModelProviderOptions
+): ModelProvider {
   if (!options.apiKey.trim()) {
     throw new Error("An OpenAI API key is required.");
   }
@@ -268,7 +247,7 @@ export function createOpenAiResponsesLabelProvider(
 
   return {
     id: `openai-responses:${options.model}`,
-    async suggestLabel(context) {
+    async ask(request) {
       const response = await activeFetch(
         `${options.baseUrl ?? "https://api.openai.com/v1"}/responses`,
         {
@@ -280,14 +259,14 @@ export function createOpenAiResponsesLabelProvider(
           body: JSON.stringify({
             model: options.model,
             store: false,
-            instructions: LABEL_INSTRUCTIONS,
-            input: JSON.stringify(context),
+            instructions: request.instructions,
+            input: JSON.stringify(request.input),
             text: {
               format: {
                 type: "json_schema",
-                name: "accessible_label_suggestion",
+                name: request.name,
                 strict: true,
-                schema: LABEL_SUGGESTION_SCHEMA
+                schema: request.schema
               }
             }
           })
@@ -304,34 +283,9 @@ export function createOpenAiResponsesLabelProvider(
         throw new Error("OpenAI Responses output did not include output_text.");
       }
 
-      return validateSuggestion(JSON.parse(payload.output_text));
+      return JSON.parse(payload.output_text);
     }
   };
-}
-
-/** Checks a suggestion from any provider against the limits the schema cannot carry everywhere. */
-export function validateSuggestion(value: unknown): AccessibleLabelSuggestion {
-  if (!isRecord(value)) {
-    throw new Error("Accessible-label suggestion must be an object.");
-  }
-
-  const label = typeof value.label === "string" ? value.label.trim() : "";
-  const rationale = typeof value.rationale === "string" ? value.rationale.trim() : "";
-  const confidence = value.confidence;
-
-  if (!label || label.length > 120) {
-    throw new Error("Accessible-label suggestion must contain a label of 1 to 120 characters.");
-  }
-
-  if (!rationale || rationale.length > 500) {
-    throw new Error("Accessible-label suggestion must contain a concise rationale.");
-  }
-
-  if (typeof confidence !== "number" || confidence < 0 || confidence > 1) {
-    throw new Error("Accessible-label suggestion confidence must be between 0 and 1.");
-  }
-
-  return { label, rationale, confidence };
 }
 
 /** A loop, not a regex: the URL comes from configuration, and /\/+$/ is slow on many slashes. */
@@ -339,8 +293,4 @@ function withoutTrailingSlashes(url: string): string {
   let end = url.length;
   while (end > 0 && url[end - 1] === "/") end -= 1;
   return url.slice(0, end);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

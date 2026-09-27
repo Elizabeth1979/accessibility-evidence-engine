@@ -12,7 +12,13 @@ import {
   type VirtualScreenReaderItem
 } from "@aee/playwright";
 
-import { contract, readerWalk, runOnLabPage, type LabPage } from "./test-lab-helpers";
+import {
+  contract,
+  labFixtureModel,
+  readerWalk,
+  runOnLabPage,
+  type LabPage
+} from "./test-lab-helpers";
 
 const registry = JSON.parse(
   readFileSync("packages/schemas/json/remediation-registry.json", "utf8")
@@ -114,7 +120,7 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
     issuesPage,
     ["focus", "hover", "activate-page-controls"],
     testInfo,
-    readerWalk
+    { readerCommands: readerWalk }
   );
   const { findings, status } = report.synthesis;
   expect(findings.map(({ ruleId }) => ruleId).sort()).toEqual(
@@ -135,6 +141,11 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
     expect(row("reader")?.detail).toContain(unnamed);
   }
   expect(report.synthesis.conclusion).not.toContain("virtual-reader commands passed");
+  // With no model named, AI is allowed for the unnamed button but nothing is sent anywhere.
+  const buttonName = findings.find(({ ruleId }) => ruleId === "button-name");
+  expect(buttonName?.remediation.ai).toMatchObject({ used: false, status: "not-configured" });
+  expect(buttonName?.remediation.ai.reason).toContain("AEE_LLM_PROVIDER=local");
+  expect(report.ai.present).toBe(false);
   // The Keyboard access row carries the sweep's own recording.
   expect(await readFile(reportFiles.html, "utf8")).toContain("Keyboard sweep recording");
   expect(row("keyboard")).toMatchObject({ verdict: "fail" });
@@ -145,13 +156,58 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
   expect(report.verdict).toBe("fail");
 });
 
+test("an allowlisted AI specialist names the icon-only controls, labelled AI, without changing the verdict", async ({
+  browser
+}, testInfo) => {
+  const model = labFixtureModel();
+  const { report, reportFiles } = await runOnLabPage(browser, issuesPage, ["focus"], testInfo, {
+    aiProvider: model.provider
+  });
+  const ai = (ruleId: string) =>
+    report.synthesis.findings.find((finding) => finding.ruleId === ruleId)?.remediation.ai;
+  expect(ai("button-name")).toMatchObject({
+    used: true,
+    status: "suggested",
+    providerId: "lab-fixture",
+    suggestions: [{ selector: "#archive-project", text: "Archive Project Alpha" }]
+  });
+  expect(ai("link-name")?.suggestions).toMatchObject([
+    { selector: "#help-link", text: "Help with projects" }
+  ]);
+  expect(ai("image-alt")?.suggestions).toMatchObject([
+    { selector: "#usage-chart", classification: "informative" }
+  ]);
+  // The search field is not icon-only, so the allowlist keeps it deterministic: no model call.
+  expect(ai("label")).toMatchObject({ used: false, status: "available-if-needed" });
+  expect(ai("label")?.notes?.join(" ")).toContain("not icon-only");
+  const asked = (selector: string) =>
+    model.requests.find(({ input }) => (input as { selector: string }).selector === selector);
+  expect(model.requests).toHaveLength(3);
+  expect(asked("#project-search")).toBeUndefined();
+  // The model saw captured evidence only: the row the archive button sits in.
+  expect(asked("#archive-project")?.input).toMatchObject({
+    nearbyHeading: "Projects",
+    nearbyText: "Project Alpha Website accessibility review"
+  });
+  // Labelled as AI, and it changes nothing: the page still fails until a rerun passes.
+  expect(report.ai).toMatchObject({
+    present: true,
+    label: expect.stringContaining("AI-generated suggestions: 3")
+  });
+  expect(report.verdict).toBe("fail");
+  const html = await readFile(reportFiles.html, "utf8");
+  expect(html).toContain(">AI suggestion<");
+  expect(html).toContain("“Archive Project Alpha”");
+  expect(html).toContain("Based on the text around it");
+});
+
 test("aee run finds nothing on the fixed page", async ({ browser }, testInfo) => {
   const { report, activated } = await runOnLabPage(
     browser,
     fixedPage,
     ["focus", "hover", "activate-page-controls"],
     testInfo,
-    readerWalk
+    { readerCommands: readerWalk }
   );
   expect(activated.length).toBeGreaterThan(0);
   expect(report.synthesis.findings).toEqual([]);

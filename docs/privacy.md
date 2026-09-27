@@ -23,6 +23,8 @@ DOM snapshots, accessibility-tree snapshots, virtual screen-reader transcripts, 
 
 Optional AI fix providers can receive the bounded context supplied by the caller, including nearby headings, visible copy, icon descriptions, and destination or dialog text. AEE does not automatically redact that model input. Minimize it, prefer synthetic data, and review the selected provider's data-handling requirements before sending captured UI context.
 
+`aee run` sends nothing to a model unless `AEE_LLM_PROVIDER` names one; an API key that happens to be set is not enough. When it is set, only the elements of registry-allowlisted findings are sent, at most 10 per finding, each as its selector, role, icon or image markup hints, the nearest heading in its own section, up to 300 characters of the text around it, and a link's destination. `AEE_LLM_PROVIDER=local` keeps that on your machine.
+
 Before sharing an output bundle:
 
 1. Review every generated artifact and report.

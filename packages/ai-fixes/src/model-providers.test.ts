@@ -6,10 +6,13 @@ import test from "node:test";
 import Anthropic from "@anthropic-ai/sdk";
 
 import {
+  accessibleNameSpecialist,
   AiNotConfiguredError,
-  createClaudeLabelProvider,
-  createLabelProvider,
-  createLocalLabelProvider,
+  askSpecialist,
+  createClaudeModelProvider,
+  createLocalModelProvider,
+  createModelProvider,
+  createOpenAiResponsesModelProvider,
   DEFAULT_LOCAL_BASE_URL,
   proposeAccessibleLabelFix,
   type AccessibleLabelContext
@@ -23,14 +26,15 @@ const context: AccessibleLabelContext = {
   nearbyText: "Website accessibility review"
 };
 
-const suggestion = {
-  label: "Archive Project Alpha",
+const answer = {
+  suggestedName: "Archive Project Alpha",
   rationale: "The archive icon sits in the Project Alpha row.",
-  confidence: 0.9
+  confidence: 0.9,
+  citedEvidenceIds: ["iconDescription", "nearbyHeading"]
 };
 
-test("with nothing configured the stub is chosen, and it never invents a label", async () => {
-  const provider = createLabelProvider({ env: {} });
+test("with nothing configured the stub is chosen, and it never invents an answer", async () => {
+  const provider = createModelProvider({ env: {} });
 
   assert.equal(provider.id, "stub");
   await assert.rejects(proposeAccessibleLabelFix(context, provider), AiNotConfiguredError);
@@ -38,26 +42,26 @@ test("with nothing configured the stub is chosen, and it never invents a label",
 
 test("the provider is chosen from configuration", () => {
   assert.equal(
-    createLabelProvider({ env: { ANTHROPIC_API_KEY: "key" } }).id,
+    createModelProvider({ env: { ANTHROPIC_API_KEY: "key" } }).id,
     "claude:claude-opus-5"
   );
   assert.equal(
-    createLabelProvider({ env: { AEE_LLM_PROVIDER: "local", AEE_LLM_MODEL: "tiny" } }).id,
+    createModelProvider({ env: { AEE_LLM_PROVIDER: "local", AEE_LLM_MODEL: "tiny" } }).id,
     "local:tiny"
   );
   assert.equal(
-    createLabelProvider({
+    createModelProvider({
       env: { AEE_LLM_PROVIDER: "openai", OPENAI_API_KEY: "key", AEE_LLM_MODEL: "gpt" }
     }).id,
     "openai-responses:gpt"
   );
   // An explicit stub wins over a key that is present.
   assert.equal(
-    createLabelProvider({ env: { AEE_LLM_PROVIDER: "stub", ANTHROPIC_API_KEY: "key" } }).id,
+    createModelProvider({ env: { AEE_LLM_PROVIDER: "stub", ANTHROPIC_API_KEY: "key" } }).id,
     "stub"
   );
   assert.throws(
-    () => createLabelProvider({ env: { AEE_LLM_PROVIDER: "gemini" } }),
+    () => createModelProvider({ env: { AEE_LLM_PROVIDER: "gemini" } }),
     /must be one of auto, claude, openai, local, stub/
   );
 });
@@ -91,22 +95,27 @@ function fakeClaude(reply: Record<string, unknown>) {
   return { client, requests };
 }
 
-test("Claude answers in the suggestion schema, with refusal fallbacks on", async () => {
+test("Claude answers in the specialist's schema, with refusal fallbacks on", async () => {
   const { client, requests } = fakeClaude({
-    content: [{ type: "text", text: JSON.stringify(suggestion) }],
+    content: [{ type: "text", text: JSON.stringify(answer) }],
     stop_reason: "end_turn"
   });
 
-  const answer = await createClaudeLabelProvider({ client }).suggestLabel(context);
+  const reply = await askSpecialist(
+    accessibleNameSpecialist,
+    context,
+    createClaudeModelProvider({ client })
+  );
 
-  assert.deepEqual(answer, suggestion);
+  assert.deepEqual(reply, answer);
   const [request] = requests;
   assert.equal(request?.body.model, "claude-opus-5");
   assert.equal(request?.body.fallbacks, "default");
+  assert.equal(request?.body.system, accessibleNameSpecialist.instructions);
   assert.match(request?.headers.get("anthropic-beta") ?? "", /server-side-fallback-2026-07-01/);
   assert.deepEqual(
-    (request?.body.output_config as { format: { type: string } }).format.type,
-    "json_schema"
+    (request?.body.output_config as { format: { schema: unknown } }).format.schema,
+    accessibleNameSpecialist.schema
   );
   assert.equal(
     JSON.parse(String((request?.body.messages as [{ content: string }])[0].content)).selector,
@@ -114,7 +123,7 @@ test("Claude answers in the suggestion schema, with refusal fallbacks on", async
   );
 });
 
-test("a Claude refusal is an error, never a suggestion", async () => {
+test("a Claude refusal is an error, never an answer", async () => {
   const { client } = fakeClaude({
     content: [],
     stop_reason: "refusal",
@@ -122,40 +131,66 @@ test("a Claude refusal is an error, never a suggestion", async () => {
   });
 
   await assert.rejects(
-    createClaudeLabelProvider({ client }).suggestLabel(context),
+    askSpecialist(accessibleNameSpecialist, context, createClaudeModelProvider({ client })),
     /Claude declined/
   );
 });
 
-test("a local model is asked over the OpenAI-compatible chat API", async () => {
-  let requestBody: Record<string, unknown> | undefined;
+test("a local model is asked over the OpenAI-compatible chat API, with the schema in its prompt", async () => {
+  let requestBody: { model?: string; response_format?: unknown; messages?: [{ content: string }] } =
+    {};
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk: Buffer) => (body += chunk.toString()));
     request.on("end", () => {
-      requestBody = JSON.parse(body) as Record<string, unknown>;
+      requestBody = JSON.parse(body) as typeof requestBody;
       assert.equal(request.url, "/v1/chat/completions");
       response.setHeader("Content-Type", "application/json");
-      response.end(
-        JSON.stringify({ choices: [{ message: { content: JSON.stringify(suggestion) } }] })
-      );
+      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   try {
-    const provider = createLocalLabelProvider({
+    const provider = createLocalModelProvider({
       // A trailing slash in the configured address is ignored.
       baseUrl: `http://127.0.0.1:${port}/v1/`,
       model: "tiny"
     });
 
-    assert.deepEqual(await provider.suggestLabel(context), suggestion);
-    assert.equal(requestBody?.model, "tiny");
-    assert.deepEqual(requestBody?.response_format, { type: "json_object" });
+    assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
+    assert.equal(requestBody.model, "tiny");
+    assert.deepEqual(requestBody.response_format, { type: "json_object" });
+    assert.ok(
+      requestBody.messages?.[0].content.includes(JSON.stringify(accessibleNameSpecialist.schema))
+    );
   } finally {
     server.close();
   }
+});
+
+test("OpenAI's Responses API gets a strict, named schema and store: false", async () => {
+  let requestBody: Record<string, unknown> | undefined;
+  const provider = createOpenAiResponsesModelProvider({
+    apiKey: "test-key",
+    model: "test-model",
+    async fetch(_input, init) {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ output_text: JSON.stringify(answer) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+  });
+
+  assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
+  assert.equal(requestBody?.store, false);
+  assert.deepEqual((requestBody?.text as { format: unknown }).format, {
+    type: "json_schema",
+    name: "accessible_name_specialist",
+    strict: true,
+    schema: accessibleNameSpecialist.schema
+  });
 });
 
 // Live runs: each is skipped unless its model is reachable, so CI and offline builds stay green.
@@ -170,7 +205,7 @@ test("live: a local model names an icon-only button", async (t) => {
     return;
   }
 
-  const fix = await proposeAccessibleLabelFix(context, createLabelProvider({ provider: "local" }));
+  const fix = await proposeAccessibleLabelFix(context, createModelProvider({ provider: "local" }));
   assert.match(fix.patches?.[0] ?? "", /aria-label="[^"]+"/);
 });
 
@@ -180,6 +215,6 @@ test("live: Claude names an icon-only button", async (t) => {
     return;
   }
 
-  const fix = await proposeAccessibleLabelFix(context, createLabelProvider({ provider: "claude" }));
+  const fix = await proposeAccessibleLabelFix(context, createModelProvider({ provider: "claude" }));
   assert.match(fix.patches?.[0] ?? "", /aria-label="[^"]+"/);
 });
