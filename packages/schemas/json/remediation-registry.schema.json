@@ -9,6 +9,7 @@
     "registryVersion",
     "title",
     "patternSource",
+    "axeRulePatterns",
     "principles",
     "entries"
   ],
@@ -46,6 +47,18 @@
           "type": "string",
           "pattern": "\\{pattern\\}"
         }
+      }
+    },
+    "axeRulePatterns": {
+      "type": "object",
+      "description": "The one a11y-skills pattern that explains how to fix each axe-core rule, keyed by axe rule id. Rules a11y-skills has no single pattern for are left out.",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
       }
     },
     "principles": {
@@ -177,23 +190,7 @@
         "url": {
           "type": "string",
           "format": "uri"
-        },
-        "pattern": {
-          "description": "The one a11y-skills pattern a finding from this detection rule links to. Must be one of the entry's patterns.",
-          "type": "string",
-          "pattern": "^[a-z][a-z0-9-]*$"
         }
-      },
-      "if": {
-        "properties": {
-          "relationship": {
-            "const": "detection"
-          }
-        },
-        "required": ["relationship"]
-      },
-      "then": {
-        "required": ["pattern"]
       }
     },
     "aiPolicy": {

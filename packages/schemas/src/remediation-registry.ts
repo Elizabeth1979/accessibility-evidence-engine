@@ -4,7 +4,6 @@ export interface RemediationRequirement {
   standard: string;
   requirementId: string;
   relationship: string;
-  pattern?: string;
 }
 
 export interface RemediationEntry {
@@ -16,6 +15,8 @@ export interface RemediationEntry {
 /** The part of the registry that pattern lookups read. */
 export interface RemediationRegistry {
   patternSource: { repository: string; commit: string; path: string };
+  /** axe rule id → the a11y-skills pattern that explains its fix. */
+  axeRulePatterns: Record<string, string>;
   entries: RemediationEntry[];
 }
 
@@ -41,11 +42,8 @@ export function patternForAxeRule(
   ruleId: string,
   registry: RemediationRegistry = remediationRegistry
 ): PatternLink | undefined {
-  for (const entry of registry.entries) {
-    const requirement = entry.requirements.find(
-      (r) => r.standard === "axe-core" && r.requirementId === ruleId && r.pattern
-    );
-    if (requirement?.pattern) return patternLink(requirement.pattern, registry);
-  }
-  return undefined;
+  const id = Object.hasOwn(registry.axeRulePatterns, ruleId)
+    ? registry.axeRulePatterns[ruleId]
+    : undefined;
+  return id === undefined ? undefined : patternLink(id, registry);
 }

@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+import axe from "axe-core";
+
 import {
   patternForAxeRule,
   remediationRegistry,
@@ -507,45 +509,34 @@ test("validateSchema accepts the canonical remediation registry", () => {
   assert.deepEqual(result.errors, []);
 });
 
-test("every MVP axe rule resolves to one registry entry and its own pattern", () => {
+test("each axe rule a registry entry detects links to one of that entry's patterns", () => {
   const registry: RemediationRegistry = remediationRegistry;
-  const expected: Record<string, [entry: string, pattern: string]> = {
-    "button-name": ["accessible-name", "buttons"],
-    "link-name": ["accessible-name", "link"],
-    label: ["accessible-name", "forms"],
-    "image-alt": ["image-purpose", "image-labeling"],
-    "empty-heading": ["heading-structure", "headings"]
-  };
+  const detected = registry.entries.flatMap((entry) =>
+    entry.requirements
+      .filter((r) => r.standard === "axe-core")
+      .map((r) => ({ entry, rule: r.requirementId }))
+  );
 
-  for (const [rule, mapping] of Object.entries(expected)) {
-    const owners = registry.entries.flatMap((entry) =>
-      entry.requirements
-        .filter((r) => r.standard === "axe-core" && r.requirementId === rule)
-        .map((r) => [entry.id, r.pattern])
-    );
-    assert.deepEqual(owners, [mapping], `${rule} should map to one entry and its own pattern`);
-  }
-
-  for (const entry of registry.entries) {
-    for (const r of entry.requirements) {
-      if (r.pattern) {
-        assert.ok(entry.patterns.includes(r.pattern), `${entry.id}: ${r.pattern} not in patterns`);
-      }
-    }
+  assert.ok(detected.length > 0);
+  for (const { entry, rule } of detected) {
+    const pattern = patternForAxeRule(rule)?.id;
+    assert.ok(pattern && entry.patterns.includes(pattern), `${entry.id}: ${rule} → ${pattern}`);
   }
 });
 
 // a11y-skills is pinned to a commit in the root package.json; each pattern id names a file there.
 const skillsRoot = path.dirname(require.resolve("a11y-skills/package.json"));
 
+function patternFileExists(id: string): boolean {
+  return existsSync(path.join(skillsRoot, "patterns", `${id}.instructions.md`));
+}
+
 function missingPatternFiles(registry: RemediationRegistry): string[] {
-  const ids = registry.entries.flatMap((entry) => [
-    ...entry.patterns,
-    ...entry.requirements.flatMap((r) => (r.pattern ? [r.pattern] : []))
-  ]);
-  return [...new Set(ids)].filter(
-    (id) => !existsSync(path.join(skillsRoot, "patterns", `${id}.instructions.md`))
-  );
+  const ids = [
+    ...registry.entries.flatMap((entry) => entry.patterns),
+    ...Object.values(registry.axeRulePatterns)
+  ];
+  return [...new Set(ids)].filter((id) => !patternFileExists(id));
 }
 
 test("every registry pattern points to a file in the pinned a11y-skills", () => {
@@ -568,25 +559,34 @@ test("the registry links patterns at the same a11y-skills commit the engine inst
   assert.equal(remediationRegistry.patternSource.commit, pinned);
 });
 
+test("every mapped axe rule is a real rule and links to its pattern file", async (t) => {
+  const axeRules = new Set(axe.getRules().map((rule) => rule.ruleId));
+
+  for (const [rule, pattern] of Object.entries(remediationRegistry.axeRulePatterns)) {
+    await t.test(`${rule} → ${pattern}`, () => {
+      assert.ok(axeRules.has(rule), `${rule} is not an axe-core rule`);
+      assert.ok(patternFileExists(pattern), `${pattern} is not an a11y-skills pattern`);
+    });
+  }
+});
+
 test("patternForAxeRule links a mapped rule to its pattern file", () => {
   assert.deepEqual(patternForAxeRule("button-name"), {
     id: "buttons",
     url: `https://github.com/Elizabeth1979/a11y-skills/blob/${remediationRegistry.patternSource.commit}/patterns/buttons.instructions.md`
   });
   assert.equal(patternForAxeRule("not-a-mapped-rule"), undefined);
+  assert.equal(patternForAxeRule("constructor"), undefined);
 });
 
-test("validateSchema rejects an axe detection rule without its own pattern", () => {
-  const invalidRegistry: RemediationRegistry = structuredClone(remediationRegistry);
-  const detection = invalidRegistry.entries[0]?.requirements.find(
-    (r) => r.relationship === "detection"
-  );
-  delete detection?.pattern;
+test("validateSchema rejects a registry without axe rule patterns", () => {
+  const invalidRegistry: Partial<RemediationRegistry> = structuredClone(remediationRegistry);
+  delete invalidRegistry.axeRulePatterns;
 
   const result = validateSchema("remediationRegistry", invalidRegistry);
 
   assert.equal(result.valid, false);
-  assert.match(result.errors.join(" "), /missing required property "pattern"/);
+  assert.match(result.errors.join(" "), /missing required property "axeRulePatterns"/);
 });
 
 test("validateSchema rejects a registry entry without patterns", () => {
