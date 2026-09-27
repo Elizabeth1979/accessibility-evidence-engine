@@ -77,7 +77,7 @@ test("public demo has no serious axe violations or prohibited ARIA attributes", 
   expect(prohibitedAria).toEqual([]);
 });
 
-test("the features section has a card for every feature and every milestone yet to start", async ({
+test("the features section has a card for every feature and every milestone not yet done", async ({
   page
 }) => {
   const { features } = JSON.parse(await readFile("site/features.json", "utf8")) as {
@@ -89,10 +89,12 @@ test("the features section has a card for every feature and every milestone yet 
   for (const { title } of features) {
     await expect(section.getByRole("heading", { level: 3, name: title })).toBeVisible();
   }
-  await expect(section.getByRole("heading", { level: 3, name: "Coming soon" })).toBeVisible();
-  await expect(section.getByText("Coming soon · M3", { exact: true })).toBeVisible();
-  // Housekeeping milestones are not features, so they never get a card.
-  await expect(section.getByText("Coming soon · M8", { exact: true })).toHaveCount(0);
+  await expect(section.getByRole("heading", { level: 3, name: "What's next" })).toBeVisible();
+  // Work under way keeps its card; a finished milestone and housekeeping never get one.
+  await expect(section.getByText("In progress · M3", { exact: true })).toBeVisible();
+  await expect(section.getByText("Coming soon · M4", { exact: true })).toBeVisible();
+  await expect(section.getByText(/· M2$/)).toHaveCount(0);
+  await expect(section.getByText(/· M8$/)).toHaveCount(0);
 });
 
 for (const viewport of [
