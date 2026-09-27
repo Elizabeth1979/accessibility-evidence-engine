@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { copyFile, mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -11,87 +11,29 @@ import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
 
 // `npm run site:shots` regenerates site/shots from a real run of the test lab's demo page, so no
-// shot is hand-made or stale. site/shots/shots.json lists each file with its caption and alt text.
+// shot is hand-made or stale. site/features.json says what each shot shows; the homepage's
+// feature cards are generated from the same file.
 const shotsDir = path.resolve("site", "shots");
 /** Slows every browser step, so the recorded sweep moves at a pace a person can follow. */
 const WATCHABLE_SLOW_MO_MS = 800;
 const HIGHLIGHT_COLOR = "#c2185b";
 
 interface Shot {
-  id: string;
   /** The report tab the shot is on. */
   panel: "overview" | "findings";
   /** The shot is the smallest box around all of these, highlighted. */
   targets: string[];
-  /** What the feature means, for a reader who knows neither accessibility nor code. */
-  caption: string;
-  alt: string;
 }
 
-const shots: Shot[] = [
-  {
-    id: "release-blocked",
-    panel: "overview",
-    targets: [".status-brief"],
-    caption: "It says whether the page is ready to ship, and how many fixes stand in the way.",
-    alt: "The report's headline: the release verdict and the number of fixes needed first."
-  },
-  {
-    id: "finds-the-bug",
-    panel: "overview",
-    targets: [".health-map"],
-    caption:
-      "It checks keyboard use, screen-reader use, page structure and colour contrast, and marks what needs fixing.",
-    alt: "Four report rows, keyboard access, virtual reader, semantics and visual contrast, each with its result."
-  },
-  {
-    id: "screen-reader-hears",
-    panel: "overview",
-    targets: ['[data-status="reader"]'],
-    caption:
-      "It lists what a screen reader announces with no name, where a blind user cannot tell what a control does.",
-    alt: "The report's virtual reader row, listing each item announced without a name."
-  },
-  {
-    id: "explains-it",
-    panel: "findings",
-    targets: [
-      "#review-color-contrast .fix-main > header",
-      "#review-color-contrast .fix-main > header + p"
-    ],
-    caption: "Each problem says, in plain words, who it affects.",
-    alt: "A fix in the report: its title and a sentence on who the problem affects."
-  },
-  {
-    id: "how-to-fix",
-    panel: "findings",
-    targets: ["#review-color-contrast .contrast-preview"],
-    caption: "It proposes a fix you can check: a colour that passes, next to the one that fails.",
-    alt: "The current text colour next to a proposed colour, each with its contrast ratio."
-  },
-  {
-    id: "every-affected-spot",
-    panel: "findings",
-    targets: ["#review-color-contrast .current-state"],
-    caption: "It marks each affected spot on a picture of the page.",
-    alt: "A crop of the tested page with the affected text outlined and labelled."
-  }
-];
+interface Feature {
+  id: string;
+  shot?: Shot;
+  video?: { file: string; captions?: string; text: string };
+}
 
-const videos = [
-  {
-    id: "keyboard",
-    video: "keyboard.webm",
-    captions: "keyboard.vtt",
-    caption:
-      "Using only the keyboard: it tabs to every control, then presses each one to check it does what a click does."
-  },
-  {
-    id: "screen-reader",
-    video: "screen-reader.webm",
-    caption: "What a blind user hears: a screen reader reads the demo page from top to bottom."
-  }
-];
+const { features } = JSON.parse(readFileSync("site/features.json", "utf8")) as {
+  features: Feature[];
+};
 
 test("product shots and videos come from a real run of the demo page", async ({
   page
@@ -107,6 +49,8 @@ test("product shots and videos come from a real run of the demo page", async ({
     testInfo,
     readerWalk
   ).finally(() => browser.close());
+  // The whole run is the sample report the feature cards link to.
+  await cp(run.outputDir, path.join(shotsDir, "report"), { recursive: true });
 
   // The keyboard video is the sweep lane's own recording, with its step-by-step descriptions.
   const sweepFile = (kind: string) => {
@@ -117,41 +61,63 @@ test("product shots and videos come from a real run of the demo page", async ({
     expect(artifact, `the sweep lane's ${kind}`).toBeTruthy();
     return path.join(run.outputDir, artifact!.path);
   };
+  const captions = await readFile(sweepFile("video-captions"), "utf8");
   await copyFile(sweepFile("interaction-video"), path.join(shotsDir, "keyboard.webm"));
-  await copyFile(sweepFile("video-captions"), path.join(shotsDir, "keyboard.vtt"));
+  await writeFile(path.join(shotsDir, "keyboard.vtt"), captions, "utf8");
+  await writeFile(path.join(shotsDir, "keyboard.txt"), stepsFromCaptions(captions), "utf8");
 
   const reportUrl = pathToFileURL(run.reportFiles.html).href;
-  for (const shot of shots) {
-    await captureShot(page, reportUrl, shot);
+  for (const { id, shot } of features) {
+    if (shot) await captureShot(page, reportUrl, id, shot);
   }
 
-  await recordScreenReader(path.join(shotsDir, "screen-reader.webm"));
-
-  for (const { video } of videos) {
-    expect((await stat(path.join(shotsDir, video))).size, video).toBeGreaterThan(0);
-  }
-  await writeFile(
-    path.join(shotsDir, "shots.json"),
-    `${JSON.stringify(
-      {
-        source: `aee run on the test lab's “${contract.pages.issues.title}”`,
-        shots: shots.map(({ id, caption, alt }) => ({ id, image: `${id}.png`, caption, alt })),
-        videos
-      },
-      null,
-      2
-    )}\n`,
-    "utf8"
+  await recordScreenReader(
+    path.join(shotsDir, "screen-reader.webm"),
+    path.join(shotsDir, "screen-reader.txt")
   );
+
+  // Every file the feature list names must now exist, or a card would show nothing.
+  for (const { id, shot, video } of features) {
+    const files = [
+      ...(shot ? [`${id}.png`] : []),
+      ...(video ? [video.file, video.text, ...(video.captions ? [video.captions] : [])] : [])
+    ];
+    for (const file of files) {
+      expect((await stat(path.join(shotsDir, file))).size, file).toBeGreaterThan(0);
+    }
+  }
+
+  // And every homepage card shows its real shot or video.
+  await page.goto(pathToFileURL(path.resolve("site", "index.html")).href);
+  const cards = page.locator("#features img, #features video");
+  await expect(cards).toHaveCount(features.length);
+  for (const card of await cards.all()) {
+    await card.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() =>
+        card.evaluate((element) =>
+          element instanceof HTMLImageElement
+            ? element.complete && element.naturalWidth > 0
+            : (element as HTMLVideoElement).readyState >= HTMLMediaElement.HAVE_METADATA
+        )
+      )
+      .toBe(true);
+  }
 });
 
+/** The text version of a captioned recording: its steps, one per line, without the timings. */
+function stepsFromCaptions(vtt: string): string {
+  const cues = vtt.split(/\n\n+/).slice(1);
+  return `${cues.map((cue) => cue.split("\n").slice(2).join(" ")).join("\n")}\n`;
+}
+
 /** Saves one highlighted crop of the report: the box around the shot's targets, with a margin. */
-async function captureShot(page: Page, reportUrl: string, shot: Shot) {
+async function captureShot(page: Page, reportUrl: string, id: string, shot: Shot) {
   await page.goto(reportUrl);
   await page.locator(`[data-tab][href="#panel-${shot.panel}"]`).click();
   for (const selector of shot.targets) {
     const target = page.locator(selector);
-    await expect(target, `${shot.id}: ${selector}`).toBeVisible();
+    await expect(target, `${id}: ${selector}`).toBeVisible();
     await target.scrollIntoViewIfNeeded();
   }
   // Lazy images load once scrolled to; the crop must not catch one half-loaded.
@@ -200,7 +166,7 @@ async function captureShot(page: Page, reportUrl: string, shot: Shot) {
   const x = Math.max(0, box.left - margin);
   const y = Math.max(0, box.top - margin);
   await page.screenshot({
-    path: path.join(shotsDir, `${shot.id}.png`),
+    path: path.join(shotsDir, `${id}.png`),
     fullPage: true,
     clip: {
       x,
@@ -211,21 +177,23 @@ async function captureShot(page: Page, reportUrl: string, shot: Shot) {
   });
 }
 
-/** screen-reader-cli reads the demo page aloud, step by step, and records it. */
-async function recordScreenReader(videoFile: string) {
+/** screen-reader-cli reads the demo page aloud, step by step, and records it; what it says is the
+ * video's text version. */
+async function recordScreenReader(videoFile: string, textFile: string) {
   const packageFile = require.resolve("screen-reader-cli/package.json");
   const { bin } = JSON.parse(readFileSync(packageFile, "utf8")) as {
     bin: { screenreader: string };
   };
   const server = await startHtmlServer(serveDirectory("site"));
   try {
-    await promisify(execFile)(process.execPath, [
+    const { stdout } = await promisify(execFile)(process.execPath, [
       path.join(path.dirname(packageFile), bin.screenreader),
       "audit",
       `${server.origin}/${contract.pages.issues.url}`,
       "--record",
       videoFile
     ]);
+    await writeFile(textFile, stdout, "utf8");
   } finally {
     await server.close();
   }

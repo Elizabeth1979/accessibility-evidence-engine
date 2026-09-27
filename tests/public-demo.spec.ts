@@ -77,6 +77,65 @@ test("public demo has no serious axe violations or prohibited ARIA attributes", 
   expect(prohibitedAria).toEqual([]);
 });
 
+test("the features section has a card for every feature and every milestone yet to start", async ({
+  page
+}) => {
+  const { features } = JSON.parse(await readFile("site/features.json", "utf8")) as {
+    features: Array<{ title: string }>;
+  };
+  await page.goto(demoUrl);
+
+  const section = page.getByRole("region", { name: "Every feature, shown from a real run" });
+  for (const { title } of features) {
+    await expect(section.getByRole("heading", { level: 3, name: title })).toBeVisible();
+  }
+  await expect(section.getByRole("heading", { level: 3, name: "Coming soon" })).toBeVisible();
+  await expect(section.getByText("Coming soon · M3", { exact: true })).toBeVisible();
+  // Housekeeping milestones are not features, so they never get a card.
+  await expect(section.getByText("Coming soon · M8", { exact: true })).toHaveCount(0);
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "phone", width: 390, height: 844 }
+]) {
+  test(`the features section passes axe and works by keyboard on ${viewport.name}`, async ({
+    page
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(demoUrl);
+
+    const results = await new AxeBuilder({ page }).include("#features").analyze();
+    expect(results.violations.map(({ id }) => id)).toEqual([]);
+
+    // Tab reaches every link and video in the order they appear, each with a visible focus ring.
+    // A video's own controls are several stops in a row; they count as that one video, and the
+    // browser rings each of them itself, inside the video, where page styles cannot reach.
+    const focusable = page.locator("#features").locator("a, video");
+    const expected = await focusable.evaluateAll((elements) =>
+      elements.map((element) => element.outerHTML)
+    );
+    await page.getByRole("link", { name: "What it does" }).focus();
+    await page.keyboard.press("Enter");
+    const reached: string[] = [];
+    for (let stops = 0; reached.length < expected.length && stops < 100; stops += 1) {
+      await page.keyboard.press("Tab");
+      const focused = await page.evaluate(() => {
+        const active = document.activeElement!;
+        const style = getComputedStyle(active);
+        return {
+          html: active.outerHTML,
+          visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0
+        };
+      });
+      if (reached.at(-1) === focused.html) continue;
+      expect(focused.visible, focused.html).toBe(true);
+      reached.push(focused.html);
+    }
+    expect(reached).toEqual(expected);
+  });
+}
+
 test("slideshow shows only one focused before-and-after example", async ({ page }) => {
   await page.goto(demoUrl);
 
@@ -89,7 +148,7 @@ test("slideshow shows only one focused before-and-after example", async ({ page 
   await expect(
     page.getByRole("heading", { name: "Make the semantic outline match the visual structure" })
   ).toBeHidden();
-  await expect(page.locator("video")).toHaveCount(0);
+  await expect(page.locator("#examples video")).toHaveCount(0);
   await expect(page.locator(".issue-fix-summary, .evidence-grid")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Headings", exact: true }).click();
