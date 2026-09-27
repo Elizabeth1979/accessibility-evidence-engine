@@ -145,7 +145,8 @@ test("a local model is asked over the OpenAI-compatible chat API", async () => {
   const { port } = server.address() as AddressInfo;
   try {
     const provider = createLocalLabelProvider({
-      baseUrl: `http://127.0.0.1:${port}/v1`,
+      // A trailing slash in the configured address is ignored.
+      baseUrl: `http://127.0.0.1:${port}/v1/`,
       model: "tiny"
     });
 

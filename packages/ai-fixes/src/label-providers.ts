@@ -198,7 +198,7 @@ export interface LocalLabelProviderOptions {
 export function createLocalLabelProvider(
   options: LocalLabelProviderOptions = {}
 ): AccessibleLabelModelProvider {
-  const baseUrl = (options.baseUrl ?? DEFAULT_LOCAL_BASE_URL).replace(/\/+$/, "");
+  const baseUrl = withoutTrailingSlashes(options.baseUrl ?? DEFAULT_LOCAL_BASE_URL);
   const model = options.model ?? DEFAULT_LOCAL_MODEL;
   const activeFetch = options.fetch ?? globalThis.fetch;
 
@@ -332,6 +332,13 @@ export function validateSuggestion(value: unknown): AccessibleLabelSuggestion {
   }
 
   return { label, rationale, confidence };
+}
+
+/** A loop, not a regex: the URL comes from configuration, and /\/+$/ is slow on many slashes. */
+function withoutTrailingSlashes(url: string): string {
+  let end = url.length;
+  while (end > 0 && url[end - 1] === "/") end -= 1;
+  return url.slice(0, end);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
