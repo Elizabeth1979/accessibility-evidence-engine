@@ -17,7 +17,7 @@ colors:
   fail-wash: "#fff1f3"
   unknown: "#745900"
   unknown-wash: "#fff8df"
-  focus: "#f6b73c"
+  focus: "#b86e00"
 typography:
   display:
     fontFamily: '"AEE Display", Georgia, serif'
@@ -138,7 +138,7 @@ The palette combines warm paper neutrals with deep editorial greens; semantic re
 - **Pass Green:** Successful tested behavior and confirmed positive results.
 - **Finding Red:** Confirmed blockers and failure badges; its pale companion carries failure backgrounds.
 - **Review Amber:** Unresolved or human-review-required states; its pale companion carries uncertainty backgrounds.
-- **Focus Gold:** Keyboard focus only. Its role is operational visibility, not decoration.
+- **Focus Gold:** Keyboard focus only. Its role is operational visibility, not decoration. `#b86e00` keeps at least 3:1 (WCAG 2.2 SC 1.4.11) against paper, surface, wash, the header green, and Forest Deep; a lighter gold fails on the light surfaces.
 
 ### Neutral
 

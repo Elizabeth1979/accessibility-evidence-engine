@@ -36,6 +36,12 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Deterministic cross-evidence synthesis in the integrated JSON, Markdown, and HTML reports, including lane-level direct judgments, pointer/keyboard equivalence, structured virtual-reader results, unique-versus-repeated findings, incomplete Axe checks, same-checkpoint DOM/accessibility-tree/focus/visual links, remediation boundaries, and verified rerun instructions.
 - An interactive accessibility triage report that leads with scoped page health, prioritized remediation and effort, filterable current-versus-proposed visual reviews, journey videos, and local evidence-grounded questions while moving raw technical detail into an annex.
 
+### Fixed
+
+- The integrated report's keyboard focus ring now meets WCAG 2.2 SC 1.4.11 (3:1) on every report
+  background: `--focus` moves from `#f6b73c` (1.50–1.79:1 on the light surfaces) to `#b86e00`
+  (3.34:1 or more). The screenshot issue marker keeps the bright gold through its own `--marker` token.
+
 ## [0.1.0] - 2026-08-30
 
 ### Added
