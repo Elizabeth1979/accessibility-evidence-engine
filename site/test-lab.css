@@ -1,3 +1,7 @@
+/* A solid background so axe can measure text contrast on the demo page. */
+.demo-page {
+  background: var(--bg);
+}
 .lab {
   max-width: 960px;
   padding-block: 2rem 5rem;
@@ -12,21 +16,26 @@
 .lab h2 {
   margin-top: 2rem;
 }
-.experiments {
+.lab-pages {
   margin-block: 2rem;
+  padding: 0;
+  list-style: none;
 }
-.experiments > div {
+.lab-pages li {
   padding-block: 1.4rem;
   border-top: 1px solid var(--line);
 }
-.experiments dt {
+.lab-pages a {
   font-size: 1.2rem;
   font-weight: 700;
 }
-.experiments dd {
+.lab-pages p {
   margin: 0.5rem 0 0;
   color: var(--muted);
-  max-width: 70ch;
+}
+/* Four columns fit the lab's width; the homepage table has more text per cell. */
+.lab .registry-table {
+  min-width: 48rem;
 }
 .fixture-notice {
   padding: 1rem;
@@ -73,6 +82,60 @@
 }
 .lab button:hover {
   background: var(--line);
+}
+/* The click-only defect looks exactly like the button it replaces. */
+.lab .button-lookalike {
+  display: inline-block;
+  min-height: 48px;
+  padding: 0.7rem;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  cursor: pointer;
+}
+.lab .button-lookalike:hover {
+  background: var(--line);
+}
+.search input {
+  display: block;
+  width: min(100%, 24rem);
+  min-height: 48px;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+}
+.icon-link {
+  display: inline-block;
+  vertical-align: middle;
+  color: var(--text);
+}
+.plan-details summary {
+  min-height: 48px;
+  padding-block: 0.7rem;
+  cursor: pointer;
+  font-weight: 700;
+}
+.plan-card .hover-only {
+  display: none;
+}
+.plan-card:hover .hover-only {
+  display: block;
+}
+.lab img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.hint {
+  color: var(--muted);
+}
+.hint.faint {
+  color: #3f4c48;
 }
 .lab svg {
   display: block;

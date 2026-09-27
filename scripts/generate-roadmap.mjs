@@ -4,6 +4,8 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
+import { inline, renderSitePage } from "./site-page.mjs";
+
 const root = process.cwd();
 const planPath = path.join(root, "docs", "MASTER-PLAN.md");
 const outPath = path.join(root, "site", "roadmap.html");
@@ -49,20 +51,11 @@ export function parsePlan(markdown) {
 }
 
 function renderPage() {
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Roadmap · AEE</title>
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="stylesheet" href="roadmap.css" />
-  </head>
-  <body>
-    <a class="skip-link" href="#main">Skip to content</a>
-    <header class="site-header"><a href="index.html">Accessibility Evidence Engine</a></header>
-    <main id="main" class="roadmap">
-      <h1>Roadmap</h1>
+  return renderSitePage({
+    title: "Roadmap",
+    stylesheets: ["roadmap.css"],
+    mainClass: "roadmap",
+    body: `      <h1>Roadmap</h1>
       <p class="lede">${doneCount} of ${allSteps.length} steps done.${
         current ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.` : ""
       }</p>
@@ -78,11 +71,8 @@ ${milestones.map(renderStation).join("\n")}
       <p>Generated from <a href="${planUrl}">the master plan</a> on every deploy. Open a milestone to see its steps.</p>
       <ol class="track">
 ${milestones.map(renderMilestone).join("\n")}
-      </ol>
-    </main>
-  </body>
-</html>
-`;
+      </ol>`
+  });
 }
 
 function stateOf(m) {
@@ -132,20 +122,4 @@ function renderStep(s) {
                   ${s.doneWhen ? `<p class="done-when"><strong>Done when:</strong> ${inline(s.doneWhen)}</p>` : ""}
                 </div>
               </li>`;
-}
-
-function inline(value) {
-  return escapeHtml(value)
-    .replace(/`([^`]+)`/g, "<code>$1</code>")
-    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-    .replace(/(^|\s)_([^_]+)_(?=\s|[.,;:]|$)/g, "$1<em>$2</em>")
-    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2">$1</a>');
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

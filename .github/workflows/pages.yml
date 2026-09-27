@@ -10,6 +10,8 @@ name: Pages
       - packages/schemas/json/remediation-registry.schema.json
       - scripts/generate-site-registry.mjs
       - scripts/generate-roadmap.mjs
+      - scripts/generate-test-lab.mjs
+      - scripts/site-page.mjs
       - docs/MASTER-PLAN.md
       - .github/workflows/pages.yml
   workflow_dispatch:
@@ -50,6 +52,9 @@ jobs:
 
       - name: Generate roadmap from the master plan
         run: npm run site:roadmap
+
+      - name: Generate test lab from its contract
+        run: npm run site:lab
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

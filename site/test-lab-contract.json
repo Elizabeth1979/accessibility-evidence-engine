@@ -1,82 +1,105 @@
 {
-  "version": 1,
-  "fixture": "test-case.html",
-  "defaultCase": "fixed",
-  "unknownCaseFallback": "fixed",
+  "version": 2,
   "validation": {
     "engine": "axe-core 4.13.0",
     "browser": "Playwright Chromium",
     "scope": "Initial page state; observations are version-specific, not universal tool guarantees."
   },
-  "headingExpectation": "Projects and Workspace settings are peers and should both be H2. H3 wrongly implies that workspace-wide settings belong to Projects.",
-  "selectors": {
-    "archive": "#archive-project",
-    "restore": "#restore-project",
-    "digest": "#toggle-digest",
-    "status": "#action-status",
-    "settingsHeading": "#settings-heading"
-  },
   "reset": "Reload the URL; no storage or network writes.",
-  "cases": {
+  "pages": {
+    "issues": {
+      "title": "Demo page with issues",
+      "url": "test-case.html",
+      "summary": "A normal-looking workspace page with the issues below built in. The engine must find every one.",
+      "headingOutline": ["H1", "H2", "H3", "H2"]
+    },
     "fixed": {
+      "title": "The same page, fixed",
       "url": "test-case.html?case=fixed",
-      "observedAxeViolationIds": [],
-      "headingOutline": ["H1", "H2", "H2"]
-    },
-    "headings": {
-      "url": "test-case.html?case=headings",
-      "observedAxeViolationIds": [],
-      "headingOutline": ["H1", "H2", "H3"]
-    },
-    "icon-labels": {
-      "url": "test-case.html?case=icon-labels",
-      "observedAxeViolationIds": ["button-name"],
-      "headingOutline": ["H1", "H2", "H2"]
-    },
-    "body-hidden": {
-      "url": "test-case.html?case=body-hidden",
-      "observedAxeViolationIds": [
-        "aria-hidden-body",
-        "aria-hidden-focus",
-        "landmark-one-main",
-        "page-has-heading-one"
-      ],
-      "headingOutline": ["H1", "H2", "H2"]
-    },
-    "all": {
-      "url": "test-case.html?case=all",
-      "observedAxeViolationIds": [
-        "aria-hidden-body",
-        "aria-hidden-focus",
-        "landmark-one-main",
-        "page-has-heading-one"
-      ],
-      "headingOutline": ["H1", "H2", "H3"]
-    },
-    "workshop": {
-      "url": "cases/workshop.html",
-      "source": "a11y-for-feds-intro workshop page as shipped (commit 542ee5e); brand links, video, meme and fonts replaced",
-      "observedAxeViolationIds": [
-        "aria-hidden-body",
-        "html-has-lang",
-        "landmark-one-main",
-        "page-has-heading-one"
-      ],
-      "headingOutline": ["H1", "H2", "H3", "H3", "H3", "H3", "H3", "H3", "H2"]
-    },
-    "workshop-body-visible": {
-      "url": "cases/workshop.html?case=body-visible",
-      "source": "The same page after the workshop's first fix: aria-hidden removed from the body",
-      "observedAxeViolationIds": [
-        "button-name",
-        "html-has-lang",
-        "image-alt",
-        "label",
-        "landmark-one-main",
-        "region",
-        "tabindex"
-      ],
-      "headingOutline": ["H1", "H2", "H3", "H3", "H3", "H3", "H3", "H3", "H2"]
+      "summary": "Every issue fixed. Any finding here is a false alarm.",
+      "headingOutline": ["H1", "H2", "H2", "H2"]
     }
-  }
+  },
+  "issues": [
+    {
+      "id": "unnamed-archive-button",
+      "title": "The archive button has no name",
+      "whoItHurts": "Screen reader users hear only “button”.",
+      "concept": "accessible-name",
+      "check": "Automated rule (axe)",
+      "axeRule": "button-name"
+    },
+    {
+      "id": "unnamed-help-link",
+      "title": "The help icon link has no name",
+      "whoItHurts": "Screen reader users hear only “link”.",
+      "concept": "accessible-name",
+      "check": "Automated rule (axe)",
+      "axeRule": "link-name"
+    },
+    {
+      "id": "unlabelled-search",
+      "title": "The search label is not connected to its field",
+      "whoItHurts": "Screen reader users reach an edit field without knowing what it is for.",
+      "concept": "accessible-name",
+      "check": "Automated rule (axe)",
+      "axeRule": "label"
+    },
+    {
+      "id": "chart-without-alt",
+      "title": "The usage chart has no text alternative",
+      "whoItHurts": "Blind users miss the numbers the chart shows.",
+      "concept": "image-purpose",
+      "check": "Automated rule (axe)",
+      "axeRule": "image-alt"
+    },
+    {
+      "id": "faint-hint-text",
+      "title": "The hint under the chart is too faint",
+      "whoItHurts": "People with low vision cannot read it.",
+      "concept": "color-contrast",
+      "check": "Automated rule (axe)",
+      "axeRule": "color-contrast"
+    },
+    {
+      "id": "empty-heading",
+      "title": "The usage heading is empty",
+      "whoItHurts": "Screen reader users jumping by heading land on nothing.",
+      "concept": "heading-structure",
+      "check": "Automated rule (axe)",
+      "axeRule": "empty-heading"
+    },
+    {
+      "id": "wrong-heading-level",
+      "title": "Workspace settings is a level 3 heading under Projects",
+      "whoItHurts": "Screen reader users are told settings belong to Projects; they are a peer section.",
+      "concept": "heading-structure",
+      "check": "Heading outline, judged in context",
+      "plannedStep": "M3"
+    },
+    {
+      "id": "click-only-export",
+      "title": "Export report works with a mouse only",
+      "whoItHurts": "Keyboard users cannot reach or press it.",
+      "concept": "keyboard-operation",
+      "check": "Keyboard (Playwright): Tab to it, press Enter",
+      "plannedStep": "2.2"
+    },
+    {
+      "id": "hover-only-plan-details",
+      "title": "Plan details appear on mouse hover only",
+      "whoItHurts": "Keyboard and touch users cannot see them.",
+      "concept": "hover-focus-equivalence",
+      "check": "Mouse vs keyboard (Playwright): hover it, focus it, compare",
+      "plannedStep": "2.2"
+    },
+    {
+      "id": "focus-lost-after-archive",
+      "title": "Focus is lost after archiving a project",
+      "whoItHurts": "Keyboard and screen reader users are dropped at the top of the page.",
+      "concept": "focus-management",
+      "check": "Keyboard (Playwright): press Archive, check where focus goes",
+      "plannedStep": "2.2"
+    }
+  ]
 }
