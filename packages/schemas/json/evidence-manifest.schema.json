@@ -33,7 +33,14 @@
         "required": ["id", "driver", "status", "actionIds", "actions"],
         "properties": {
           "id": { "$ref": "./common.schema.json#/$defs/uid" },
-          "driver": { "enum": ["pointer", "keyboard", "portable-virtual-screen-reader"] },
+          "driver": {
+            "enum": [
+              "pointer",
+              "keyboard",
+              "portable-virtual-screen-reader",
+              "keyboard-pointer-sweep"
+            ]
+          },
           "status": { "enum": ["completed", "blocked", "failed"] },
           "actionIds": {
             "type": "array",
@@ -117,6 +124,7 @@
             "run-metadata",
             "evidence-bundle",
             "interaction-trace",
+            "keyboard-pointer-sweep",
             "lane-metadata",
             "evidence-manifest",
             "html-report",

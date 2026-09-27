@@ -5,10 +5,17 @@ import path from "node:path";
 import {
   aggregateEvidenceManifests,
   runInputComparison,
+  runKeyboardPointerSweepLane,
   runVirtualScreenReaderLane,
+  SWEEP_FINDING_CONCEPTS,
   type EvidenceManifest,
   type InputComparisonResult,
   type InteractionComparisonBrowser,
+  type KeyboardPointerSweepLaneBrowser,
+  type KeyboardPointerSweepLaneDocument,
+  type KeyboardPointerSweepLaneFinding,
+  type KeyboardPointerSweepLaneResult,
+  type SweepFindingKind,
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
 } from "@aee/playwright";
@@ -16,11 +23,19 @@ import {
   assertValidSchema,
   CURRENT_SCHEMA_VERSION,
   patternForAxeRule,
+  patternLink,
+  remediationEntry,
   type PatternLink
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "playwright";
 
-import { compileScenarioPlan, loadScenario, type AeeScenario, type ScenarioPlan } from "./scenario";
+import {
+  ACTIVATE_PAGE_CONTROLS,
+  compileScenarioPlan,
+  loadScenario,
+  type AeeScenario,
+  type ScenarioPlan
+} from "./scenario";
 
 export interface ExecuteScenarioOptions {
   outputDir?: string;
@@ -196,11 +211,21 @@ interface ReaderTranscriptView {
   readError?: string;
 }
 
+/** Every lane that can produce a finding: the authored action lanes and the sweep. */
+type LaneDriver = ScenarioActionReport["driver"] | "keyboard-pointer-sweep";
+
+interface SweepView {
+  path: string;
+  screenshotPath?: string;
+  document?: KeyboardPointerSweepLaneDocument;
+  readError?: string;
+}
+
 interface FindingCheckpointSynthesis {
   actionId: string;
   laneId: string;
   runId: string;
-  driver: ScenarioActionReport["driver"];
+  driver: LaneDriver;
   behaviorVerdict: "pass" | "fail" | "unknown";
   behaviorSummary: string;
   nodeCount: number;
@@ -213,6 +238,7 @@ interface FindingCheckpointSynthesis {
   screenshotPath?: string;
   viewportPath?: string;
   readerTranscriptPath?: string;
+  sweepPath?: string;
 }
 
 interface FindingSynthesis {
@@ -271,6 +297,37 @@ interface IntegratedHtmlViews {
   actionReports: ActionReportView[];
   axeReports: AxeReportView[];
   comparisons: InputComparisonView[];
+  sweeps: SweepView[];
+}
+
+/** How the report names each sweep finding, who it affects, and how to fix it. */
+const SWEEP_FINDING_TEXT: Record<SweepFindingKind, { title: string; impact: string; fix: string }> =
+  {
+    "pointer-only": {
+      title: "Works with a mouse only",
+      impact: "Keyboard users cannot reach or press it.",
+      fix: "Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space."
+    },
+    "hover-only": {
+      title: "Shown on mouse hover only",
+      impact: "Keyboard and touch-screen users never see this content.",
+      fix: "Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element."
+    },
+    "activation-differs": {
+      title: "The keyboard does something different from a click",
+      impact: "Keyboard users do not get the result a mouse user gets.",
+      fix: "Make Enter, or Space for check boxes and switches, do exactly what a click does; a native button does this for free."
+    },
+    "focus-lost": {
+      title: "Focus is lost after an action",
+      impact:
+        "Keyboard and screen-reader users lose their place and have to start again from the top of the page.",
+      fix: "After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control."
+    }
+  };
+
+function isSweepFindingKind(ruleId: string): ruleId is SweepFindingKind {
+  return Object.hasOwn(SWEEP_FINDING_TEXT, ruleId);
 }
 
 /** Executes only approved, user-authored scenario commands and integrates every resulting lane. */
@@ -283,12 +340,6 @@ export async function executeScenario(
   const plan = compileScenarioPlan(scenario);
   assertScenarioCanRun(plan);
   const plannedLanes = countPlannedLanes(scenario);
-  if (plannedLanes === 0) {
-    throw new Error(
-      `Scenario “${scenario.id}” has no executable virtual-reader commands or pointer/keyboard comparisons.`
-    );
-  }
-
   const assessmentId = `${scenario.id}-${Date.now()}`;
   const assessmentDir = path.resolve(options.outputDir ?? "aee-output", assessmentId);
   const planFile = path.join(assessmentDir, "scenario-plan.json");
@@ -308,14 +359,45 @@ export async function executeScenario(
 
   const browser = options.browser ?? (await chromium.launch({ headless: true }));
   const ownsBrowser = !options.browser;
+  // A lane that fails still counts: its error becomes a diagnostic and any evidence it wrote
+  // stays in the manifest, so the report can never read as complete.
+  const runLane = async (laneId: string, run: () => Promise<string>) => {
+    try {
+      childManifestFiles.push(await run());
+    } catch (error) {
+      diagnostics.push(describeExecutionError(laneId, error));
+      const expectedManifest = path.join(assessmentDir, laneId, "manifest.json");
+      if (await fileExists(expectedManifest)) childManifestFiles.push(expectedManifest);
+    }
+  };
   try {
     for (const journey of scenario.journeys) {
       const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
       const allowedOrigins = plan.safety.allowedOrigins;
+      const sweepLaneId = `${journey.id}-keyboard-pointer-sweep`;
+      await runLane(sweepLaneId, async () => {
+        const sweep = await runKeyboardPointerSweepLane({
+          browser: browser as unknown as KeyboardPointerSweepLaneBrowser<Page>,
+          projectRoot: process.cwd(),
+          outputDir: assessmentDir,
+          laneId: sweepLaneId,
+          targetUrl: startUrl,
+          allowedOrigins,
+          activateControls: journey.allowedActions.includes(ACTIVATE_PAGE_CONTROLS)
+        });
+        collectSweepFindings(journey.id, sweep, findings);
+        for (const url of sweep.blockedNavigations) {
+          diagnostics.push(
+            `${sweepLaneId}: stopped a navigation outside the allowed origins: ${url}`
+          );
+        }
+        return sweep.manifestFile;
+      });
+
       if (journey.virtualScreenReaderCommands?.length) {
         const laneId = `${journey.id}-virtual-reader`;
-        const expectedManifest = path.join(assessmentDir, laneId, "manifest.json");
-        try {
+        const commands = journey.virtualScreenReaderCommands;
+        await runLane(laneId, async () => {
           const lane = await runVirtualScreenReaderLane({
             browser: browser as unknown as VirtualScreenReaderLaneBrowser<Page>,
             projectRoot: process.cwd(),
@@ -323,20 +405,16 @@ export async function executeScenario(
             laneId,
             targetUrl: startUrl,
             allowedOrigins,
-            commands: journey.virtualScreenReaderCommands
+            commands
           });
-          childManifestFiles.push(lane.manifestFile!);
           await collectVirtualReaderActions(assessmentDir, journey.id, lane, actions, findings);
-        } catch (error) {
-          diagnostics.push(describeExecutionError(laneId, error));
-          if (await fileExists(expectedManifest)) childManifestFiles.push(expectedManifest);
-        }
+          return lane.manifestFile!;
+        });
       }
 
       for (const comparison of journey.interactionComparisons ?? []) {
         const comparisonId = `${journey.id}-${comparison.id}`;
-        const expectedManifest = path.join(assessmentDir, comparisonId, "manifest.json");
-        try {
+        await runLane(comparisonId, async () => {
           const result = await runInputComparison({
             browser: browser as unknown as InteractionComparisonBrowser<Page>,
             projectRoot: process.cwd(),
@@ -350,12 +428,9 @@ export async function executeScenario(
             observe: comparison.observe,
             expected: comparison.expected
           });
-          childManifestFiles.push(result.manifestFile);
           await collectInputActions(assessmentDir, journey.id, result, actions, findings);
-        } catch (error) {
-          diagnostics.push(describeExecutionError(comparisonId, error));
-          if (await fileExists(expectedManifest)) childManifestFiles.push(expectedManifest);
-        }
+          return result.manifestFile;
+        });
       }
     }
   } finally {
@@ -473,14 +548,33 @@ function assertScenarioCanRun(plan: ScenarioPlan): void {
   }
 }
 
+/** Every journey is swept; authored commands and comparisons add their own lanes. */
 function countPlannedLanes(scenario: AeeScenario): number {
   return scenario.journeys.reduce(
     (count, journey) =>
       count +
+      1 +
       (journey.virtualScreenReaderCommands?.length ? 1 : 0) +
       (journey.interactionComparisons?.length ?? 0) * 2,
     0
   );
+}
+
+/** One finding per kind, like one per axe rule; its elements are read back from the lane's evidence. */
+function collectSweepFindings(
+  journeyId: string,
+  sweep: KeyboardPointerSweepLaneResult,
+  findings: Array<Record<string, unknown>>
+): void {
+  for (const kind of new Set(sweep.findings.map(({ kind }) => kind))) {
+    findings.push({
+      id: `${sweep.laneId}:${kind}`,
+      ruleId: kind,
+      message: SWEEP_FINDING_TEXT[kind].title,
+      severity: "high",
+      source: { journeyId, laneId: sweep.laneId }
+    });
+  }
 }
 
 async function collectVirtualReaderActions(
@@ -621,7 +715,10 @@ function createIntegratedReport(input: {
     input.missingArtifacts === 0 &&
     input.failedArtifacts === 0 &&
     input.diagnostics.length === 0;
-  const verdict = failed > 0 ? "fail" : !complete || unknown > 0 ? "unknown" : "pass";
+  // Axe failures arrive through the actions' release verdicts; sweep findings have no action.
+  const sweepFailed = input.findings.some(({ ruleId }) => isSweepFindingKind(String(ruleId)));
+  const verdict =
+    failed > 0 || sweepFailed ? "fail" : !complete || unknown > 0 ? "unknown" : "pass";
   const report: ScenarioIntegratedReport = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     assessmentId: input.assessmentId,
@@ -701,13 +798,14 @@ async function writeIntegratedReport(
   files: { html: string; json: string; markdown: string },
   rootDir: string
 ): Promise<void> {
-  const [transcripts, actionReports, axeReports, comparisons] = await Promise.all([
+  const [transcripts, actionReports, axeReports, comparisons, sweeps] = await Promise.all([
     loadReaderTranscriptViews(report, rootDir),
     loadActionReportViews(report, rootDir),
     loadAxeReportViews(report, rootDir),
-    loadInputComparisonViews(report, rootDir)
+    loadInputComparisonViews(report, rootDir),
+    loadSweepViews(report, rootDir)
   ]);
-  const views = { transcripts, actionReports, axeReports, comparisons };
+  const views = { transcripts, actionReports, axeReports, comparisons, sweeps };
   report.synthesis = buildScenarioSynthesis(report, views);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
   const reportFont = path.join(rootDir, "aee-report-display.woff2");
@@ -853,6 +951,39 @@ function comparisonLaneView(value: unknown): InputComparisonView["keyboard"] {
     visible: typeof observation.visible === "boolean" ? observation.visible : undefined,
     text: optionalStringField(observation, "text")
   };
+}
+
+async function loadSweepViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<SweepView[]> {
+  const artifacts = report.artifacts.filter(
+    (artifact) => artifact.kind === "keyboard-pointer-sweep"
+  );
+  return Promise.all(
+    artifacts.map(async (artifact) => {
+      const artifactPath = String(artifact.path);
+      try {
+        const document = await readReportJson(rootDir, artifactPath);
+        assertValidSchema("keyboardPointerSweepLane", document, artifactPath);
+        const laneId = String(document.laneId);
+        const screenshot = report.artifacts.find((candidate) => {
+          const provenance = isRecord(candidate.provenance) ? candidate.provenance : {};
+          return candidate.kind === "full-page-screenshot" && provenance.laneId === laneId;
+        });
+        return {
+          path: artifactPath,
+          screenshotPath: screenshot ? String(screenshot.path) : undefined,
+          document: document as unknown as KeyboardPointerSweepLaneDocument
+        };
+      } catch (error) {
+        return {
+          path: artifactPath,
+          readError: error instanceof Error ? error.message : String(error)
+        };
+      }
+    })
+  );
 }
 
 async function loadActionReportViews(
@@ -1094,6 +1225,7 @@ function buildFindingSynthesis(
   finding: Record<string, unknown>
 ): FindingSynthesis {
   const ruleId = String(finding.ruleId ?? finding.id ?? "unknown-finding");
+  if (isSweepFindingKind(ruleId)) return buildSweepFindingSynthesis(views, ruleId, finding);
   const matchingReports = views.axeReports
     .map((axeReport) => ({
       axeReport,
@@ -1175,6 +1307,85 @@ function buildFindingSynthesis(
     instances,
     checkpoints,
     remediation
+  };
+}
+
+/** A sweep finding, grouped like an axe rule: one checkpoint per swept page that shows it. */
+function buildSweepFindingSynthesis(
+  views: IntegratedHtmlViews,
+  kind: SweepFindingKind,
+  finding: Record<string, unknown>
+): FindingSynthesis {
+  const swept = views.sweeps.flatMap(({ path: sweepPath, screenshotPath, document }) => {
+    const matches = (document?.findings ?? []).filter((candidate) => candidate.kind === kind);
+    return document && matches.length ? [{ sweepPath, screenshotPath, document, matches }] : [];
+  });
+  const checkpoints: FindingCheckpointSynthesis[] = swept.map(
+    ({ sweepPath, screenshotPath, document, matches }) => ({
+      actionId: "keyboard-pointer-sweep",
+      laneId: document.laneId,
+      runId: document.laneId,
+      driver: "keyboard-pointer-sweep",
+      behaviorVerdict: "fail",
+      behaviorSummary: matches[0]!.summary,
+      nodeCount: matches.length,
+      targets: matches.slice(0, 8).map(({ selector }) => selector),
+      htmlSamples: [],
+      screenshotPath,
+      sweepPath
+    })
+  );
+  const representative = swept.reduce<(typeof swept)[number] | undefined>(
+    (largest, entry) =>
+      !largest || entry.matches.length > largest.matches.length ? entry : largest,
+    undefined
+  );
+  const instances = (representative?.matches ?? []).map(sweepFindingInstance);
+  const maximumAffectedNodes = representative?.matches.length ?? 0;
+  const entry = remediationEntry(SWEEP_FINDING_CONCEPTS[kind]);
+  const text = SWEEP_FINDING_TEXT[kind];
+  return {
+    ruleId: kind,
+    title: text.title,
+    severity: String(finding.severity ?? "high"),
+    wcagCriteria: entry.requirements
+      .filter(({ standard, relationship }) => standard === "WCAG" && relationship === "primary")
+      .map(({ requirementId }) => `WCAG ${requirementId}`),
+    pattern: entry.patterns[0] ? patternLink(entry.patterns[0]) : undefined,
+    conclusion: representative
+      ? `${representative.matches[0]!.summary} The keyboard and pointer sweep found this on ${checkpoints.length} of ${views.sweeps.length} swept page${views.sweeps.length === 1 ? "" : "s"}.`
+      : "The sweep reported this finding, but its evidence could not be read.",
+    occurrenceCount: Array.isArray(finding.occurrences)
+      ? finding.occurrences.length
+      : checkpoints.length,
+    checkpointCount: checkpoints.length,
+    maximumAffectedNodes,
+    instanceCount: instances.length,
+    componentCount: new Set(instances.map(({ component }) => component)).size,
+    instances,
+    checkpoints,
+    remediation: {
+      deterministic: text.fix,
+      ai: {
+        used: false,
+        status: entry.ai.allowed ? "available-if-needed" : "not-applicable",
+        reason: entry.ai.purpose
+      },
+      verification: entry.verification
+    }
+  };
+}
+
+function sweepFindingInstance(
+  finding: KeyboardPointerSweepLaneFinding,
+  index: number
+): FindingInstanceSynthesis {
+  return {
+    component: affectedComponentName(finding.kind, finding.selector),
+    label: finding.label || elementLabel(undefined, finding.selector, index),
+    selector: finding.selector,
+    targetBox: finding.targetBox,
+    detail: finding.summary
   };
 }
 
@@ -1703,9 +1914,9 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 <body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(humanActionName(report.scenarioId))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
 <main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div><div><strong>${report.synthesis.reader.passed}/${report.synthesis.reader.commands}</strong><span>reader commands passed</span></div></div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
-<section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
+<section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report, views)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
 <section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report)}</section>
-<section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
+<section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer sweep</h3>${renderSweepOverview(views)}</section><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
     videos.length
       ? videos
@@ -1898,13 +2109,14 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
   return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap" tabindex="0"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
-function renderStatusAreas(report: ScenarioIntegratedReport): string {
+function renderStatusAreas(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
   const comparisonPassed =
     report.synthesis.comparisons.length > 0 &&
     report.synthesis.comparisons.every(
       ({ equivalence, expectation }) =>
         equivalence.verdict === "pass" && expectation.verdict === "pass"
     );
+  const keyboard = keyboardStatus(report, views, comparisonPassed);
   const readerPassed = report.synthesis.reader.commands > 0 && report.synthesis.reader.failed === 0;
   const semanticFinding = report.synthesis.findings.find(
     ({ ruleId }) => ruleId === "aria-required-parent"
@@ -1933,14 +2145,7 @@ function renderStatusAreas(report: ScenarioIntegratedReport): string {
     ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">Keyboard journey recording</h3><p>Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page.</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
     : "";
   const areas = [
-    {
-      label: "Keyboard access",
-      verdict: comparisonPassed ? "pass" : "unknown",
-      result: comparisonPassed ? "Passed tested journey" : "Needs review",
-      detail: comparisonPassed
-        ? "Pointer and keyboard produced the same expected result."
-        : "No complete equivalent-path result was available."
-    },
+    { label: "Keyboard access", ...keyboard },
     {
       label: "Virtual reader",
       verdict: readerPassed ? "pass" : "unknown",
@@ -1974,6 +2179,73 @@ function renderStatusAreas(report: ScenarioIntegratedReport): string {
     .join("")}</div>`;
 }
 
+/** The sweep decides keyboard access; authored comparisons, when present, must also pass. */
+function keyboardStatus(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews,
+  comparisonPassed: boolean
+): { verdict: "pass" | "fail" | "unknown"; result: string; detail: string } {
+  const sweepFindings = report.synthesis.findings.filter(({ ruleId }) =>
+    isSweepFindingKind(ruleId)
+  );
+  if (sweepFindings.length > 0) {
+    return {
+      verdict: "fail",
+      result: "Fix required",
+      detail: `${sweepFindings.map(({ title }) => title).join("; ")}.`
+    };
+  }
+  const swept =
+    views.sweeps.length > 0 &&
+    views.sweeps.every(({ document }) => document?.status === "completed");
+  if (!swept || (report.synthesis.comparisons.length > 0 && !comparisonPassed)) {
+    return {
+      verdict: "unknown",
+      result: "Needs review",
+      detail: "No complete keyboard result was available."
+    };
+  }
+  const pressed = views.sweeps.every(({ document }) => document?.activateControls);
+  return {
+    verdict: "pass",
+    result: "No confirmed issue",
+    detail: `Tab reached every mouse target and focus showed everything hover did. ${pressed ? "Each control pressed by keyboard matched the click and kept focus." : `Controls were not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed.`}`
+  };
+}
+
+function renderSweepOverview(views: IntegratedHtmlViews): string {
+  if (views.sweeps.length === 0) {
+    return '<p class="empty">No keyboard and pointer sweep evidence was recorded.</p>';
+  }
+  return views.sweeps
+    .map(({ path: sweepPath, screenshotPath, document, readError }) => {
+      if (!document) {
+        return `<article class="finding-dossier"><p>${escapeHtml(readError ?? "The sweep record could not be read.")}</p></article>`;
+      }
+      const findings = document.findings ?? [];
+      const badge =
+        document.status !== "completed"
+          ? { verdict: "unknown", label: document.status }
+          : findings.length
+            ? {
+                verdict: "fail",
+                label: `${findings.length} finding${findings.length === 1 ? "" : "s"}`
+              }
+            : { verdict: "pass", label: "No findings" };
+      const pressed = document.activateControls
+        ? `${document.activated?.length ?? 0} controls pressed by keyboard and by mouse`
+        : `Controls not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed`;
+      const rows = findings
+        .map((finding, index) => {
+          const { label, selector } = sweepFindingInstance(finding, index);
+          return `<li><strong>${escapeHtml(SWEEP_FINDING_TEXT[finding.kind].title)}:</strong> ${escapeHtml(label)} <code>${escapeHtml(selector)}</code></li>`;
+        })
+        .join("");
+      return `<article class="finding-dossier"><header><div><h4>${escapeHtml(document.targetUrl)}</h4><p>${document.tabStops?.length ?? 0} tab stops · ${escapeHtml(pressed)}</p></div><span class="badge ${badge.verdict}">${escapeHtml(badge.label)}</span></header>${document.diagnostics ? `<p>${escapeHtml(document.diagnostics.join(" "))}</p>` : ""}${rows ? `<ul>${rows}</ul>` : ""}<p class="evidence-links"><a href="${encodeURI(sweepPath)}">Open the sweep record</a>${screenshotPath ? ` <a href="${encodeURI(screenshotPath)}">Open the page capture</a>` : ""}</p></article>`;
+    })
+    .join("");
+}
+
 function renderFixPlanner(report: ScenarioIntegratedReport): string {
   if (report.synthesis.findings.length === 0) {
     return '<p class="empty">No confirmed findings need a fix plan in this authored scope.</p>';
@@ -1992,6 +2264,7 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
 }
 
 function findingFixLabel(ruleId: string): string {
+  if (isSweepFindingKind(ruleId)) return SWEEP_FINDING_TEXT[ruleId].title;
   if (ruleId === "aria-required-parent") return "Repair the shared footer navigation semantics";
   if (ruleId === "color-contrast") return "Replace the shared low-contrast link color";
   return humanActionName(ruleId);
@@ -2063,6 +2336,7 @@ function renderPrioritySnapshot(report: ScenarioIntegratedReport): string {
 }
 
 function findingImpact(ruleId: string): string {
+  if (isSweepFindingKind(ruleId)) return SWEEP_FINDING_TEXT[ruleId].impact;
   if (ruleId === "aria-required-parent") {
     return "Screen-reader users may hear menu semantics that the footer does not actually implement, making navigation structure misleading.";
   }
@@ -2175,7 +2449,8 @@ function renderEvidenceLinks(checkpoint: FindingCheckpointSynthesis): string {
     [checkpoint.viewportPath, "Viewport visual"],
     [checkpoint.focusPath, "Focus"],
     [checkpoint.readerTranscriptPath, "Reader state"],
-    [checkpoint.axePath, "Axe"]
+    [checkpoint.axePath, "Axe"],
+    [checkpoint.sweepPath, "Keyboard and pointer sweep"]
   ].filter((entry): entry is [string, string] => Boolean(entry[0]));
   return links.length
     ? `<ul class="evidence-links">${links.map(([href, label]) => `<li><a href="${encodeURI(href)}">${escapeHtml(label)}</a></li>`).join("")}</ul>`
@@ -2187,7 +2462,7 @@ function renderKeyboardOverview(
   views: IntegratedHtmlViews
 ): string {
   if (views.comparisons.length === 0) {
-    return '<p class="empty">No pointer/keyboard comparison was authored for this scenario. Permissions do not create tests.</p>';
+    return '<p class="empty">No pointer/keyboard comparison was authored for this scenario.</p>';
   }
   return views.comparisons
     .map((comparison) => {
@@ -2375,15 +2650,16 @@ function humanActionName(actionId: string): string {
   return words.length > 0 ? `${words[0]!.toUpperCase()}${words.slice(1)}` : "Action";
 }
 
-function humanDriverName(driver: ScenarioActionReport["driver"]): string {
+function humanDriverName(driver: LaneDriver): string {
   if (driver === "portable-virtual-screen-reader") return "Portable virtual screen reader";
+  if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
   return driver === "keyboard" ? "Keyboard" : "Pointer";
 }
 
-function behaviorLabelForDriver(driver: ScenarioActionReport["driver"]): string {
-  return driver === "portable-virtual-screen-reader"
-    ? "Reader semantic agreement"
-    : "Focus management";
+function behaviorLabelForDriver(driver: LaneDriver): string {
+  if (driver === "portable-virtual-screen-reader") return "Reader semantic agreement";
+  if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
+  return "Focus management";
 }
 
 function artifactKindLabel(kind: string): string {

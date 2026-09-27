@@ -1,13 +1,10 @@
-import { access, readFile, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
+import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-import { compileScenarioPlan, executeScenario, loadScenario } from "@aee/cli";
 import {
   createPortableVirtualScreenReader,
   runInputComparison,
@@ -15,22 +12,7 @@ import {
   runVirtualScreenReaderLane
 } from "@aee/playwright";
 
-async function startHtmlServer(
-  handler: Parameters<typeof createServer>[0]
-): Promise<{ origin: string; close(): Promise<void> }> {
-  const server: Server = createServer(handler);
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-
-  return {
-    origin: `http://127.0.0.1:${address.port}`,
-    async close() {
-      await new Promise<void>((resolve, reject) =>
-        server.close((error) => (error ? reject(error) : resolve()))
-      );
-    }
-  };
-}
+import { runApprovedScenario, startHtmlServer } from "./scenario-helpers";
 
 test("executeScenario integrates an approved real-page lane into one complete report", async ({
   browser,
@@ -44,8 +26,6 @@ test("executeScenario integrates an approved real-page lane into one complete re
       <footer><a href="/help" role="menuitem" style="color:#aaa;background:#fff;font-size:14px">Help</a></footer>
     </body></html>`);
   });
-  const scenarioPath = testInfo.outputPath("scenario.yml");
-  const outputDir = testInfo.outputPath("scenario-output");
   const scenarioYaml = `schemaVersion: 0.1.0
 id: local-public-page
 target:
@@ -94,15 +74,7 @@ approval:
 `;
 
   try {
-    await writeFile(scenarioPath, scenarioYaml, "utf8");
-    const plan = compileScenarioPlan(await loadScenario(scenarioPath));
-    await writeFile(
-      scenarioPath,
-      `${scenarioYaml}  approvedPlanDigest: ${plan.planDigest}\n`,
-      "utf8"
-    );
-
-    const result = await executeScenario(scenarioPath, { browser, outputDir });
+    const result = await runApprovedScenario(browser, scenarioYaml, testInfo);
     const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
       status: string;
       completeness: { status: string; plannedLanes: number; completedLanes: number };
@@ -132,8 +104,8 @@ approval:
     expect(report.status).toBe("completed");
     expect(report.completeness).toMatchObject({
       status: "complete",
-      plannedLanes: 3,
-      completedLanes: 3
+      plannedLanes: 4,
+      completedLanes: 4
     });
     expect(report.summary.actions).toBe(3);
     expect(report.summary.artifacts).toBeGreaterThan(0);

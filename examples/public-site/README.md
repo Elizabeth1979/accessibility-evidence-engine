@@ -4,7 +4,7 @@
 profile, allowed public interactions, forbidden account and financial actions, evidence privacy,
 and mandatory plan approval.
 
-`allowedActions` are permissions, not instructions. The runner executes only concrete actions listed under `interactionComparisons` and `virtualScreenReaderCommands`.
+The runner sweeps the start page by keyboard and mouse, then executes only the concrete actions listed under `interactionComparisons` and `virtualScreenReaderCommands`. `allowedActions` are permissions, not instructions, with one exception: `activate-page-controls` lets the sweep press on-page controls. This example leaves it out, so nothing on the live site is pressed.
 
 Compile and inspect the deterministic plan:
 

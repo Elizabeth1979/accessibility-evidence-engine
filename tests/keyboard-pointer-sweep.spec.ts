@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import { sweepKeyboardAndPointer } from "@aee/playwright";
+import { runKeyboardPointerSweepLane, sweepKeyboardAndPointer } from "@aee/playwright";
+
+import { startHtmlServer } from "./scenario-helpers";
 
 // Every press is reported back to the test, so it can prove what the sweep did and did not press.
 const pageUrl = `data:text/html,${encodeURIComponent(`<!doctype html>
@@ -51,4 +53,54 @@ test("the sweep presses nothing unless activation is allowed", async ({ page }) 
   expect(result.tabStops).toEqual(["#leave", "#note", "#submit", "#safe"]);
   expect(result.activated).toEqual([]);
   expect(presses).toEqual([]);
+});
+
+test("the sweep lane keeps pressed controls inside the allowed origins and reports no page load as lost focus", async ({
+  browser
+}, testInfo) => {
+  let visitsElsewhere = 0;
+  const elsewhere = await startHtmlServer((_request, response) => {
+    visitsElsewhere += 1;
+    response.end("Another site");
+  });
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Leave</title></head>
+  <body>
+    <main>
+      <h1>Leave</h1>
+      <button id="away" type="button">Open the other site</button>
+      <button id="next" type="button">Next page</button>
+    </main>
+    <script>
+      document.querySelector("#away").addEventListener("click", () => {
+        location.href = "${elsewhere.origin}/";
+      });
+      document.querySelector("#next").addEventListener("click", () => {
+        location.href = "/next";
+      });
+    </script>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: true
+    });
+
+    expect(lane.activated).toEqual(["#away", "#next"]);
+    expect(lane.blockedNavigations.length).toBeGreaterThan(0);
+    expect(new Set(lane.blockedNavigations)).toEqual(new Set([`${elsewhere.origin}/`]));
+    expect(visitsElsewhere).toBe(0);
+    expect(lane.findings).toEqual([]);
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
 });
