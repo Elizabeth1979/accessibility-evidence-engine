@@ -28,9 +28,9 @@
     "site:shots": "npm run build && playwright test --config playwright.shots.config.ts",
     "playwright:install": "playwright install chromium",
     "test": "npm run test:unit && npm run test:playwright",
-    "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test packages/ai-fixes/dist/index.test.js packages/ai-fixes/dist/label-providers.test.js packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js packages/cli/dist/scenario-runner.test.js",
+    "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test \"packages/*/dist/*.test.js\"",
     "test:package": "npm run build && node scripts/check-packages.mjs",
-    "test:unit": "npm run build && node --test packages/ai-fixes/dist/index.test.js packages/ai-fixes/dist/label-providers.test.js packages/schemas/dist/validator.test.js packages/playwright/dist/index.test.js packages/observers/dist/index.test.js packages/judges/dist/index.test.js packages/reporter/dist/index.test.js packages/cli/dist/config-validation.test.js packages/cli/dist/index.test.js packages/cli/dist/scenario-runner.test.js",
+    "test:unit": "npm run build && node --test \"packages/*/dist/*.test.js\" scripts/graph-guard.test.mjs",
     "test:playwright": "npm run build && playwright test"
   },
   "devDependencies": {
