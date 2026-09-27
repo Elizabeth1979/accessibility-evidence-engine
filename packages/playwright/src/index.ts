@@ -41,7 +41,8 @@ import {
 import {
   sweepKeyboardAndPointer,
   type KeyboardPointerSweepPage,
-  type SweepFinding
+  type SweepFinding,
+  type SweepStep
 } from "./keyboard-pointer-sweep";
 import {
   writeEvidenceManifest,
@@ -322,6 +323,7 @@ export interface InputComparisonResult {
 
 export interface KeyboardPointerSweepLanePage extends KeyboardPointerSweepPage {
   screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>;
+  video?(): PlaywrightVideoLike | null;
 }
 
 export interface KeyboardPointerSweepLaneRoute {
@@ -340,7 +342,7 @@ export interface KeyboardPointerSweepLaneContext<TPage extends KeyboardPointerSw
 }
 
 export interface KeyboardPointerSweepLaneBrowser<TPage extends KeyboardPointerSweepLanePage> {
-  newContext(): Promise<KeyboardPointerSweepLaneContext<TPage>>;
+  newContext(options?: LaneBrowserContextOptions): Promise<KeyboardPointerSweepLaneContext<TPage>>;
 }
 
 export interface RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSweepLanePage> {
@@ -387,6 +389,8 @@ export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLane
   sweepFile: string;
   screenshotFile: string;
   manifestFile: string;
+  /** The recording of the sweep, captioned step by step. */
+  video?: InteractionVideoEvidence;
 }
 
 export interface MotionSample {
@@ -667,6 +671,9 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
   };
 }
 
+/** Every lane records at this size, so recordings of one run line up. */
+const LANE_VIDEO_SIZE = { width: 1280, height: 720 };
+
 const VIRTUAL_READER_LANE_OBSERVERS = [
   "focus",
   "dom",
@@ -747,7 +754,7 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
         storageState: initialState.storageState,
         recordVideo: {
           dir: path.join(comparisonOutputDir, driver),
-          size: { width: 1280, height: 720 }
+          size: LANE_VIDEO_SIZE
         }
       });
     const pointer = await runInputLane(
@@ -1201,7 +1208,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
 
   try {
     browserContext = await options.browser.newContext({
-      recordVideo: { dir: laneOutputDir, size: { width: 1280, height: 720 } }
+      recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
     });
     const page = await browserContext.newPage();
     pageVideo = page.video?.();
@@ -1435,12 +1442,16 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     startedAt: new Date().toISOString()
   };
   const blockedNavigations: string[] = [];
+  const steps: SweepStep[] = [];
   let sweep:
     Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
+  let pageVideo: PlaywrightVideoLike | null | undefined;
   let runError: unknown;
 
   await mkdir(laneOutputDir, { recursive: true });
-  const context = await options.browser.newContext();
+  const context = await options.browser.newContext({
+    recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
+  });
   try {
     await context.route("**/*", async (route) => {
       const request = route.request();
@@ -1455,10 +1466,12 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       }
     });
     const page = await context.newPage();
+    pageVideo = page.video?.();
     const result = await sweepKeyboardAndPointer({
       page,
       url: options.targetUrl,
-      activateControls: options.activateControls
+      activateControls: options.activateControls,
+      onStep: (step) => steps.push(step)
     });
     await page.goto(options.targetUrl);
     await page.screenshot({ path: screenshotFile, fullPage: true });
@@ -1496,6 +1509,24 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     "keyboard and pointer sweep lane output"
   );
   await writeFile(sweepFile, JSON.stringify(laneRecord, null, 2), "utf8");
+  const video = pageVideo
+    ? await persistInteractionVideo({
+        video: pageVideo,
+        rootDir: laneOutputDir,
+        laneDir: laneOutputDir,
+        laneId,
+        driver: "keyboard-pointer-sweep",
+        status,
+        startedAt: laneRecord.startedAt,
+        finishedAt: laneRecord.finishedAt,
+        actions: steps.map((step, index) => ({
+          id: `step-${index + 1}`,
+          sequence: index + 1,
+          ...step
+        })),
+        ...(laneRecord.diagnostics ? { diagnostics: laneRecord.diagnostics } : {})
+      })
+    : undefined;
   await writeEvidenceManifest({
     assessmentId: laneId,
     rootDir: laneOutputDir,
@@ -1503,6 +1534,12 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     lanes: [{ id: laneId, driver: "keyboard-pointer-sweep", status, actions: [] }],
     supplementalFiles: [
       { path: sweepFile, kind: "keyboard-pointer-sweep", phase: "lane", laneId },
+      ...(video
+        ? [video.videoFile, video.sidecarFile, video.captionsFile].map((file) => ({
+            path: file,
+            laneId
+          }))
+        : []),
       ...(sweep
         ? [
             {
@@ -1516,7 +1553,15 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     ]
   });
   if (!sweep) throw runError;
-  return { ...laneRecord, ...sweep, status: "completed", sweepFile, screenshotFile, manifestFile };
+  return {
+    ...laneRecord,
+    ...sweep,
+    status: "completed",
+    sweepFile,
+    screenshotFile,
+    manifestFile,
+    ...(video ? { video } : {})
+  };
 }
 
 function normalizeAllowedOrigins(

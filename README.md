@@ -145,12 +145,16 @@ Rebuild the axe and AEE evidence plus the public images locally with:
 npm run demo:record
 ```
 
+### Product shots and videos
+
+`npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature and two videos: the keyboard sweep's own recording, and a screen reader reading the page (screen-reader-cli `audit --record`). `site/shots/shots.json` lists each file with a plain-language caption and alt text. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
+
 ## Current capabilities
 
 | Area                    | Implemented                                                                       | Current scope                                                                                                                                                      |
 | ----------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network | Before/after capture with raw artifacts; DOM and network change summaries                                                                                          |
-| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work                                                                                         |
+| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                               | Fails violations and preserves incomplete checks as unresolved review work; best-practice results are reported as advisory and never block                         |
 | Portable virtual reader | Guide-mode semantic navigation and JSON/TXT transcripts                           | Keeps its virtual cursor separate from DOM focus; explicitly not VoiceOver or NVDA fidelity                                                                        |
 | Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                         | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work                                  |
 | Keyboard judge          | Tab, shift-tab, role-aware enter/space, composite arrows/Home/End                 | Evaluates user-authored keys against a bounded role/orientation matrix, deep focus, `aria-activedescendant`, and observable activation                             |

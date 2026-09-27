@@ -25,6 +25,13 @@ export interface SweepFinding {
   summary: string;
 }
 
+/** One timed step of the sweep: a Tab, the hover checks, or pressing one control. */
+export interface SweepStep {
+  label: string;
+  startedAt: string;
+  finishedAt: string;
+}
+
 export interface KeyboardPointerSweepResult {
   url: string;
   tabStops: string[];
@@ -74,6 +81,8 @@ export interface KeyboardPointerSweepOptions {
    */
   activateControls: boolean;
   maxTabStops?: number;
+  /** Called as each step finishes, so a recording of the sweep can say what it shows. */
+  onStep?: (step: SweepStep) => void;
 }
 
 type ProbeRequest =
@@ -110,11 +119,11 @@ interface ActivationOutcome {
 export async function sweepKeyboardAndPointer(
   options: KeyboardPointerSweepOptions
 ): Promise<KeyboardPointerSweepResult> {
-  const { page, url } = options;
+  const { page, url, onStep } = options;
   const probe = <T>(request: ProbeRequest) => page.evaluate(runSweepProbe, request) as Promise<T>;
 
   await page.goto(url);
-  const tabStops = await collectTabStops(page, probe, options.maxTabStops ?? 200);
+  const tabStops = await collectTabStops(page, probe, options.maxTabStops ?? 200, onStep);
   const findings: SweepFinding[] = [];
 
   for (const target of await probe<ProbedElement[]>({ mode: "pointer-only", tabStops })) {
@@ -128,25 +137,39 @@ export async function sweepKeyboardAndPointer(
   }
 
   const styleSheets = await readStyleSheetTexts(page);
-  for (const rule of await probe<HoverRule[]>({ mode: "hover-rules", styleSheets })) {
-    const revealed = await revealedOnHover(page, probe, rule);
-    if (revealed.length === 0) continue;
-    if (await revealedOnFocus(page, probe, rule, revealed, tabStops)) continue;
-    findings.push(
-      sweepFinding(
-        "hover-only",
-        { selector: rule.hover, label: revealed.join(" ") },
-        "Hovering shows this content; keyboard focus never does."
-      )
-    );
-  }
+  const hoverRules = await probe<HoverRule[]>({ mode: "hover-rules", styleSheets });
+  await timed(
+    onStep,
+    () =>
+      hoverRules.length ? "Hover each element that shows more on hover, then try the keyboard" : "",
+    async () => {
+      for (const rule of hoverRules) {
+        const revealed = await revealedOnHover(page, probe, rule);
+        if (revealed.length === 0) continue;
+        if (await revealedOnFocus(page, probe, rule, revealed, tabStops)) continue;
+        findings.push(
+          sweepFinding(
+            "hover-only",
+            { selector: rule.hover, label: revealed.join(" ") },
+            "Hovering shows this content; keyboard focus never does."
+          )
+        );
+      }
+    }
+  );
 
   const activated: string[] = [];
   if (options.activateControls) {
     await page.goto(url);
     for (const control of await probe<PressableControl[]>({ mode: "pressable", tabStops })) {
       activated.push(control.selector);
-      findings.push(...(await pressControl(page, probe, url, control)));
+      findings.push(
+        ...(await timed(
+          onStep,
+          () => `Press ${describeElement(control)} with ${control.key}, then click it`,
+          () => pressControl(page, probe, url, control)
+        ))
+      );
     }
   }
 
@@ -174,16 +197,43 @@ async function readStyleSheetTexts(page: KeyboardPointerSweepPage): Promise<stri
   }
 }
 
+/** How a step names an element: by its label, or as unnamed, which is itself worth seeing. */
+function describeElement({ selector, label }: ProbedElement): string {
+  return label ? `“${label}”` : `a control with no name (${selector})`;
+}
+
+/** Runs `run`, then reports it as a step unless `label` names none. */
+async function timed<Result>(
+  onStep: KeyboardPointerSweepOptions["onStep"],
+  label: (result: Result) => string,
+  run: () => Promise<Result>
+): Promise<Result> {
+  const startedAt = new Date().toISOString();
+  const result = await run();
+  const text = label(result);
+  if (text) onStep?.({ label: text, startedAt, finishedAt: new Date().toISOString() });
+  return result;
+}
+
 async function collectTabStops(
   page: KeyboardPointerSweepPage,
   probe: <T>(request: ProbeRequest) => Promise<T>,
-  maxTabStops: number
+  maxTabStops: number,
+  onStep: KeyboardPointerSweepOptions["onStep"]
 ): Promise<string[]> {
   const stops: string[] = [];
+  const isNewStop = (active: ProbedElement | null): active is ProbedElement =>
+    active !== null && !stops.includes(active.selector);
   for (let index = 0; index < maxTabStops; index += 1) {
-    await page.keyboard.press("Tab");
-    const active = await probe<ProbedElement | null>({ mode: "active" });
-    if (!active || stops.includes(active.selector)) break;
+    const active = await timed(
+      onStep,
+      (found) => (isNewStop(found) ? `Tab ${stops.length + 1}: ${describeElement(found)}` : ""),
+      async () => {
+        await page.keyboard.press("Tab");
+        return probe<ProbedElement | null>({ mode: "active" });
+      }
+    );
+    if (!isNewStop(active)) break;
     stops.push(active.selector);
   }
   return stops;

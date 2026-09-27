@@ -1,3 +1,5 @@
+import { readFile, stat } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { runKeyboardPointerSweepLane, sweepKeyboardAndPointer } from "@aee/playwright";
@@ -102,5 +104,53 @@ test("the sweep lane keeps pressed controls inside the allowed origins and repor
   } finally {
     await site.close();
     await elsewhere.close();
+  }
+});
+
+test("the sweep lane records a video whose descriptions name each step", async ({
+  browser
+}, testInfo) => {
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Steps</title></head>
+  <body>
+    <main>
+      <h1>Steps</h1>
+      <a href="#top">Back to top</a>
+      <button id="save" type="button">Save</button>
+      <button id="icon" type="button"></button>
+    </main>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: true
+    });
+
+    const captions = await readFile(lane.video!.captionsFile, "utf8");
+    const cues = captions.split("\n").filter((line) => /^(Tab|Press) /.test(line));
+    expect(cues).toEqual([
+      "Tab 1: “Back to top”",
+      "Tab 2: “Save”",
+      "Tab 3: a control with no name (#icon)",
+      "Press “Save” with Enter, then click it",
+      "Press a control with no name (#icon) with Enter, then click it"
+    ]);
+    expect((await stat(lane.video!.videoFile)).size).toBeGreaterThan(0);
+    const manifest = JSON.parse(await readFile(lane.manifestFile, "utf8")) as {
+      artifacts: Array<{ kind: string }>;
+    };
+    expect(manifest.artifacts.map(({ kind }) => kind)).toEqual(
+      expect.arrayContaining(["interaction-video", "video-sidecar", "video-captions"])
+    );
+  } finally {
+    await site.close();
   }
 });

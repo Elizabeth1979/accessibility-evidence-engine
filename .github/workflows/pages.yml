@@ -6,6 +6,12 @@ name: Pages
       - main
     paths:
       - site/**
+      - packages/**
+      - package-lock.json
+      - playwright.shots.config.ts
+      - tests/product-shots.shots.ts
+      - tests/test-lab-helpers.ts
+      - tests/scenario-helpers.ts
       - packages/schemas/json/remediation-registry.json
       - packages/schemas/json/remediation-registry.schema.json
       - scripts/generate-site-registry.mjs
@@ -55,6 +61,12 @@ jobs:
 
       - name: Generate test lab from its contract
         run: npm run site:lab
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Generate product shots and videos from a real run
+        run: npm run site:shots
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

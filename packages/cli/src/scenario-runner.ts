@@ -2329,30 +2329,30 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
 }
 
 function renderStatusAreas(report: ScenarioIntegratedReport): string {
-  const keyboardArtifact = (kind: string) =>
+  const laneArtifact = (laneSuffix: string, kind: string) =>
     report.artifacts.find((artifact) => {
       const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
-      return artifact.kind === kind && stringField(provenance, "laneId", "").endsWith("-keyboard");
+      return (
+        artifact.kind === kind &&
+        (kind !== "viewport-screenshot" || artifact.phase === "after") &&
+        stringField(provenance, "laneId", "").endsWith(laneSuffix)
+      );
     });
-  const keyboardVideo = keyboardArtifact("interaction-video");
-  const keyboardCaptions = keyboardArtifact("video-captions");
-  const keyboardTimeline = keyboardArtifact("video-sidecar");
-  const keyboardPoster = report.artifacts.find((artifact) => {
-    const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
-    return (
-      artifact.kind === "viewport-screenshot" &&
-      artifact.phase === "after" &&
-      stringField(provenance, "laneId", "").endsWith("-keyboard")
-    );
-  });
+  // The authored keyboard lane when there is one; otherwise the sweep, which tabs every stop.
+  const authored = Boolean(laneArtifact("-keyboard", "interaction-video"));
+  const laneSuffix = authored ? "-keyboard" : "-keyboard-pointer-sweep";
+  const keyboardVideo = laneArtifact(laneSuffix, "interaction-video");
+  const keyboardCaptions = laneArtifact(laneSuffix, "video-captions");
+  const keyboardTimeline = laneArtifact(laneSuffix, "video-sidecar");
+  const keyboardPoster = laneArtifact(laneSuffix, "viewport-screenshot");
   const keyboardActions = report.actions.filter(({ driver }) => driver === "keyboard");
   const keyboardRecording = keyboardVideo
-    ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">Keyboard journey recording</h3><p>Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page.</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
+    ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">${authored ? "Keyboard journey recording" : "Keyboard sweep recording"}</h3><p>${authored ? "Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page." : "Watch the sweep press Tab through every stop, hover what shows more on hover, and press each control it was allowed to. The descriptions name each step."}</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
     : "";
   return `<div class="health-map">${report.synthesis.status
     .map(
       ({ id, label, verdict, result, detail }) =>
-        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${id === "keyboard" ? keyboardRecording : ""}`
+        `<div class="health-row" data-status="${escapeAttribute(id)}"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${id === "keyboard" ? keyboardRecording : ""}`
     )
     .join("")}</div>`;
 }

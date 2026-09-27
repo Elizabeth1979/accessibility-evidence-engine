@@ -3,7 +3,8 @@ import path from "node:path";
 
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
 
-export type InteractionVideoDriver = "pointer" | "keyboard" | "portable-virtual-screen-reader";
+export type InteractionVideoDriver =
+  "pointer" | "keyboard" | "keyboard-pointer-sweep" | "portable-virtual-screen-reader";
 
 export interface PlaywrightVideoLike {
   saveAs(filePath: string): Promise<void>;
