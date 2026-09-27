@@ -88,9 +88,12 @@ graph TD
   cli --> reporter
 ```
 
+`npm run test:unit` holds the code to this graph (`scripts/graph-guard.test.mjs`). A package's `@aee` dependencies must be exactly its arrows here. Every package its shipped source imports must be one it declares. Only `@aee/playwright` and the packages built on it may reach a browser driver (Playwright, Puppeteer or WebDriver). To change a dependency, change the graph here first.
+
 ## Key invariants
 
 - Judges consume normalized evidence and do not read live page state.
+- AI fixes see captured evidence only: `@aee/ai-fixes` never reaches a browser driver.
 - `unknown`, unsupported capture, and observer errors remain distinct from pass and fail.
 - Release judgments run after other selected judges so policy can evaluate their results.
 - Plugin manifests and artifact schemas are versioned.
