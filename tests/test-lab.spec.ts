@@ -1,67 +1,131 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
-interface LabCase {
+interface LabPage {
+  title: string;
   url: string;
-  observedAxeViolationIds: string[];
   headingOutline: string[];
 }
 
-// The contract is the known answer for every lab case: a missed violation or a new one fails.
-const contract = JSON.parse(readFileSync("site/test-lab-contract.json", "utf8")) as {
-  cases: Record<string, LabCase>;
-};
-const site = pathToFileURL(path.resolve("site") + path.sep).href;
-const fixture = new URL("test-case.html", site).href;
-
-for (const [name, labCase] of Object.entries(contract.cases)) {
-  test(`lab case: ${name}`, async ({ page }) => {
-    await page.goto(new URL(labCase.url, site).href);
-    const result = await new AxeBuilder({ page }).analyze();
-    const rules = result.violations.map(({ id }) => id).sort();
-    expect(rules).toEqual([...labCase.observedAxeViolationIds].sort());
-    const outline = await page
-      .locator("h1,h2,h3,h4,h5,h6")
-      .evaluateAll((nodes) => nodes.map((node) => node.tagName));
-    expect(outline).toEqual(labCase.headingOutline);
-  });
+interface LabIssue {
+  id: string;
+  concept: string;
+  axeRule?: string;
+  plannedStep?: string;
 }
 
-test("fixture controls work with keyboard and reset on reload", async ({ page }) => {
-  await page.goto(`${fixture}?case=fixed`);
+// The contract is the known answer: the demo page must show exactly its issues' axe rules,
+// and the fixed page none. The lab page is generated from the same file.
+const contract = JSON.parse(readFileSync("site/test-lab-contract.json", "utf8")) as {
+  pages: { issues: LabPage; fixed: LabPage };
+  issues: LabIssue[];
+};
+const registry = JSON.parse(
+  readFileSync("packages/schemas/json/remediation-registry.json", "utf8")
+) as { entries: Array<{ id: string }> };
+const site = pathToFileURL(path.resolve("site") + path.sep).href;
+const { issues: issuesPage, fixed: fixedPage } = contract.pages;
+
+test.beforeAll(() => {
+  execFileSync(process.execPath, ["scripts/generate-test-lab.mjs"]);
+});
+
+async function open(page: Page, labPage: LabPage) {
+  await page.goto(new URL(labPage.url, site).href);
+}
+
+async function axeRules(page: Page) {
+  const result = await new AxeBuilder({ page }).analyze();
+  return result.violations.map(({ id }) => id).sort();
+}
+
+async function headingOutline(page: Page) {
+  return page.locator("h1,h2,h3,h4,h5,h6").evaluateAll((nodes) => nodes.map((n) => n.tagName));
+}
+
+test("every issue belongs to a registry concept and is either detected or planned", () => {
+  const concepts = new Set(registry.entries.map(({ id }) => id));
+  for (const issue of contract.issues) {
+    expect(concepts, issue.id).toContain(issue.concept);
+    expect(Boolean(issue.axeRule) !== Boolean(issue.plannedStep), issue.id).toBe(true);
+  }
+});
+
+test("the demo page shows exactly the issues' axe rules", async ({ page }) => {
+  await open(page, issuesPage);
+  const expected = contract.issues.flatMap(({ axeRule }) => (axeRule ? [axeRule] : [])).sort();
+  expect(await axeRules(page)).toEqual(expected);
+  expect(await headingOutline(page)).toEqual(issuesPage.headingOutline);
+  const defects = await page.locator("body").getAttribute("data-defects");
+  expect(defects?.split(" ").sort()).toEqual(contract.issues.map(({ id }) => id).sort());
+});
+
+test("the fixed page has no axe findings", async ({ page }) => {
+  await open(page, fixedPage);
+  expect(await axeRules(page)).toEqual([]);
+  expect(await headingOutline(page)).toEqual(fixedPage.headingOutline);
+  await expect(page.locator("body")).toHaveAttribute("data-defects", "");
+});
+
+test("the fixed page works by keyboard and resets on reload", async ({ page }) => {
+  await open(page, fixedPage);
   await page.locator("#archive-project").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#restore-project")).toBeFocused();
   await expect(page.locator("#project-alpha")).toBeHidden();
   await page.keyboard.press("Enter");
   await expect(page.locator("#archive-project")).toBeFocused();
-  await page.keyboard.press("Tab");
+  await page.locator("#export-report").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#action-status")).toHaveText("Report exported.");
+  await page.locator("#plan-details summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#plan-details p")).toBeVisible();
+  await page.locator("#toggle-digest").focus();
   await page.keyboard.press("Space");
   await expect(page.locator("#digest-state")).toHaveText("Disabled");
   await page.reload();
   await expect(page.locator("#digest-state")).toHaveText("Enabled");
 });
 
-test("lab navigation is accessible and layouts fit desktop and mobile", async ({ page }) => {
-  await page.goto(pathToFileURL(path.resolve("site/test-lab.html")).href);
+// The keyboard issues axe cannot see must really be on the demo page, or the known answer lies.
+test("the demo page's keyboard issues are real", async ({ page }) => {
+  await open(page, issuesPage);
+  await page.locator("#archive-project").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#project-alpha")).toBeHidden();
+  await expect(page.locator("#restore-project")).not.toBeFocused();
+  await expect(page.locator("#export-report")).not.toHaveAttribute("tabindex");
+  expect(await page.locator("#export-report").evaluate((node) => node.tagName)).toBe("DIV");
+  await expect(page.locator("#plan-details .hover-only")).toBeHidden();
+  await page.locator("#plan-details").hover();
+  await expect(page.locator("#plan-details .hover-only")).toBeVisible();
+});
+
+test("the lab page lists both pages and every issue, and fits desktop and phone", async ({
+  page
+}) => {
+  const lab = new URL("test-lab.html", site).href;
+  await page.goto(lab);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  for (const { url } of Object.values(contract.cases)) {
-    await expect(page.locator(`.experiments a[href="${url}"]`)).toHaveCount(1);
+  for (const { url } of Object.values(contract.pages)) {
+    await expect(page.locator(`.lab-pages a[href="${url}"]`)).toHaveCount(1);
   }
+  await expect(page.locator("tbody tr")).toHaveCount(contract.issues.length);
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    for (const file of ["test-lab.html", "test-case.html?case=headings"]) {
-      await page.goto(new URL(file, fixture).href);
+    for (const url of [
+      lab,
+      ...Object.values(contract.pages).map((p) => new URL(p.url, site).href)
+    ]) {
+      await page.goto(url);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true
       );
-      await page.screenshot({
-        path: `/tmp/aee-${width}-${file.split(".")[0]}.png`,
-        fullPage: true
-      });
     }
   }
 });
