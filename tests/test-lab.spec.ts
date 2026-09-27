@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
+import { sweepKeyboardAndPointer } from "@aee/playwright";
+
 interface LabPage {
   title: string;
   url: string;
@@ -15,11 +17,12 @@ interface LabIssue {
   id: string;
   concept: string;
   axeRule?: string;
+  sweepFinding?: string;
   plannedStep?: string;
 }
 
-// The contract is the known answer: the demo page must show exactly its issues' axe rules,
-// and the fixed page none. The lab page is generated from the same file.
+// The contract is the known answer: the demo page must show exactly its issues' axe rules and
+// sweep findings, and the fixed page none. The lab page is generated from the same file.
 const contract = JSON.parse(readFileSync("site/test-lab-contract.json", "utf8")) as {
   pages: { issues: LabPage; fixed: LabPage };
   issues: LabIssue[];
@@ -47,11 +50,21 @@ async function headingOutline(page: Page) {
   return page.locator("h1,h2,h3,h4,h5,h6").evaluateAll((nodes) => nodes.map((n) => n.tagName));
 }
 
-test("every issue belongs to a registry concept and is either detected or planned", () => {
+async function sweepFindings(page: Page, labPage: LabPage) {
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: new URL(labPage.url, site).href,
+    activateControls: true
+  });
+  return result.findings.map(({ kind }) => kind).sort();
+}
+
+test("every issue belongs to a registry concept and has exactly one way it is found", () => {
   const concepts = new Set(registry.entries.map(({ id }) => id));
   for (const issue of contract.issues) {
     expect(concepts, issue.id).toContain(issue.concept);
-    expect(Boolean(issue.axeRule) !== Boolean(issue.plannedStep), issue.id).toBe(true);
+    const ways = [issue.axeRule, issue.sweepFinding, issue.plannedStep].filter(Boolean);
+    expect(ways, issue.id).toHaveLength(1);
   }
 });
 
@@ -92,18 +105,17 @@ test("the fixed page works by keyboard and resets on reload", async ({ page }) =
   await expect(page.locator("#digest-state")).toHaveText("Enabled");
 });
 
-// The keyboard issues axe cannot see must really be on the demo page, or the known answer lies.
-test("the demo page's keyboard issues are real", async ({ page }) => {
-  await open(page, issuesPage);
-  await page.locator("#archive-project").focus();
-  await page.keyboard.press("Enter");
-  await expect(page.locator("#project-alpha")).toBeHidden();
-  await expect(page.locator("#restore-project")).not.toBeFocused();
-  await expect(page.locator("#export-report")).not.toHaveAttribute("tabindex");
-  expect(await page.locator("#export-report").evaluate((node) => node.tagName)).toBe("DIV");
-  await expect(page.locator("#plan-details .hover-only")).toBeHidden();
-  await page.locator("#plan-details").hover();
-  await expect(page.locator("#plan-details .hover-only")).toBeVisible();
+test("the keyboard and pointer sweep finds exactly the demo page's keyboard issues", async ({
+  page
+}) => {
+  const expected = contract.issues.flatMap(({ sweepFinding }) =>
+    sweepFinding ? [sweepFinding] : []
+  );
+  expect(await sweepFindings(page, issuesPage)).toEqual(expected.sort());
+});
+
+test("the keyboard and pointer sweep finds nothing on the fixed page", async ({ page }) => {
+  expect(await sweepFindings(page, fixedPage)).toEqual([]);
 });
 
 test("the lab page lists both pages and every issue, and fits desktop and phone", async ({

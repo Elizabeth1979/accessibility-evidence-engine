@@ -82,24 +82,24 @@
       "title": "Export report works with a mouse only",
       "whoItHurts": "Keyboard users cannot reach or press it.",
       "concept": "keyboard-operation",
-      "check": "Keyboard (Playwright): Tab to it, press Enter",
-      "plannedStep": "2.2"
+      "check": "Keyboard (Playwright): Tab through the page; it never gets focus",
+      "sweepFinding": "pointer-only"
     },
     {
       "id": "hover-only-plan-details",
       "title": "Plan details appear on mouse hover only",
       "whoItHurts": "Keyboard and touch users cannot see them.",
       "concept": "hover-focus-equivalence",
-      "check": "Mouse vs keyboard (Playwright): hover it, focus it, compare",
-      "plannedStep": "2.2"
+      "check": "Mouse vs keyboard (Playwright): hover shows it, focus never does",
+      "sweepFinding": "hover-only"
     },
     {
       "id": "focus-lost-after-archive",
       "title": "Focus is lost after archiving a project",
       "whoItHurts": "Keyboard and screen reader users are dropped at the top of the page.",
       "concept": "focus-management",
-      "check": "Keyboard (Playwright): press Archive, check where focus goes",
-      "plannedStep": "2.2"
+      "check": "Keyboard (Playwright): press Archive, check where focus lands",
+      "sweepFinding": "focus-lost"
     }
   ]
 }
