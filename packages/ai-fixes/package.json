@@ -17,7 +17,10 @@
   "files": [
     "dist/index.js",
     "dist/index.js.map",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/label-providers.js",
+    "dist/label-providers.js.map",
+    "dist/label-providers.d.ts"
   ],
   "engines": {
     "node": ">=22"
@@ -41,6 +44,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/core": "0.1.0"
+    "@aee/core": "0.1.0",
+    "@anthropic-ai/sdk": "^0.128.0"
   }
 }

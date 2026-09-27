@@ -8,4 +8,4 @@ AI review is allowlisted for semantic heading structure, icon-only labels, and d
 
 The package does not apply patches automatically. A model proposes a label and rationale, AEE marks the resulting patch as requiring review, and a fresh evidence run must verify the accepted change.
 
-The OpenAI Responses provider requires the caller to supply an API key and model explicitly. Applications can inject another provider implementing the same interface.
+`createLabelProvider()` chooses the model from the environment: Claude when `ANTHROPIC_API_KEY` is set, a local model (Ollama by default) with `AEE_LLM_PROVIDER=local`, OpenAI with `AEE_LLM_PROVIDER=openai`, and otherwise a stub that never suggests a label. Applications can inject another provider implementing the same interface. See [docs/ai-fixes.md](https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/ai-fixes.md#choosing-a-model).

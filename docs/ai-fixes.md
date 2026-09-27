@@ -61,18 +61,34 @@ const proposal = await proposeAccessibleLabelFix(
 );
 ```
 
-## OpenAI Responses provider
+## Choosing a model
+
+`createLabelProvider()` picks the model from the environment, so switching needs no code change:
 
 ```ts
-import { createOpenAiResponsesLabelProvider, proposeAccessibleLabelFix } from "@aee/ai-fixes";
+import { createLabelProvider, proposeAccessibleLabelFix } from "@aee/ai-fixes";
 
-const provider = createOpenAiResponsesLabelProvider({
-  apiKey: process.env.OPENAI_API_KEY!,
-  model: process.env.AEE_LABEL_MODEL!
-});
+const fix = await proposeAccessibleLabelFix(context, createLabelProvider());
 ```
 
-The adapter uses the Responses API with a strict JSON Schema and `store: false`. The API key and model are caller-supplied; the repository contains neither credentials nor a hidden default model. See the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create).
+| Setting                                         | Model that suggests the label                                                                                                                                                                             |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Nothing set                                     | The stub: no suggestion is made, and `AiNotConfiguredError` says how to configure one. No request leaves the machine.                                                                                     |
+| `ANTHROPIC_API_KEY` (or `ANTHROPIC_AUTH_TOKEN`) | Claude, `claude-opus-5` unless `AEE_LLM_MODEL` names another.                                                                                                                                             |
+| `AEE_LLM_PROVIDER=local`                        | A model on this machine through the OpenAI-compatible chat API: Ollama at `http://localhost:11434/v1` with `gemma4:e4b` unless `AEE_LLM_BASE_URL` and `AEE_LLM_MODEL` say otherwise. No key and no cloud. |
+| `AEE_LLM_PROVIDER=openai`                       | OpenAI's Responses API; needs `OPENAI_API_KEY` and `AEE_LLM_MODEL`.                                                                                                                                       |
+| `AEE_LLM_PROVIDER=claude` or `stub`             | Forces that provider. Claude then uses the SDK's full credential lookup, including a saved `ant auth login`.                                                                                              |
+
+Every provider answers in the same shape (label, rationale, confidence), and `validateSuggestion` checks each answer's limits, because not every API accepts length or range limits in a schema. The Claude provider uses the Anthropic SDK with structured outputs, and opts into server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is re-run on the model Anthropic recommends for that refusal category; a refusal that still stands is an error, never a label. A local model cannot enforce a schema, so its prompt asks for the JSON object. The OpenAI adapter uses the Responses API with a strict JSON Schema and `store: false`; see the official [OpenAI Responses API reference](https://developers.openai.com/api/reference/cli/resources/responses/methods/create).
+
+Each provider can also be built directly (`createClaudeLabelProvider`, `createLocalLabelProvider`, `createOpenAiResponsesLabelProvider`, `createStubLabelProvider`), and an application can inject any object implementing `AccessibleLabelModelProvider`.
+
+To see a live run, start a local model and run the unit tests; the live tests skip themselves when no model answers:
+
+```bash
+ollama pull gemma4:e4b
+npm run test:unit
+```
 
 ## Privacy
 
