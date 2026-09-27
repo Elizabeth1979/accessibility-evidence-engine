@@ -52,6 +52,31 @@
         "page-has-heading-one"
       ],
       "headingOutline": ["H1", "H2", "H3"]
+    },
+    "workshop": {
+      "url": "cases/workshop.html",
+      "source": "a11y-for-feds-intro workshop page as shipped (commit 542ee5e); brand links, video, meme and fonts replaced",
+      "observedAxeViolationIds": [
+        "aria-hidden-body",
+        "html-has-lang",
+        "landmark-one-main",
+        "page-has-heading-one"
+      ],
+      "headingOutline": ["H1", "H2", "H3", "H3", "H3", "H3", "H3", "H3", "H2"]
+    },
+    "workshop-body-visible": {
+      "url": "cases/workshop.html?case=body-visible",
+      "source": "The same page after the workshop's first fix: aria-hidden removed from the body",
+      "observedAxeViolationIds": [
+        "button-name",
+        "html-has-lang",
+        "image-alt",
+        "label",
+        "landmark-one-main",
+        "region",
+        "tabindex"
+      ],
+      "headingOutline": ["H1", "H2", "H3", "H3", "H3", "H3", "H3", "H3", "H2"]
     }
   }
 }

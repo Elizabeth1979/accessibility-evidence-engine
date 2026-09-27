@@ -62,6 +62,30 @@
           </dd>
         </div>
       </dl>
+      <h2>A real workshop page</h2>
+      <p>
+        The broken page from the a11y-for-feds-intro workshop, with its defects kept as shipped.
+        Brand links, the video and the images are replaced with neutral stand-ins.
+      </p>
+      <dl class="experiments">
+        <div>
+          <dt><a href="cases/workshop.html">Workshop page as shipped</a></dt>
+          <dd>
+            The whole body is hidden with <code>aria-hidden="true"</code> and the page has no
+            language. The hidden body masks most of the other defects.
+          </dd>
+        </div>
+        <div>
+          <dt>
+            <a href="cases/workshop.html?case=body-visible">After the first fix: body visible</a>
+          </dt>
+          <dd>
+            Now axe finds the unnamed theme button, the image without alt text, the unlabelled email
+            field and <code>tabindex="1"</code>. The keyboard defects need a person: the menu opens
+            on click only, and the facts appear on hover only.
+          </dd>
+        </div>
+      </dl>
       <h2>Read the results in context</h2>
       <p>
         Compare violations, incomplete checks, the heading outline, focus, and the captured
