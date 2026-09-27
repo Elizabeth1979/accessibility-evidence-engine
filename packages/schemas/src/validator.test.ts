@@ -463,7 +463,15 @@ test("validateSchema accepts an integrated scenario report", () => {
       missingArtifacts: 0,
       failedArtifacts: 0
     },
-    summary: { actions: 1, passed: 1, failed: 0, unknown: 0, findings: 0, artifacts: 1 },
+    summary: {
+      actions: 1,
+      passed: 1,
+      failed: 0,
+      unknown: 0,
+      findings: 0,
+      advisories: 0,
+      artifacts: 1
+    },
     journeys: [
       { id: "journey", name: "Journey", goal: "Read content", startUrl: "https://example.com/" }
     ],
@@ -480,6 +488,15 @@ test("validateSchema accepts an integrated scenario report", () => {
       lanes: [],
       comparisons: [],
       reader: { commands: 1, passed: 1, failed: 0, unknown: 0 },
+      status: [
+        {
+          id: "reader",
+          label: "Virtual reader",
+          verdict: "pass",
+          result: "Pass",
+          detail: "Every authored reader command matched the page."
+        }
+      ],
       findings: []
     },
     artifacts: [],

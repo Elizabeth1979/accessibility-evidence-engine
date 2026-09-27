@@ -681,6 +681,28 @@ async function captureVisualRecord(
 }
 
 const AXE_WCAG_22_A_AA_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+/** axe's best-practice rules run too; they are not WCAG requirements, so their results are advisory. */
+const AXE_RULE_TAGS = [...AXE_WCAG_22_A_AA_TAGS, "best-practice"];
+
+/** An axe rule is advisory only when axe files it as best practice and under no WCAG criterion. */
+export function isAdvisoryAxeRule(tags: readonly unknown[]): boolean {
+  const names = tags.map(String);
+  return (
+    names.includes("best-practice") && !names.some((tag) => AXE_WCAG_22_A_AA_TAGS.includes(tag))
+  );
+}
+
+function isAdvisoryRule(rule: unknown): boolean {
+  return isAdvisoryAxeRule(isRecord(rule) && Array.isArray(rule.tags) ? rule.tags : []);
+}
+
+function splitAdvisory(value: unknown): { blocking: unknown[]; advisory: unknown[] } {
+  const rules = Array.isArray(value) ? value : [];
+  return {
+    blocking: rules.filter((rule) => !isAdvisoryRule(rule)),
+    advisory: rules.filter(isAdvisoryRule)
+  };
+}
 
 async function captureAxeRecord(
   context: RuntimeObserverContext,
@@ -704,19 +726,22 @@ async function captureAxeRecord(
   }
 
   try {
-    const result = await runAxeAnalysis({ tags: AXE_WCAG_22_A_AA_TAGS });
+    const result = await runAxeAnalysis({ tags: AXE_RULE_TAGS });
     const normalized = isRecord(result) ? result : {};
-    const violations = arrayLength(normalized.violations);
+    const violationGroups = splitAdvisory(normalized.violations);
+    const violations = violationGroups.blocking.length;
     const passes = arrayLength(normalized.passes);
-    const incomplete = arrayLength(normalized.incomplete);
+    const incompleteGroups = splitAdvisory(normalized.incomplete);
+    const incomplete = incompleteGroups.blocking.length;
     const inapplicable = arrayLength(normalized.inapplicable);
-    const violationRuleIds = readRuleIds(normalized.violations);
-    const incompleteRuleIds = readRuleIds(normalized.incomplete);
+    const violationRuleIds = readRuleIds(violationGroups.blocking);
+    const advisoryRuleIds = readRuleIds(violationGroups.advisory);
+    const incompleteRuleIds = readRuleIds(incompleteGroups.blocking);
     const evaluatedRuleIds = [
       ...new Set([
-        ...violationRuleIds,
+        ...readRuleIds(normalized.violations),
         ...readRuleIds(normalized.passes),
-        ...incompleteRuleIds,
+        ...readRuleIds(normalized.incomplete),
         ...readRuleIds(normalized.inapplicable)
       ])
     ].sort();
@@ -740,18 +765,19 @@ async function captureAxeRecord(
       phase,
       status: "ok",
       timestamp: getTimestamp(),
-      summary: `axe 4.13 found ${violations} violations, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
+      summary: `axe 4.13 found ${violations} violations, ${advisoryRuleIds.length} advisory best-practice results, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
       ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
       artifacts: artifact ? [artifact] : [],
       meta: {
         engineVersion: readNestedString(normalized, "testEngine", "version"),
-        ruleSelection: { type: "tag", values: AXE_WCAG_22_A_AA_TAGS },
+        ruleSelection: { type: "tag", values: AXE_RULE_TAGS },
         explicitlyDisabledRuleIds: [],
         violations,
         passes,
         incomplete,
         inapplicable,
         violationRuleIds,
+        advisoryRuleIds,
         incompleteRuleIds,
         evaluatedRuleIds
       }

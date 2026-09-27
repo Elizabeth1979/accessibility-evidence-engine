@@ -2,8 +2,10 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
+  announcedWithoutName,
   runInputComparison,
   runKeyboardPointerSweepLane,
   runVirtualScreenReaderLane,
@@ -82,7 +84,10 @@ export interface ScenarioIntegratedReport {
     passed: number;
     failed: number;
     unknown: number;
+    /** Findings that block release. */
     findings: number;
+    /** Best-practice findings: reported, never blocking. */
+    advisories: number;
     artifacts: number;
   };
   journeys: Array<{ id: string; name: string; goal: string; startUrl: string }>;
@@ -245,6 +250,10 @@ interface FindingSynthesis {
   ruleId: string;
   title: string;
   severity: string;
+  /** The status row this finding belongs to. */
+  area: "keyboard" | "semantics" | "contrast";
+  /** A best-practice result: reported, but it never blocks release. */
+  advisory: boolean;
   wcagCriteria: string[];
   /** The a11y-skills pattern that explains how to build this correctly, when the registry maps the rule. */
   pattern?: PatternLink;
@@ -267,6 +276,8 @@ interface FindingInstanceSynthesis {
   component: string;
   label: string;
   selector: string;
+  /** The element's tag, when the evidence recorded its HTML. */
+  tagName?: string;
   detail?: string;
   targetBox?: AxeTargetBox;
 }
@@ -289,7 +300,17 @@ export interface ScenarioSynthesis {
   }>;
   comparisons: InputComparisonView[];
   reader: { commands: number; passed: number; failed: number; unknown: number };
+  /** One row per area, computed once from the findings and evidence; every view renders these. */
+  status: StatusArea[];
   findings: FindingSynthesis[];
+}
+
+export interface StatusArea {
+  id: "keyboard" | "reader" | "semantics" | "contrast";
+  label: string;
+  verdict: "pass" | "fail" | "unknown";
+  result: string;
+  detail: string;
 }
 
 interface IntegratedHtmlViews {
@@ -745,7 +766,8 @@ function createIntegratedReport(input: {
       passed,
       failed,
       unknown,
-      findings: input.findings.length,
+      findings: input.findings.filter((finding) => !isAdvisoryFinding(finding)).length,
+      advisories: input.findings.filter(isAdvisoryFinding).length,
       artifacts: input.artifacts.length
     },
     journeys: input.plan.journeys.map(({ id, name, goal, startUrl }) => ({
@@ -789,6 +811,7 @@ function emptyScenarioSynthesis(): ScenarioSynthesis {
     lanes: [],
     comparisons: [],
     reader: { commands: 0, passed: 0, failed: 0, unknown: 0 },
+    status: [],
     findings: []
   };
 }
@@ -1111,7 +1134,9 @@ function buildScenarioSynthesis(
     judgments.filter(({ judgeId }) => judgeId !== "release")
   );
   const directJudgments = countVerdicts(direct.map(({ verdict }) => verdict));
-  const incompleteRules = views.axeReports.flatMap(({ incomplete }) => incomplete);
+  const incompleteRules = views.axeReports.flatMap(({ incomplete }) =>
+    incomplete.filter(({ tags }) => !isAdvisoryAxeRule(tags))
+  );
   const uniqueIncompleteRules = [...new Set(incompleteRules.map(({ id }) => id))].sort();
   const findingOccurrences = report.findings.reduce((count, finding) => {
     return count + (Array.isArray(finding.occurrences) ? finding.occurrences.length : 0);
@@ -1135,8 +1160,12 @@ function buildScenarioSynthesis(
       };
     })
     .filter(({ actions }) => actions > 0);
-  const findings = report.findings.map((finding) => buildFindingSynthesis(report, views, finding));
-  const affectedInstancesAtLargestCheckpoint = findings.reduce(
+  const findings = report.findings
+    .map((finding) => buildFindingSynthesis(report, views, finding))
+    .sort((left, right) => Number(left.advisory) - Number(right.advisory));
+  const blocking = findings.filter(({ advisory }) => !advisory);
+  const advisoryCount = findings.length - blocking.length;
+  const affectedInstancesAtLargestCheckpoint = blocking.reduce(
     (total, finding) => total + finding.maximumAffectedNodes,
     0
   );
@@ -1144,22 +1173,30 @@ function buildScenarioSynthesis(
     ({ equivalence, expectation }) =>
       equivalence.verdict === "pass" && expectation.verdict === "pass"
   ).length;
+  const reader = { commands: readerJudgments.length, ...readerCounts };
+  const status = buildStatusAreas(findings, views, reader, uniqueIncompleteRules);
+  // A lane's good news is only told when its status row did not fail, so the two never disagree.
+  const rowFailed = (id: StatusArea["id"]) =>
+    status.some((area) => area.id === id && area.verdict === "fail");
   const positive = [
-    readerJudgments.length
+    readerJudgments.length && !rowFailed("reader")
       ? `${readerCounts.passed} of ${readerJudgments.length} virtual-reader commands passed cross-evidence validation`
       : undefined,
-    views.comparisons.length
+    views.comparisons.length && !rowFailed("keyboard")
       ? `${passedComparisons} of ${views.comparisons.length} pointer/keyboard comparisons matched both equivalence and the expected outcome`
       : undefined
   ].filter((item): item is string => Boolean(item));
-  const negative = findings.length
-    ? `${findings.length} grouped fix${findings.length === 1 ? "" : "es"} cover ${affectedInstancesAtLargestCheckpoint} affected element-rule instance${affectedInstancesAtLargestCheckpoint === 1 ? "" : "s"} at the largest captured checkpoint and repeated across ${findingOccurrences} checkpoint result${findingOccurrences === 1 ? "" : "s"}`
+  const negative = blocking.length
+    ? `${blocking.length} grouped fix${blocking.length === 1 ? "" : "es"} cover ${affectedInstancesAtLargestCheckpoint} affected element-rule instance${affectedInstancesAtLargestCheckpoint === 1 ? "" : "s"} at the largest captured checkpoint and repeated across ${findingOccurrences} checkpoint result${findingOccurrences === 1 ? "" : "s"}`
     : "no confirmed fixes were emitted";
   const unresolved = uniqueIncompleteRules.length
     ? ` ${uniqueIncompleteRules.length} distinct Axe rule${uniqueIncompleteRules.length === 1 ? " remains" : "s remain"} unresolved and require review.`
     : "";
+  const advisoryNote = advisoryCount
+    ? ` ${advisoryCount} best-practice result${advisoryCount === 1 ? " is advisory and does" : "s are advisory and do"} not block release.`
+    : "";
   return {
-    conclusion: `${positive.length ? `${positive.join("; ")}. ` : ""}Within the user-authored scope, ${negative}.${unresolved}`,
+    conclusion: `${positive.length ? `${positive.join("; ")}. ` : ""}Within the user-authored scope, ${negative}.${unresolved}${advisoryNote}`,
     directJudgments,
     releaseGates: {
       passed: report.summary.passed,
@@ -1172,9 +1209,166 @@ function buildScenarioSynthesis(
     uniqueIncompleteRules,
     lanes,
     comparisons: views.comparisons,
-    reader: { commands: readerJudgments.length, ...readerCounts },
+    reader,
+    status,
     findings
   };
+}
+
+/**
+ * The report's status rows. A row fails when a blocking finding in its area does, so a row can
+ * never say "no confirmed issue" while the fix list holds one; advisory results are named but
+ * never fail a row.
+ */
+function buildStatusAreas(
+  findings: FindingSynthesis[],
+  views: IntegratedHtmlViews,
+  reader: ScenarioSynthesis["reader"],
+  uniqueIncompleteRules: string[]
+): StatusArea[] {
+  const blockingIn = (area: FindingSynthesis["area"]) =>
+    findings.filter((finding) => finding.area === area && !finding.advisory);
+  const advisoryNote = (area: FindingSynthesis["area"]) => {
+    const advisory = findings.filter((finding) => finding.area === area && finding.advisory);
+    return advisory.length
+      ? ` Best practice, advisory: ${advisory.map(({ title }) => title).join("; ")}.`
+      : "";
+  };
+  const fixRequired = (id: StatusArea["id"], label: string, detail: string): StatusArea => ({
+    id,
+    label,
+    verdict: "fail",
+    result: "Fix required",
+    detail
+  });
+  const needsReview = (id: StatusArea["id"], label: string, detail: string): StatusArea => ({
+    id,
+    label,
+    verdict: "unknown",
+    result: "Needs review",
+    detail
+  });
+  const noIssue = (id: StatusArea["id"], label: string, detail: string): StatusArea => ({
+    id,
+    label,
+    verdict: "pass",
+    result: "No confirmed issue",
+    detail
+  });
+  const titles = (list: FindingSynthesis[]) => `${list.map(({ title }) => title).join("; ")}.`;
+  const rulesRan = views.axeReports.length > 0;
+
+  const keyboardFindings = blockingIn("keyboard");
+  const swept =
+    views.sweeps.length > 0 &&
+    views.sweeps.every(({ document }) => document?.status === "completed");
+  const comparisonsPassed = views.comparisons.every(
+    ({ equivalence, expectation }) =>
+      equivalence.verdict === "pass" && expectation.verdict === "pass"
+  );
+  const pressed = views.sweeps.every(({ document }) => document?.activateControls);
+  const keyboard = keyboardFindings.length
+    ? fixRequired("keyboard", "Keyboard access", titles(keyboardFindings))
+    : swept && comparisonsPassed
+      ? noIssue(
+          "keyboard",
+          "Keyboard access",
+          `Tab reached every mouse target and focus showed everything hover did. ${pressed ? "Each control pressed by keyboard matched the click and kept focus." : `Controls were not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed.`}`
+        )
+      : needsReview("keyboard", "Keyboard access", "No complete keyboard result was available.");
+
+  const unnamed = new Map<string, string>();
+  for (const { entries } of views.transcripts) {
+    for (const entry of entries) {
+      if (
+        entry.role &&
+        entry.nodePath &&
+        announcedWithoutName({ role: entry.role, name: entry.name })
+      ) {
+        unnamed.set(entry.nodePath, `“${entry.announcement}” at ${entry.nodePath}`);
+      }
+    }
+  }
+  const readerRow = unnamed.size
+    ? fixRequired(
+        "reader",
+        "Virtual reader",
+        `Announced without a name: ${[...unnamed.values()].join(", ")}.`
+      )
+    : reader.commands > 0 && reader.failed === 0
+      ? {
+          id: "reader" as const,
+          label: "Virtual reader",
+          verdict: "pass" as const,
+          result: `${reader.passed}/${reader.commands} commands passed`,
+          detail: "Each announcement matched the accessibility tree, visuals and focus state."
+        }
+      : needsReview(
+          "reader",
+          "Virtual reader",
+          reader.commands
+            ? `${reader.commands - reader.passed} of ${reader.commands} commands did not pass the cross-evidence check.`
+            : "No virtual screen-reader commands were run."
+        );
+
+  const semanticFindings = blockingIn("semantics");
+  const semantics = semanticFindings.length
+    ? fixRequired("semantics", "Semantics", titles(semanticFindings) + advisoryNote("semantics"))
+    : rulesRan
+      ? noIssue(
+          "semantics",
+          "Semantics",
+          `No semantic rule failure was confirmed in the tested scope.${advisoryNote("semantics")}`
+        )
+      : needsReview("semantics", "Semantics", "No rule checks ran in the tested scope.");
+
+  const contrastFindings = blockingIn("contrast");
+  const contrast = contrastFindings.length
+    ? fixRequired("contrast", "Visual contrast", contrastDetail(contrastFindings))
+    : uniqueIncompleteRules.includes("color-contrast")
+      ? needsReview(
+          "contrast",
+          "Visual contrast",
+          "axe could not measure the contrast of some text, for example over an image or a gradient; check those ratios by hand."
+        )
+      : rulesRan
+        ? noIssue(
+            "contrast",
+            "Visual contrast",
+            "No contrast failure was confirmed in the tested scope."
+          )
+        : needsReview("contrast", "Visual contrast", "No rule checks ran in the tested scope.");
+
+  return [keyboard, readerRow, semantics, contrast];
+}
+
+/** What the contrast failures are, from their own elements: links only when every one is a link. */
+function contrastSubject(instances: FindingInstanceSynthesis[]): "link" | "text" {
+  return instances.length > 0 && instances.every(({ tagName }) => tagName === "a")
+    ? "link"
+    : "text";
+}
+
+function contrastDetail(findings: FindingSynthesis[]): string {
+  const instances = findings.flatMap(({ instances }) => instances);
+  const count = instances.length;
+  const noun = contrastSubject(instances) === "link" ? "link" : "text element";
+  const ratios = [
+    ...new Set(
+      instances.flatMap(({ detail }) => {
+        const ratio = requiredContrastRatio(detail ?? "");
+        return ratio ? [ratio] : [];
+      })
+    )
+  ];
+  const required = ratios.length === 1 ? `${ratios[0]}:1 ` : "";
+  return `${count} ${noun}${count === 1 ? " falls" : "s fall"} below the required ${required}contrast ratio.`;
+}
+
+/** The ratio axe required, from its own failure text ("Expected contrast ratio of 4.5:1"). */
+function requiredContrastRatio(text: string): number | undefined {
+  const ratio = /Expected contrast ratio of ([0-9.]+):1/i.exec(text)?.[1];
+  return ratio ? Number(ratio) : undefined;
 }
 
 /** Pure synthesis entry point used to verify cross-evidence reporting without launching a browser. */
@@ -1296,6 +1490,8 @@ function buildFindingSynthesis(
     ruleId,
     title: representative?.help ?? String(finding.message ?? ruleId),
     severity: String(finding.severity ?? representative?.impact ?? "review"),
+    area: axeRuleArea(representative?.tags ?? []),
+    advisory: isAdvisoryFinding(finding),
     wcagCriteria,
     pattern: patternForAxeRule(ruleId),
     conclusion: `${representative?.description ?? String(finding.message ?? "A confirmed issue was emitted.")} The same rule was observed at ${checkpoints.length} of ${views.axeReports.length} after-action checkpoints; the largest checkpoint affected ${maximumAffectedNodes} node${maximumAffectedNodes === 1 ? "" : "s"}. Independent behavior results remain shown separately and do not cancel this rule failure.`,
@@ -1348,6 +1544,8 @@ function buildSweepFindingSynthesis(
     ruleId: kind,
     title: text.title,
     severity: String(finding.severity ?? "high"),
+    area: "keyboard",
+    advisory: false,
     wcagCriteria: entry.requirements
       .filter(({ standard, relationship }) => standard === "WCAG" && relationship === "primary")
       .map(({ requirementId }) => `WCAG ${requirementId}`),
@@ -1381,7 +1579,7 @@ function sweepFindingInstance(
   index: number
 ): FindingInstanceSynthesis {
   return {
-    component: affectedComponentName(finding.kind, finding.selector),
+    component: affectedComponentName(finding.selector),
     label: finding.label || elementLabel(undefined, finding.selector, index),
     selector: finding.selector,
     targetBox: finding.targetBox,
@@ -1406,6 +1604,18 @@ function actionArtifactPath(
     );
   });
   return artifact ? String(artifact.path) : undefined;
+}
+
+/** A best-practice result from axe, tagged so by the axe judge: reported, never blocking. */
+function isAdvisoryFinding(finding: Record<string, unknown>): boolean {
+  return Array.isArray(finding.tags) && finding.tags.includes("best-practice");
+}
+
+/** Which status row an axe rule belongs to, from axe's own category tags. */
+function axeRuleArea(tags: string[]): FindingSynthesis["area"] {
+  if (tags.includes("cat.color")) return "contrast";
+  if (tags.includes("cat.keyboard")) return "keyboard";
+  return "semantics";
 }
 
 function driverFromLaneId(laneId: string): ScenarioActionReport["driver"] {
@@ -1438,11 +1648,13 @@ function findingInstances(
     const selector = node.target || `Affected element ${index + 1}`;
     if (seen.has(selector)) return [];
     seen.add(selector);
+    const tagName = /^<\s*([a-z][a-z0-9-]*)/i.exec(node.html ?? "")?.[1]?.toLowerCase();
     return [
       {
-        component: affectedComponentName(ruleId, selector, node.html),
+        component: affectedComponentName(selector, node.html),
         label: elementLabel(node.html, selector, index),
         selector,
+        ...(tagName ? { tagName } : {}),
         targetBox: node.targetBox,
         detail: node.failureSummary
           ?.replace(/^Fix any of the following:\s*/i, "")
@@ -1462,14 +1674,9 @@ function axeTargetBox(value: unknown): AxeTargetBox | undefined {
   return Object.fromEntries(keys.map((key) => [key, value[key]])) as unknown as AxeTargetBox;
 }
 
-function affectedComponentName(ruleId: string, selector: string, html?: string): string {
-  const normalized = `${selector} ${html ?? ""}`.toLowerCase();
-  if (normalized.includes("footer")) return "Footer navigation component";
-  if (normalized.includes("announcement")) return "Announcement bar";
-  if (normalized.includes("mid_page_banner") || normalized.includes("blog-banner")) {
-    return "Mid-page banner";
-  }
-  if (ruleId === "color-contrast") return "Shared color treatment";
+/** A component name from the element's own place: inside a footer, or its id or first class. */
+function affectedComponentName(selector: string, html?: string): string {
+  if (`${selector} ${html ?? ""}`.toLowerCase().includes("footer")) return "Footer";
   const id = /#([a-z0-9_-]+)/i.exec(selector)?.[1];
   if (id) return humanActionName(id.replaceAll("_", "-"));
   const className = /\.([a-z0-9_-]+)/i.exec(selector)?.[1];
@@ -1501,7 +1708,7 @@ function findingRemediation(
   if (ruleId === "aria-required-parent") {
     return {
       deterministic:
-        'For ordinary footer navigation, remove role="menuitem" and keep native link semantics. If these controls intentionally form an application-style menu, place each menuitem inside an element with role="menu", role="menubar", or role="group" and implement the complete keyboard pattern. ' +
+        'For ordinary navigation links, remove role="menuitem" and keep native link semantics. If the controls intentionally form an application-style menu, place each menuitem inside an element with role="menu", role="menubar", or role="group" and implement the complete keyboard pattern. ' +
         (measured ?? "Rerun the ARIA parent relationship check after changing the structure."),
       ai: {
         used: false,
@@ -1510,17 +1717,18 @@ function findingRemediation(
           "The required parent-role relationship is deterministic. A language or vision model should not choose whether invalid ARIA passes."
       },
       verification: [
-        "Rerun axe at the same five checkpoints and require aria-required-parent to pass.",
-        "Confirm the footer remains navigable with Tab and that link names and destinations are unchanged.",
+        "Rerun axe at the same checkpoints and require aria-required-parent to pass.",
+        "Confirm the affected controls remain reachable with Tab, with unchanged names and destinations.",
         "Confirm DOM roles match the accessibility tree after the fix."
       ]
     };
   }
   if (ruleId === "color-contrast") {
+    const required = requiredContrastRatio(measured ?? "") ?? 4.5;
     return {
       deterministic:
         (measured ? `${measured} ` : "") +
-        "Choose a brand-approved foreground/background token pair that computes to at least 4.5:1 for this normal-sized text, then verify every applicable default, hover, focus, and active state.",
+        `Choose a brand-approved foreground/background token pair that computes to at least ${required}:1 for this text, then verify every applicable default, hover, focus, and active state.`,
       ai: {
         used: false,
         status: "available-if-needed",
@@ -1528,16 +1736,14 @@ function findingRemediation(
           "A visual specialist may locate complex foreground/background regions or explain brand intent when deterministic extraction is inconclusive. The final contrast ratio and token selection must still be calculated deterministically."
       },
       verification: [
-        "Recompute the exact contrast ratio from final rendered colors and require at least 4.5:1.",
+        `Recompute the exact contrast ratio from final rendered colors and require at least ${required}:1.`,
         "Compare the corrected state with the full-page visual and DOM computed styles.",
         "Rerun the same keyboard, pointer, and virtual-reader checkpoints."
       ]
     };
   }
   return {
-    deterministic:
-      measured ??
-      "Apply the rule guidance to the affected nodes, then rerun the same authored journey.",
+    deterministic: `${rule ? `${rule.help.replace(/\.?$/, ".")} ` : ""}Fix every affected element listed here, then rerun the same authored journey.`,
     ai: {
       used: false,
       status: "not-applicable",
@@ -1588,8 +1794,18 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     `- ${report.summary.actions} user-authored actions evaluated across ${report.synthesis.lanes.length} active lanes`,
     `- ${report.synthesis.directJudgments.passed} direct judgments passed, ${report.synthesis.directJudgments.failed} failed, ${report.synthesis.directJudgments.unknown} unresolved`,
     `- ${report.summary.findings} grouped fixes covering ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected element-rule instances at the largest checkpoint`,
+    `- ${report.summary.advisories} best-practice results, advisory: they do not block release`,
     `- ${report.synthesis.uniqueIncompleteRules.length} unique incomplete Axe rules across ${report.synthesis.incompleteRuleResults} checkpoint results`,
     `- ${report.summary.artifacts} indexed artifacts`,
+    "",
+    "## Status",
+    "",
+    "| Area | Result | Detail |",
+    "| --- | --- | --- |",
+    ...report.synthesis.status.map(
+      ({ label, result, detail }) =>
+        `| ${escapeMarkdown(label)} | ${escapeMarkdown(result)} | ${escapeMarkdown(detail)} |`
+    ),
     "",
     "## Coverage by lane",
     "",
@@ -1606,7 +1822,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   if (report.findings.length === 0) lines.push("No findings were emitted.");
   for (const finding of report.synthesis.findings) {
     lines.push(
-      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}`,
+      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}${finding.advisory ? " (best practice, advisory)" : ""}`,
       "",
       finding.conclusion,
       "",
@@ -1668,7 +1884,7 @@ function findingEffort(ruleId: string): FindingEffort {
       minimumHours: 1,
       maximumHours: 2,
       rationale:
-        "Likely one shared footer component. Includes the semantic change and a keyboard/reader regression check."
+        "Likely one shared component. Includes the semantic change and a keyboard/reader regression check."
     };
   }
   if (ruleId === "color-contrast") {
@@ -1702,21 +1918,14 @@ function totalEffortSummary(findings: FindingSynthesis[]): string {
 }
 
 function executiveStatusSummary(report: ScenarioIntegratedReport): string {
-  const readerPassed = report.synthesis.reader.commands > 0 && report.synthesis.reader.failed === 0;
-  const comparisonsPassed =
-    report.synthesis.comparisons.length > 0 &&
-    report.synthesis.comparisons.every(
-      ({ equivalence, expectation }) =>
-        equivalence.verdict === "pass" && expectation.verdict === "pass"
-    );
-  const strengths = [
-    comparisonsPassed ? "the tested keyboard and pointer paths agree" : undefined,
-    readerPassed ? "all tested virtual-reader commands correlate with the page" : undefined
-  ].filter((item): item is string => Boolean(item));
-  const issueText = report.summary.findings
-    ? `${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint and still block release in this scope`
-    : "no confirmed fixes were found in this scope";
-  return `${strengths.length ? `${strengths.join(" and ")}. ` : ""}${issueText}.`;
+  const blocking = report.summary.findings;
+  const issues = blocking
+    ? `${blocking} grouped fix${blocking === 1 ? "" : "es"} cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint and still block release in this scope.`
+    : "No confirmed fix was found in this scope.";
+  const clear = report.synthesis.status
+    .filter(({ verdict }) => verdict === "pass")
+    .map(({ label }) => label.toLowerCase());
+  return clear.length ? `${issues} No confirmed issue in: ${clear.join(", ")}.` : issues;
 }
 
 function jsonForInlineScript(value: unknown): string {
@@ -1747,12 +1956,16 @@ function renderIntegratedHtml(
   );
   const tabLinks = [
     ["overview", "Status & plan"],
-    ["findings", `Fix review (${report.summary.findings})`],
+    [
+      "findings",
+      `Fix review (${report.summary.findings}${report.summary.advisories ? ` + ${report.summary.advisories} best practice` : ""})`
+    ],
     ["journeys", "Tested journeys"],
     ["media", `Visuals & video (${videos.length + screenshots.length})`],
     ["annex", "Technical annex"]
   ] as const;
   const statusSummary = executiveStatusSummary(report);
+  const readerStatus = report.synthesis.status.find(({ id }) => id === "reader");
   const effortSummary = totalEffortSummary(report.synthesis.findings);
   const assistantKnowledge = jsonForInlineScript({
     verdict: report.verdict,
@@ -1762,10 +1975,14 @@ function renderIntegratedHtml(
     directJudgments: report.synthesis.directJudgments,
     releaseGates: report.synthesis.releaseGates,
     reader: report.synthesis.reader,
+    status: report.synthesis.status,
+    blocking: report.summary.findings,
+    advisories: report.summary.advisories,
     findings: report.synthesis.findings.map((finding) => ({
       ruleId: finding.ruleId,
       title: finding.title,
-      fixLabel: findingFixLabel(finding.ruleId),
+      fixLabel: findingFixLabel(finding),
+      advisory: finding.advisory,
       severity: finding.severity,
       effort: findingEffort(finding.ruleId),
       fix: finding.remediation.deterministic,
@@ -1835,7 +2052,8 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
 .section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
 .planner-tools{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.planner-tools p{margin:0}.fix-filters{display:flex;flex-wrap:wrap;gap:.5rem}
-.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main{min-width:0}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
+.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}
+.fix-order span.advisory{color:var(--unknown)}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main{min-width:0}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
 .fix-scope{display:flex;flex-wrap:wrap;gap:.25rem .65rem;margin:1rem 0;padding:.8rem 1rem;background:var(--wash);border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.fix-scope strong{color:var(--forest)}.fix-scope span{color:var(--muted)}
 .before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}.before-after figure{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.issue-crop{position:relative;display:block;height:15rem;overflow:hidden;background:#121212}.before-after img{width:100%;height:100%;object-fit:cover;object-position:top;border:0;border-radius:0}.current-state[data-rule-id="color-contrast"] .issue-crop img{transform:scale(1.85);transform-origin:50% 3%}.issue-crop b{position:absolute;left:.6rem;bottom:.6rem;padding:.32rem .5rem;border-radius:4px;color:#fff;background:rgb(9 42 34/.94);font-size:.72rem;letter-spacing:.02em}.target-crop-grid{display:grid;gap:.65rem;padding:.65rem;background:var(--wash)}.target-crop{position:relative;display:block;height:8.4rem;overflow:hidden;border:1px solid var(--line-strong);border-radius:8px;background:var(--forest-deep);color:#fff}.target-crop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:var(--target-x) var(--target-y);filter:brightness(.78)}.target-crop i{position:absolute;left:var(--target-left);top:var(--target-y);width:var(--target-width);min-width:3rem;height:2rem;transform:translateY(-50%);border:3px solid var(--marker);border-radius:4px;background:rgb(246 183 60/.12)}.target-crop b,.target-crop span{position:absolute;left:.6rem;z-index:1;padding:.2rem .4rem;border-radius:4px;background:rgb(9 42 34/.94)}.target-crop b{top:.55rem}.target-crop span{bottom:.55rem;font-size:.72rem}.before-after figcaption{display:flex;flex-direction:column;gap:.35rem;margin:0;padding:.8rem 1rem;border-top:1px solid var(--line)}.before-after figcaption span{color:var(--muted);font-size:.85rem}.visual-targets{display:grid;gap:.35rem;margin:.25rem 0;padding:0;list-style:none}.visual-targets li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.2rem .75rem;padding:.4rem 0;border-top:1px solid var(--line)}.visual-targets b{font-size:.82rem}.visual-targets span{font-size:.78rem}.semantic-evidence{display:flex;min-height:15rem;flex-direction:column;justify-content:center;gap:.7rem;padding:1.25rem;background:var(--wash)}.semantic-evidence>strong{font:700 1.35rem/1.15 var(--serif)}.semantic-evidence p{margin:0;color:var(--muted)}.semantic-evidence code{display:block;margin-top:.35rem;padding:.65rem;background:#fff;border:1px solid var(--line);font-size:.74rem}.instance-chips{display:flex;flex-wrap:wrap;gap:.4rem}.instance-chips span{padding:.28rem .55rem;border:1px solid var(--line-strong);border-radius:999px;background:#fff;font-size:.72rem;font-weight:750}.preview-stage{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:15rem;padding:1.25rem;background:var(--wash)}.semantic-preview .preview-stage>div:not(.change-arrow){display:flex;flex-direction:column;gap:.6rem}.semantic-preview .preview-stage span{font-size:.76rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.semantic-preview code{display:block;padding:.8rem;background:#fff;border:1px solid var(--line)}.change-arrow{color:var(--forest);font:700 2rem/1 var(--serif)}.contrast-pair{display:flex;flex:1;min-width:0;flex-direction:column;gap:.45rem;color:var(--ink)}.contrast-pair>strong{font-size:.9rem}.contrast-pair small{color:var(--muted);line-height:1.45}.color-field{display:flex;min-height:6rem;align-items:center;justify-content:center;border:1px solid var(--line-strong);border-radius:8px}.color-field i{display:block;width:56%;height:1.15rem;border-radius:999px}.instance-list{width:100%;min-width:0;max-width:100%;overflow:hidden;margin:1.2rem 0;padding:1rem;background:#fff;border:1px solid var(--line-strong);border-radius:8px}.instance-list summary{color:var(--forest);font-weight:800}.instance-list>p{max-width:75ch;color:var(--muted)}.instance-list .table-wrap{width:100%;min-width:0;max-width:100%;overflow-x:auto}.instance-list table{font-size:.84rem}.instance-list th:first-child,.instance-list td:first-child{width:3rem;text-align:right}.instance-list td:nth-child(2){min-width:12rem}.instance-list td:nth-child(3){min-width:12rem}.instance-list td:last-child{min-width:24rem}.instance-list td small{display:block;margin-top:.45rem;color:var(--muted);line-height:1.4}.fix-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem}.fix-actions a{font-weight:750}.estimate-note{max-width:75ch;color:var(--muted);font-size:.88rem}
 .annex-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:2rem}.annex-block{padding-top:2rem;border-top:1px solid var(--line-strong)}.annex-block>h3{font:700 1.7rem/1.2 var(--serif)}
@@ -1912,9 +2130,9 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
 <body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(humanActionName(report.scenarioId))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
-<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div><div><strong>${report.synthesis.reader.passed}/${report.synthesis.reader.commands}</strong><span>reader commands passed</span></div></div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
+<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div>${readerStatus ? `<div><strong>${escapeHtml(readerStatus.result)}</strong><span>virtual reader</span></div>` : ""}</div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
-<section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report, views)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
+<section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
 <section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report)}</section>
 <section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer sweep</h3>${renderSweepOverview(views)}</section><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
@@ -2067,14 +2285,15 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
     if(named)return named.fixLabel+' ('+named.ruleId+') is one grouped fix covering '+named.instances+' affected page locations in '+named.components+' component group'+(named.components===1?'':'s')+' and repeated at '+named.checkpoints+' checkpoints. Recommended fix: '+named.fix+' Estimated effort: '+named.effort.hours+'.';
     if(q.includes('first')||q.includes('priority')||q.includes('start'))return first?'Start with '+first.fixLabel+'. It is the highest-priority grouped fix, covers '+first.instances+' affected locations, and is estimated at '+first.effort.hours+'. '+first.fix:'No confirmed fix is queued in this authored scope. Review the incomplete checks or author another journey before estimating work.';
     if(q.includes('effort')||q.includes('long')||q.includes('time')||q.includes('cost'))return knowledge.effortSummary+' These are focused engineering estimates, not delivery commitments; design approval and release process are excluded.';
-    if(q.includes('keyboard')||q.includes('pointer')||q.includes('hover')||q.includes('focus'))return 'The tested keyboard and pointer paths passed: both reached the expected Sign in outcome in isolated contexts. This does not prove every control or page journey is keyboard accessible.';
-    if(q.includes('screen reader')||q.includes('reader')||q.includes('announcement'))return knowledge.reader.passed+' of '+knowledge.reader.commands+' portable virtual-reader commands passed cross-evidence validation. This is semantic simulation evidence, not VoiceOver or NVDA fidelity testing.';
-    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.findings.length+' Axe rule types were consolidated into '+knowledge.findings.length+' grouped fixes covering '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint. '+knowledge.incompleteRules.length+' additional rule types remain incomplete and need review: '+knowledge.incompleteRules.join(', ')+'.';
+    const row=(id)=>{const area=knowledge.status.find(candidate=>candidate.id===id);return area?area.label+': '+area.result+'. '+area.detail:'';};
+    if(q.includes('keyboard')||q.includes('pointer')||q.includes('hover')||q.includes('focus'))return row('keyboard')+' This does not prove every control or page journey is keyboard accessible.';
+    if(q.includes('screen reader')||q.includes('reader')||q.includes('announcement'))return row('reader')+' This is semantic simulation evidence, not VoiceOver or NVDA fidelity testing.';
+    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.blocking+' grouped fixes block release, covering '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint.'+(knowledge.advisories?' '+knowledge.advisories+' best-practice results are advisory and do not block release.':'')+' '+knowledge.incompleteRules.length+' rule types remain incomplete and need review'+(knowledge.incompleteRules.length?': '+knowledge.incompleteRules.join(', '):'')+'.';
     if(q.includes('ai'))return 'No AI generated the conclusions in this report. The answers here are deterministic summaries of local captured evidence. AI may be used later only where the report labels it and must be verified.';
     if(q.includes('bad')||q.includes('good')||q.includes('status')||q.includes('score')||q.includes('accessible')||q.includes('release')){
-      const scopeNote=' The tested keyboard/pointer comparison passed and '+knowledge.reader.passed+' of '+knowledge.reader.commands+' virtual-reader commands passed. This is not a whole-site accessibility score.';
+      const scopeNote=' '+knowledge.status.map(area=>area.label+': '+area.result).join('; ')+'. This is not a whole-site accessibility score.';
       if(knowledge.verdict==='pass')return 'No confirmed blocker was found in the tested scope.'+scopeNote;
-      if(knowledge.verdict==='fail')return 'Release is blocked in the tested scope because '+knowledge.findings.length+' grouped fixes cover '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint. Fixing the shared components may resolve many repeated locations, but every listed instance must be retested.'+scopeNote;
+      if(knowledge.verdict==='fail')return 'Release is blocked in the tested scope because '+knowledge.blocking+' grouped fixes cover '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint. Fixing the shared components may resolve many repeated locations, but every listed instance must be retested.'+scopeNote;
       return 'The release decision needs review because the captured evidence is incomplete or inconclusive.'+scopeNote;
     }
     return 'I can answer from this report about overall status, what to fix first, estimated effort, keyboard and pointer behavior, virtual-reader results, Axe findings, or a named rule. This question may require a new authored test or an external AI analysis.';
@@ -2109,21 +2328,7 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
   return `<section class="panel"><h3>Coverage by active lane</h3><p>These counts exclude the derived release decision so successful behavior is not hidden by the final gate.</p><div class="table-wrap" tabindex="0"><table class="coverage-table"><caption>Direct judgments across the user-authored actions</caption><thead><tr><th scope="col">Lane</th><th scope="col">Actions</th><th scope="col">Passed</th><th scope="col">Failed</th><th scope="col">Unresolved</th><th scope="col">Interpretation</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
-function renderStatusAreas(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
-  const comparisonPassed =
-    report.synthesis.comparisons.length > 0 &&
-    report.synthesis.comparisons.every(
-      ({ equivalence, expectation }) =>
-        equivalence.verdict === "pass" && expectation.verdict === "pass"
-    );
-  const keyboard = keyboardStatus(report, views, comparisonPassed);
-  const readerPassed = report.synthesis.reader.commands > 0 && report.synthesis.reader.failed === 0;
-  const semanticFinding = report.synthesis.findings.find(
-    ({ ruleId }) => ruleId === "aria-required-parent"
-  );
-  const contrastFinding = report.synthesis.findings.find(
-    ({ ruleId }) => ruleId === "color-contrast"
-  );
+function renderStatusAreas(report: ScenarioIntegratedReport): string {
   const keyboardArtifact = (kind: string) =>
     report.artifacts.find((artifact) => {
       const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
@@ -2144,73 +2349,12 @@ function renderStatusAreas(report: ScenarioIntegratedReport, views: IntegratedHt
   const keyboardRecording = keyboardVideo
     ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">Keyboard journey recording</h3><p>Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page.</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
     : "";
-  const areas = [
-    { label: "Keyboard access", ...keyboard },
-    {
-      label: "Virtual reader",
-      verdict: readerPassed ? "pass" : "unknown",
-      result: readerPassed
-        ? `${report.synthesis.reader.passed}/${report.synthesis.reader.commands} commands passed`
-        : "Needs review",
-      detail: "Announcements matched DOM, accessibility tree, visuals, and focus state."
-    },
-    {
-      label: "Semantics",
-      verdict: semanticFinding ? "fail" : "pass",
-      result: semanticFinding ? "Fix required" : "No confirmed issue",
-      detail: semanticFinding
-        ? "Footer links use menu-item semantics without the required parent structure."
-        : "No semantic rule failure was confirmed in the tested scope."
-    },
-    {
-      label: "Visual contrast",
-      verdict: contrastFinding ? "fail" : "pass",
-      result: contrastFinding ? "Fix required" : "No confirmed issue",
-      detail: contrastFinding
-        ? "Two purple link treatments fall below the required 4.5:1 ratio."
-        : "No contrast failure was confirmed in the tested scope."
-    }
-  ];
-  return `<div class="health-map">${areas
+  return `<div class="health-map">${report.synthesis.status
     .map(
-      ({ label, verdict, result, detail }, index) =>
-        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${index === 0 ? keyboardRecording : ""}`
+      ({ id, label, verdict, result, detail }) =>
+        `<div class="health-row"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${id === "keyboard" ? keyboardRecording : ""}`
     )
     .join("")}</div>`;
-}
-
-/** The sweep decides keyboard access; authored comparisons, when present, must also pass. */
-function keyboardStatus(
-  report: ScenarioIntegratedReport,
-  views: IntegratedHtmlViews,
-  comparisonPassed: boolean
-): { verdict: "pass" | "fail" | "unknown"; result: string; detail: string } {
-  const sweepFindings = report.synthesis.findings.filter(({ ruleId }) =>
-    isSweepFindingKind(ruleId)
-  );
-  if (sweepFindings.length > 0) {
-    return {
-      verdict: "fail",
-      result: "Fix required",
-      detail: `${sweepFindings.map(({ title }) => title).join("; ")}.`
-    };
-  }
-  const swept =
-    views.sweeps.length > 0 &&
-    views.sweeps.every(({ document }) => document?.status === "completed");
-  if (!swept || (report.synthesis.comparisons.length > 0 && !comparisonPassed)) {
-    return {
-      verdict: "unknown",
-      result: "Needs review",
-      detail: "No complete keyboard result was available."
-    };
-  }
-  const pressed = views.sweeps.every(({ document }) => document?.activateControls);
-  return {
-    verdict: "pass",
-    result: "No confirmed issue",
-    detail: `Tab reached every mouse target and focus showed everything hover did. ${pressed ? "Each control pressed by keyboard matched the click and kept focus." : `Controls were not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed.`}`
-  };
 }
 
 function renderSweepOverview(views: IntegratedHtmlViews): string {
@@ -2254,26 +2398,42 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
     .map((finding, index) => {
       const representative = finding.checkpoints[0];
       const effort = findingEffort(finding.ruleId);
-      const priority = finding.severity === "critical" ? "P0" : index === 0 ? "P1" : "P2";
+      const priority = finding.advisory
+        ? "Advisory"
+        : finding.severity === "critical"
+          ? "P0"
+          : index === 0
+            ? "P1"
+            : "P2";
       const screenshot = representative?.screenshotPath;
       const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
-      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding.ruleId))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)} · ${finding.wcagCriteria.map(escapeHtml).join(", ")}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p>${escapeHtml(findingImpact(finding.ruleId))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span${finding.advisory ? ' class="advisory"' : ""}>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)}${finding.wcagCriteria.length ? ` · ${finding.wcagCriteria.map(escapeHtml).join(", ")}` : ""}</p></div>${renderFindingBadge(finding)}</header><p>${escapeHtml(findingImpact(finding))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
     })
     .join("");
   return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
 }
 
-function findingFixLabel(ruleId: string): string {
-  if (isSweepFindingKind(ruleId)) return SWEEP_FINDING_TEXT[ruleId].title;
-  if (ruleId === "aria-required-parent") return "Repair the shared footer navigation semantics";
-  if (ruleId === "color-contrast") return "Replace the shared low-contrast link color";
-  return humanActionName(ruleId);
+/** A best-practice result is labelled as such, never with a severity that suggests it blocks. */
+function renderFindingBadge(finding: FindingSynthesis): string {
+  return finding.advisory
+    ? '<span class="badge unknown">Best practice</span>'
+    : `<span class="badge fail">${escapeHtml(finding.severity)}</span>`;
+}
+
+function findingFixLabel(finding: FindingSynthesis): string {
+  if (isSweepFindingKind(finding.ruleId)) return SWEEP_FINDING_TEXT[finding.ruleId].title;
+  if (finding.ruleId === "aria-required-parent")
+    return "Give each ARIA role the parent it requires";
+  if (finding.ruleId === "color-contrast") {
+    return `Replace the low-contrast ${contrastSubject(finding.instances)} color`;
+  }
+  return humanActionName(finding.ruleId);
 }
 
 function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): string {
   if (finding.ruleId === "aria-required-parent") {
     const samples = finding.instances.slice(0, 6);
-    return `<figure class="current-state semantic-current"><div class="semantic-evidence"><strong>This defect is not visible in a screenshot</strong><p>The pixels look normal. The failure is in the DOM semantics applied to the affected links.</p><div class="instance-chips">${samples.map(({ label }) => `<span>${escapeHtml(label)}</span>`).join("")}${finding.instanceCount > samples.length ? `<span>+${finding.instanceCount - samples.length} more</span>` : ""}</div><code>link + role=&quot;menuitem&quot; + no menu parent</code></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} instances share the same incorrect component pattern${screenshot ? ` · <a href="${encodeURI(screenshot)}">open page context</a>` : ""}</span></figcaption></figure>`;
+    return `<figure class="current-state semantic-current"><div class="semantic-evidence"><strong>This defect is not visible in a screenshot</strong><p>The pixels look normal. The failure is in the roles given to the affected elements.</p><div class="instance-chips">${samples.map(({ label }) => `<span>${escapeHtml(label)}</span>`).join("")}${finding.instanceCount > samples.length ? `<span>+${finding.instanceCount - samples.length} more</span>` : ""}</div></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} instances share the same incorrect component pattern${screenshot ? ` · <a href="${encodeURI(screenshot)}">open page context</a>` : ""}</span></figcaption></figure>`;
   }
   if (screenshot) {
     const locatedTargets = finding.instances.filter(({ targetBox }) => Boolean(targetBox));
@@ -2294,7 +2454,7 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
             return `<a class="target-crop image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`${instance.label} in ${instance.component}`)}" data-original-label="Open complete page capture" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></a>`;
           })
           .join("")}</div>`
-      : `<a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(findingFixLabel(finding.ruleId))}" data-original-label="Open complete page capture"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding.ruleId))}"><b>Visual context only</b></span></a>`;
+      : `<a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(findingFixLabel(finding))}" data-original-label="Open complete page capture"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding))}"><b>Visual context only</b></span></a>`;
     return `<figure class="current-state" data-rule-id="${escapeAttribute(finding.ruleId)}">${targetCrops}<figcaption><strong>Exact affected locations</strong>${visibleTargets ? `<ol class="visual-targets">${visibleTargets}</ol>` : ""}<span>Click a crop to enlarge that exact view. · <a href="${encodeURI(screenshot)}">Open complete page capture</a></span></figcaption></figure>`;
   }
   return `<figure class="current-state"><div class="semantic-evidence"><strong>No visual capture was available</strong><p>Use the exact element locations below with the DOM and Axe evidence.</p></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"}</span></figcaption></figure>`;
@@ -2328,28 +2488,28 @@ function renderPrioritySnapshot(report: ScenarioIntegratedReport): string {
   return `<ol class="priority-snapshot">${report.synthesis.findings
     .map((finding, index) => {
       const effort = findingEffort(finding.ruleId);
-      return `<li><span>${index + 1}</span><div><strong>${escapeHtml(finding.title)}</strong><p>${escapeHtml(findingImpact(finding.ruleId))}</p></div><b>${escapeHtml(effort.hours)}</b></li>`;
+      return `<li><span>${index + 1}</span><div><strong>${escapeHtml(finding.title)}</strong>${finding.advisory ? " (best practice)" : ""}<p>${escapeHtml(findingImpact(finding))}</p></div><b>${escapeHtml(effort.hours)}</b></li>`;
     })
     .join(
       ""
     )}</ol><p><a href="#panel-findings" data-open-fix-review>Open the visual fix review</a></p>`;
 }
 
-function findingImpact(ruleId: string): string {
-  if (isSweepFindingKind(ruleId)) return SWEEP_FINDING_TEXT[ruleId].impact;
-  if (ruleId === "aria-required-parent") {
-    return "Screen-reader users may hear menu semantics that the footer does not actually implement, making navigation structure misleading.";
+function findingImpact(finding: FindingSynthesis): string {
+  if (isSweepFindingKind(finding.ruleId)) return SWEEP_FINDING_TEXT[finding.ruleId].impact;
+  if (finding.ruleId === "aria-required-parent") {
+    return "Screen-reader users may hear roles, such as menu items, that the page does not implement, which misleads them about its structure.";
   }
-  if (ruleId === "color-contrast") {
-    return "Some people with low vision or reduced contrast sensitivity may not be able to read these calls to action reliably.";
+  if (finding.ruleId === "color-contrast") {
+    return `Some people with low vision or reduced contrast sensitivity may not be able to read this ${contrastSubject(finding.instances) === "link" ? "link text" : "text"}.`;
+  }
+  if (finding.advisory) {
+    return "A best-practice result: it can make the page harder to use, but it is not a WCAG failure and does not block release.";
   }
   return "The confirmed rule failure can prevent people from understanding or operating the tested page as intended.";
 }
 
 function renderProposedFix(finding: FindingSynthesis): string {
-  if (finding.ruleId === "aria-required-parent") {
-    return `<figure class="proposed-state semantic-preview"><div class="preview-stage"><div><span>Current semantics</span><code>&lt;a role="menuitem"&gt;</code></div><div class="change-arrow" aria-hidden="true">→</div><div><span>Proposed semantics</span><code>&lt;a href="…"&gt;</code></div></div><figcaption><strong>Proposed fix</strong><span>The visual footer can remain unchanged; remove the incorrect role and retain native link behavior.</span></figcaption></figure>`;
-  }
   if (finding.ruleId === "color-contrast") {
     const preview = contrastFixPreview(finding.remediation.deterministic);
     if (preview) {
@@ -2374,14 +2534,18 @@ function contrastFixPreview(remediation: string): {
   if (!pairs.length) return null;
   const current = pairs[0]!.foreground;
   const backgrounds = [...new Set(pairs.map(({ background }) => background))];
-  let candidate = current;
-  for (let factor = 0.99; factor >= 0; factor -= 0.01) {
-    const proposed = scaleHexColor(current, factor);
-    if (backgrounds.every((background) => contrastRatio(proposed, background) >= 4.5)) {
-      candidate = proposed;
-      break;
-    }
+  const required = requiredContrastRatio(remediation) ?? 4.5;
+  const passes = (color: string) =>
+    backgrounds.every((background) => contrastRatio(color, background) >= required);
+  // The smallest step toward black or white that passes on every captured background.
+  let candidate: string | undefined;
+  for (let step = 1; step <= 100 && !candidate; step += 1) {
+    candidate = [
+      mixHexColor(current, "#000000", step / 100),
+      mixHexColor(current, "#ffffff", step / 100)
+    ].find(passes);
   }
+  if (!candidate) return null;
   const background = backgrounds.reduce((hardest, value) =>
     contrastRatio(current, value) < contrastRatio(current, hardest) ? value : hardest
   );
@@ -2394,14 +2558,17 @@ function contrastFixPreview(remediation: string): {
   };
 }
 
-function scaleHexColor(hex: string, factor: number): string {
-  const channels = [1, 3, 5].map((index) =>
-    Math.max(
-      0,
-      Math.min(255, Math.round(Number.parseInt(hex.slice(index, index + 2), 16) * factor))
+/** `hex` moved `amount` (0–1) of the way toward `target`, channel by channel. */
+function mixHexColor(hex: string, target: string, amount: number): string {
+  const channel = (color: string, index: number) =>
+    Number.parseInt(color.slice(index, index + 2), 16);
+  return `#${[1, 3, 5]
+    .map((index) =>
+      Math.round(channel(hex, index) + (channel(target, index) - channel(hex, index)) * amount)
+        .toString(16)
+        .padStart(2, "0")
     )
-  );
-  return `#${channels.map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+    .join("")}`;
 }
 
 function contrastRatio(foreground: string, background: string): number {
@@ -2436,7 +2603,7 @@ function renderFindingDossiers(report: ScenarioIntegratedReport): string {
         )
         .join("");
       const sample = representative?.htmlSamples[0];
-      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div><span class="badge fail">${escapeHtml(finding.severity)}</span></header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p>${renderPatternLink(finding)}<div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div>${renderFindingBadge(finding)}</header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p>${renderPatternLink(finding)}<div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
     })
     .join("");
 }

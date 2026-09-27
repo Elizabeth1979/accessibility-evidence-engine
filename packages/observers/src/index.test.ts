@@ -170,7 +170,10 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
     timestamp: "2026-09-13T00:00:00.000Z",
     url: "https://example.com/",
-    violations: [{ id: "button-name", nodes: [] }],
+    violations: [
+      { id: "button-name", tags: ["cat.name-role-value", "wcag2a", "wcag412"], nodes: [] },
+      { id: "empty-heading", tags: ["cat.name-role-value", "best-practice"], nodes: [] }
+    ],
     passes: [{ id: "document-title", nodes: [] }],
     incomplete: [{ id: "color-contrast", nodes: [] }],
     inapplicable: [{ id: "audio-caption", nodes: [] }]
@@ -203,7 +206,8 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
       "wcag21a",
       "wcag21aa",
       "wcag22a",
-      "wcag22aa"
+      "wcag22aa",
+      "best-practice"
     ]);
     assert.equal(record.status, "ok");
     assert.deepEqual(record.meta, {
@@ -215,8 +219,15 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
       incomplete: 1,
       inapplicable: 1,
       violationRuleIds: ["button-name"],
+      advisoryRuleIds: ["empty-heading"],
       incompleteRuleIds: ["color-contrast"],
-      evaluatedRuleIds: ["audio-caption", "button-name", "color-contrast", "document-title"]
+      evaluatedRuleIds: [
+        "audio-caption",
+        "button-name",
+        "color-contrast",
+        "document-title",
+        "empty-heading"
+      ]
     });
     assert.ok(artifactPath);
     assert.deepEqual(JSON.parse(await readFile(artifactPath, "utf8")), rawResult);

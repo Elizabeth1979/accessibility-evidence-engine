@@ -63,8 +63,11 @@ interface ScenarioReport {
   completeness: { status: string };
   artifacts: Array<{ kind: string; path: string }>;
   synthesis: {
+    conclusion: string;
+    status: Array<{ id: string; verdict: string; detail: string }>;
     findings: Array<{
       ruleId: string;
+      advisory: boolean;
       pattern?: { url: string };
       checkpoints: Array<{ sweepPath?: string }>;
     }>;
@@ -75,13 +78,17 @@ const sweepKinds = new Set(Object.keys(SWEEP_FINDING_CONCEPTS));
 const expectedSweepKinds = contract.issues.flatMap(({ sweepFinding }) =>
   sweepFinding ? [sweepFinding] : []
 );
+const expectedAxeRules = contract.issues.flatMap(({ axeRule }) => (axeRule ? [axeRule] : []));
+/** Enough reader moves to land on every named and unnamed control near the top of either page. */
+const readerWalk = ["start", ...Array<string>(5).fill("next-control")];
 
 /** Runs `aee run` on a lab page over http, as a user would, and reads back its report. */
 async function runOnLabPage(
   browser: Browser,
   labPage: LabPage,
   allowedActions: string[],
-  testInfo: TestInfo
+  testInfo: TestInfo,
+  readerCommands = ["start"]
 ) {
   const server = await startHtmlServer(serveDirectory("site"));
   try {
@@ -104,7 +111,7 @@ journeys:
     startPath: ${JSON.stringify(`/${labPage.url}`)}
     allowedActions: [${allowedActions.join(", ")}]
     forbiddenActions: [submit-forms]
-    virtualScreenReaderCommands: [start]
+    virtualScreenReaderCommands: [${readerCommands.join(", ")}]
 approval:
   required: true
 `,
@@ -145,8 +152,7 @@ test("every issue belongs to a registry concept and has exactly one way it is fo
 
 test("the demo page shows exactly the issues' axe rules", async ({ page }) => {
   await open(page, issuesPage);
-  const expected = contract.issues.flatMap(({ axeRule }) => (axeRule ? [axeRule] : [])).sort();
-  expect(await axeRules(page)).toEqual(expected);
+  expect(await axeRules(page)).toEqual([...expectedAxeRules].sort());
   expect(await headingOutline(page)).toEqual(issuesPage.headingOutline);
   const defects = await page.locator("body").getAttribute("data-defects");
   expect(defects?.split(" ").sort()).toEqual(contract.issues.map(({ id }) => id).sort());
@@ -190,20 +196,40 @@ test("the keyboard and pointer sweep finds nothing on the fixed page", async ({ 
   expect(await sweepFindings(page, fixedPage)).toEqual([]);
 });
 
-test("aee run reports the demo page's keyboard issues, each with its fix pattern and evidence", async ({
+test("aee run reports every issue the lab marks as found, and its status rows agree", async ({
   browser
 }, testInfo) => {
   const { report, sweepFindings } = await runOnLabPage(
     browser,
     issuesPage,
     ["focus", "hover", "activate-page-controls"],
-    testInfo
+    testInfo,
+    readerWalk
   );
-  expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual([...expectedSweepKinds].sort());
+  const { findings, status } = report.synthesis;
+  expect(findings.map(({ ruleId }) => ruleId).sort()).toEqual(
+    [...expectedAxeRules, ...expectedSweepKinds].sort()
+  );
+  expect(findings.filter(({ advisory }) => advisory).map(({ ruleId }) => ruleId)).toEqual([
+    "empty-heading"
+  ]);
   for (const finding of sweepFindings) {
     expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
     expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();
   }
+  // The unnamed controls fail both rows: axe's rules and what the reader actually announced.
+  const row = (id: string) => status.find((area) => area.id === id);
+  expect(row("semantics")).toMatchObject({ verdict: "fail" });
+  expect(row("reader")).toMatchObject({ verdict: "fail" });
+  for (const unnamed of ["#project-search", "#help-link", "#archive-project"]) {
+    expect(row("reader")?.detail).toContain(unnamed);
+  }
+  expect(report.synthesis.conclusion).not.toContain("virtual-reader commands passed");
+  expect(row("keyboard")).toMatchObject({ verdict: "fail" });
+  expect(row("contrast")).toMatchObject({
+    verdict: "fail",
+    detail: expect.stringMatching(/^1 text element falls below/)
+  });
   expect(report.verdict).toBe("fail");
 });
 
@@ -212,10 +238,17 @@ test("aee run finds nothing on the fixed page", async ({ browser }, testInfo) =>
     browser,
     fixedPage,
     ["focus", "hover", "activate-page-controls"],
-    testInfo
+    testInfo,
+    readerWalk
   );
   expect(activated.length).toBeGreaterThan(0);
   expect(report.synthesis.findings).toEqual([]);
+  expect(report.synthesis.status.map(({ id, verdict }) => [id, verdict])).toEqual([
+    ["keyboard", "pass"],
+    ["reader", "pass"],
+    ["semantics", "pass"],
+    ["contrast", "pass"]
+  ]);
   expect(report).toMatchObject({ verdict: "pass", completeness: { status: "complete" } });
 });
 
