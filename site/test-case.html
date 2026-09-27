@@ -11,20 +11,28 @@
   </head>
   <body class="demo-page">
     <header class="site-header">
-      <a href="test-lab.html">Back to the test lab</a
-      ><a id="other-version" href="test-case.html?case=fixed">Open the fixed page</a>
+      <a id="other-version" href="test-case.html?case=fixed">Open the fixed page</a>
     </header>
     <main class="lab">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="test-lab.html">Test lab</a></li>
+          <li><a aria-current="page">Workspace overview</a></li>
+        </ol>
+      </nav>
       <p class="fixture-notice">
         Practice page · Fictional data ·
         <strong id="case-name">With deliberate accessibility issues</strong>
       </p>
-      <h1>Workspace overview</h1>
+      <h1>
+        <img class="workspace-mark" src="favicon.svg" alt="" width="40" height="40" />
+        Workspace overview
+      </h1>
       <p class="lede">Manage your projects and workspace preferences.</p>
-      <p class="search">
+      <form class="search">
         <label for="project-search">Search projects</label>
         <input id="project-search" type="search" />
-      </p>
+      </form>
       <div class="workspace-sections">
         <section aria-labelledby="projects-heading">
           <h2 id="projects-heading" class="peer-heading">Projects</h2>
@@ -42,17 +50,17 @@
               </svg>
             </a>
           </p>
-          <div class="project-row" id="project-alpha">
-            <div>
+          <article class="project-row" id="project-alpha">
+            <header>
               <strong>Project Alpha</strong>
               <p>Website accessibility review</p>
-            </div>
+            </header>
             <button id="archive-project" type="button" aria-label="Archive Project Alpha">
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path d="M4 8h16v12H4zM3 4h18v4H3zM9 12h6" />
               </svg>
             </button>
-          </div>
+          </article>
           <button id="restore-project" type="button" hidden>Restore Project Alpha</button>
           <button id="export-report" type="button">Export report</button>
         </section>

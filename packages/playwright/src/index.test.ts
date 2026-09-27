@@ -9,6 +9,7 @@ import type { EvidenceRecord, Judgment } from "@aee/core";
 import {
   aggregateEvidenceManifests,
   comparePointerAndKeyboardOutcomes,
+  createPortableVirtualScreenReader,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
   persistInteractionVideo,
@@ -60,6 +61,73 @@ function getReporterContent(result: Awaited<ReturnType<typeof runAeeOnPage>>): J
   assert.ok(artifact, "Expected a JSON reporter artifact.");
   return getJsonReport(artifact.content);
 }
+
+test("the portable reader applies the platform landmark rules to a Chromium 151 tree", async () => {
+  // Chromium 151 calls every <form> a form and leaves "only a named form is a landmark" to the
+  // platform; an unnamed <section> and a section's header get roles no screen reader announces.
+  const node = (id: number, role: string, type: "role" | "internalRole", name = "") => ({
+    nodeId: String(id),
+    ignored: false,
+    role: { type, value: role },
+    name: { type: "computedString", value: name },
+    backendDOMNodeId: id
+  });
+  const tree = {
+    nodes: [
+      { ...node(1, "RootWebArea", "internalRole"), childIds: ["2", "3", "4", "5", "6"] },
+      node(2, "form", "role"),
+      node(3, "form", "role", "Checkout"),
+      node(4, "SectionWithoutName", "internalRole"),
+      node(5, "sectionheader", "role"),
+      {
+        ...node(6, "DisclosureTriangle", "internalRole", "Plan details"),
+        properties: [{ name: "expanded", value: { type: "boolean", value: false } }]
+      }
+    ]
+  };
+  const tags = ["#document", "FORM", "FORM", "SECTION", "HEADER", "SUMMARY"];
+  const snapshot = {
+    strings: tags,
+    documents: [
+      {
+        nodes: {
+          parentIndex: [-1, 0, 0, 0, 0, 0],
+          nodeType: [9, 1, 1, 1, 1, 1],
+          nodeName: [0, 1, 2, 3, 4, 5],
+          backendNodeId: [1, 2, 3, 4, 5, 6],
+          attributes: [[], [], [], [], [], []]
+        },
+        layout: {
+          nodeIndex: [1, 2, 3, 4, 5],
+          bounds: [1, 2, 3, 4, 5].map((index) => [0, index * 20, 100, 20])
+        }
+      }
+    ]
+  };
+  const responses: Record<string, unknown> = {
+    "Accessibility.getFullAXTree": tree,
+    "DOMSnapshot.captureSnapshot": snapshot,
+    "Runtime.evaluate": { result: {} }
+  };
+  const session = { send: async (method: string) => responses[method] };
+  const reader = createPortableVirtualScreenReader({
+    url: () => "https://example.com/checkout",
+    context: () => ({ newCDPSession: async () => session })
+  });
+
+  const announcements: string[] = [];
+  for (let entry = await reader.command("start"); entry.item;) {
+    announcements.push(entry.announcement);
+    entry = await reader.command("next-item");
+  }
+
+  assert.deepEqual(announcements, ["Checkout, form", "Plan details, button, collapsed"]);
+  assert.equal((await reader.command("previous-item")).item?.role, "form");
+  assert.equal(
+    (await reader.command("next-control")).announcement,
+    "Plan details, button, collapsed"
+  );
+});
 
 test("comparePointerAndKeyboardOutcomes detects inaccessible hover-only behavior", async () => {
   let visibleText = "";

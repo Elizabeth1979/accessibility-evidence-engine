@@ -37,6 +37,29 @@
 .lab .registry-table {
   min-width: 48rem;
 }
+/* The current page is an <a> without href: plain text, not a link. */
+.breadcrumb ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.breadcrumb li + li::before {
+  content: "›" / "";
+  margin-inline-end: 0.5rem;
+  color: var(--muted);
+}
+.workspace-mark {
+  width: 0.8em;
+  height: 0.8em;
+  margin-inline-end: 0.25em;
+  vertical-align: -0.05em;
+}
+.lab .search {
+  margin-block: 1rem;
+}
 .fixture-notice {
   padding: 1rem;
   border: 1px solid var(--line);

@@ -184,11 +184,11 @@ test("screen-reader judge passes virtual navigation that does not move DOM focus
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /without moving DOM focus/);
-  assert.match(judgment?.summary ?? "", /match the same-checkpoint accessibility tree/);
+  assert.match(judgment?.summary ?? "", /still match the tree captured at this checkpoint/);
   assert.match(judgment?.summary ?? "", /not pixel meaning or VoiceOver\/NVDA fidelity/);
 });
 
-test("screen-reader judge fails a DOM and accessibility-tree semantic contradiction", async () => {
+test("screen-reader judge fails when the checkpoint's accessibility tree lacks the read item", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const bundle = createBundle([
     {
@@ -218,7 +218,7 @@ test("screen-reader judge fails a DOM and accessibility-tree semantic contradict
 
   assert.equal(judgment?.verdict, "fail");
   assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
-  assert.match(judgment?.summary ?? "", /not found.*accessibility tree/);
+  assert.match(judgment?.summary ?? "", /not found in the tree captured at this checkpoint/);
 });
 
 test("screen-reader judge returns unknown when same-checkpoint visual evidence is absent", async () => {

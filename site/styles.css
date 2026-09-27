@@ -830,7 +830,8 @@ footer {
   background: var(--surface-strong);
 }
 
-.project-row > div {
+.project-row > div,
+.project-row > header {
   display: grid;
   gap: 0.15rem;
 }

@@ -237,7 +237,7 @@ This produces `visual-viewport-before.png`, `visual-full-page-before.png`, match
 
 ## Portable virtual screen-reader example
 
-The portable reader provides deterministic guide-mode navigation without requiring installed assistive technology. Give it a dedicated Playwright page or test so it forms an isolated lane. Its virtual cursor reads semantic candidates but does not focus or activate them.
+The portable reader provides deterministic guide-mode navigation without requiring installed assistive technology. Give it a dedicated Playwright page or test so it forms an isolated lane. Its virtual cursor reads semantic candidates but does not focus or activate them. Every role, name and state it announces comes from the browser's accessibility tree, read over the Chrome DevTools Protocol, so it follows the HTML-AAM and accname mappings Chromium implements, and it applies the platform rule that a form or region is a landmark only when it has a name; a DOM snapshot supplies each item's element path and position. It therefore needs a Chromium page.
 
 ```ts
 import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";

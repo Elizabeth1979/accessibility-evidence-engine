@@ -6,7 +6,12 @@ import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser, type Page, type TestInfo } from "@playwright/test";
 
-import { SWEEP_FINDING_CONCEPTS, sweepKeyboardAndPointer } from "@aee/playwright";
+import {
+  createPortableVirtualScreenReader,
+  SWEEP_FINDING_CONCEPTS,
+  sweepKeyboardAndPointer,
+  type VirtualScreenReaderItem
+} from "@aee/playwright";
 
 import { runApprovedScenario, serveDirectory, startHtmlServer } from "./scenario-helpers";
 
@@ -227,6 +232,36 @@ test("aee run presses no control unless the journey allows activate-page-control
   const withoutPressing = expectedSweepKinds.filter((kind) => kind !== "focus-lost");
   expect(activated).toEqual([]);
   expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual(withoutPressing.sort());
+});
+
+test("the portable reader announces the demo page's markup as HTML-AAM maps it", async ({
+  page
+}) => {
+  for (const labPage of Object.values(contract.pages)) {
+    await open(page, labPage);
+    const reader = createPortableVirtualScreenReader(page);
+    const items: VirtualScreenReaderItem[] = [];
+    for (let entry = await reader.command("start"); entry.item;) {
+      items.push(entry.item);
+      entry = await reader.command("next-item");
+    }
+    const paths = (role: string) =>
+      items.filter((item) => item.role === role).map(({ nodePath }) => nodePath);
+
+    // Only the page's own header is a banner; the project card's <header> is inside an <article>.
+    expect(paths("banner"), labPage.url).toEqual(["html > body > header"]);
+    // The logo in the heading has alt="", so only the chart is an image.
+    expect(paths("image"), labPage.url).toEqual(["#usage-chart"]);
+    // The breadcrumb's current page is an <a> without href: read as text, not as a link.
+    expect(paths("link"), labPage.url).not.toContain(
+      "html > body > main > nav > ol > li:nth-of-type(2) > a"
+    );
+    expect(items, labPage.url).toContainEqual(
+      expect.objectContaining({ role: "listitem", text: "Workspace overview" })
+    );
+    // The search form has no name, so it is not a form landmark.
+    expect(paths("form"), labPage.url).toEqual([]);
+  }
 });
 
 test("the lab page lists both pages and every issue, and fits desktop and phone", async ({

@@ -670,7 +670,7 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
         expect.objectContaining({
           judgeId: "screen-reader",
           verdict: "pass",
-          summary: expect.stringContaining("same-checkpoint accessibility tree")
+          summary: expect.stringContaining("still match the tree captured at this checkpoint")
         })
       );
     }

@@ -39,6 +39,7 @@
         "tagName": { "type": "string", "minLength": 1 },
         "role": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
+        "text": { "type": "string", "minLength": 1 },
         "level": { "type": "integer", "minimum": 1 },
         "states": { "type": "array", "items": { "type": "string" } },
         "visualBounds": {

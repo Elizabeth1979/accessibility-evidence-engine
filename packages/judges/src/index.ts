@@ -1355,7 +1355,7 @@ function createScreenReaderJudge(): JudgePlugin {
         const name = getStringField(lastItem, "name");
         const summary = accessibilityIndexTruncated
           ? `The accessibility-tree semantic index was truncated before the portable-reader target ${role}${name ? ` “${name}”` : ""} could be matched.`
-          : `The live DOM exposed ${role}${name ? ` “${name}”` : ""} to the portable reader, but the same role, name, and heading level were not found in the same-checkpoint accessibility tree.`;
+          : `The portable reader read ${role}${name ? ` “${name}”` : ""} from the browser's accessibility tree, but the same role, name, and heading level were not found in the tree captured at this checkpoint.`;
         return [
           {
             id: `screen-reader:${bundle.interaction.id}`,
@@ -1400,7 +1400,7 @@ function createScreenReaderJudge(): JudgePlugin {
           judgeVersion: "0.2.0",
           scope: "interaction",
           verdict: "pass",
-          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus; its live-DOM role, name, and heading level match the same-checkpoint accessibility tree, and non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
+          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus; the role, name, and heading level it read from the browser's accessibility tree still match the tree captured at this checkpoint, and non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
           severity: "info",
           confidence: 1,
           evidenceRecordIds: correlatedRecords.map(({ id }) => id),
