@@ -15,6 +15,7 @@ import interactionComparisonSchema from "../json/interaction-comparison.schema.j
 import interactionComparisonRequestSchema from "../json/interaction-comparison-request.schema.json";
 import interactionVideoSchema from "../json/interaction-video.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
+import keyboardPointerSweepLaneSchema from "../json/keyboard-pointer-sweep-lane.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import scenarioPlanSchema from "../json/scenario-plan.schema.json";
 import scenarioReportSchema from "../json/scenario-report.schema.json";
@@ -46,6 +47,7 @@ const schemaDocuments = {
   virtualPageFixture: virtualPageFixtureSchema,
   virtualScreenReaderTranscript: virtualScreenReaderTranscriptSchema,
   virtualScreenReaderLane: virtualScreenReaderLaneSchema,
+  keyboardPointerSweepLane: keyboardPointerSweepLaneSchema,
   interactionComparison: interactionComparisonSchema,
   interactionComparisonRequest: interactionComparisonRequestSchema,
   interactionVideo: interactionVideoSchema,
@@ -71,6 +73,7 @@ const schemaTitles: Record<SchemaName, string> = {
   virtualPageFixture: "AEE virtual page fixture",
   virtualScreenReaderTranscript: "AEE portable virtual screen-reader transcript",
   virtualScreenReaderLane: "AEE portable virtual screen-reader lane",
+  keyboardPointerSweepLane: "AEE keyboard and pointer sweep lane",
   interactionComparison: "AEE pointer and keyboard interaction comparison",
   interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request",
   interactionVideo: "AEE interaction video sidecar",

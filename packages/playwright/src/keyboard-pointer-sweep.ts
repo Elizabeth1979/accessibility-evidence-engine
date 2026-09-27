@@ -9,10 +9,17 @@ import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison
  */
 export type SweepFindingKind = "pointer-only" | "hover-only" | "activation-differs" | "focus-lost";
 
+/** The remediation-registry concept each kind of finding belongs to. */
+export const SWEEP_FINDING_CONCEPTS = {
+  "pointer-only": "keyboard-operation",
+  "hover-only": "hover-focus-equivalence",
+  "activation-differs": "keyboard-operation",
+  "focus-lost": "focus-management"
+} as const satisfies Record<SweepFindingKind, string>;
+
 export interface SweepFinding {
   kind: SweepFindingKind;
-  /** The remediation-registry entry this finding belongs to. */
-  concept: "keyboard-operation" | "hover-focus-equivalence" | "focus-management";
+  concept: (typeof SWEEP_FINDING_CONCEPTS)[SweepFindingKind];
   selector: string;
   label: string;
   summary: string;
@@ -26,10 +33,12 @@ export interface KeyboardPointerSweepResult {
   findings: SweepFinding[];
 }
 
+/** Clicks and presses go through the locator, so Playwright waits for any page load they start. */
 export interface KeyboardPointerSweepLocator {
   hover(): Promise<void>;
   focus(): Promise<void>;
   click(): Promise<void>;
+  press(key: string): Promise<void>;
 }
 
 /** A Chrome DevTools session; stylesheet text is read through it because pages cannot read
@@ -74,7 +83,8 @@ type ProbeRequest =
   | { mode: "visible"; selector: string }
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
-  | { mode: "focus-lost" };
+  | { mode: "document" }
+  | { mode: "focus-lost"; document: number };
 
 interface ProbedElement {
   selector: string;
@@ -108,12 +118,13 @@ export async function sweepKeyboardAndPointer(
   const findings: SweepFinding[] = [];
 
   for (const target of await probe<ProbedElement[]>({ mode: "pointer-only", tabStops })) {
-    findings.push({
-      kind: "pointer-only",
-      concept: "keyboard-operation",
-      ...target,
-      summary: "A mouse can click it, but pressing Tab never reaches it."
-    });
+    findings.push(
+      sweepFinding(
+        "pointer-only",
+        target,
+        "A mouse can click it, but pressing Tab never reaches it."
+      )
+    );
   }
 
   const styleSheets = await readStyleSheetTexts(page);
@@ -121,13 +132,13 @@ export async function sweepKeyboardAndPointer(
     const revealed = await revealedOnHover(page, probe, rule);
     if (revealed.length === 0) continue;
     if (await revealedOnFocus(page, probe, rule, revealed, tabStops)) continue;
-    findings.push({
-      kind: "hover-only",
-      concept: "hover-focus-equivalence",
-      selector: rule.hover,
-      label: revealed.join(" "),
-      summary: "Hovering shows this content; keyboard focus never does."
-    });
+    findings.push(
+      sweepFinding(
+        "hover-only",
+        { selector: rule.hover, label: revealed.join(" ") },
+        "Hovering shows this content; keyboard focus never does."
+      )
+    );
   }
 
   const activated: string[] = [];
@@ -216,38 +227,47 @@ async function pressControl(
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
   const target = page.locator(control.selector);
+  let loadedDocument = 0;
   let focusLost = false;
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
       await page.goto(url);
+      loadedDocument = await probe<number>({ mode: "document" });
     },
     performPointerInteraction: () => target.click(),
     performKeyboardInteraction: async () => {
-      await target.focus();
-      await page.keyboard.press(control.key);
-      focusLost = await probe<boolean>({ mode: "focus-lost" });
+      await target.press(control.key);
+      focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
     },
     captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
   if (comparison.verdict === "fail") {
-    findings.push({
-      kind: "activation-differs",
-      concept: "keyboard-operation",
-      selector: control.selector,
-      label: control.label,
-      summary: `Pressing ${control.key} does not do what clicking does.`
-    });
+    findings.push(
+      sweepFinding(
+        "activation-differs",
+        control,
+        `Pressing ${control.key} does not do what clicking does.`
+      )
+    );
   }
   if (focusLost) {
-    findings.push({
-      kind: "focus-lost",
-      concept: "focus-management",
-      selector: control.selector,
-      label: control.label,
-      summary: `After pressing ${control.key}, focus is left on nothing visible.`
-    });
+    findings.push(
+      sweepFinding(
+        "focus-lost",
+        control,
+        `After pressing ${control.key}, focus is left on nothing visible.`
+      )
+    );
   }
   return findings;
+}
+
+function sweepFinding(
+  kind: SweepFindingKind,
+  { selector, label }: ProbedElement,
+  summary: string
+): SweepFinding {
+  return { kind, concept: SWEEP_FINDING_CONCEPTS[kind], selector, label, summary };
 }
 
 /**
@@ -382,8 +402,13 @@ function runSweepProbe(request: ProbeRequest): unknown {
       }
       return { url: location.href, text: document.body.innerText, states };
     }
-    // Focus is lost when it falls back to the body or stays on an element no longer shown.
+    // Identifies the loaded document, so a check can tell whether a press loaded another one.
+    case "document":
+      return performance.timeOrigin;
+    // Focus is lost when it falls back to the body or stays on an element no longer shown. After a
+    // press loads another document, focus starting at its top is what any page load does.
     case "focus-lost": {
+      if (performance.timeOrigin !== request.document) return false;
       const active = document.activeElement;
       return active === null || active === document.body || !isVisible(active);
     }

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/keyboard-pointer-sweep-lane.schema.json",
+  "title": "AEE Keyboard and Pointer Sweep Lane",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "laneId",
+    "driver",
+    "isolation",
+    "status",
+    "targetUrl",
+    "allowedOrigins",
+    "activateControls",
+    "startedAt",
+    "finishedAt",
+    "blockedNavigations"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
+    "driver": { "const": "keyboard-pointer-sweep" },
+    "isolation": { "const": "dedicated-browser-context" },
+    "status": { "enum": ["completed", "blocked", "failed"] },
+    "targetUrl": { "type": "string", "format": "uri" },
+    "allowedOrigins": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "format": "uri" }
+    },
+    "activateControls": { "type": "boolean" },
+    "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "blockedNavigations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tabStops": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "activated": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "diagnostics": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+      "then": { "required": ["tabStops", "activated", "findings"] },
+      "else": { "required": ["diagnostics"] }
+    }
+  ],
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "concept", "selector", "label", "summary"],
+      "properties": {
+        "kind": { "enum": ["pointer-only", "hover-only", "activation-differs", "focus-lost"] },
+        "concept": {
+          "enum": ["keyboard-operation", "hover-focus-equivalence", "focus-management"]
+        },
+        "selector": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "summary": { "type": "string", "minLength": 1 },
+        "targetBox": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height", "pageWidth", "pageHeight"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number", "minimum": 0 },
+            "height": { "type": "number", "minimum": 0 },
+            "pageWidth": { "type": "number", "minimum": 0 },
+            "pageHeight": { "type": "number", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

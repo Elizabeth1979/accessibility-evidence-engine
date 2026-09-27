@@ -11,6 +11,9 @@ import type {
 import { parseDocument } from "yaml";
 
 export type ScenarioProfile = "core" | "at-fidelity";
+
+/** The one permission that makes the engine act on its own: the sweep presses on-page controls. */
+export const ACTIVATE_PAGE_CONTROLS = "activate-page-controls";
 export type ImplementationStatus = "available" | "partial" | "planned";
 
 export interface AeeScenario {
@@ -112,6 +115,7 @@ export interface ScenarioPlan {
 const CORE_CAPABILITIES: ScenarioCapability[] = [
   capability("keyboard-lane", "Keyboard input lane", "active-lane", "available"),
   capability("pointer-hover-lane", "Pointer and hover input lane", "active-lane", "available"),
+  capability("keyboard-pointer-sweep", "Keyboard and pointer sweep", "active-lane", "available"),
   capability(
     "virtual-screen-reader-lane",
     "Portable virtual screen-reader lane",
@@ -162,11 +166,11 @@ const PROFILE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
   step("run-axe", "Run the pinned WCAG rule selection and preserve complete axe output."),
   step(
     "inventory-interactions",
-    "Inventory semantic and visually inferred interactive candidates without activating them."
+    "Sweep the start page by keyboard and mouse: Tab to every stop, then find mouse targets Tab never reaches and content hover shows that keyboard focus never does."
   ),
   step(
     "exercise-keyboard",
-    "Run only the user-declared keyboard actions in an isolated lane; permissions alone do not create actions."
+    `Run only the user-declared keyboard actions in an isolated lane; apart from ${ACTIVATE_PAGE_CONTROLS} in the sweep, permissions do not create actions.`
   ),
   step(
     "exercise-virtual-reader",
@@ -193,7 +197,9 @@ const ACTION_STEP_LABELS: Record<string, string> = {
   hover: "Permit declared pointer-hover comparisons.",
   focus: "Permit declared focus operations and focus-state inspection.",
   "activate-public-links":
-    "Permit declared activation of public informational links without submitting data or starting restricted workflows."
+    "Permit declared activation of public informational links without submitting data or starting restricted workflows.",
+  [ACTIVATE_PAGE_CONTROLS]:
+    "Let the sweep press each on-page control by keyboard and by mouse, from a fresh page each time, and compare the results and where focus lands. Links and form submit buttons are never pressed."
 };
 
 export async function loadScenario(scenarioPath: string): Promise<AeeScenario> {
@@ -360,7 +366,7 @@ export function renderScenarioPlan(plan: ScenarioPlan): string {
     });
   }
 
-  lines.push("", "Action permissions (do not execute by themselves):");
+  lines.push("", "Action permissions:");
   plan.safety.allowedActions.forEach((action) => lines.push(`  + ${action}`));
   lines.push("", "Forbidden actions:");
   plan.safety.forbiddenActions.forEach((action) => lines.push(`  - ${action}`));

@@ -33,6 +33,16 @@ import {
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
 import {
+  locateElements,
+  type ElementLocation,
+  type ElementLocationPage
+} from "./element-locations";
+import {
+  sweepKeyboardAndPointer,
+  type KeyboardPointerSweepPage,
+  type SweepFinding
+} from "./keyboard-pointer-sweep";
+import {
   writeEvidenceManifest,
   type EvidenceManifestSupplementalFile,
   type EvidenceManifestActionSource,
@@ -44,6 +54,7 @@ import {
   type InteractionVideoEvidence,
   type PlaywrightVideoLike
 } from "./interaction-video";
+export * from "./element-locations";
 export * from "./evidence-manifest";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
@@ -304,6 +315,75 @@ export interface InputComparisonResult {
     summary: string;
   };
   traceFile: string;
+  manifestFile: string;
+}
+
+export interface KeyboardPointerSweepLanePage extends KeyboardPointerSweepPage {
+  screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>;
+}
+
+export interface KeyboardPointerSweepLaneRoute {
+  request(): { url(): string; isNavigationRequest(): boolean };
+  continue(): Promise<void>;
+  abort(errorCode?: string): Promise<void>;
+}
+
+export interface KeyboardPointerSweepLaneContext<TPage extends KeyboardPointerSweepLanePage> {
+  route(
+    url: string,
+    handler: (route: KeyboardPointerSweepLaneRoute) => Promise<void>
+  ): Promise<void>;
+  newPage(): Promise<TPage>;
+  close(): Promise<void>;
+}
+
+export interface KeyboardPointerSweepLaneBrowser<TPage extends KeyboardPointerSweepLanePage> {
+  newContext(): Promise<KeyboardPointerSweepLaneContext<TPage>>;
+}
+
+export interface RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSweepLanePage> {
+  browser: KeyboardPointerSweepLaneBrowser<TPage>;
+  projectRoot: string;
+  targetUrl: string;
+  allowedOrigins: string[];
+  /** Passed to the sweep: press on-page controls, never links or form submits. */
+  activateControls: boolean;
+  outputDir?: string;
+  laneId?: string;
+}
+
+export interface KeyboardPointerSweepLaneFinding extends SweepFinding {
+  /** Where the element is on the lane's full-page screenshot. */
+  targetBox?: ElementLocation;
+}
+
+/** The evidence file a sweep lane writes; it carries no local file paths. */
+export interface KeyboardPointerSweepLaneDocument {
+  schemaVersion: "0.1.0";
+  laneId: string;
+  driver: "keyboard-pointer-sweep";
+  isolation: "dedicated-browser-context";
+  status: "completed" | "blocked" | "failed";
+  targetUrl: string;
+  allowedOrigins: string[];
+  activateControls: boolean;
+  startedAt: string;
+  finishedAt: string;
+  /** Navigations outside the allowed origins, stopped before they left the page. */
+  blockedNavigations: string[];
+  tabStops?: string[];
+  activated?: string[];
+  findings?: KeyboardPointerSweepLaneFinding[];
+  diagnostics?: string[];
+}
+
+export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLaneDocument {
+  status: "completed";
+  tabStops: string[];
+  activated: string[];
+  findings: KeyboardPointerSweepLaneFinding[];
+  sweepFile: string;
+  screenshotFile: string;
   manifestFile: string;
 }
 
@@ -1319,6 +1399,124 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   return laneResult;
 }
 
+/**
+ * Sweeps one page by keyboard and pointer in its own browser context, then records the result,
+ * a full-page screenshot and where each finding is on it. Every navigation, including one a
+ * pressed control starts, is stopped unless it stays inside the allowed origins.
+ */
+export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerSweepLanePage>(
+  options: RunKeyboardPointerSweepLaneOptions<TPage>
+): Promise<KeyboardPointerSweepLaneResult> {
+  const laneId = options.laneId ?? `keyboard-pointer-sweep-${Date.now()}`;
+  assertSafeRunId(laneId);
+  const allowedOrigins = normalizeAllowedOrigins(
+    options.allowedOrigins,
+    "keyboard and pointer sweep"
+  );
+  assertAllowedOrigin(options.targetUrl, allowedOrigins, "Keyboard and pointer sweep");
+  const laneOutputDir = path.resolve(
+    options.projectRoot,
+    options.outputDir ?? "aee-output",
+    laneId
+  );
+  const sweepFile = path.join(laneOutputDir, "keyboard-pointer-sweep.json");
+  const screenshotFile = path.join(laneOutputDir, "full-page.png");
+  const manifestFile = path.join(laneOutputDir, "manifest.json");
+  const header = {
+    schemaVersion: "0.1.0" as const,
+    laneId,
+    driver: "keyboard-pointer-sweep" as const,
+    isolation: "dedicated-browser-context" as const,
+    targetUrl: options.targetUrl,
+    allowedOrigins,
+    activateControls: options.activateControls,
+    startedAt: new Date().toISOString()
+  };
+  const blockedNavigations: string[] = [];
+  let sweep:
+    Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
+  let runError: unknown;
+
+  await mkdir(laneOutputDir, { recursive: true });
+  const context = await options.browser.newContext();
+  try {
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      if (
+        request.isNavigationRequest() &&
+        !allowedOrigins.includes(new URL(request.url()).origin)
+      ) {
+        blockedNavigations.push(request.url());
+        await route.abort("blockedbyclient");
+      } else {
+        await route.continue();
+      }
+    });
+    const page = await context.newPage();
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: options.targetUrl,
+      activateControls: options.activateControls
+    });
+    await page.goto(options.targetUrl);
+    await page.screenshot({ path: screenshotFile, fullPage: true });
+    const locations = await locateElements(
+      page,
+      result.findings.map(({ selector }) => selector)
+    );
+    sweep = {
+      tabStops: result.tabStops,
+      activated: result.activated,
+      findings: result.findings.map((finding, index) => {
+        const targetBox = locations[index];
+        return targetBox ? { ...finding, targetBox } : finding;
+      })
+    };
+  } catch (error) {
+    runError = error;
+  } finally {
+    await context.close();
+  }
+
+  const status = sweep ? "completed" : blockedNavigations.length > 0 ? "blocked" : "failed";
+  const laneRecord: KeyboardPointerSweepLaneDocument = {
+    ...header,
+    status,
+    finishedAt: new Date().toISOString(),
+    blockedNavigations,
+    ...(sweep ?? {
+      diagnostics: [runError instanceof Error ? runError.message : String(runError)]
+    })
+  };
+  assertValidSchema(
+    "keyboardPointerSweepLane",
+    laneRecord,
+    "keyboard and pointer sweep lane output"
+  );
+  await writeFile(sweepFile, JSON.stringify(laneRecord, null, 2), "utf8");
+  await writeEvidenceManifest({
+    assessmentId: laneId,
+    rootDir: laneOutputDir,
+    manifestFile,
+    lanes: [{ id: laneId, driver: "keyboard-pointer-sweep", status, actions: [] }],
+    supplementalFiles: [
+      { path: sweepFile, kind: "keyboard-pointer-sweep", phase: "lane", laneId },
+      ...(sweep
+        ? [
+            {
+              path: screenshotFile,
+              kind: "full-page-screenshot" as const,
+              phase: "lane" as const,
+              laneId
+            }
+          ]
+        : [])
+    ]
+  });
+  if (!sweep) throw runError;
+  return { ...laneRecord, ...sweep, status: "completed", sweepFile, screenshotFile, manifestFile };
+}
+
 function normalizeAllowedOrigins(
   origins: string[],
   laneName = "virtual screen-reader lane"
@@ -1954,71 +2152,15 @@ async function createObserverPage(
               selector: String(node.target[0] ?? "")
             }))
           );
-          const locations = (await evaluatablePage.evaluate?.(
-            (requestedTargets: Array<{ key: string; selector: string }>) => {
-              const browserGlobal = globalThis as unknown as {
-                document: {
-                  documentElement: { scrollWidth: number; scrollHeight: number };
-                  body?: { scrollWidth: number; scrollHeight: number };
-                  querySelector(selector: string): unknown;
-                };
-                scrollX: number;
-                scrollY: number;
-              };
-              const documentRef = browserGlobal.document;
-              const pageWidth = Math.max(
-                documentRef.documentElement.scrollWidth,
-                documentRef.body?.scrollWidth ?? 0
-              );
-              const pageHeight = Math.max(
-                documentRef.documentElement.scrollHeight,
-                documentRef.body?.scrollHeight ?? 0
-              );
-              return requestedTargets.flatMap(({ key, selector }) => {
-                if (!selector) return [];
-                try {
-                  const element = documentRef.querySelector(selector) as
-                    | {
-                        getBoundingClientRect?: () => {
-                          left: number;
-                          top: number;
-                          width: number;
-                          height: number;
-                        };
-                      }
-                    | undefined;
-                  if (!element?.getBoundingClientRect) return [];
-                  const rect = element.getBoundingClientRect();
-                  return [
-                    {
-                      key,
-                      x: rect.left + browserGlobal.scrollX,
-                      y: rect.top + browserGlobal.scrollY,
-                      width: rect.width,
-                      height: rect.height,
-                      pageWidth,
-                      pageHeight
-                    }
-                  ];
-                } catch {
-                  return [];
-                }
-              });
-            },
-            targets
-          )) as
-            | Array<{
-                key: string;
-                x: number;
-                y: number;
-                width: number;
-                height: number;
-                pageWidth: number;
-                pageHeight: number;
-              }>
-            | undefined;
+          const locations = await locateElements(
+            evaluatablePage as EvaluatablePageLike & ElementLocationPage,
+            targets.map(({ selector }) => selector)
+          );
           const locationByKey = new Map(
-            (locations ?? []).map((location) => [location.key, location])
+            targets.flatMap(({ key }, index) => {
+              const location = locations[index];
+              return location ? [[key, location] as const] : [];
+            })
           );
           return {
             ...result,

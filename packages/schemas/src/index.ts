@@ -19,6 +19,7 @@ export const schemaCatalog = {
   virtualPageFixture: "json/virtual-page-fixture.schema.json",
   virtualScreenReaderTranscript: "json/virtual-screen-reader-transcript.schema.json",
   virtualScreenReaderLane: "json/virtual-screen-reader-lane.schema.json",
+  keyboardPointerSweepLane: "json/keyboard-pointer-sweep-lane.schema.json",
   interactionComparison: "json/interaction-comparison.schema.json",
   interactionComparisonRequest: "json/interaction-comparison-request.schema.json",
   interactionVideo: "json/interaction-video.schema.json",

@@ -1,11 +1,14 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page, type TestInfo } from "@playwright/test";
 
-import { sweepKeyboardAndPointer } from "@aee/playwright";
+import { SWEEP_FINDING_CONCEPTS, sweepKeyboardAndPointer } from "@aee/playwright";
+
+import { runApprovedScenario, serveDirectory, startHtmlServer } from "./scenario-helpers";
 
 interface LabPage {
   title: string;
@@ -48,6 +51,73 @@ async function axeRules(page: Page) {
 
 async function headingOutline(page: Page) {
   return page.locator("h1,h2,h3,h4,h5,h6").evaluateAll((nodes) => nodes.map((n) => n.tagName));
+}
+
+interface ScenarioReport {
+  verdict: string;
+  completeness: { status: string };
+  artifacts: Array<{ kind: string; path: string }>;
+  synthesis: {
+    findings: Array<{
+      ruleId: string;
+      pattern?: { url: string };
+      checkpoints: Array<{ sweepPath?: string }>;
+    }>;
+  };
+}
+
+const sweepKinds = new Set(Object.keys(SWEEP_FINDING_CONCEPTS));
+const expectedSweepKinds = contract.issues.flatMap(({ sweepFinding }) =>
+  sweepFinding ? [sweepFinding] : []
+);
+
+/** Runs `aee run` on a lab page over http, as a user would, and reads back its report. */
+async function runOnLabPage(
+  browser: Browser,
+  labPage: LabPage,
+  allowedActions: string[],
+  testInfo: TestInfo
+) {
+  const server = await startHtmlServer(serveDirectory("site"));
+  try {
+    const result = await runApprovedScenario(
+      browser,
+      `schemaVersion: 0.1.0
+id: test-lab
+target:
+  url: ${server.origin}/
+standard:
+  name: WCAG
+  version: "2.2"
+  levels: [A, AA]
+profile: core
+goal: Find every issue the lab page is known to have.
+journeys:
+  - id: lab-page
+    name: ${JSON.stringify(labPage.title)}
+    goal: Read and operate the page.
+    startPath: ${JSON.stringify(`/${labPage.url}`)}
+    allowedActions: [${allowedActions.join(", ")}]
+    forbiddenActions: [submit-forms]
+    virtualScreenReaderCommands: [start]
+approval:
+  required: true
+`,
+      testInfo
+    );
+    const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as ScenarioReport;
+    const sweepArtifact = report.artifacts.find(({ kind }) => kind === "keyboard-pointer-sweep");
+    const sweep = JSON.parse(
+      await readFile(path.join(result.outputDir, sweepArtifact!.path), "utf8")
+    ) as { activated: string[] };
+    return {
+      report,
+      activated: sweep.activated,
+      sweepFindings: report.synthesis.findings.filter(({ ruleId }) => sweepKinds.has(ruleId))
+    };
+  } finally {
+    await server.close();
+  }
 }
 
 async function sweepFindings(page: Page, labPage: LabPage) {
@@ -108,14 +178,55 @@ test("the fixed page works by keyboard and resets on reload", async ({ page }) =
 test("the keyboard and pointer sweep finds exactly the demo page's keyboard issues", async ({
   page
 }) => {
-  const expected = contract.issues.flatMap(({ sweepFinding }) =>
-    sweepFinding ? [sweepFinding] : []
-  );
-  expect(await sweepFindings(page, issuesPage)).toEqual(expected.sort());
+  expect(await sweepFindings(page, issuesPage)).toEqual([...expectedSweepKinds].sort());
 });
 
 test("the keyboard and pointer sweep finds nothing on the fixed page", async ({ page }) => {
   expect(await sweepFindings(page, fixedPage)).toEqual([]);
+});
+
+test("aee run reports the demo page's keyboard issues, each with its fix pattern and evidence", async ({
+  browser
+}, testInfo) => {
+  const { report, sweepFindings } = await runOnLabPage(
+    browser,
+    issuesPage,
+    ["focus", "hover", "activate-page-controls"],
+    testInfo
+  );
+  expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual([...expectedSweepKinds].sort());
+  for (const finding of sweepFindings) {
+    expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
+    expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();
+  }
+  expect(report.verdict).toBe("fail");
+});
+
+test("aee run finds nothing on the fixed page", async ({ browser }, testInfo) => {
+  const { report, activated } = await runOnLabPage(
+    browser,
+    fixedPage,
+    ["focus", "hover", "activate-page-controls"],
+    testInfo
+  );
+  expect(activated.length).toBeGreaterThan(0);
+  expect(report.synthesis.findings).toEqual([]);
+  expect(report).toMatchObject({ verdict: "pass", completeness: { status: "complete" } });
+});
+
+test("aee run presses no control unless the journey allows activate-page-controls", async ({
+  browser
+}, testInfo) => {
+  const { activated, sweepFindings } = await runOnLabPage(
+    browser,
+    issuesPage,
+    ["focus", "hover"],
+    testInfo
+  );
+  // Lost focus is found by pressing Archive, so without the permission it cannot be found.
+  const withoutPressing = expectedSweepKinds.filter((kind) => kind !== "focus-lost");
+  expect(activated).toEqual([]);
+  expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual(withoutPressing.sort());
 });
 
 test("the lab page lists both pages and every issue, and fits desktop and phone", async ({

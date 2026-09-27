@@ -189,7 +189,7 @@ function exampleSynthesisInputs() {
     }
   ];
 
-  return { report, views: { transcripts: [], actionReports, axeReports, comparisons } };
+  return { report, views: { transcripts: [], actionReports, axeReports, comparisons, sweeps: [] } };
 }
 
 test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, and visual evidence", () => {
@@ -231,7 +231,8 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     transcripts: [],
     actionReports,
     axeReports,
-    comparisons
+    comparisons,
+    sweeps: []
   });
   assert.match(html, /Your accessibility status/);
   assert.match(html, /Ask this report/);
@@ -269,6 +270,78 @@ test("a finding the registry maps links to its a11y-skills pattern in the report
   );
 });
 
+test("a sweep finding joins the report with its summary, fix pattern and place on the page", () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.findings.push({
+    id: "sweep-lane:pointer-only",
+    ruleId: "pointer-only",
+    message: "Works with a mouse only",
+    severity: "high",
+    occurrences: [{ journeyId: "journey", laneId: "sweep-lane" }]
+  });
+  const targetBox = { x: 10, y: 20, width: 100, height: 30, pageWidth: 1280, pageHeight: 900 };
+  const summary = "A mouse can click it, but pressing Tab never reaches it.";
+  const sweepViews = {
+    ...views,
+    sweeps: [
+      {
+        path: "sweep-lane/keyboard-pointer-sweep.json",
+        screenshotPath: "sweep-lane/full-page.png",
+        document: {
+          schemaVersion: "0.1.0",
+          laneId: "sweep-lane",
+          driver: "keyboard-pointer-sweep",
+          isolation: "dedicated-browser-context",
+          status: "completed",
+          targetUrl: "https://example.com/",
+          allowedOrigins: ["https://example.com"],
+          activateControls: false,
+          startedAt: "2026-09-16T00:00:00.000Z",
+          finishedAt: "2026-09-16T00:00:05.000Z",
+          blockedNavigations: [],
+          tabStops: ["#search"],
+          activated: [],
+          findings: [
+            {
+              kind: "pointer-only",
+              concept: "keyboard-operation",
+              selector: "#export-report",
+              label: "Export report",
+              summary,
+              targetBox
+            }
+          ]
+        }
+      }
+    ]
+  };
+
+  report.synthesis = buildScenarioSynthesisForTest(report, sweepViews);
+  const finding = report.synthesis.findings.find(({ ruleId }) => ruleId === "pointer-only");
+  const html = renderIntegratedHtmlForTest(report, sweepViews);
+
+  assert.equal(finding?.title, "Works with a mouse only");
+  assert.match(finding?.conclusion ?? "", /pressing Tab never reaches it/);
+  assert.deepEqual(finding?.wcagCriteria, ["WCAG 2.1.1"]);
+  assert.equal(finding?.pattern?.id, "focus-management");
+  assert.deepEqual(finding?.instances, [
+    {
+      component: "Export report",
+      label: "Export report",
+      selector: "#export-report",
+      targetBox,
+      detail: summary
+    }
+  ]);
+  assert.equal(finding?.checkpoints[0]?.sweepPath, "sweep-lane/keyboard-pointer-sweep.json");
+  assert.equal(finding?.checkpoints[0]?.screenshotPath, "sweep-lane/full-page.png");
+  assert.match(
+    html,
+    /<strong>Keyboard access<\/strong><span>Works with a mouse only\.<\/span><\/div><b class="health-result fail">Fix required/
+  );
+  assert.match(html, /Controls not pressed: activate-page-controls is not allowed/);
+});
+
 test("scenario synthesis clearly reports an empty authored scope", () => {
   const report = {
     actions: [],
@@ -280,7 +353,8 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
     transcripts: [],
     actionReports: [],
     axeReports: [],
-    comparisons: []
+    comparisons: [],
+    sweeps: []
   });
 
   assert.match(synthesis.conclusion, /no confirmed fixes were emitted/);

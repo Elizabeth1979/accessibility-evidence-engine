@@ -332,6 +332,22 @@ The result is `interaction-trace.json`, validated by `interaction-comparison.sch
 
 The manifest indexes the trace, JSON and Markdown reports, run and bundle metadata, and every required before/after focus, DOM, accessibility-tree, viewport, full-page, and Axe artifact. It uses relative paths and SHA-256 checksums. Missing required files remain visible and make the manifest partial.
 
+## Keyboard and pointer sweep
+
+`runKeyboardPointerSweepLane(...)` checks one page by keyboard and mouse with no authored steps. It tabs to every stop, then reports mouse targets Tab never reaches (`pointer-only`) and content hover shows that keyboard focus never does (`hover-only`). With `activateControls: true` it also presses each on-page control by keyboard and by mouse from a fresh page, and reports a different result (`activation-differs`) or focus left on nothing visible (`focus-lost`). Links and form submit buttons are never pressed, and any navigation outside the allowed origins is stopped before it leaves the page.
+
+```ts
+const sweep = await runKeyboardPointerSweepLane({
+  browser,
+  projectRoot: process.cwd(),
+  targetUrl: scenario.target.url,
+  allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
+  activateControls: false
+});
+```
+
+The lane writes `keyboard-pointer-sweep.json`, validated by `keyboard-pointer-sweep-lane.schema.json`, a full-page screenshot with where each finding is on it, and `manifest.json`.
+
 ## Approved scenario CLI
 
 The CLI composes those lane runners for an approved YAML scenario:
@@ -343,9 +359,10 @@ aee run scenario.yml --open
 aee run scenario.yml --ci
 ```
 
-The compiled digest must match `approval.approvedPlanDigest`. Execution is limited to concrete
-`virtualScreenReaderCommands` and `interactionComparisons`; `allowedActions` only define the safety
-boundary. The result includes `aee-report.html`, `aee-report.json`, `aee-report.md`, the compiled
+The compiled digest must match `approval.approvedPlanDigest`. Every journey's start page gets the
+keyboard and pointer sweep; beyond it, execution is limited to concrete `virtualScreenReaderCommands`
+and `interactionComparisons`. `allowedActions` define the safety boundary, and only one of them acts
+on its own: `activate-page-controls` lets the sweep press on-page controls. The result includes `aee-report.html`, `aee-report.json`, `aee-report.md`, the compiled
 plan, and one scenario-level `manifest.json` that validates and re-hashes the child-lane evidence.
 Verdict and evidence completeness are reported separately, and incomplete evidence cannot pass.
 

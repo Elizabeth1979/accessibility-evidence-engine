@@ -19,7 +19,7 @@ export interface EvidenceManifestActionSource {
 
 export interface EvidenceManifestLaneSource {
   id: string;
-  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader";
+  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader" | "keyboard-pointer-sweep";
   status: "completed" | "blocked" | "failed";
   actions: EvidenceManifestActionSource[];
 }
@@ -65,6 +65,7 @@ export interface EvidenceManifestArtifact {
     | "run-metadata"
     | "evidence-bundle"
     | "interaction-trace"
+    | "keyboard-pointer-sweep"
     | "lane-metadata"
     | "evidence-manifest"
     | "html-report"

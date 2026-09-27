@@ -8,8 +8,11 @@ export interface RemediationRequirement {
 
 export interface RemediationEntry {
   id: string;
+  title: string;
   patterns: string[];
   requirements: RemediationRequirement[];
+  ai: { allowed: boolean; purpose: string };
+  verification: string[];
 }
 
 /** The part of the registry that pattern lookups read. */
@@ -46,4 +49,14 @@ export function patternForAxeRule(
     ? registry.axeRulePatterns[ruleId]
     : undefined;
   return id === undefined ? undefined : patternLink(id, registry);
+}
+
+/** The registry entry for a concept; an id the registry does not define is an error. */
+export function remediationEntry(
+  id: string,
+  registry: RemediationRegistry = remediationRegistry
+): RemediationEntry {
+  const entry = registry.entries.find((candidate) => candidate.id === id);
+  if (!entry) throw new Error(`The remediation registry has no concept "${id}".`);
+  return entry;
 }
