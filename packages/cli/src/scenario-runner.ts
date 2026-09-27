@@ -2,6 +2,19 @@ import { spawn } from "node:child_process";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  accessibleNameSpecialist,
+  AiNotConfiguredError,
+  createModelProvider,
+  imagePurposeSpecialist,
+  imageRoleFromMarkup,
+  parseModelProviderName,
+  proposeAccessibleLabelFix,
+  proposeImageAlternativeFix,
+  type AiProposedFix,
+  type ImageRole,
+  type ModelProvider
+} from "@aee/ai-fixes";
 import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
@@ -10,6 +23,7 @@ import {
   runKeyboardPointerSweepLane,
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
+  type ElementContext,
   type EvidenceManifest,
   type InputComparisonResult,
   type InteractionComparisonBrowser,
@@ -23,6 +37,7 @@ import {
 } from "@aee/playwright";
 import {
   assertValidSchema,
+  conceptForAxeRule,
   CURRENT_SCHEMA_VERSION,
   patternForAxeRule,
   patternLink,
@@ -42,6 +57,8 @@ import {
 export interface ExecuteScenarioOptions {
   outputDir?: string;
   browser?: Browser;
+  /** The model the allowlisted AI specialists ask; defaults to aeeRunModelProvider(). */
+  aiProvider?: ModelProvider;
 }
 
 export interface ScenarioActionReport {
@@ -108,7 +125,7 @@ export interface ScenarioIntegratedReport {
     reviewedForSharing: false;
     remoteUploadAuthorized: false;
   };
-  ai: { present: false; label: string };
+  ai: { present: boolean; label: string };
 }
 
 export interface ExecuteScenarioResult {
@@ -156,6 +173,8 @@ interface AxeNodeView {
   html?: string;
   failureSummary?: string;
   targetBox?: AxeTargetBox;
+  /** The page around the element, captured for the AI specialists that may be asked about it. */
+  context?: ElementContext;
 }
 
 interface AxeTargetBox {
@@ -267,9 +286,33 @@ interface FindingSynthesis {
   checkpoints: FindingCheckpointSynthesis[];
   remediation: {
     deterministic: string;
-    ai: { used: false; status: "not-applicable" | "available-if-needed"; reason: string };
+    ai: FindingAi;
     verification: string[];
   };
+}
+
+/** What AI contributed to a finding. It never changes the finding's verdict. */
+interface FindingAi {
+  used: boolean;
+  status: "not-applicable" | "available-if-needed" | "not-configured" | "suggested";
+  reason: string;
+  specialistId?: string;
+  providerId?: string;
+  suggestions?: AiSuggestion[];
+  /** Elements the specialist was not asked about, or could not answer for, and why. */
+  notes?: string[];
+}
+
+/** One AI answer for one affected element, shown labelled as AI and never applied. */
+interface AiSuggestion {
+  selector: string;
+  /** The proposed accessible name or text alternative; empty for a decorative image. */
+  text: string;
+  classification?: ImageRole;
+  rationale: string;
+  confidence: number;
+  citedEvidenceIds: string[];
+  patch: string;
 }
 
 interface FindingInstanceSynthesis {
@@ -375,6 +418,7 @@ export async function executeScenario(
   const actions: ScenarioActionReport[] = [];
   const findings: Array<Record<string, unknown>> = [];
   const diagnostics: string[] = [];
+  const aiSuggester = createAiSuggester(options.aiProvider ?? aeeRunModelProvider());
   await mkdir(assessmentDir, { recursive: true });
   await writeFile(planFile, JSON.stringify(plan, null, 2), "utf8");
 
@@ -479,7 +523,7 @@ export async function executeScenario(
     manifestFile,
     planFile
   });
-  await writeIntegratedReport(report, reportFiles, assessmentDir);
+  await writeIntegratedReport(report, reportFiles, assessmentDir, aiSuggester);
   let aggregate = await aggregateEvidenceManifests({
     assessmentId,
     rootDir: assessmentDir,
@@ -499,7 +543,7 @@ export async function executeScenario(
   if (report.completeness.status === "incomplete" && report.verdict === "pass") {
     report.verdict = "unknown";
   }
-  await writeIntegratedReport(report, reportFiles, assessmentDir);
+  await writeIntegratedReport(report, reportFiles, assessmentDir, aiSuggester);
   aggregate = await aggregateEvidenceManifests({
     assessmentId,
     rootDir: assessmentDir,
@@ -819,7 +863,8 @@ function emptyScenarioSynthesis(): ScenarioSynthesis {
 async function writeIntegratedReport(
   report: ScenarioIntegratedReport,
   files: { html: string; json: string; markdown: string },
-  rootDir: string
+  rootDir: string,
+  aiSuggester: AiSuggester
 ): Promise<void> {
   const [transcripts, actionReports, axeReports, comparisons, sweeps] = await Promise.all([
     loadReaderTranscriptViews(report, rootDir),
@@ -830,6 +875,7 @@ async function writeIntegratedReport(
   ]);
   const views = { transcripts, actionReports, axeReports, comparisons, sweeps };
   report.synthesis = buildScenarioSynthesis(report, views);
+  await addAiSuggestions(report, views, aiSuggester);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
   const reportFont = path.join(rootDir, "aee-report-display.woff2");
   await Promise.all([
@@ -1096,7 +1142,10 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       target: Array.isArray(node.target) ? node.target.map(String).join(" → ") : "",
       html: optionalStringField(node, "html"),
       failureSummary: optionalStringField(node, "failureSummary"),
-      targetBox: axeTargetBox(node.aeeTarget)
+      targetBox: axeTargetBox(node.aeeTarget),
+      context: isRecord(node.aeeContext)
+        ? (node.aeeContext as unknown as ElementContext)
+        : undefined
     }));
     const targets = nodes.map(({ target }) => target).filter(Boolean);
     const htmlSamples = nodes
@@ -1564,11 +1613,7 @@ function buildSweepFindingSynthesis(
     checkpoints,
     remediation: {
       deterministic: text.fix,
-      ai: {
-        used: false,
-        status: entry.ai.allowed ? "available-if-needed" : "not-applicable",
-        reason: entry.ai.purpose
-      },
+      ai: registryAi(entry),
       verification: entry.verification
     }
   };
@@ -1744,16 +1789,230 @@ function findingRemediation(
   }
   return {
     deterministic: `${rule ? `${rule.help.replace(/\.?$/, ".")} ` : ""}Fix every affected element listed here, then rerun the same authored journey.`,
-    ai: {
-      used: false,
-      status: "not-applicable",
-      reason:
-        "No allowlisted contextual AI task is defined for this finding; deterministic evidence remains authoritative."
-    },
+    ai: registryAi(conceptForAxeRule(ruleId)),
     verification: [
       "Rerun the same action and require the rule to pass.",
       "Confirm DOM, accessibility tree, focus, visual, and screen-reader evidence still agree."
     ]
+  };
+}
+
+/** The AI stance the registry gives a concept; a finding the registry does not map gets none. */
+function registryAi(entry: { ai: { allowed: boolean; purpose: string } } | undefined): FindingAi {
+  if (!entry) {
+    return {
+      used: false,
+      status: "not-applicable",
+      reason:
+        "No allowlisted contextual AI task is defined for this finding; deterministic evidence remains authoritative."
+    };
+  }
+  return {
+    used: false,
+    status: entry.ai.allowed ? "available-if-needed" : "not-applicable",
+    reason: entry.ai.purpose
+  };
+}
+
+/** Why an allowlisted finding got no AI answer: `aee run` names no model unless told to. */
+const AEE_RUN_AI_SETUP =
+  "AI may suggest wording here, but aee run sends page evidence to a model only when you name one: set AEE_LLM_PROVIDER=local for a model on this machine (Ollama with gemma4:e4b by default), or AEE_LLM_PROVIDER=claude with ANTHROPIC_API_KEY.";
+
+/** How many elements of one finding a specialist is asked about, which bounds a run's cost. */
+const AI_ELEMENTS_PER_FINDING = 10;
+
+/**
+ * The model for `aee run`. Page evidence goes to a model only when AEE_LLM_PROVIDER names one: an
+ * API key that happens to be set is not consent to send captured page content anywhere.
+ */
+export function aeeRunModelProvider(
+  env: Record<string, string | undefined> = process.env
+): ModelProvider {
+  return createModelProvider({
+    env,
+    provider: parseModelProviderName(env.AEE_LLM_PROVIDER) ?? "stub"
+  });
+}
+
+type AiOutcome = { suggestion: AiSuggestion } | { note: string } | { notConfigured: true };
+
+interface AiSuggester {
+  providerId: string;
+  /** Asks the specialist about one element, once per run; undefined when it is not implemented. */
+  suggest(
+    specialistId: string,
+    selector: string,
+    context: ElementContext
+  ): Promise<AiOutcome> | undefined;
+}
+
+/** The implemented registry specialists, each turning captured context into its question. */
+const AI_SPECIALISTS: Record<
+  string,
+  (selector: string, context: ElementContext, provider: ModelProvider) => Promise<AiSuggestion>
+> = {
+  [accessibleNameSpecialist.id]: async (selector, context, provider) => {
+    const fix = await proposeAccessibleLabelFix(
+      {
+        selector,
+        role: context.role ?? ({ a: "link", button: "button" }[context.tagName] || context.tagName),
+        iconDescription: context.iconOnly
+          ? context.iconHints.length
+            ? `an icon; its markup mentions ${context.iconHints.join(", ")}`
+            : "an icon with no text or description in its markup"
+          : undefined,
+        nearbyHeading: context.nearbyHeading,
+        nearbyText: context.nearbyText,
+        destinationText: context.destination
+      },
+      provider
+    );
+    return aiSuggestion(selector, fix, fix.answer.suggestedName);
+  },
+  [imagePurposeSpecialist.id]: async (selector, context, provider) => {
+    const image = context.image;
+    const fix = await proposeImageAlternativeFix(
+      {
+        selector,
+        source: image?.source,
+        currentAlternative: image?.alt,
+        markupRole: imageRoleFromMarkup({
+          role: image?.role,
+          ariaHidden: image?.ariaHidden,
+          alt: image?.alt,
+          soleContentOfLinkOrButton: image?.soleContentOfLinkOrButton
+        }),
+        linkOrButtonText: image?.linkOrButtonText,
+        caption: image?.caption,
+        title: image?.title,
+        nearbyHeading: context.nearbyHeading,
+        nearbyText: context.nearbyText
+      },
+      provider
+    );
+    return {
+      ...aiSuggestion(selector, fix, fix.answer.suggestedAlternative),
+      classification: fix.answer.classification
+    };
+  }
+};
+
+function aiSuggestion(
+  selector: string,
+  fix: AiProposedFix<{ rationale: string; confidence: number; citedEvidenceIds: string[] }>,
+  text: string
+): AiSuggestion {
+  return {
+    selector,
+    text,
+    rationale: fix.answer.rationale,
+    confidence: fix.answer.confidence,
+    citedEvidenceIds: fix.answer.citedEvidenceIds,
+    patch: fix.patches?.[0] ?? ""
+  };
+}
+
+/** Remembers each answer, so writing the report twice asks the model once. */
+function createAiSuggester(provider: ModelProvider): AiSuggester {
+  const outcomes = new Map<string, Promise<AiOutcome>>();
+  return {
+    providerId: provider.id,
+    suggest(specialistId, selector, context) {
+      const run = AI_SPECIALISTS[specialistId];
+      if (!run) return undefined;
+      const key = `${specialistId}\n${selector}`;
+      if (!outcomes.has(key)) {
+        outcomes.set(
+          key,
+          run(selector, context, provider).then(
+            (suggestion) => ({ suggestion }),
+            (error: unknown) =>
+              error instanceof AiNotConfiguredError
+                ? { notConfigured: true }
+                : { note: `${selector}: ${error instanceof Error ? error.message : String(error)}` }
+          )
+        );
+      }
+      return outcomes.get(key);
+    }
+  };
+}
+
+/**
+ * Asks the registry's specialist about each affected element of an allowlisted finding, from the
+ * context captured with the axe result. Answers are labelled AI and never change a verdict.
+ */
+async function addAiSuggestions(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews,
+  suggester: AiSuggester
+): Promise<void> {
+  for (const finding of report.synthesis.findings) {
+    const specialistId = conceptForAxeRule(finding.ruleId)?.ai.specialistId;
+    if (!specialistId) continue;
+    const contexts = new Map(
+      views.axeReports
+        .flatMap(({ violations }) => violations)
+        .filter(({ id }) => id === finding.ruleId)
+        .flatMap(({ nodes }) => nodes)
+        .flatMap(({ target, context }) => (context ? [[target, context] as const] : []))
+    );
+    const asked = finding.instances.slice(0, AI_ELEMENTS_PER_FINDING);
+    const outcomes = await Promise.all(
+      asked.flatMap(({ selector }) => {
+        const context = contexts.get(selector);
+        const outcome = context && suggester.suggest(specialistId, selector, context);
+        return outcome ? [outcome] : [];
+      })
+    );
+    if (outcomes.length === 0) continue;
+    const skipped = finding.instances.length - asked.length;
+    finding.remediation.ai = findingAi(
+      specialistId,
+      suggester.providerId,
+      outcomes,
+      finding.remediation.ai.reason,
+      skipped > 0
+        ? [`AI was asked about the first ${asked.length} of ${finding.instances.length} elements.`]
+        : []
+    );
+  }
+  const suggestions = report.synthesis.findings.reduce(
+    (total, finding) => total + (finding.remediation.ai.suggestions?.length ?? 0),
+    0
+  );
+  report.ai = suggestions
+    ? {
+        present: true,
+        label: `AI-generated suggestions: ${suggestions}, from ${suggester.providerId}. Each is labelled AI and needs review; none passes or fails anything.`
+      }
+    : { present: false, label: "AI-generated analysis: none in this report." };
+}
+
+function findingAi(
+  specialistId: string,
+  providerId: string,
+  outcomes: AiOutcome[],
+  purpose: string,
+  notes: string[]
+): FindingAi {
+  if (outcomes.some((outcome) => "notConfigured" in outcome)) {
+    return { used: false, status: "not-configured", reason: AEE_RUN_AI_SETUP, specialistId };
+  }
+  const suggestions = outcomes.flatMap((outcome) =>
+    "suggestion" in outcome ? [outcome.suggestion] : []
+  );
+  const allNotes = [
+    ...outcomes.flatMap((outcome) => ("note" in outcome ? [outcome.note] : [])),
+    ...notes
+  ];
+  return {
+    used: suggestions.length > 0,
+    status: suggestions.length > 0 ? "suggested" : "available-if-needed",
+    reason: suggestions.length > 0 ? `${purpose} Review each suggestion before use.` : purpose,
+    specialistId,
+    ...(suggestions.length > 0 ? { providerId, suggestions } : {}),
+    ...(allNotes.length > 0 ? { notes: allNotes } : {})
   };
 }
 
@@ -1832,7 +2091,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
       "",
       `**Deterministic remediation:** ${finding.remediation.deterministic}`,
       "",
-      `**AI:** Not used — ${finding.remediation.ai.reason}`,
+      `**AI:** ${aiMarkdown(finding.remediation.ai)}`,
       "",
       `**Affected instances:** ${finding.instanceCount} distinct page locations in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}; repeated at ${finding.checkpointCount} checkpoints.`,
       "",
@@ -2001,7 +2260,7 @@ function renderIntegratedHtml(
 <title>Accessibility evidence report: ${escapeHtml(report.scenarioId)}</title>
 <style>
 @font-face{font-family:"AEE Display";src:url("aee-report-display.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
-:root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--focus:#b86e00;--marker:#f6b73c;--serif:"AEE Display",Georgia,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+:root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--ai:#3a3f9e;--ai-wash:#f0f1ff;--focus:#b86e00;--marker:#f6b73c;--serif:"AEE Display",Georgia,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;scrollbar-color:var(--line-strong) var(--wash)}
 body{margin:0;font:16px/1.6 var(--sans);color:var(--ink);background:var(--paper);font-variant-numeric:tabular-nums}
@@ -2100,7 +2359,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .notice,.ai{border-top-color:var(--unknown)}
 .ai{border-top-color:#5367d8}
 .badge{display:inline-block;align-self:start;border:1px solid currentColor;border-radius:999px;padding:.12rem .55rem;font-size:.75rem;line-height:1.4;font-weight:800;letter-spacing:.035em;text-transform:uppercase;white-space:nowrap}
-.badge.fail{color:var(--fail);background:var(--fail-wash)}.badge.pass{color:var(--pass);background:#eaf8f1}.badge.unknown{color:var(--unknown);background:var(--unknown-wash)}
+.badge.suggested{color:var(--ai);background:var(--ai-wash)}.ai-suggestion{margin:1rem 0;padding:1rem 1.1rem;border:1px solid var(--ai);border-radius:.5rem;background:var(--ai-wash)}.ai-suggestion h4{display:flex;gap:.6rem;align-items:center;margin:0 0 .5rem}.ai-suggestion ul{margin:0;padding-left:1.1rem}.ai-suggestion li+li{margin-top:.6rem}.ai-suggestion li p{margin:.15rem 0}.ai-meta,.ai-note{color:var(--muted);font-size:.9rem}.badge.fail{color:var(--fail);background:var(--fail-wash)}.badge.pass{color:var(--pass);background:#eaf8f1}.badge.unknown{color:var(--unknown);background:var(--unknown-wash)}
 .card-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem}
 .card-heading h3{margin:.1rem 0;font:700 clamp(1.3rem,3vw,1.75rem)/1.15 var(--serif)}
 .technical-id{color:var(--muted);font:400 .78rem/1.4 var(--mono)}
@@ -2407,7 +2666,7 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
             : "P2";
       const screenshot = representative?.screenshotPath;
       const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
-      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span${finding.advisory ? ' class="advisory"' : ""}>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)}${finding.wcagCriteria.length ? ` · ${finding.wcagCriteria.map(escapeHtml).join(", ")}` : ""}</p></div>${renderFindingBadge(finding)}</header><p>${escapeHtml(findingImpact(finding))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span${finding.advisory ? ' class="advisory"' : ""}>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)}${finding.wcagCriteria.length ? ` · ${finding.wcagCriteria.map(escapeHtml).join(", ")}` : ""}</p></div>${renderFindingBadge(finding)}</header><p>${escapeHtml(findingImpact(finding))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderAiSuggestions(finding.remediation.ai)}${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
     })
     .join("");
   return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
@@ -2509,6 +2768,68 @@ function findingImpact(finding: FindingSynthesis): string {
   return "The confirmed rule failure can prevent people from understanding or operating the tested page as intended.";
 }
 
+const AI_STATUS_LABELS: Record<FindingAi["status"], string> = {
+  "not-applicable": "Not used",
+  "available-if-needed": "Allowed, not used",
+  "not-configured": "Allowed, no model set",
+  suggested: "AI suggestion"
+};
+
+/** Plain words for the evidence a specialist cites. */
+const EVIDENCE_WORDS: Record<string, string> = {
+  selector: "its selector",
+  role: "its role",
+  iconDescription: "its icon's markup",
+  nearbyHeading: "the heading above it",
+  nearbyText: "the text around it",
+  destinationText: "where it leads",
+  source: "the image file",
+  currentAlternative: "its current alternative",
+  markupRole: "its markup",
+  linkOrButtonText: "its link or button text",
+  caption: "its caption",
+  title: "its title"
+};
+
+/** The AI answers on a fix card, labelled as AI; or, when no model is set, how to set one. */
+function renderAiSuggestions(ai: FindingAi): string {
+  if (ai.status === "not-configured") {
+    return `<p class="ai-note"><span class="badge suggested">AI</span> ${escapeHtml(ai.reason)}</p>`;
+  }
+  if (!ai.suggestions?.length) return "";
+  return `<section class="ai-suggestion"><h4><span class="badge suggested">AI suggestion</span> Review before use</h4><ul>${ai.suggestions.map(renderAiSuggestion).join("")}</ul><p class="ai-note">Suggested by ${escapeHtml(ai.providerId ?? "a model")}. An AI suggestion never passes or fails anything: the finding stands until a rerun passes.</p></section>`;
+}
+
+function renderAiContribution(ai: FindingAi): string {
+  return `<p><span class="badge ${ai.used ? "suggested" : "unknown"}">${AI_STATUS_LABELS[ai.status]}</span></p><p>${escapeHtml(ai.reason)}</p>${ai.suggestions?.length ? `<ul>${ai.suggestions.map(renderAiSuggestion).join("")}</ul>` : ""}${ai.notes?.length ? `<ul class="ai-meta">${ai.notes.map((note) => `<li>${escapeHtml(note)}</li>`).join("")}</ul>` : ""}`;
+}
+
+function renderAiSuggestion(suggestion: AiSuggestion): string {
+  const text = suggestion.text
+    ? `“${escapeHtml(suggestion.text)}”`
+    : "An empty alternative (decorative)";
+  return `<li><p><strong>${text}</strong> for <code>${escapeHtml(suggestion.selector)}</code>${suggestion.classification ? ` · image role: ${escapeHtml(suggestion.classification)}` : ""}</p><p>${escapeHtml(suggestion.rationale)}</p><p class="ai-meta">Based on ${escapeHtml(citedEvidence(suggestion.citedEvidenceIds))} · confidence ${suggestion.confidence.toFixed(2)}</p></li>`;
+}
+
+function aiMarkdown(ai: FindingAi): string {
+  if (!ai.suggestions?.length) {
+    return [`${AI_STATUS_LABELS[ai.status]} — ${ai.reason}`, ...(ai.notes ?? [])].join(" ");
+  }
+  return `AI suggestion from ${ai.providerId ?? "a model"}, review before use: ${ai.suggestions
+    .map(
+      (suggestion) =>
+        `${suggestion.text ? `“${suggestion.text}”` : "an empty alternative"} for \`${suggestion.selector}\` (based on ${citedEvidence(suggestion.citedEvidenceIds)}; confidence ${suggestion.confidence.toFixed(2)})`
+    )
+    .join("; ")}.`;
+}
+
+function citedEvidence(ids: string[]): string {
+  const words = ids.map((id) => EVIDENCE_WORDS[id] ?? id);
+  return words.length > 1
+    ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`
+    : (words[0] ?? "");
+}
+
 function renderProposedFix(finding: FindingSynthesis): string {
   if (finding.ruleId === "color-contrast") {
     const preview = contrastFixPreview(finding.remediation.deterministic);
@@ -2603,7 +2924,7 @@ function renderFindingDossiers(report: ScenarioIntegratedReport): string {
         )
         .join("");
       const sample = representative?.htmlSamples[0];
-      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div>${renderFindingBadge(finding)}</header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p>${renderPatternLink(finding)}<div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4><p><span class="badge unknown">Not used</span></p><p>${escapeHtml(finding.remediation.ai.reason)}</p><p><strong>Status:</strong> ${finding.remediation.ai.status === "available-if-needed" ? "Available only if deterministic evidence is inconclusive" : "Not appropriate for this deterministic decision"}.</p></section></div></article>`;
+      return `<article class="finding-dossier" data-rule-id="${escapeAttribute(finding.ruleId)}" id="finding-${escapeAttribute(finding.ruleId)}"><header><div><h3>${escapeHtml(finding.ruleId)}</h3><p>${escapeHtml(finding.title)}</p></div>${renderFindingBadge(finding)}</header><p class="finding-summary">${escapeHtml(finding.conclusion)}</p><p><strong>Standards:</strong> ${finding.wcagCriteria.length ? finding.wcagCriteria.map(escapeHtml).join(", ") : "No WCAG tag was emitted by the rule."}</p>${renderPatternLink(finding)}<div class="evidence-preview">${representative?.screenshotPath ? `<figure><a class="image-viewer-trigger" href="${encodeURI(representative.screenshotPath)}" data-image-viewer data-view-title="${escapeAttribute(`${finding.title} representative checkpoint`)}"><img loading="lazy" src="${encodeURI(representative.screenshotPath)}" alt="Full-page evidence for ${escapeAttribute(humanActionName(representative.actionId))}"></a><figcaption>Representative full-page checkpoint · Click to enlarge · <a href="${encodeURI(representative.screenshotPath)}">open complete page capture</a></figcaption></figure>` : ""}<div><h4>Representative affected element</h4><p><strong>${representative?.nodeCount ?? 0}</strong> affected nodes at this checkpoint. ${representative && representative.nodeCount > representative.targets.length ? `${representative.targets.length} representative selectors are summarized here; every node remains in the raw Axe evidence.` : ""}</p>${representative?.targets.length ? `<p><strong>First selector:</strong> <code>${escapeHtml(representative.targets[0]!)}</code></p>` : ""}${sample ? `<details><summary>Show captured HTML</summary><pre class="technical-sample">${escapeHtml(sample)}</pre></details>` : ""}${representative ? renderEvidenceLinks(representative) : ""}</div></div><div class="table-wrap" tabindex="0"><table><caption>Every checkpoint considered in this conclusion</caption><thead><tr><th scope="col">Action and lane</th><th scope="col">Independent behavior result</th><th scope="col">Affected nodes</th><th scope="col">Correlated evidence</th></tr></thead><tbody>${checkpointRows}</tbody></table></div><div class="remediation-grid"><section><h4>Deterministic remediation</h4><p>${escapeHtml(finding.remediation.deterministic)}</p><h4>Verification after the fix</h4><ol class="verification-list">${finding.remediation.verification.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol></section><section><h4>AI contribution</h4>${renderAiContribution(finding.remediation.ai)}</section></div></article>`;
     })
     .join("");
 }

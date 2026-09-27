@@ -1,12 +1,20 @@
 import type { ProposedFix } from "@aee/core";
 
+import type { ModelProvider } from "./model-providers";
 import {
-  validateSuggestion,
+  accessibleNameSpecialist,
+  askSpecialist,
+  imagePurposeSpecialist,
   type AccessibleLabelContext,
-  type AccessibleLabelModelProvider
-} from "./label-providers";
+  type AccessibleNameAnswer,
+  type ImagePurposeAnswer,
+  type ImagePurposeContext,
+  type ImageRole,
+  type Specialist
+} from "./specialists";
 
-export * from "./label-providers";
+export * from "./model-providers";
+export * from "./specialists";
 
 export type ContextualReviewCandidate =
   | {
@@ -21,9 +29,10 @@ export type ContextualReviewCandidate =
       needsSemanticOutline: boolean;
     }
   | {
-      kind: "decorative-classification";
-      hasVisualContext: boolean;
-      meaningDependsOnRelationship: boolean;
+      kind: "image-purpose";
+      /** The role the markup already decides, if any (imageRoleFromMarkup). */
+      markupRole?: ImageRole;
+      contextSignals: string[];
     }
   | {
       kind: "deterministic-rule";
@@ -140,7 +149,7 @@ export function routeContextualReview(candidate: ContextualReviewCandidate): AiR
         reason: "The control is not icon-only, so its visible text should supply the name."
       };
     }
-    if (!candidate.contextSignals.some((signal) => signal.trim())) {
+    if (!hasSignal(candidate.contextSignals)) {
       return {
         route: "deterministic",
         reason: "No bounded UI context is available from which to infer the icon's purpose."
@@ -168,45 +177,110 @@ export function routeContextualReview(candidate: ContextualReviewCandidate): AiR
     };
   }
 
-  if (candidate.hasVisualContext && candidate.meaningDependsOnRelationship) {
+  if (candidate.markupRole === "decorative") {
     return {
-      route: "ai-review",
-      reason: "Decorative status depends on whether the visual adds meaning beyond nearby content."
+      route: "deterministic",
+      reason: "The markup already marks the image decorative, so its alternative is empty."
+    };
+  }
+  if (!hasSignal(candidate.contextSignals)) {
+    return {
+      route: "deterministic",
+      reason: "No bounded page context is available from which to infer the image's purpose."
     };
   }
   return {
-    route: "deterministic",
-    reason: "The available evidence does not require visual relationship interpretation."
+    route: "ai-review",
+    reason:
+      "Whether the image is decorative, informative, functional or complex, and what its alternative says, depends on the page around it."
   };
 }
 
+function hasSignal(signals: string[]): boolean {
+  return signals.some((signal) => signal.trim());
+}
+
+/** A review-only fix, with the specialist's answer it came from. */
+export type AiProposedFix<Answer> = ProposedFix & { answer: Answer };
+
+/** Suggests a name for an icon-only control, when the allowlist routes it to AI. */
 export async function proposeAccessibleLabelFix(
   context: AccessibleLabelContext,
-  provider: AccessibleLabelModelProvider
-): Promise<ProposedFix> {
+  provider: ModelProvider
+): Promise<AiProposedFix<AccessibleNameAnswer>> {
   const decision = routeContextualReview({
     kind: "icon-label",
     hasAccessibleName: Boolean(context.currentAccessibleName?.trim()),
     isIconOnly: Boolean(context.iconDescription?.trim()),
-    contextSignals: [context.nearbyHeading, context.nearbyText, context.destinationText].filter(
-      (value): value is string => Boolean(value?.trim())
+    contextSignals: definedSignals(
+      context.nearbyHeading,
+      context.nearbyText,
+      context.destinationText
     )
   });
+  const answer = await askAllowed(decision, accessibleNameSpecialist, context, provider);
 
+  return reviewOnlyFix(provider, decision, answer, {
+    summary: `Propose accessible name "${answer.suggestedName}" for ${context.selector}.`,
+    patch: `${context.selector}: add aria-label="${escapeHtmlAttribute(answer.suggestedName)}"`
+  });
+}
+
+/** Classifies an image and drafts its alternative, when the allowlist routes it to AI. */
+export async function proposeImageAlternativeFix(
+  context: ImagePurposeContext,
+  provider: ModelProvider
+): Promise<AiProposedFix<ImagePurposeAnswer>> {
+  const decision = routeContextualReview({
+    kind: "image-purpose",
+    markupRole: context.markupRole,
+    contextSignals: definedSignals(
+      context.linkOrButtonText,
+      context.destinationText,
+      context.caption,
+      context.title,
+      context.nearbyHeading,
+      context.nearbyText
+    )
+  });
+  const answer = await askAllowed(decision, imagePurposeSpecialist, context, provider);
+
+  return reviewOnlyFix(provider, decision, answer, {
+    summary: `Classify ${context.selector} as ${answer.classification} and propose ${answer.suggestedAlternative ? `alternative "${answer.suggestedAlternative}"` : "an empty alternative"}.`,
+    patch: `${context.selector}: set alt="${escapeHtmlAttribute(answer.suggestedAlternative)}"`
+  });
+}
+
+async function askAllowed<Input extends object, Answer>(
+  decision: AiReviewDecision,
+  specialist: Specialist<Input, Answer>,
+  input: Input,
+  provider: ModelProvider
+): Promise<Answer> {
   if (decision.route !== "ai-review") {
     throw new Error(`AI review was not triggered: ${decision.reason}`);
   }
+  return askSpecialist(specialist, input, provider);
+}
 
-  const suggestion = validateSuggestion(await provider.suggestLabel(context));
-  const escapedLabel = escapeHtmlAttribute(suggestion.label);
-
+function reviewOnlyFix<Answer extends { rationale: string; confidence: number }>(
+  provider: ModelProvider,
+  decision: AiReviewDecision,
+  answer: Answer,
+  proposal: { summary: string; patch: string }
+): AiProposedFix<Answer> {
   return {
     providerId: provider.id,
-    summary: `Propose accessible name "${suggestion.label}" for ${context.selector}.`,
-    rationale: `${decision.reason} ${suggestion.rationale} Model confidence: ${suggestion.confidence.toFixed(2)}. This proposal requires human review and a verified rerun.`,
+    summary: proposal.summary,
+    rationale: `${decision.reason} ${answer.rationale} Model confidence: ${answer.confidence.toFixed(2)}. This proposal requires human review and a verified rerun.`,
     safety: "review",
-    patches: [`${context.selector}: add aria-label="${escapedLabel}"`]
+    patches: [proposal.patch],
+    answer
   };
+}
+
+function definedSignals(...values: Array<string | undefined>): string[] {
+  return values.filter((value): value is string => Boolean(value?.trim()));
 }
 
 function escapeHtmlAttribute(value: string): string {

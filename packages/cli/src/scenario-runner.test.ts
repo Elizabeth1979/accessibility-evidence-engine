@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  aeeRunModelProvider,
   buildScenarioSynthesisForTest,
   renderIntegratedHtmlForTest,
   type ScenarioActionReport,
@@ -454,4 +455,14 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
   assert.equal(synthesis.findings.length, 0);
   assert.equal(synthesis.lanes.length, 0);
   assert.deepEqual(synthesis.reader, { commands: 0, passed: 0, failed: 0, unknown: 0 });
+});
+
+test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a key is set", () => {
+  assert.equal(aeeRunModelProvider({}).id, "stub");
+  assert.equal(aeeRunModelProvider({ ANTHROPIC_API_KEY: "key" }).id, "stub");
+  assert.equal(
+    aeeRunModelProvider({ AEE_LLM_PROVIDER: "claude", ANTHROPIC_API_KEY: "key" }).id,
+    "claude:claude-opus-5"
+  );
+  assert.equal(aeeRunModelProvider({ AEE_LLM_PROVIDER: "local" }).id, "local:gemma4:e4b");
 });

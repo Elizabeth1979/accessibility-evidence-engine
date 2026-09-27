@@ -179,12 +179,13 @@ async function generateReviewedAiSuggestion() {
   });
   const fix = await proposeAccessibleLabelFix(labelContext, {
     id: "codex-reviewed-demo-suggestion",
-    async suggestLabel() {
+    async ask() {
       return {
-        label: "Delete Project Alpha",
+        suggestedName: "Delete Project Alpha",
         rationale:
           "The trash icon, Project Alpha heading, and matching destructive confirmation copy establish the control's purpose and object.",
-        confidence: 0.96
+        confidence: 0.96,
+        citedEvidenceIds: ["iconDescription", "nearbyHeading", "destinationText"]
       };
     }
   });

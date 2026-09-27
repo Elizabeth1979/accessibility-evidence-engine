@@ -6,6 +6,7 @@ import test from "node:test";
 import axe from "axe-core";
 
 import {
+  conceptForAxeRule,
   patternForAxeRule,
   remediationRegistry,
   type RemediationRegistry
@@ -594,6 +595,12 @@ test("patternForAxeRule links a mapped rule to its pattern file", () => {
   });
   assert.equal(patternForAxeRule("not-a-mapped-rule"), undefined);
   assert.equal(patternForAxeRule("constructor"), undefined);
+});
+
+test("conceptForAxeRule finds the concept that lists the rule as detection", () => {
+  assert.equal(conceptForAxeRule("button-name")?.id, "accessible-name");
+  assert.equal(conceptForAxeRule("image-alt")?.id, "image-purpose");
+  assert.equal(conceptForAxeRule("not-a-mapped-rule"), undefined);
 });
 
 test("validateSchema rejects a registry without axe rule patterns", () => {

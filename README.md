@@ -11,7 +11,7 @@ Explore the [public interactive demonstration](https://elizabeth1979.github.io/a
 
 Many automated checks report a rule result without preserving enough context to explain what happened during an interaction. AEE keeps evidence collection, correlation, judgment, and reporting separate so a result can be traced back to the captured DOM, accessibility tree, focus state, screenshot, or network activity.
 
-AEE complements rule engines such as axe rather than replacing them. Static rules are excellent at objective defects such as an icon button without an accessible name. AEE adds value only when remediation depends on meaning: a deterministic router can escalate full-page heading structure, icon-only naming, and decorative-versus-informative classification for contextual review. Routine failures never call a model. The interaction pipeline separately verifies stateful behavior such as whether focus actually enters an opened modal.
+AEE complements rule engines such as axe rather than replacing them. Static rules are excellent at objective defects such as an icon button without an accessible name. AEE adds value only when remediation depends on meaning: a deterministic router can escalate full-page heading structure, icon-only naming, and an image's purpose and text alternative for contextual review. Routine failures never call a model. The interaction pipeline separately verifies stateful behavior such as whether focus actually enters an opened modal.
 
 This comparison does not claim that axe cannot be scripted around interactions. Its own API guidance recommends activating hidden UI before analyzing it. The distinction is that AEE normalizes the interaction boundary, before/after artifacts, explicit behavioral expectation, judgment, and release decision into one traceable report. See axe's [`button-name` rule](https://dequeuniversity.com/rules/axe/4.13/button-name), [axe API notes](https://github.com/dequelabs/axe-core/blob/develop/doc/API.md), and the W3C [modal-dialog focus pattern](https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/).
 
@@ -75,8 +75,12 @@ found at the largest checkpoint. Semantic defects use DOM evidence instead of pr
 visible in a screenshot; visual defects pair page context with named targets and measurements.
 “Ask this report” answers common status, priority, effort, and evidence questions locally
 without uploading captured data. Detailed DOM, accessibility-tree, focus, Axe, and raw-file views live
-in the technical annex. Deterministic remediation leads; AI is explicitly marked as unused or
-available only for bounded contextual assistance.
+in the technical annex. Deterministic remediation leads. When you name a model with
+`AEE_LLM_PROVIDER` (`local` for one on your machine, or `claude`), the registry's allowlisted
+specialists suggest a name for each icon-only control and a text alternative for each image
+without one, from the page context captured with the axe result. Each suggestion is labelled AI,
+needs review, and never passes or fails anything. With no model named, nothing is sent and the
+report says how to turn it on.
 
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
@@ -169,8 +173,8 @@ The homepage's feature cards come from `site/features.json`, the one list of wha
 | Evidence manifest       | Relative paths, SHA-256 integrity, provenance, execution status, and privacy      | Re-hashes child-lane evidence into one scenario manifest; omissions make the manifest partial                                                                      |
 | Interaction video       | WebM, JSON action timeline, and WebVTT captions                                   | Records each active lane, labels action timing, and indexes all three privacy-sensitive files in the manifest                                                      |
 | Deep focus state        | Document/deep active element, shadow/iframe chain, focus-visible styles, AX focus | Preserves synchronized focus evidence and deterministically checks explicit preserve, target, and dialog-transfer expectations                                     |
-| AI review routing       | Headings, icon labels, decorative classification                                  | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                |
-| AI fix proposals        | Contextual accessible names                                                       | Injected provider proposes a label; output is always review-only and requires a verified rerun                                                                     |
+| AI review routing       | Headings, icon labels, image purpose                                              | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                |
+| AI fix proposals        | Contextual accessible names and image alternatives                                | Registry-allowlisted specialists answer from captured evidence; output is always review-only and requires a verified rerun                                         |
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                                                     |
 | Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace                                  |
 

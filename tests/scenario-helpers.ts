@@ -5,7 +5,12 @@ import path from "node:path";
 
 import type { Browser, TestInfo } from "@playwright/test";
 
-import { compileScenarioPlan, executeScenario, loadScenario } from "@aee/cli";
+import {
+  compileScenarioPlan,
+  executeScenario,
+  loadScenario,
+  type ExecuteScenarioOptions
+} from "@aee/cli";
 
 type RequestHandler = Parameters<typeof createServer>[0];
 
@@ -61,7 +66,8 @@ export function serveDirectory(root: string): RequestHandler {
 export async function runApprovedScenario(
   browser: Browser,
   scenarioYaml: string,
-  testInfo: TestInfo
+  testInfo: TestInfo,
+  options: Pick<ExecuteScenarioOptions, "aiProvider"> = {}
 ): Promise<Awaited<ReturnType<typeof executeScenario>>> {
   const scenarioPath = testInfo.outputPath("scenario.yml");
   await writeFile(scenarioPath, scenarioYaml, "utf8");
@@ -73,6 +79,7 @@ export async function runApprovedScenario(
   );
   return executeScenario(scenarioPath, {
     browser,
-    outputDir: testInfo.outputPath("scenario-output")
+    outputDir: testInfo.outputPath("scenario-output"),
+    ...options
   });
 }

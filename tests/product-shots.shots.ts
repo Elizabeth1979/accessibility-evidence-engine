@@ -47,7 +47,7 @@ test("product shots and videos come from a real run of the demo page", async ({
     contract.pages.issues,
     ["focus", "hover", "activate-page-controls"],
     testInfo,
-    readerWalk
+    { readerCommands: readerWalk }
   ).finally(() => browser.close());
   // The whole run is the sample report the feature cards link to.
   await cp(run.outputDir, path.join(shotsDir, "report"), { recursive: true });

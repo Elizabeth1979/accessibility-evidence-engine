@@ -31,7 +31,7 @@ Owns the normalized domain model, policy types, orchestration, evidence correlat
 
 ### `@aee/ai-fixes`
 
-Owns review-only contextual repair helpers and model-provider adapters. AI proposals remain separate from judgments: accepting a suggestion does not produce a passing result, and callers must verify the change with a new evidence run.
+Owns review-only contextual repair helpers, the model-provider seam and the AI specialists the remediation registry allowlists (`accessible-name-specialist` for icon-only controls, `image-purpose-specialist` for images). A specialist sees only the evidence it is given and must cite which of it the answer relies on. AI proposals remain separate from judgments: accepting a suggestion does not produce a passing result, and callers must verify the change with a new evidence run.
 
 ### `@aee/schemas`
 
@@ -55,7 +55,7 @@ Owns JSON and Markdown output. Reporters consume completed runs, normalized evid
 
 ### `@aee/cli`
 
-Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`.
+Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`. `aee run` asks the allowlisted AI specialists about a finding's elements only when `AEE_LLM_PROVIDER` names a model, and writes their answers into the report labelled as AI.
 
 ## Dependency graph
 
@@ -81,6 +81,7 @@ graph TD
   playwright --> judges
   playwright --> reporter
   cli --> core
+  cli --> aiFixes
   cli --> schemas
   cli --> playwright
   cli --> observers
@@ -106,6 +107,6 @@ graph TD
 - Stabilization is a configured timeout, not a browser-state condition.
 - Observer capture runs concurrently with `Promise.all` within each phase.
 - Setup, capture, or teardown failures are not yet governed by the declared observer timeout and continuation policy.
-- The AI fix package proposes contextual accessible names only. Core fix-provider orchestration and automatic remediation are not implemented.
+- The AI specialists read text evidence only: the image-purpose specialist does not see the image itself yet (see the master plan's Later list). Automatic remediation is not implemented.
 
 See [Evidence privacy](privacy.md) for the artifact trust boundary and [Observer lifecycle](observer-lifecycle.md) for phase-level behavior.

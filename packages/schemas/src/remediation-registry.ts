@@ -11,7 +11,7 @@ export interface RemediationEntry {
   title: string;
   patterns: string[];
   requirements: RemediationRequirement[];
-  ai: { allowed: boolean; purpose: string };
+  ai: { allowed: boolean; specialistId?: string; purpose: string };
   verification: string[];
 }
 
@@ -59,4 +59,16 @@ export function remediationEntry(
   const entry = registry.entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`The remediation registry has no concept "${id}".`);
   return entry;
+}
+
+/** The concept whose detection includes an axe rule, when the registry maps that rule. */
+export function conceptForAxeRule(
+  ruleId: string,
+  registry: RemediationRegistry = remediationRegistry
+): RemediationEntry | undefined {
+  return registry.entries.find(({ requirements }) =>
+    requirements.some(
+      ({ standard, requirementId }) => standard === "axe-core" && requirementId === ruleId
+    )
+  );
 }

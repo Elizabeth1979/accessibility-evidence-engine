@@ -53,6 +53,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@aee/ai-fixes": "0.1.0",
     "@aee/core": "0.1.0",
     "@aee/judges": "0.1.0",
     "@aee/observers": "0.1.0",

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { Browser, TestInfo } from "@playwright/test";
 
+import { createStubModelProvider, type ModelProvider, type ModelRequest } from "@aee/ai-fixes";
 import { SWEEP_FINDING_CONCEPTS } from "@aee/playwright";
 
 import { runApprovedScenario, serveDirectory, startHtmlServer } from "./scenario-helpers";
@@ -41,21 +42,73 @@ export interface ScenarioReport {
       advisory: boolean;
       pattern?: { url: string };
       checkpoints: Array<{ sweepPath?: string }>;
+      remediation: {
+        ai: {
+          used: boolean;
+          status: string;
+          reason: string;
+          providerId?: string;
+          suggestions?: Array<{ selector: string; text: string; classification?: string }>;
+          notes?: string[];
+        };
+      };
     }>;
   };
+  ai: { present: boolean; label: string };
 }
 
 const sweepKinds = new Set(Object.keys(SWEEP_FINDING_CONCEPTS));
 /** Enough reader moves to land on every named and unnamed control near the top of either page. */
 export const readerWalk = ["start", ...Array<string>(5).fill("next-control")];
 
-/** Runs `aee run` on a lab page over http, as a user would, and reads back its report. */
+/**
+ * The stub fixture: a model that answers each specialist with the fixed page's own names, so a
+ * test runs the whole AI path with no real model. It records what it was asked.
+ */
+export function labFixtureModel(): { provider: ModelProvider; requests: ModelRequest[] } {
+  const fixedPageNames: Record<string, string> = {
+    "#archive-project": "Archive Project Alpha",
+    "#help-link": "Help with projects",
+    "#usage-chart": "Reviews per day: 12 on Monday, rising to 30 on Friday."
+  };
+  const requests: ModelRequest[] = [];
+  return {
+    requests,
+    provider: {
+      id: "lab-fixture",
+      async ask(request) {
+        requests.push(request);
+        const { selector } = request.input as { selector: string };
+        const answer = {
+          rationale: "The fixed demo page uses this wording.",
+          confidence: 1,
+          citedEvidenceIds: ["nearbyText"]
+        };
+        return request.name === "image_purpose_specialist"
+          ? {
+              ...answer,
+              classification: "informative",
+              suggestedAlternative: fixedPageNames[selector]
+            }
+          : { ...answer, suggestedName: fixedPageNames[selector] };
+      }
+    }
+  };
+}
+
+/**
+ * Runs `aee run` on a lab page over http, as a user would, and reads back its report. No model is
+ * asked unless a test passes one, whatever the environment says.
+ */
 export async function runOnLabPage(
   browser: Browser,
   labPage: LabPage,
   allowedActions: string[],
   testInfo: TestInfo,
-  readerCommands = ["start"]
+  {
+    readerCommands = ["start"],
+    aiProvider = createStubModelProvider()
+  }: { readerCommands?: string[]; aiProvider?: ModelProvider } = {}
 ) {
   const server = await startHtmlServer(serveDirectory("site"));
   try {
@@ -82,7 +135,8 @@ journeys:
 approval:
   required: true
 `,
-      testInfo
+      testInfo,
+      { aiProvider }
     );
     const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as ScenarioReport;
     const sweepArtifact = report.artifacts.find(({ kind }) => kind === "keyboard-pointer-sweep");
