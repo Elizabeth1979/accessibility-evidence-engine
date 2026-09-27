@@ -41,12 +41,16 @@ const defects = {
   },
   "hover-only-plan-details": () => {
     const previous = document.querySelector("#plan-details");
+    const title = document.createElement("p");
+    title.append(document.createElement("strong"));
+    title.firstChild.textContent = previous.querySelector("summary").textContent;
+    const details = document.createElement("p");
+    details.className = "hover-only";
+    details.textContent = previous.querySelector("p").textContent;
     const card = document.createElement("div");
     card.id = previous.id;
     card.className = "plan-card";
-    card.innerHTML = `<p><strong>Plan details</strong></p><p class="hover-only">${
-      previous.querySelector("p").textContent
-    }</p>`;
+    card.append(title, details);
     previous.replaceWith(card);
   },
   // Checked by the archive handler below: focus is left on the hidden button.
