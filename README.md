@@ -226,6 +226,7 @@ See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-en
 - [Playwright integration](docs/playwright-integration.md)
 - [Evidence privacy](docs/privacy.md)
 - [AI fix proposals](docs/ai-fixes.md)
+- [Architecture decision records](docs/adr/README.md)
 
 ## Contributing and security
 

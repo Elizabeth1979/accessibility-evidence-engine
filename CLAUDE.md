@@ -2,7 +2,7 @@
 
 **Start here for toolkit work:** `docs/MASTER-PLAN.md` is the plan for consolidating all the accessibility repos into this engine. When asked to "continue the master plan", do the first unchecked step, tick it in the same PR, and log any decision there.
 
-Product principles live in `PRODUCT.md`, the architecture in `docs/architecture.md`, and engine milestones in `docs/implementation-roadmap.md`.
+Product principles live in `PRODUCT.md`, the architecture in `docs/architecture.md`, its lasting decisions in `docs/adr/`, and engine milestones in `docs/implementation-roadmap.md`.
 
 ## Before pushing
 
