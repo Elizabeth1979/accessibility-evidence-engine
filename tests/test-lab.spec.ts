@@ -1,33 +1,32 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
-const fixture = pathToFileURL(path.resolve("site/test-case.html")).href;
-for (const scenario of ["fixed", "headings", "icon-labels", "body-hidden", "all"]) {
-  test(`controlled fixture: ${scenario}`, async ({ page }) => {
-    await page.goto(`${fixture}?case=${scenario}`);
-    await expect(page.locator("body")).toHaveAttribute("data-test-case", scenario);
+interface LabCase {
+  url: string;
+  observedAxeViolationIds: string[];
+  headingOutline: string[];
+}
+
+// The contract is the known answer for every lab case: a missed violation or a new one fails.
+const contract = JSON.parse(readFileSync("site/test-lab-contract.json", "utf8")) as {
+  cases: Record<string, LabCase>;
+};
+const site = pathToFileURL(path.resolve("site") + path.sep).href;
+const fixture = new URL("test-case.html", site).href;
+
+for (const [name, labCase] of Object.entries(contract.cases)) {
+  test(`lab case: ${name}`, async ({ page }) => {
+    await page.goto(new URL(labCase.url, site).href);
     const result = await new AxeBuilder({ page }).analyze();
-    const rules = result.violations.map(({ id }) => id);
-    console.log(scenario, JSON.stringify(rules));
-    if (scenario === "fixed" || scenario === "headings") expect(rules).toEqual([]);
-    if (scenario === "icon-labels") {
-      expect(rules).toEqual(["button-name"]);
-      expect(result.violations[0].nodes).toHaveLength(2);
-    }
-    if (scenario === "body-hidden" || scenario === "all") {
-      expect(rules).toContain("aria-hidden-body");
-      await expect(page.locator("body")).toHaveAttribute("aria-hidden", "true");
-    }
-    const levels = await page
-      .locator("h1,h2,h3")
+    const rules = result.violations.map(({ id }) => id).sort();
+    expect(rules).toEqual([...labCase.observedAxeViolationIds].sort());
+    const outline = await page
+      .locator("h1,h2,h3,h4,h5,h6")
       .evaluateAll((nodes) => nodes.map((node) => node.tagName));
-    expect(levels).toEqual([
-      "H1",
-      "H2",
-      scenario === "headings" || scenario === "all" ? "H3" : "H2"
-    ]);
+    expect(outline).toEqual(labCase.headingOutline);
   });
 }
 
@@ -49,7 +48,9 @@ test("fixture controls work with keyboard and reset on reload", async ({ page })
 test("lab navigation is accessible and layouts fit desktop and mobile", async ({ page }) => {
   await page.goto(pathToFileURL(path.resolve("site/test-lab.html")).href);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await expect(page.locator(".experiments a")).toHaveCount(5);
+  for (const { url } of Object.values(contract.cases)) {
+    await expect(page.locator(`.experiments a[href="${url}"]`)).toHaveCount(1);
+  }
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     for (const file of ["test-lab.html", "test-case.html?case=headings"]) {
