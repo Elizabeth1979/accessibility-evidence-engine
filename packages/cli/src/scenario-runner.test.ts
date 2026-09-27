@@ -242,8 +242,14 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
   assert.match(html, /3–6 engineering hours/);
   assert.match(html, /Technical annex/);
   assert.match(html, /data-fix-filter="small"/);
+  assert.equal(contrast?.pattern?.id, "color-contrast");
+  assert.match(html, /\/patterns\/color-contrast\.instructions\.md">color-contrast pattern<\/a>/);
   assert.equal(aria?.pattern, undefined);
-  assert.doesNotMatch(html, /How to build it right/);
+  const ariaRow = html.match(
+    /<article [^>]*id="review-aria-required-parent">[\s\S]*?<\/article>/
+  )?.[0];
+  assert.ok(ariaRow);
+  assert.doesNotMatch(ariaRow, /How to build it right/);
 });
 
 test("a finding the registry maps links to its a11y-skills pattern in the report", () => {

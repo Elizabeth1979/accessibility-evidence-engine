@@ -1,12 +1,54 @@
 {
   "$schema": "./remediation-registry.schema.json",
   "schemaVersion": "0.1.0",
-  "registryVersion": "2026.09.13",
+  "registryVersion": "2026.09.27",
   "title": "AEE detection, analysis, and remediation registry",
   "patternSource": {
     "repository": "https://github.com/Elizabeth1979/a11y-skills",
     "commit": "e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
     "path": "patterns/{pattern}.instructions.md"
+  },
+  "axeRulePatterns": {
+    "button-name": "buttons",
+    "link-name": "link",
+    "identical-links-same-purpose": "link",
+    "label": "forms",
+    "label-title-only": "forms",
+    "select-name": "forms",
+    "autocomplete-valid": "forms",
+    "image-alt": "image-labeling",
+    "svg-img-alt": "image-labeling",
+    "role-img-alt": "image-labeling",
+    "empty-heading": "headings",
+    "heading-order": "headings",
+    "page-has-heading-one": "headings",
+    "p-as-heading": "headings",
+    "color-contrast": "color-contrast",
+    "color-contrast-enhanced": "color-contrast",
+    "link-in-text-block": "color-contrast",
+    "region": "landmarks",
+    "landmark-one-main": "landmarks",
+    "landmark-no-duplicate-main": "landmarks",
+    "landmark-no-duplicate-banner": "landmarks",
+    "landmark-no-duplicate-contentinfo": "landmarks",
+    "landmark-unique": "landmarks",
+    "landmark-banner-is-top-level": "landmarks",
+    "landmark-contentinfo-is-top-level": "landmarks",
+    "bypass": "skip-links",
+    "skip-link": "skip-links",
+    "empty-table-header": "tables",
+    "scope-attr-valid": "tables",
+    "table-fake-caption": "tables",
+    "td-has-header": "tables",
+    "aria-dialog-name": "dialog-modal",
+    "aria-meter-name": "meter",
+    "aria-tab-name": "tabs",
+    "aria-tooltip-name": "tooltip",
+    "aria-treeitem-name": "treeview",
+    "tabindex": "focus-management",
+    "target-size": "target-size",
+    "blink": "motion-animation",
+    "marquee": "motion-animation"
   },
   "principles": [
     "Use deterministic detection and verification whenever possible.",
@@ -37,8 +79,7 @@
           "requirementId": "button-name",
           "title": "Buttons must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name",
-          "pattern": "buttons"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
         },
         {
           "standard": "axe-core",
@@ -46,8 +87,7 @@
           "requirementId": "link-name",
           "title": "Links must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name",
-          "pattern": "link"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name"
         },
         {
           "standard": "axe-core",
@@ -55,8 +95,7 @@
           "requirementId": "label",
           "title": "Form elements must have labels",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/label",
-          "pattern": "forms"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/label"
         }
       ],
       "patterns": ["buttons", "link", "forms"],
@@ -107,8 +146,7 @@
           "requirementId": "image-alt",
           "title": "Images must have alternative text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt",
-          "pattern": "image-labeling"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt"
         }
       ],
       "patterns": ["image-labeling"],
@@ -163,8 +201,7 @@
           "requirementId": "empty-heading",
           "title": "Headings should not be empty",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading",
-          "pattern": "headings"
+          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading"
         }
       ],
       "patterns": ["headings"],
