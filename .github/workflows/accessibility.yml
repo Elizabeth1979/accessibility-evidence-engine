@@ -1,0 +1,38 @@
+name: Accessibility
+
+"on":
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: accessibility-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-lab:
+    name: AEE on the test lab
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The pull request's own copy of the lab, so a change to it is what gets tested.
+      - name: Serve the test lab
+        run: python3 -m http.server 4173 --bind 127.0.0.1 --directory site > /dev/null 2>&1 &
+
+      - name: Run AEE on the fixed page
+        uses: ./
+        with:
+          run: examples/test-lab/scenario.yml
+          # The fixed page passes with complete evidence, so anything less, such as a lab that
+          # failed to load, fails the job too.
+          fail-on: incomplete

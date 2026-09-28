@@ -1,0 +1,46 @@
+$schema: ../../packages/schemas/json/scenario.schema.json
+schemaVersion: 0.1.0
+id: test-lab-fixed-page
+
+# The Accessibility workflow serves site/ at this address and runs this scenario on every pull
+# request. The fixed page has none of the lab's known issues, so any finding means a change broke it.
+target:
+  url: http://127.0.0.1:4173/
+
+standard:
+  name: WCAG
+  version: "2.2"
+  levels:
+    - A
+    - AA
+
+profile: core
+goal: Keep the test lab's fixed page free of every issue the lab knows.
+
+journeys:
+  - id: fixed-page
+    name: Workspace overview, fixed
+    goal: Read and operate the fixed page.
+    startPath: /test-case.html?case=fixed
+    allowedActions:
+      - focus
+      - hover
+      - activate-page-controls
+    forbiddenActions:
+      - submit-forms
+    virtualScreenReaderCommands:
+      - start
+      - next-control
+      - next-control
+      - next-control
+      - next-control
+      - next-control
+
+privacy:
+  storage: local
+  remoteUpload: forbidden
+  sharingReviewRequired: true
+
+approval:
+  required: true
+  approvedPlanDigest: sha256:80a7153d647f7f5f33790053612c1d34b436de331d6f167ea4d1cc33f2eb974a
