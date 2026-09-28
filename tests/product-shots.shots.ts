@@ -54,11 +54,12 @@ test("product shots and videos come from a real run of the demo page", async ({
     testInfo,
     { readerCommands: readerWalk, aiProvider }
   ).finally(() => browser.close());
-  // With a model named, the AI card shows its answer, never a note on how to turn AI on.
+  // With a model named, the AI card shows its answer, never a note on how to turn AI on; a failure
+  // shows the whole AI result, with the model's error in its notes.
   const buttonName = run.report.synthesis.findings.find(({ ruleId }) => ruleId === "button-name");
-  expect(buttonName?.remediation.ai.status).toBe(
-    aiProvider.id === "stub" ? "not-configured" : "suggested"
-  );
+  expect(buttonName?.remediation.ai).toMatchObject({
+    status: aiProvider.id === "stub" ? "not-configured" : "suggested"
+  });
   // The whole run is the sample report the feature cards link to.
   await cp(run.outputDir, path.join(shotsDir, "report"), { recursive: true });
 

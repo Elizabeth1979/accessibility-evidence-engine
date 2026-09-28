@@ -31,6 +31,8 @@ jobs:
           bash scripts/start-local-model.sh
       - run: npm run site:shots
       - if: always()
+        run: grep -h "GIN\|level=ERROR\|level=WARN" "$RUNNER_TEMP/ollama/serve.log" | tail -60
+      - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: shots
