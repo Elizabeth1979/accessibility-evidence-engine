@@ -141,6 +141,28 @@ An existing spec gets the same checks by changing one import, `@playwright/test`
 
 The `@aee/*` packages currently work as local npm workspaces in this repository; they have not yet been published to a package registry. See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
 
+## GitHub Action
+
+The Action runs a scenario or a test command and keeps one comment on the pull request: the verdict, the status rows and each fix with its pattern. A later run updates that comment instead of adding another.
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  accessibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Elizabeth1979/accessibility-evidence-engine@main
+        with:
+          run: accessibility/scenario.yml # your approved scenario, or a test command such as npx playwright test
+          fail-on: blocking # or incomplete, or never
+```
+
+`ai-provider` defaults to `stub`, so no page evidence leaves the runner; `claude` or `openai` read their key from the step's `env`. The reports are kept as the run's `aee-reports` artifact, and the comment is also written to the job summary, for pull requests from forks, whose token cannot post. `aee comment <folder>... --post --fail-on blocking` is the same step from the command line.
+
 ### Before-and-after examples
 
 The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#examples) is a learner-controlled slideshow with six focused comparisons: an icon-only label, a heading hierarchy that passes axe's selected automatic rules, modal focus management, palette-aware contrast repair, hover-versus-keyboard equivalence, and animation stopping. Each slide shows one Before and one After image. Nothing autoplays, and detailed artifacts stay collapsed until requested.

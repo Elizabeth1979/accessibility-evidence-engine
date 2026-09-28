@@ -29,6 +29,13 @@ import {
   type SchemaName
 } from "@aee/schemas";
 
+import {
+  buildPullRequestComment,
+  FAIL_ON_VALUES,
+  failsOn,
+  postStickyComment,
+  type FailOn
+} from "./pr-comment";
 import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
 import { executeScenario, openScenarioReport } from "./scenario-runner";
 
@@ -270,8 +277,13 @@ export async function main(argv: string[]): Promise<void> {
 
   if (!command) {
     throw new Error(
-      "Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json>"
+      "Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json> | aee comment <folder>... [--fail-on blocking|incomplete|never] [--post]"
     );
+  }
+
+  if (command === "comment") {
+    await runCommentCommand(argv.slice(1));
+    return;
   }
 
   if (command === "plan") {
@@ -336,6 +348,82 @@ function parseScenarioRunOptions(argv: string[]): {
     ci: argv.includes("--ci"),
     ...(outputDir ? { outputDir } : {})
   };
+}
+
+/**
+ * `aee comment <folder>...`: renders every assessment under the folders as one PR comment, prints
+ * it, adds it to the GitHub job summary, and with `--post` keeps it as the pull request's one AEE
+ * comment. The exit code follows `--fail-on` (default blocking).
+ */
+async function runCommentCommand(argv: string[]): Promise<void> {
+  const folders: string[] = [];
+  let failOn: FailOn = "blocking";
+  let post = false;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (argument === "--post") post = true;
+    else if (argument === "--fail-on") {
+      const value = argv[index + 1] as FailOn;
+      if (!FAIL_ON_VALUES.includes(value)) {
+        throw new Error(`--fail-on must be one of ${FAIL_ON_VALUES.join(", ")}.`);
+      }
+      failOn = value;
+      index += 1;
+    } else if (argument.startsWith("--")) throw new Error(`Unknown comment option: ${argument}`);
+    else folders.push(argument);
+  }
+  if (folders.length === 0) {
+    throw new Error(
+      "Usage: aee comment <folder>... [--fail-on blocking|incomplete|never] [--post]"
+    );
+  }
+
+  const env = process.env;
+  const runUrl =
+    env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY && env.GITHUB_RUN_ID
+      ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`
+      : undefined;
+  const comment = await buildPullRequestComment(
+    folders.map((folder) => path.resolve(folder)),
+    runUrl
+  );
+  process.stdout.write(`${comment.body}\n`);
+  if (env.GITHUB_STEP_SUMMARY)
+    await writeFile(env.GITHUB_STEP_SUMMARY, `${comment.body}\n`, { flag: "a" });
+
+  if (post) {
+    const event = env.GITHUB_EVENT_PATH
+      ? (JSON.parse(await readFile(env.GITHUB_EVENT_PATH, "utf8")) as {
+          pull_request?: { number?: number };
+        })
+      : {};
+    const pullNumber = event.pull_request?.number;
+    if (!pullNumber || !env.GITHUB_REPOSITORY || !env.GITHUB_TOKEN) {
+      process.stderr.write(
+        "Not posted: posting needs a pull_request event, GITHUB_REPOSITORY and GITHUB_TOKEN.\n"
+      );
+    } else {
+      // A comment that cannot be posted, such as from a fork's read-only token, does not decide
+      // the job: the verdict does, and the comment is still in the log and the job summary.
+      await postStickyComment(comment.body, {
+        repository: env.GITHUB_REPOSITORY,
+        pullNumber,
+        token: env.GITHUB_TOKEN,
+        apiUrl: env.GITHUB_API_URL
+      }).then(
+        ({ action, url }) => process.stderr.write(`PR comment ${action}: ${url}\n`),
+        (error: unknown) =>
+          process.stderr.write(
+            `::warning::The PR comment was not posted: ${error instanceof Error ? error.message : String(error)}\n`
+          )
+      );
+    }
+  }
+
+  process.stderr.write(
+    `${comment.reports} assessment${comment.reports === 1 ? "" : "s"}, verdict ${comment.verdict}, fail-on ${failOn}.\n`
+  );
+  if (failsOn(comment.verdict, failOn)) process.exitCode = 1;
 }
 
 if (require.main === module) {

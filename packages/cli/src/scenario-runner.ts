@@ -2244,18 +2244,117 @@ const COMMENT_ELEMENTS_PER_FINDING = 5;
  * mention people or link issues in the comment.
  */
 export function renderPullRequestComment(report: ScenarioIntegratedReport): string {
+  return [
+    `## Accessibility: ${commentHeadline(report)}`,
+    "",
+    ...commentBody(report, "###"),
+    "<sub>The full report, with screenshots and evidence for every finding, is aee-report.html in the run's output. Evidence may contain sensitive page content.</sub>",
+    ""
+  ].join("\n");
+}
+
+/** Marks the comment AEE owns on a pull request, so a later run updates it instead of adding one. */
+export const PR_COMMENT_MARKER = "<!-- aee-pr-comment -->";
+
+/** GitHub refuses a comment over 65,536 characters; this leaves room for the frame around it. */
+const COMMENT_LIMIT = 60_000;
+
+const VERDICT_ORDER: Record<ScenarioIntegratedReport["verdict"], number> = {
+  fail: 0,
+  unknown: 1,
+  pass: 2
+};
+
+/** Fail when any assessment fails; pass only when every one passes; otherwise unknown. */
+export function overallVerdict(
+  reports: ScenarioIntegratedReport[]
+): ScenarioIntegratedReport["verdict"] {
+  if (reports.some(({ verdict }) => verdict === "fail")) return "fail";
+  return reports.length && reports.every(({ verdict }) => verdict === "pass") ? "pass" : "unknown";
+}
+
+/**
+ * Every assessment of one run, such as each test of a suite, as the one comment AEE keeps on a
+ * pull request. One assessment reads exactly like its own PR comment; several are listed failing
+ * first, each collapsed under its test or scenario and its verdict. Past GitHub's size limit, the
+ * rest are named as left to the full reports.
+ */
+export function renderPullRequestSummary(
+  reports: ScenarioIntegratedReport[],
+  runUrl?: string
+): string {
+  const footer = runUrl
+    ? `<sub>The full reports, with screenshots and evidence for every finding, are in [this run's aee-reports artifact](${encodeURI(runUrl)}). Evidence may contain sensitive page content.</sub>`
+    : "<sub>The full reports, with screenshots and evidence for every finding, are aee-report.html in the run's output. Evidence may contain sensitive page content.</sub>";
+  if (reports.length === 0) {
+    return [
+      PR_COMMENT_MARKER,
+      "## Accessibility: not decided, no AEE report was written",
+      "",
+      "The run ended before AEE wrote a report; the job log says why.",
+      ""
+    ].join("\n");
+  }
+  if (reports.length === 1) {
+    const [report] = reports as [ScenarioIntegratedReport];
+    return [
+      PR_COMMENT_MARKER,
+      `## Accessibility: ${commentHeadline(report)}`,
+      "",
+      ...commentBody(report, "###"),
+      footer,
+      ""
+    ].join("\n");
+  }
+  const sorted = [...reports].sort(
+    (left, right) => VERDICT_ORDER[left.verdict] - VERDICT_ORDER[right.verdict]
+  );
+  const count = (verdict: ScenarioIntegratedReport["verdict"]) =>
+    reports.filter((report) => report.verdict === verdict).length;
+  const verdict = overallVerdict(reports);
+  const headline =
+    verdict === "fail"
+      ? `release blocked by ${count("fail")} of ${reports.length} assessments`
+      : verdict === "pass"
+        ? `nothing blocks release in ${reports.length} assessments`
+        : `not decided for ${count("unknown")} of ${reports.length} assessments`;
+  const lines = [PR_COMMENT_MARKER, `## Accessibility: ${headline}`, ""];
+  let shown = 0;
+  for (const report of sorted) {
+    const block = [
+      "<details>",
+      `<summary><strong>${commentHtml(report.goal)}</strong>: ${commentHtml(commentHeadline(report))}</summary>`,
+      "",
+      ...commentBody(report, "####"),
+      "</details>",
+      ""
+    ].join("\n");
+    if (lines.join("\n").length + block.length > COMMENT_LIMIT) break;
+    lines.push(block);
+    shown += 1;
+  }
+  if (shown < sorted.length) {
+    lines.push(`${sorted.length - shown} more assessments are in the full reports.`, "");
+  }
+  lines.push(footer, "");
+  return lines.join("\n");
+}
+
+function commentHeadline(report: ScenarioIntegratedReport): string {
+  const blocking = report.synthesis.findings.filter(({ advisory }) => !advisory).length;
+  return report.verdict === "fail"
+    ? `release blocked${blocking ? `, ${blocking} ${blocking === 1 ? "fix" : "fixes"} needed` : ""}`
+    : report.verdict === "pass"
+      ? "nothing blocks release in the tested scope"
+      : "not decided, some evidence is missing or needs a person";
+}
+
+/** Everything under a comment's headline; sections take the heading level given. */
+function commentBody(report: ScenarioIntegratedReport, heading: string): string[] {
   const { findings, status, uniqueIncompleteRules } = report.synthesis;
   const blocking = findings.filter(({ advisory }) => !advisory);
   const advisory = findings.filter(({ advisory }) => advisory);
-  const headline =
-    report.verdict === "fail"
-      ? `release blocked${blocking.length ? `, ${blocking.length} ${blocking.length === 1 ? "fix" : "fixes"} needed` : ""}`
-      : report.verdict === "pass"
-        ? "nothing blocks release in the tested scope"
-        : "not decided, some evidence is missing or needs a person";
   const lines = [
-    `## Accessibility: ${headline}`,
-    "",
     `Tested ${commentCode(report.target)} against ${commentText(report.standard)}. Evidence: ${report.completeness.status}.`,
     "",
     "| Area | Result |",
@@ -2263,12 +2362,14 @@ export function renderPullRequestComment(report: ScenarioIntegratedReport): stri
     ...status.map(({ label, result }) => `| ${commentText(label)} | ${commentText(result)} |`),
     ""
   ];
-  const section = (heading: string, group: FindingSynthesis[]) =>
-    group.length ? [`### ${heading} (${group.length})`, "", ...group.flatMap(commentFinding)] : [];
+  const section = (title: string, group: FindingSynthesis[]) =>
+    group.length
+      ? [`${heading} ${title} (${group.length})`, "", ...group.flatMap(commentFinding)]
+      : [];
   lines.push(
     ...section("Blocking fixes", blocking),
     ...section("Advisory: reported, never blocks release", advisory),
-    ...commentAiSuggestions(findings)
+    ...commentAiSuggestions(findings, heading)
   );
   if (uniqueIncompleteRules.length) {
     lines.push(
@@ -2276,11 +2377,7 @@ export function renderPullRequestComment(report: ScenarioIntegratedReport): stri
       ""
     );
   }
-  lines.push(
-    "<sub>The full report, with screenshots and evidence for every finding, is aee-report.html in the run's output. Evidence may contain sensitive page content.</sub>",
-    ""
-  );
-  return lines.join("\n");
+  return lines;
 }
 
 function commentFinding(finding: FindingSynthesis): string[] {
@@ -2312,7 +2409,7 @@ function commentFinding(finding: FindingSynthesis): string[] {
 }
 
 /** AI answers come last, each labelled as AI; without a model, one line says how to turn it on. */
-function commentAiSuggestions(findings: FindingSynthesis[]): string[] {
+function commentAiSuggestions(findings: FindingSynthesis[], heading: string): string[] {
   const suggested = findings.flatMap((finding) =>
     (finding.remediation.ai.suggestions ?? []).map((suggestion) => ({ finding, suggestion }))
   );
@@ -2321,7 +2418,7 @@ function commentAiSuggestions(findings: FindingSynthesis[]): string[] {
     return off ? [`**AI suggestions:** ${commentText(off.remediation.ai.reason)}`, ""] : [];
   }
   return [
-    `### AI suggestions (${suggested.length}): review before use`,
+    `${heading} AI suggestions (${suggested.length}): review before use`,
     "",
     "An AI suggestion never passes or fails anything: a finding stands until a rerun passes.",
     "",
