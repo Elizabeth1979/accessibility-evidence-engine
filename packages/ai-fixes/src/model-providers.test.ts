@@ -137,9 +137,13 @@ test("a Claude refusal is an error, never an answer", async () => {
   );
 });
 
-test("a local model is asked over the OpenAI-compatible chat API, with the schema in its prompt", async () => {
-  let requestBody: { model?: string; response_format?: unknown; messages?: [{ content: string }] } =
-    {};
+test("a local model is asked over the OpenAI-compatible chat API, with the schema in its prompt and thinking off", async () => {
+  let requestBody: {
+    model?: string;
+    reasoning_effort?: string;
+    response_format?: unknown;
+    messages?: [{ content: string }];
+  } = {};
   const server = createServer((request, response) => {
     let body = "";
     request.on("data", (chunk: Buffer) => (body += chunk.toString()));
@@ -161,6 +165,7 @@ test("a local model is asked over the OpenAI-compatible chat API, with the schem
 
     assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
     assert.equal(requestBody.model, "tiny");
+    assert.equal(requestBody.reasoning_effort, "none");
     assert.deepEqual(requestBody.response_format, { type: "json_object" });
     assert.ok(
       requestBody.messages?.[0].content.includes(JSON.stringify(accessibleNameSpecialist.schema))

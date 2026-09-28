@@ -181,7 +181,9 @@ export interface LocalModelProviderOptions {
 /**
  * A model on this machine (Ollama, LM Studio, llama.cpp, vLLM) through the OpenAI-compatible chat
  * API: no key and no cloud. Local runtimes cannot enforce a schema, so the prompt carries it and
- * the specialist checks the answer.
+ * the specialist checks the answer. Thinking is off (`reasoning_effort: "none"`): an answer is a
+ * few fields, and on a machine with no GPU a thinking model's hidden reasoning is 400 to 700
+ * tokens, about a minute, before each one.
  */
 export function createLocalModelProvider(options: LocalModelProviderOptions = {}): ModelProvider {
   const baseUrl = withoutTrailingSlashes(options.baseUrl ?? DEFAULT_LOCAL_BASE_URL);
@@ -201,6 +203,7 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
           model,
           stream: false,
           temperature: 0,
+          reasoning_effort: "none",
           response_format: { type: "json_object" },
           messages: [
             {
