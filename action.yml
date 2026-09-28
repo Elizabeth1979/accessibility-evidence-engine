@@ -18,7 +18,9 @@ inputs:
   ai-provider:
     description: >-
       Where allowlisted AI suggestions come from: `stub` (none), `local`, `claude` or `openai`.
-      `claude` and `openai` read ANTHROPIC_API_KEY or OPENAI_API_KEY from the step's env.
+      `local` starts a free model on the runner (Linux x64; about a minute to start, then up to two
+      per answer on its CPU), so no key is needed and page evidence never leaves it. `claude` and `openai` read ANTHROPIC_API_KEY or
+      OPENAI_API_KEY from the step's env.
     default: stub
   reports:
     description: The folder a test command writes its results to; every assessment under it is read.
@@ -40,6 +42,11 @@ runs:
       run: |
         npm ci --no-audit --no-fund
         npm run build
+
+    - name: Start the local model
+      if: inputs.ai-provider == 'local'
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/scripts/start-local-model.sh"
 
     - name: Install Chromium for a scenario
       if: endsWith(inputs.run, '.yml') || endsWith(inputs.run, '.yaml')

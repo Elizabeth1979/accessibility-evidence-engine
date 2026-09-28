@@ -159,6 +159,13 @@ export function createClaudeModelProvider(options: ClaudeModelProviderOptions = 
 export const DEFAULT_LOCAL_BASE_URL = "http://localhost:11434/v1";
 export const DEFAULT_LOCAL_MODEL = "gemma4:e4b";
 
+/**
+ * How long one local answer may take. On a machine with no GPU, such as a CI runner, reading the
+ * specialist prompt alone can take more than two minutes, so this only stops a server that has
+ * stopped answering.
+ */
+export const LOCAL_MODEL_TIMEOUT_MS = 10 * 60_000;
+
 export interface LocalModelProviderOptions {
   /** An OpenAI-compatible base URL; defaults to Ollama's. */
   baseUrl?: string;
@@ -166,7 +173,7 @@ export interface LocalModelProviderOptions {
   model?: string;
   /** Most local runtimes ignore it; vLLM and hosted gateways may require it. */
   apiKey?: string;
-  /** A cold local model can take a while to load on its first request. */
+  /** Defaults to LOCAL_MODEL_TIMEOUT_MS. */
   timeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }
@@ -174,7 +181,9 @@ export interface LocalModelProviderOptions {
 /**
  * A model on this machine (Ollama, LM Studio, llama.cpp, vLLM) through the OpenAI-compatible chat
  * API: no key and no cloud. Local runtimes cannot enforce a schema, so the prompt carries it and
- * the specialist checks the answer.
+ * the specialist checks the answer. Thinking is off (`reasoning_effort: "none"`): an answer is a
+ * few fields, and on a machine with no GPU a thinking model's hidden reasoning is 400 to 700
+ * tokens, about a minute, before each one.
  */
 export function createLocalModelProvider(options: LocalModelProviderOptions = {}): ModelProvider {
   const baseUrl = withoutTrailingSlashes(options.baseUrl ?? DEFAULT_LOCAL_BASE_URL);
@@ -194,6 +203,7 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
           model,
           stream: false,
           temperature: 0,
+          reasoning_effort: "none",
           response_format: { type: "json_object" },
           messages: [
             {
@@ -203,7 +213,7 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
             { role: "user", content: JSON.stringify(request.input) }
           ]
         }),
-        signal: AbortSignal.timeout(options.timeoutMs ?? 120_000)
+        signal: AbortSignal.timeout(options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS)
       });
 
       if (!response.ok) {

@@ -6,6 +6,9 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { chromium, expect, test, type Page } from "@playwright/test";
+import { marked } from "marked";
+
+import { aeeRunModelProvider } from "@aee/cli";
 
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
@@ -19,8 +22,8 @@ const WATCHABLE_SLOW_MO_MS = 800;
 const HIGHLIGHT_COLOR = "#c2185b";
 
 interface Shot {
-  /** The report tab the shot is on. */
-  panel: "overview" | "findings";
+  /** The report tab the shot is on, or the run's pull-request comment. */
+  panel: "overview" | "findings" | "comment";
   /** The shot is the smallest box around all of these, highlighted. */
   targets: string[];
 }
@@ -42,13 +45,22 @@ test("product shots and videos come from a real run of the demo page", async ({
   await mkdir(shotsDir, { recursive: true });
 
   const browser = await chromium.launch({ slowMo: WATCHABLE_SLOW_MO_MS });
+  // AEE_LLM_PROVIDER names the model, as for `aee run`: the Pages deploy names one.
+  const aiProvider = aeeRunModelProvider();
   const run = await runOnLabPage(
     browser,
     contract.pages.issues,
     ["focus", "hover", "activate-page-controls"],
     testInfo,
-    { readerCommands: readerWalk }
+    { readerCommands: readerWalk, aiProvider }
   ).finally(() => browser.close());
+  // With a model named, the AI card shows its answer, never a note on how to turn AI on; a failure
+  // says why, from the notes that carry the model's error.
+  const buttonAi = run.report.synthesis.findings.find(({ ruleId }) => ruleId === "button-name")
+    ?.remediation.ai;
+  expect(buttonAi?.status, buttonAi?.notes?.join("\n")).toBe(
+    aiProvider.id === "stub" ? "not-configured" : "suggested"
+  );
   // The whole run is the sample report the feature cards link to.
   await cp(run.outputDir, path.join(shotsDir, "report"), { recursive: true });
 
@@ -66,9 +78,18 @@ test("product shots and videos come from a real run of the demo page", async ({
   await writeFile(path.join(shotsDir, "keyboard.vtt"), captions, "utf8");
   await writeFile(path.join(shotsDir, "keyboard.txt"), stepsFromCaptions(captions), "utf8");
 
-  const reportUrl = pathToFileURL(run.reportFiles.html).href;
+  const commentFile = testInfo.outputPath("pr-comment.html");
+  await writeFile(
+    commentFile,
+    commentPage(await readFile(path.join(run.outputDir, "aee-pr-comment.md"), "utf8")),
+    "utf8"
+  );
+  const urls = {
+    report: pathToFileURL(run.reportFiles.html).href,
+    comment: pathToFileURL(commentFile).href
+  };
   for (const { id, shot } of features) {
-    if (shot) await captureShot(page, reportUrl, id, shot);
+    if (shot) await captureShot(page, urls, id, shot);
   }
 
   await recordScreenReader(
@@ -111,10 +132,43 @@ function stepsFromCaptions(vtt: string): string {
   return `${cues.map((cue) => cue.split("\n").slice(2).join(" ")).join("\n")}\n`;
 }
 
-/** Saves one highlighted crop of the report: the box around the shot's targets, with a margin. */
-async function captureShot(page: Page, reportUrl: string, id: string, shot: Shot) {
-  await page.goto(reportUrl);
-  await page.locator(`[data-tab][href="#panel-${shot.panel}"]`).click();
+/** The run's pull-request comment, styled like a GitHub comment, with its first fix opened as a
+ * reviewer would. */
+function commentPage(markdown: string): string {
+  const body = marked.parse(markdown.replace("<details>", "<details open>"), { async: false });
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pull-request comment</title>
+<style>
+body{margin:0;padding:24px;color:#1f2328;background:#fff;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans",Helvetica,Arial,sans-serif}
+main{max-width:760px;padding:8px 24px;border:1px solid #d1d9e0;border-radius:6px}
+h2{padding-bottom:.3em;border-bottom:1px solid #d1d9e0}
+table{border-collapse:collapse}th,td{padding:6px 13px;border:1px solid #d1d9e0}
+code{padding:.2em .4em;border-radius:6px;background:#eff1f3;font:85% ui-monospace,SFMono-Regular,Menlo,monospace}
+a{color:#0969da}details{margin-bottom:16px}
+</style>
+</head>
+<body><main>${body}</main></body>
+</html>
+`;
+}
+
+/** Saves one highlighted crop of the report or comment: the box around the shot's targets, with a
+ * margin. */
+async function captureShot(
+  page: Page,
+  urls: { report: string; comment: string },
+  id: string,
+  shot: Shot
+) {
+  if (shot.panel === "comment") {
+    await page.goto(urls.comment);
+  } else {
+    await page.goto(urls.report);
+    await page.locator(`[data-tab][href="#panel-${shot.panel}"]`).click();
+  }
   for (const selector of shot.targets) {
     const target = page.locator(selector);
     await expect(target, `${id}: ${selector}`).toBeVisible();
