@@ -105,17 +105,17 @@ The packages are not on npm yet. Each [release](https://github.com/Elizabeth1979
 
 ```bash
 npm install --save-dev \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-ai-fixes-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-cli-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-core-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-judges-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-observers-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-playwright-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-reporter-0.1.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.1.0/aee-schemas-0.1.0.tgz
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-ai-fixes-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-cli-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-core-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-judges-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-observers-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-playwright-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-reporter-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-schemas-0.2.0.tgz
 ```
 
-Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.1.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and an existing release is never replaced.
+Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.2.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
 
 ## Playwright integration
 

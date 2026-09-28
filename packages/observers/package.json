@@ -1,6 +1,6 @@
 {
   "name": "@aee/observers",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DOM, accessibility-tree, focus, visual, axe, virtual-reader, and network observers for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -42,6 +42,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/core": "0.1.0"
+    "@aee/core": "0.2.0"
   }
 }

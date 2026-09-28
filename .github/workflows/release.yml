@@ -35,11 +35,16 @@ jobs:
       - name: Pack
         run: npm pack --workspaces --pack-destination release
 
-      # A release that already exists is never replaced: the job fails instead.
+      # A version that is already tagged is never reused: the job fails instead of attaching new
+      # tarballs to an older commit.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="v$(node -p 'require("./packages/cli/package.json").version')"
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$version" --silent 2>/dev/null; then
+            echo "::error::$version is already tagged. Raise the version in every package first."
+            exit 1
+          fi
           gh release create "$version" release/*.tgz --target "$GITHUB_SHA" --title "$version" \
             --notes "Install every package from this release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY#install-from-github"

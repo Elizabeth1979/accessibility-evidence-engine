@@ -4,8 +4,18 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-28
+
 ### Added
 
+- Installation from GitHub: each release carries the eight package tarballs, and a Release workflow publishes them after checking they install into a fresh project.
+- A GitHub Action (`action.yml`) that runs an approved scenario or a Playwright test command and keeps one comment on the pull request with every fix, its pattern and any AI suggestion, failing the job only as `fail-on` says. With `ai-provider: local` it starts a free model on the runner.
+- `@aee/cli/test`: an existing Playwright spec gets AEE by changing its import. Every page load the test starts is checkpointed and the test gets the same report and pull-request comment as `aee run`.
+- `aee comment`, and `aee-pr-comment.md` in every run: blocking fixes first, then advisory results, then AI suggestions labelled as AI.
+- Allowlisted AI specialists that suggest names for icon-only controls and alternatives for images from captured evidence only, through Claude, a local model, OpenAI or none, always labelled as AI and never passing or failing anything.
+- Pattern links from every finding to the matching a11y-skills pattern, through the remediation registry.
+- A keyboard and pointer sweep that tabs to every stop, presses what a mouse can click, compares hover with focus and flags text that looks like a heading without being one.
+- A virtual screen reader that reads roles and names from the browser's accessibility tree.
 - An inline keyboard-journey player in the status overview, with the captured focus-state poster,
   authored action list, WebVTT descriptions, timed JSON, and recording download.
 - An accessible evidence-image lightbox that enlarges the exact displayed crop and issue marker,
@@ -59,5 +69,6 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.2.0...HEAD
