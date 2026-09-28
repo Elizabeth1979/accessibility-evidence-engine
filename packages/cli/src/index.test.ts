@@ -171,6 +171,17 @@ test("compileScenarioPlan produces a stable plan digest that can be explicitly a
   assert.equal(approvedPlan.approval.status, "approved");
 });
 
+test("the Accessibility workflow's test-lab scenario is approved as written", async () => {
+  // A change to the scenario, or to how plans compile, must be re-approved on purpose.
+  const scenario = await loadScenario(
+    path.resolve(__dirname, "../../../examples/test-lab/scenario.yml")
+  );
+  const plan = compileScenarioPlan(scenario);
+
+  assert.equal(plan.approval.status, "approved");
+  assert.equal(plan.journeys[0]?.startUrl, "http://127.0.0.1:4173/test-case.html?case=fixed");
+});
+
 test("compileScenarioPlan rejects actions that are both allowed and forbidden", async () => {
   const scenario = await loadScenario(
     path.resolve(__dirname, "../../../examples/public-site/scenario.yml")
