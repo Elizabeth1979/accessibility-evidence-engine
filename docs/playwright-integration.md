@@ -374,6 +374,37 @@ wording are shown as code, and other text that can come from the page is escaped
 cannot add markup, mention people or link issues in the comment. The full report keeps everything
 the comment leaves out.
 
+## Drop-in test fixture
+
+An existing Playwright spec gets AEE by changing one import:
+
+```diff
+- import { expect, test } from "@playwright/test";
++ import { expect, test } from "@aee/cli/test";
+```
+
+Every page load the test starts (`goto`, `reload`, `setContent`, `goBack`, `goForward`) is
+checkpointed as soon as it returns, and so is the page as a passing test leaves it. A checkpoint
+runs the same focus, DOM, accessibility-tree, visual and axe capture as an `aee run` step, on the
+test's own page and session, and waits for the load that started it, so the test never races it.
+For a state no page load reaches, such as an open dialog, the test names one:
+
+```ts
+test("the help dialog opens", async ({ page, checkpoint }) => {
+  await page.goto("/help");
+  await page.getByRole("button", { name: "Open help" }).click();
+  await checkpoint("dialog open");
+});
+```
+
+Each test gets one assessment in its output folder (`test-results/<test>/aee/`) with the same
+`aee-report.html`, `aee-report.json`, `aee-report.md`, `aee-pr-comment.md` and `manifest.json`
+as `aee run`, and the HTML report and PR comment are attached to the test's results. Its plan
+profile is `playwright-test`: the fixture only observes what the test does, so the keyboard and
+pointer sweep and the virtual reader do not run, and those status rows read "Needs review". The
+fixture reports; it never fails a test. `@playwright/test` is a peer dependency, so the fixture
+extends the runner the project already has.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.

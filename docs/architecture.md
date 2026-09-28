@@ -55,7 +55,7 @@ Owns JSON and Markdown output. Reporters consume completed runs, normalized evid
 
 ### `@aee/cli`
 
-Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`. `aee run` asks the allowlisted AI specialists about a finding's elements only when `AEE_LLM_PROVIDER` names a model, and writes their answers into the report labelled as AI.
+Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`. `aee run` asks the allowlisted AI specialists about a finding's elements only when `AEE_LLM_PROVIDER` names a model, and writes their answers into the report labelled as AI. `@aee/cli/test` is the drop-in Playwright `test`: it checkpoints the test's own page through `@aee/playwright` and ends in the same `finishAssessment` as `aee run`, so both write one report format.
 
 ## Dependency graph
 

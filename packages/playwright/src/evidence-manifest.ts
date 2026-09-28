@@ -17,9 +17,17 @@ export interface EvidenceManifestActionSource {
   requiredArtifactBasenames?: string[];
 }
 
+/** What an assessment runs: a scenario profile, or the checkpoints of a Playwright test. */
+export type AssessmentProfile = "core" | "at-fidelity" | "playwright-test";
+
 export interface EvidenceManifestLaneSource {
   id: string;
-  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader" | "keyboard-pointer-sweep";
+  driver:
+    | "pointer"
+    | "keyboard"
+    | "portable-virtual-screen-reader"
+    | "keyboard-pointer-sweep"
+    | "playwright-test";
   status: "completed" | "blocked" | "failed";
   actions: EvidenceManifestActionSource[];
 }
@@ -40,7 +48,7 @@ export interface WriteEvidenceManifestOptions {
   rootDir: string;
   scenarioId?: string;
   scenarioDigest?: string;
-  profile?: "core" | "at-fidelity";
+  profile?: AssessmentProfile;
   lanes: EvidenceManifestLaneSource[];
   supplementalFiles?: EvidenceManifestSupplementalFile[];
   manifestFile?: string;
@@ -96,7 +104,7 @@ export interface EvidenceManifest {
   assessmentId: string;
   scenarioId?: string;
   scenarioDigest?: string;
-  profile?: "core" | "at-fidelity";
+  profile?: AssessmentProfile;
   status: "completed" | "partial";
   createdAt: string;
   root: ".";
@@ -134,7 +142,7 @@ export interface AggregateEvidenceManifestsOptions {
   childManifestFiles: string[];
   scenarioId: string;
   scenarioDigest: string;
-  profile: "core" | "at-fidelity";
+  profile: AssessmentProfile;
   supplementalFiles?: EvidenceManifestSupplementalFile[];
   manifestFile?: string;
 }

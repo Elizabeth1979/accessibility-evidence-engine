@@ -15,6 +15,7 @@ import {
   persistInteractionVideo,
   runAeeOnPage,
   runInputComparison,
+  toSafeId,
   writeEvidenceManifest,
   verifyMotionControl,
   type PlaywrightPageLike
@@ -686,4 +687,12 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
     includeDomSnapshot: true,
     stabilizeAfterInteractionMs: 40
   });
+});
+
+test("toSafeId joins the words of any text into a short hyphenated id", () => {
+  assert.equal(toSafeId("After goto"), "after-goto");
+  assert.equal(toSafeId("  --Dialog: open!--  "), "dialog-open");
+  assert.equal(toSafeId(`${"a".repeat(59)} b`), "a".repeat(59));
+  assert.equal(toSafeId("-".repeat(100_000)), "item");
+  assert.equal(toSafeId("!!!", "test"), "test");
 });

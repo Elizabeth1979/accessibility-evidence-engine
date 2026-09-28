@@ -4,13 +4,14 @@ import { readFile } from "node:fs/promises";
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
 import type { VirtualScreenReaderCommand } from "@aee/playwright";
 import type {
+  AssessmentProfile,
   InputComparisonAction,
   InputComparisonExpectation,
   InputComparisonObservationRequest
 } from "@aee/playwright";
 import { parseDocument } from "yaml";
 
-export type ScenarioProfile = "core" | "at-fidelity";
+export type ScenarioProfile = AssessmentProfile;
 
 /** The one permission that makes the engine act on its own: the sweep presses on-page controls. */
 export const ACTIVATE_PAGE_CONTROLS = "activate-page-controls";
@@ -190,6 +191,22 @@ const PROFILE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
   )
 ];
 
+/**
+ * A Playwright test drives the page itself, so its plan is only what the test fixture observes:
+ * no sweep, reader or authored actions of AEE's own.
+ */
+const TEST_FIXTURE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
+  step(
+    "capture-on-load",
+    "After every page load the test starts (goto, reload, setContent, back and forward), capture synchronized viewport, full-page, DOM, accessibility-tree, and focus evidence and run the pinned WCAG rule selection."
+  ),
+  step(
+    "capture-at-checkpoints",
+    "Capture the same evidence at every checkpoint the test names, and where the test leaves the page."
+  ),
+  ...PROFILE_STEPS.filter(({ id }) => id === "correlate-evidence" || id === "publish-report")
+];
+
 const ACTION_STEP_LABELS: Record<string, string> = {
   navigate: "Permit declared navigation only within the approved target origins.",
   "open-menus":
@@ -251,7 +268,9 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
     goal: journey.goal,
     startUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
     steps: [
-      ...PROFILE_STEPS.map((entry) => ({ ...entry })),
+      ...(scenario.profile === "playwright-test" ? TEST_FIXTURE_STEPS : PROFILE_STEPS).map(
+        (entry) => ({ ...entry })
+      ),
       ...journey.allowedActions.map((action) => ({
         id: `permission-${action}`,
         label:
@@ -285,7 +304,7 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
     scenario.journeys.flatMap(({ forbiddenActions }) => forbiddenActions)
   );
   const allowedOrigins = uniqueSorted(
-    (scenario.target.allowedOrigins ?? [scenario.target.url]).map((url) => new URL(url).origin)
+    (scenario.target.allowedOrigins ?? [scenario.target.url]).map(originOf)
   );
   const planPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -392,6 +411,15 @@ export function renderScenarioPlan(plan: ScenarioPlan): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * A URL's origin. A file:, data: or about: page has no origin of its own (URL.origin is "null"),
+ * so its scheme stands in, which keeps the plan's origins valid URIs.
+ */
+function originOf(url: string): string {
+  const { origin, protocol } = new URL(url);
+  return origin === "null" ? `${protocol}//` : origin;
+}
+
 function validateScenarioSemantics(scenario: AeeScenario): void {
   const journeyIds = scenario.journeys.map(({ id }) => id);
   const duplicateJourneyIds = duplicates(journeyIds);
@@ -401,10 +429,8 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
   }
 
   if (scenario.target.allowedOrigins) {
-    const targetOrigin = new URL(scenario.target.url).origin;
-    const allowedOrigins = new Set(
-      scenario.target.allowedOrigins.map((allowedOrigin) => new URL(allowedOrigin).origin)
-    );
+    const targetOrigin = originOf(scenario.target.url);
+    const allowedOrigins = new Set(scenario.target.allowedOrigins.map(originOf));
 
     if (!allowedOrigins.has(targetOrigin)) {
       throw new Error(
