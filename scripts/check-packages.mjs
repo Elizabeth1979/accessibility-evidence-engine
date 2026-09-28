@@ -10,6 +10,7 @@ const expectedPackages = [
   "@aee/cli",
   "@aee/core",
   "@aee/judges",
+  "@aee/mcp",
   "@aee/observers",
   "@aee/playwright",
   "@aee/reporter",

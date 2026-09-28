@@ -131,7 +131,19 @@ npm install --save-dev \
   https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-schemas-0.2.0.tgz
 ```
 
+`@aee/mcp`, the coding-agent server below, is new since 0.2.0: until the next release, run it from a clone.
+
 Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.2.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
+
+## Coding agents (MCP)
+
+`@aee/mcp` is an MCP server for coding agents. Its `explain` tool answers "explain button-name" (or `pointer-only`, `dialog-modal`, "icon button") with the [a11y-skills](https://github.com/Elizabeth1979/a11y-skills) pattern the reports link to, at the same pinned commit: the rules with good and bad examples, a complete example, the WCAG criteria and a checklist. `findings` reads a folder of AEE assessments and returns their fixes as the pull-request comment lists them, and `run` runs a scenario a person has approved. It cannot apply a fix; `aee fix` does that after review. Add it to Claude Code from a built clone:
+
+```bash
+claude mcp add aee -- node /path/to/accessibility-evidence-engine/packages/mcp/dist/bin.js
+```
+
+Other agents take the same command in their MCP settings: `{"command": "node", "args": ["/path/to/accessibility-evidence-engine/packages/mcp/dist/bin.js"]}`. The server tells the agent to answer from the pattern rather than from memory.
 
 ## Playwright integration
 
@@ -234,6 +246,7 @@ The homepage's feature cards come from `site/features.json`, the one list of wha
 | AI review routing       | Headings, icon labels, image purpose                                              | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                |
 | AI fix proposals        | Contextual accessible names and image alternatives                                | Registry-allowlisted specialists answer from captured evidence; output is always review-only and requires a verified rerun                                         |
 | Verified fixes          | `aee fix` on HTML, JavaScript, JSX and TSX                                        | Applies an accepted name on its own branch in a git worktree, reruns the approved scenario, and passes it only on axe, reader and cross-evidence agreement         |
+| Coding-agent server     | `@aee/mcp` over stdio: `explain`, `findings`, `run`                               | Explains a rule, finding or UI element with its pinned a11y-skills pattern through the registry; reads and runs approved assessments; never applies a fix          |
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                                                     |
 | Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace                                  |
 
@@ -251,6 +264,7 @@ The Guidepup observer plus the interaction and standalone visual judges remain u
 | `@aee/judges`     | Built-in judges, release gating, and judge manifests                     |
 | `@aee/reporter`   | JSON and Markdown reporters                                              |
 | `@aee/cli`        | Approved YAML scenario execution, verified fixes, and legacy fixtures    |
+| `@aee/mcp`        | MCP server: explain a rule with its a11y-skills pattern, read and run    |
 
 ## Evidence privacy
 

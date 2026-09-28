@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- `@aee/mcp`, an MCP server for coding agents: `explain` returns the a11y-skills pattern for an axe rule, an AEE finding or a UI element through the remediation registry, `findings` reads a run's fixes, and `run` runs an approved scenario. a11y-skills is now pinned in `@aee/mcp`, not the root package.
 - `aee fix`: applies a reviewed name suggestion to an HTML, JavaScript, JSX or TSX file on its own branch in a git worktree, starts the app from there, reruns the same approved scenario, and passes each fix only when axe, the virtual reader and the reader's agreement with the accessibility tree and the rendered page all confirm it. It never merges or pushes.
 
 ## [0.2.0] - 2026-09-28

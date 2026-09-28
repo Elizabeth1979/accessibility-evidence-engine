@@ -49,6 +49,8 @@ export {
   type ScenarioIntegratedReport
 } from "./scenario-runner";
 
+export { buildPullRequestComment, type CommentResult } from "./pr-comment";
+
 export {
   runVerifiedFix,
   type AcceptedFix,

@@ -3,7 +3,10 @@ import registryJson from "../json/remediation-registry.json";
 export interface RemediationRequirement {
   standard: string;
   requirementId: string;
+  title: string;
+  level?: string;
   relationship: string;
+  url: string;
 }
 
 export interface RemediationEntry {

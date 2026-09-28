@@ -543,7 +543,7 @@ test("each axe rule a registry entry detects links to one of that entry's patter
   }
 });
 
-// a11y-skills is pinned to a commit in the root package.json; each pattern id names a file there.
+// a11y-skills is pinned to a commit in @aee/mcp, which serves its patterns; each pattern id names a file there.
 const skillsRoot = path.dirname(require.resolve("a11y-skills/package.json"));
 
 function patternFileExists(id: string): boolean {
@@ -570,10 +570,10 @@ test("a renamed or missing pattern file is caught", () => {
 });
 
 test("the registry links patterns at the same a11y-skills commit the engine installs", () => {
-  const rootPackage = JSON.parse(readFileSync("package.json", "utf8")) as {
-    devDependencies: Record<string, string>;
+  const mcpPackage = JSON.parse(readFileSync("packages/mcp/package.json", "utf8")) as {
+    dependencies: Record<string, string>;
   };
-  const pinned = rootPackage.devDependencies["a11y-skills"]!.split("#")[1];
+  const pinned = mcpPackage.dependencies["a11y-skills"]!.split("#")[1];
 
   assert.equal(remediationRegistry.patternSource.commit, pinned);
 });
