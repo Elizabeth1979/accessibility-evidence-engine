@@ -366,6 +366,14 @@ on its own: `activate-page-controls` lets the sweep press on-page controls. The 
 plan, and one scenario-level `manifest.json` that validates and re-hashes the child-lane evidence.
 Verdict and evidence completeness are reported separately, and incomplete evidence cannot pass.
 
+`aee-pr-comment.md` is the same report as one pull-request comment. It opens with the verdict and
+the four status rows, then lists the blocking fixes, then the advisory results, then any AI
+suggestions, each labelled as AI. Every finding is a collapsed `<details>` block with the problem,
+up to five affected elements, the fix and its a11y-skills pattern. Element names, selectors and AI
+wording are shown as code, and other text that can come from the page is escaped, so a tested page
+cannot add markup, mention people or link issues in the comment. The full report keeps everything
+the comment leaves out.
+
 ## Network example
 
 The network observer can capture request and response activity around an interaction.

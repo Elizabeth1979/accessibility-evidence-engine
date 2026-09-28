@@ -103,7 +103,7 @@ export interface ScenarioIntegratedReport {
     unknown: number;
     /** Findings that block release. */
     findings: number;
-    /** Best-practice findings: reported, never blocking. */
+    /** Advisory findings: reported, never blocking. */
     advisories: number;
     artifacts: number;
   };
@@ -117,6 +117,7 @@ export interface ScenarioIntegratedReport {
     html: string;
     json: string;
     markdown: string;
+    prComment: string;
     manifest: string;
     plan: string;
   };
@@ -128,12 +129,21 @@ export interface ScenarioIntegratedReport {
   ai: { present: boolean; label: string };
 }
 
+/** The files every run writes its report to. */
+interface ReportFiles {
+  html: string;
+  json: string;
+  markdown: string;
+  /** The report as one pull-request comment. */
+  prComment: string;
+}
+
 export interface ExecuteScenarioResult {
   assessmentId: string;
   outputDir: string;
   verdict: ScenarioIntegratedReport["verdict"];
   completeness: ScenarioIntegratedReport["completeness"]["status"];
-  reportFiles: { html: string; json: string; markdown: string };
+  reportFiles: ReportFiles;
   manifestFile: string;
   planFile: string;
 }
@@ -429,7 +439,8 @@ export async function executeScenario(
   const reportFiles = {
     html: path.join(assessmentDir, "aee-report.html"),
     json: path.join(assessmentDir, "aee-report.json"),
-    markdown: path.join(assessmentDir, "aee-report.md")
+    markdown: path.join(assessmentDir, "aee-report.md"),
+    prComment: path.join(assessmentDir, "aee-pr-comment.md")
   };
   const startedAt = new Date().toISOString();
   const childManifestFiles: string[] = [];
@@ -786,7 +797,7 @@ function createIntegratedReport(input: {
   failedArtifacts: number;
   diagnostics: string[];
   assessmentDir: string;
-  reportFiles: { html: string; json: string; markdown: string };
+  reportFiles: ReportFiles;
   manifestFile: string;
   planFile: string;
 }): ScenarioIntegratedReport {
@@ -849,6 +860,7 @@ function createIntegratedReport(input: {
       html: relativePath(input.assessmentDir, input.reportFiles.html),
       json: relativePath(input.assessmentDir, input.reportFiles.json),
       markdown: relativePath(input.assessmentDir, input.reportFiles.markdown),
+      prComment: relativePath(input.assessmentDir, input.reportFiles.prComment),
       manifest: relativePath(input.assessmentDir, input.manifestFile),
       plan: relativePath(input.assessmentDir, input.planFile)
     },
@@ -882,7 +894,7 @@ function emptyScenarioSynthesis(): ScenarioSynthesis {
 
 async function writeIntegratedReport(
   report: ScenarioIntegratedReport,
-  files: { html: string; json: string; markdown: string },
+  files: ReportFiles,
   rootDir: string,
   aiSuggester: AiSuggester
 ): Promise<void> {
@@ -901,6 +913,7 @@ async function writeIntegratedReport(
   await Promise.all([
     writeFile(files.json, JSON.stringify(report, null, 2), "utf8"),
     writeFile(files.markdown, renderIntegratedMarkdown(report), "utf8"),
+    writeFile(files.prComment, renderPullRequestComment(report), "utf8"),
     writeFile(files.html, renderIntegratedHtml(report, views), "utf8"),
     copyFile(path.resolve(__dirname, "../assets/aee-display.woff2"), reportFont)
   ]);
@@ -2152,6 +2165,142 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   return lines.join("\n");
 }
 
+/** How many elements of one finding a PR comment lists; the full report lists them all. */
+const COMMENT_ELEMENTS_PER_FINDING = 5;
+
+/**
+ * The report as one pull-request comment: the verdict and status rows, then the blocking fixes,
+ * then advisory results, then AI suggestions, labelled as AI. Each finding is collapsed and shows
+ * the problem, the elements, the fix and its pattern. Text that can come from the tested page is
+ * escaped, and element names and selectors are shown as code, so a page cannot inject markup,
+ * mention people or link issues in the comment.
+ */
+export function renderPullRequestComment(report: ScenarioIntegratedReport): string {
+  const { findings, status, uniqueIncompleteRules } = report.synthesis;
+  const blocking = findings.filter(({ advisory }) => !advisory);
+  const advisory = findings.filter(({ advisory }) => advisory);
+  const headline =
+    report.verdict === "fail"
+      ? `release blocked${blocking.length ? `, ${blocking.length} ${blocking.length === 1 ? "fix" : "fixes"} needed` : ""}`
+      : report.verdict === "pass"
+        ? "nothing blocks release in the tested scope"
+        : "not decided, some evidence is missing or needs a person";
+  const lines = [
+    `## Accessibility: ${headline}`,
+    "",
+    `Tested ${commentCode(report.target)} against ${commentText(report.standard)}. Evidence: ${report.completeness.status}.`,
+    "",
+    "| Area | Result |",
+    "| --- | --- |",
+    ...status.map(({ label, result }) => `| ${commentText(label)} | ${commentText(result)} |`),
+    ""
+  ];
+  const section = (heading: string, group: FindingSynthesis[]) =>
+    group.length ? [`### ${heading} (${group.length})`, "", ...group.flatMap(commentFinding)] : [];
+  lines.push(
+    ...section("Blocking fixes", blocking),
+    ...section("Advisory: reported, never blocks release", advisory),
+    ...commentAiSuggestions(findings)
+  );
+  if (uniqueIncompleteRules.length) {
+    lines.push(
+      `${uniqueIncompleteRules.length} axe ${uniqueIncompleteRules.length === 1 ? "check" : "checks"} could not decide and ${uniqueIncompleteRules.length === 1 ? "needs" : "need"} a person: ${uniqueIncompleteRules.map(commentCode).join(", ")}.`,
+      ""
+    );
+  }
+  lines.push(
+    "<sub>The full report, with screenshots and evidence for every finding, is aee-report.html in the run's output. Evidence may contain sensitive page content.</sub>",
+    ""
+  );
+  return lines.join("\n");
+}
+
+function commentFinding(finding: FindingSynthesis): string[] {
+  const facts = [
+    finding.wcagCriteria.join(", "),
+    `${finding.instanceCount} ${finding.instanceCount === 1 ? "element" : "elements"}`
+  ].filter(Boolean);
+  const hidden = finding.instances.length - COMMENT_ELEMENTS_PER_FINDING;
+  return [
+    "<details>",
+    `<summary><strong>${commentHtml(finding.title)}</strong> · ${commentHtml(facts.join(" · "))}</summary>`,
+    "",
+    `**Problem:** ${commentText(findingImpact(finding))}`,
+    "",
+    "**Elements:**",
+    "",
+    ...finding.instances
+      .slice(0, COMMENT_ELEMENTS_PER_FINDING)
+      .map(({ label, selector }) => `- ${commentCode(label)} at ${commentCode(selector)}`),
+    ...(hidden > 0 ? [`- and ${hidden} more in the full report`] : []),
+    "",
+    `**Fix:** ${commentText(finding.remediation.deterministic)}`,
+    "",
+    `**Pattern:** ${finding.pattern ? `[${commentText(finding.pattern.id)}](${encodeURI(finding.pattern.url)}) (a11y-skills)` : "none mapped for this rule yet"}`,
+    "",
+    "</details>",
+    ""
+  ];
+}
+
+/** AI answers come last, each labelled as AI; without a model, one line says how to turn it on. */
+function commentAiSuggestions(findings: FindingSynthesis[]): string[] {
+  const suggested = findings.flatMap((finding) =>
+    (finding.remediation.ai.suggestions ?? []).map((suggestion) => ({ finding, suggestion }))
+  );
+  if (suggested.length === 0) {
+    const off = findings.find(({ remediation }) => remediation.ai.status === "not-configured");
+    return off ? [`**AI suggestions:** ${commentText(off.remediation.ai.reason)}`, ""] : [];
+  }
+  return [
+    `### AI suggestions (${suggested.length}): review before use`,
+    "",
+    "An AI suggestion never passes or fails anything: a finding stands until a rerun passes.",
+    "",
+    ...suggested.map(({ finding, suggestion }) => {
+      const text = suggestion.text
+        ? commentCode(suggestion.text)
+        : "an empty alternative (decorative)";
+      const role = suggestion.classification ? `, image role ${suggestion.classification}` : "";
+      return `- **AI suggestion** for ${commentCode(suggestion.selector)} (${commentText(finding.title)}): ${text}${role}. Based on ${commentText(citedEvidence(suggestion.citedEvidenceIds))}; confidence ${suggestion.confidence.toFixed(2)}; suggested by ${commentCode(finding.remediation.ai.providerId ?? "a model")}.`;
+    }),
+    ""
+  ];
+}
+
+/**
+ * Text shown literally: in a code span GitHub renders no Markdown or HTML and makes no mentions
+ * or issue links. The fence is longer than any run of backticks in the text.
+ */
+function commentCode(value: string): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (!text) return "(no text)";
+  const fence = "`".repeat(
+    Math.max(0, ...(text.match(/`+/g) ?? []).map(({ length }) => length)) + 1
+  );
+  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
+  return `${fence}${pad}${text}${pad}${fence}`;
+}
+
+/** Text inside HTML, such as a summary: entities for markup, and no mentions or issue links. */
+function commentHtml(value: string): string {
+  return escapeHtml(withoutReferences(value.replace(/\s+/g, " ").trim()));
+}
+
+/** Text inside Markdown: commentHtml's escaping, and Markdown punctuation shown as itself. */
+function commentText(value: string): string {
+  return commentHtml(value).replace(/[\\`*_[\]()!|~]/g, "\\$&");
+}
+
+/**
+ * A zero-width space stops GitHub turning page text into a mention (@name, not inside a word, as
+ * in an email address) or an issue link (#123, also owner/repo#123); a colour such as #3f4c48 is
+ * left alone, since GitHub links only digits.
+ */
+function withoutReferences(value: string): string {
+  return value.replace(/(?<!\w)@(?=[a-z\d])/gi, "@\u200b").replace(/#(?=\d+\b)/g, "#\u200b");
+}
+
 interface FindingEffort {
   size: "Small" | "Medium" | "Needs triage";
   hours: string;
@@ -3223,14 +3372,12 @@ function artifactKindDescription(kind: string): string {
   );
 }
 
-function reportSupplementalFiles(
-  reportFiles: { html: string; json: string; markdown: string },
-  planFile: string
-) {
+function reportSupplementalFiles(reportFiles: ReportFiles, planFile: string) {
   return [
     { path: reportFiles.html, kind: "html-report" as const, phase: "assessment" as const },
     { path: reportFiles.json, kind: "json-report" as const, phase: "assessment" as const },
     { path: reportFiles.markdown, kind: "markdown-report" as const, phase: "assessment" as const },
+    { path: reportFiles.prComment, kind: "markdown-report" as const, phase: "assessment" as const },
     { path: planFile, kind: "custom" as const, phase: "assessment" as const },
     {
       path: path.join(path.dirname(reportFiles.html), "aee-report-display.woff2"),

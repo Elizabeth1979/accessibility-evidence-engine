@@ -121,6 +121,7 @@ aee-output/<scenario-id>-<timestamp>/
 ├── aee-report.html
 ├── aee-report.json
 ├── aee-report.md
+├── aee-pr-comment.md
 ├── <virtual-reader-lane>/
 │   ├── manifest.json
 │   ├── lane.json

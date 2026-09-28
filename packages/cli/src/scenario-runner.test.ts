@@ -5,6 +5,7 @@ import {
   aeeRunModelProvider,
   buildScenarioSynthesisForTest,
   renderIntegratedHtmlForTest,
+  renderPullRequestComment,
   type ScenarioActionReport,
   type ScenarioIntegratedReport
 } from "./scenario-runner";
@@ -89,6 +90,7 @@ function exampleSynthesisInputs() {
       html: "aee-report.html",
       json: "aee-report.json",
       markdown: "aee-report.md",
+      prComment: "aee-pr-comment.md",
       manifest: "manifest.json",
       plan: "scenario-plan.json"
     },
@@ -433,6 +435,48 @@ test("a sweep finding joins the report with its summary, fix pattern and place o
     /<strong>Keyboard access<\/strong><span>Works with a mouse only\.<\/span><\/div><b class="health-result fail">Fix required/
   );
   assert.match(html, /Controls not pressed: activate-page-controls is not allowed/);
+});
+
+test("the PR comment puts blocking fixes first and AI last, and shows page text inertly", () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const [first] = report.synthesis.findings;
+  // Text a page controls: an element's name, and axe's summary quoting the page's markup.
+  first!.instances[0]!.label = "@octocat </details><img src=x> see #12";
+  first!.remediation.deterministic = "Fix @octocat's <b>menu</b> [link](https://example.com)";
+  first!.remediation.ai = {
+    used: true,
+    status: "suggested",
+    reason: "",
+    providerId: "claude:claude-opus-5",
+    suggestions: [
+      {
+        selector: "#archive",
+        text: "Archive `Project` Alpha",
+        rationale: "",
+        confidence: 0.9,
+        citedEvidenceIds: ["nearbyText"],
+        patch: ""
+      }
+    ]
+  };
+
+  const comment = renderPullRequestComment(report);
+
+  assert.match(comment, /^## Accessibility: release blocked, 2 fixes needed/);
+  assert.ok(comment.indexOf("### Blocking fixes (2)") < comment.indexOf("### AI suggestions"));
+  assert.match(
+    comment,
+    /- \*\*AI suggestion\*\* for `#archive` \(.+\): ``Archive `Project` Alpha``\. Based on the text around it; confidence 0\.90; suggested by `claude:claude-opus-5`\./
+  );
+  // In a code span GitHub renders nothing and mentions no one.
+  assert.ok(comment.includes("- `@octocat </details><img src=x> see #12` at "));
+  assert.ok(
+    comment.includes(
+      "**Fix:** Fix @\u200boctocat&#39;s &lt;b&gt;menu&lt;/b&gt; \\[link\\]\\(https://example.com\\)"
+    )
+  );
+  assert.equal(comment.match(/<details>/g)?.length, comment.match(/<\/details>\n/g)?.length);
 });
 
 test("scenario synthesis clearly reports an empty authored scope", () => {

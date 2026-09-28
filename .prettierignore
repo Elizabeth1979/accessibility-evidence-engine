@@ -6,3 +6,4 @@ package-lock.json
 playwright-report/
 site/demo-artifacts/
 test-results/
+tests/__snapshots__/

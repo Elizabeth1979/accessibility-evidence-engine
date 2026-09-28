@@ -201,6 +201,23 @@ test("an allowlisted AI specialist names the icon-only controls, labelled AI, wi
   expect(html).toContain("Based on the text around it");
 });
 
+test("aee run writes the demo page's findings as one pull-request comment", async ({
+  browser
+}, testInfo) => {
+  const { reportFiles } = await runOnLabPage(
+    browser,
+    issuesPage,
+    ["focus", "hover", "activate-page-controls"],
+    testInfo,
+    { readerCommands: readerWalk }
+  );
+  const comment = await readFile(reportFiles.prComment, "utf8");
+  // The lab server's port changes every run; nothing else in the comment does.
+  expect(comment.replace(/127\.0\.0\.1:\d+/, "127.0.0.1:PORT")).toMatchSnapshot(
+    "demo-page-pr-comment.md"
+  );
+});
+
 test("aee run finds nothing on the fixed page", async ({ browser }, testInfo) => {
   const { report, activated } = await runOnLabPage(
     browser,
