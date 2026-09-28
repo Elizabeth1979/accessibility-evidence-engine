@@ -1,4 +1,16 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import type { AnswerSchema, ModelProvider } from "./model-providers";
+
+/**
+ * The accessibility-engineer prompt: the method every specialist works by. It ships in the
+ * package's prompts/ folder, and askSpecialist puts it first in every request.
+ */
+export const ACCESSIBILITY_ENGINEER_PROMPT = readFileSync(
+  path.join(__dirname, "../prompts/accessibility-engineer.md"),
+  "utf8"
+).trim();
 
 /**
  * An allowlisted AI task. Its id is the registry's specialistId and its answer fields are that
@@ -12,7 +24,10 @@ export interface Specialist<Input extends object, Answer> {
   parse(value: unknown, input: Input): Answer;
 }
 
-/** Asks the provider on the specialist's behalf and returns the checked answer. */
+/**
+ * Asks the provider on the specialist's behalf and returns the checked answer. The request's
+ * instructions are the accessibility-engineer prompt, then the specialist's own task.
+ */
 export async function askSpecialist<Input extends object, Answer>(
   specialist: Specialist<Input, Answer>,
   input: Input,
@@ -20,7 +35,7 @@ export async function askSpecialist<Input extends object, Answer>(
 ): Promise<Answer> {
   const value = await provider.ask({
     name: specialist.id.replaceAll("-", "_"),
-    instructions: specialist.instructions,
+    instructions: `${ACCESSIBILITY_ENGINEER_PROMPT}\n\n## This request\n\nThis request is one narrow step of the method above. Answer only with the JSON object its schema asks for; the finding card and coverage format do not apply to it.\n\n${specialist.instructions}`,
     input,
     schema: specialist.schema
   });
@@ -249,3 +264,9 @@ function readCitations(value: unknown, input: object): string[] {
 function fileName(source: string | undefined): string | undefined {
   return source?.split(/[?#]/)[0]?.split("/").pop();
 }
+
+/** Every specialist the registry allowlists and this package implements. */
+export const SPECIALISTS: ReadonlyArray<Specialist<{ selector: string }, unknown>> = [
+  accessibleNameSpecialist,
+  imagePurposeSpecialist
+];

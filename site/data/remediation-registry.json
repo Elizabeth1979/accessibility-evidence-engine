@@ -214,7 +214,8 @@
       ],
       "deterministicDetection": [
         "Extract the complete semantic heading outline and structural relationships.",
-        "Record visual typography and grouping signals without deciding meaning."
+        "Record visual typography and grouping signals without deciding meaning.",
+        "Flag, as advisory, a short line styled as a title (bold and larger than the body text, or 40% larger) that has no heading role in the accessibility tree."
       ],
       "ai": {
         "allowed": true,

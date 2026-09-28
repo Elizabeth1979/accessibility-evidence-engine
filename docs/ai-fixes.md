@@ -23,6 +23,8 @@ Each AI task is a specialist that the remediation registry allowlists by its `sp
 
 The instructions are ported: grounding and "quality in context" from accessibility-engine's judge prompt, the alt decision rules from `wcag-alt-generator` and `alt-generation-claude`. `imageRoleFromMarkup(...)` settles the role first when the markup decides it (the only content of a link or button is functional; `aria-hidden`, `role="presentation"` or `alt=""` is decorative), and the answer must keep that role. A missing `alt` decides nothing: it is the defect.
 
+Every request starts with the accessibility-engineer prompt (`prompts/accessibility-engineer.md`, shipped in the package) as its system prompt, then the specialist's own task, so every specialist works by the same method: find where two pillars disagree, ground the answer in evidence, and propose the smallest fix. A test fails if a specialist runs without it.
+
 Every answer is checked before it is used. It must cite at least one field of the evidence it was given, and only fields that hold evidence (`citedEvidenceIds`), so an answer cannot claim grounding it does not have. A name that is only a role ("button"), an alternative that starts "image of", a file name as an alternative, and a decorative image with text are all rejected.
 
 `aee run` asks the specialists about the elements of allowlisted findings, from the context `@aee/playwright` captures with each axe result, and shows each answer on its fix card labelled "AI suggestion". It asks only when `AEE_LLM_PROVIDER` names a model (see Privacy); otherwise the card says how to turn it on.

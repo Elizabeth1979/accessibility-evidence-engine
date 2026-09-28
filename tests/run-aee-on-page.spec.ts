@@ -2157,3 +2157,95 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
     ])
   );
 });
+
+// The roadmap once put each milestone title inside its summary, bold and 10% larger than the body
+// text: a sighted reader scans for those titles, and a screen reader's heading key skips them.
+const summaryTitlesPage = `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Roadmap</title>
+    <style>
+      summary { display: flex; gap: 0.75rem; }
+      .title { font-weight: 700; font-size: 1.1rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Roadmap</h1>
+      <p>Each milestone opens to show its steps and how far they have got.</p>
+      <details open>
+        <summary><span>M1</span><span class="title">Knowledge link</span><span>0/4</span></summary>
+        <p>Link each finding to the pattern that explains how to build it right.</p>
+      </details>
+      <details open>
+        <summary><span>M2</span><span class="title">Known-answer tests</span><span>1/3</span></summary>
+        <p>Pages with known issues, and the same pages with every issue fixed.</p>
+      </details>
+    </main>
+  </body>
+</html>`;
+
+test("aee run flags titles styled as headings with no heading role, as advisory results", async ({
+  browser
+}, testInfo) => {
+  const server = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(summaryTitlesPage);
+  });
+  try {
+    const result = await runApprovedScenario(
+      browser,
+      `schemaVersion: 0.1.0
+id: summary-titles
+target:
+  url: ${server.origin}/
+standard:
+  name: WCAG
+  version: "2.2"
+  levels: [A, AA]
+profile: core
+goal: Find each milestone by its title.
+journeys:
+  - id: milestones
+    name: Milestones
+    goal: Move between the milestones.
+    startPath: /
+    allowedActions: [focus]
+    forbiddenActions: [submit-forms]
+    virtualScreenReaderCommands: [start]
+approval:
+  required: true
+`,
+      testInfo
+    );
+    const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+      verdict: string;
+      synthesis: {
+        status: Array<{ id: string; verdict: string; detail: string }>;
+        findings: Array<{ ruleId: string; advisory: boolean; instances: Array<{ label: string }> }>;
+      };
+    };
+
+    expect(report.synthesis.findings).toEqual([
+      expect.objectContaining({
+        ruleId: "looks-like-heading",
+        advisory: true,
+        instances: [
+          expect.objectContaining({ label: "Knowledge link" }),
+          expect.objectContaining({ label: "Known-answer tests" })
+        ]
+      })
+    ]);
+    // A heuristic about what the author meant is shown, but it never blocks release.
+    expect(report.synthesis.status.find(({ id }) => id === "semantics")).toMatchObject({
+      verdict: "pass",
+      detail: expect.stringContaining("Advisory: Looks like a heading, but is not one")
+    });
+    expect(report.verdict).toBe("pass");
+    expect(await readFile(result.reportFiles.html, "utf8")).toContain(
+      '<span class="badge unknown">2 advisory</span>'
+    );
+  } finally {
+    await server.close();
+  }
+});
