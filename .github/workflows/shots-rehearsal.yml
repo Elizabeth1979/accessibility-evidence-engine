@@ -1,0 +1,39 @@
+# Temporary: rehearses the Pages deploy's shots with the local model on this pull request. Reverted
+# before merge.
+name: Shots rehearsal
+
+"on":
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      AEE_LLM_PROVIDER: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Start the local model
+        run: |
+          npm run build
+          bash scripts/start-local-model.sh
+      - run: npm run site:shots
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: shots
+          path: |
+            site/shots
+            ${{ runner.temp }}/ollama/serve.log
