@@ -57,6 +57,10 @@ Owns JSON and Markdown output. Reporters consume completed runs, normalized evid
 
 Owns fixture configuration loading, path resolution, schema validation, virtual-page execution, and report writing. The current CLI requires a fixture path; real-page execution is provided by `@aee/playwright`. `aee run` asks the allowlisted AI specialists about a finding's elements only when `AEE_LLM_PROVIDER` names a model, and writes their answers into the report labelled as AI. `@aee/cli/test` is the drop-in Playwright `test`: it checkpoints the test's own page through `@aee/playwright` and ends in the same `finishAssessment` as `aee run`, so both write one report format.
 
+### `@aee/mcp`
+
+The MCP server for coding agents, over stdio (`aee-mcp`). `explain` resolves an axe rule id, a sweep finding id or a registry concept through the remediation registry, and a pattern name or UI element through the a11y-skills index, then returns that pattern's file from the a11y-skills commit the registry pins, which it installs as a dependency. `findings` and `run` return the pull-request comment `@aee/cli` renders. It holds no rules and calls no model, and applying fixes stays with `aee fix`.
+
 ## Dependency graph
 
 ```mermaid
@@ -69,6 +73,7 @@ graph TD
   judges["@aee/judges"]
   reporter["@aee/reporter"]
   cli["@aee/cli"]
+  mcp["@aee/mcp"]
 
   observers --> core
   aiFixes --> core
@@ -87,6 +92,9 @@ graph TD
   cli --> observers
   cli --> judges
   cli --> reporter
+  mcp --> cli
+  mcp --> playwright
+  mcp --> schemas
 ```
 
 `npm run test:unit` holds the code to this graph (`scripts/graph-guard.test.mjs`). A package's `@aee` dependencies must be exactly its arrows here. Every package its shipped source imports must be one it declares. Only `@aee/playwright` and the packages built on it may reach a browser driver (Playwright, Puppeteer or WebDriver). To change a dependency, change the graph here first.

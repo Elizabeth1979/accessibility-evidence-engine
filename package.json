@@ -12,8 +12,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
-    "check": "tsc -b --pretty false packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli",
+    "build": "tsc -b packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli packages/mcp",
+    "check": "tsc -b --pretty false packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli packages/mcp",
     "demo:record": "npm run build && node scripts/record-public-demo.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -38,7 +38,6 @@
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^24.0.0",
-    "a11y-skills": "github:Elizabeth1979/a11y-skills#e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
     "axe-core": "4.13.0",
     "eslint": "^10.9.1",
     "globals": "^17.11.0",

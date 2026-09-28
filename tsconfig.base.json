@@ -23,7 +23,8 @@
       "@aee/observers": ["packages/observers/src/index.ts"],
       "@aee/judges": ["packages/judges/src/index.ts"],
       "@aee/reporter": ["packages/reporter/src/index.ts"],
-      "@aee/cli": ["packages/cli/src/index.ts"]
+      "@aee/cli": ["packages/cli/src/index.ts"],
+      "@aee/mcp": ["packages/mcp/src/index.ts"]
     }
   }
 }
