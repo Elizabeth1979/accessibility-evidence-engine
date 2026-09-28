@@ -7,6 +7,10 @@
     "lab": {
       "href": "test-lab.html",
       "label": "See the page it tested"
+    },
+    "action": {
+      "href": "https://github.com/Elizabeth1979/accessibility-evidence-engine#github-action",
+      "label": "Add it to a repository"
     }
   },
   "internalMilestones": {
@@ -72,6 +76,20 @@
       }
     },
     {
+      "id": "ai-suggestion",
+      "title": "Suggests a name, labelled as AI",
+      "caption": "Where a control has no name, AI suggests one from the text around it. The suggestion is labelled as AI and never passes or fails anything.",
+      "alt": "A nameless button on the tested page and, below it, the name AI suggests for it, labelled as an AI suggestion to review before use.",
+      "try": "report",
+      "shot": {
+        "panel": "findings",
+        "targets": [
+          "#review-button-name .current-state",
+          "#review-button-name .fix-main > :is(.ai-suggestion, .ai-note)"
+        ]
+      }
+    },
+    {
       "id": "every-affected-spot",
       "title": "Points to every affected spot",
       "caption": "It marks each affected spot on a picture of the page.",
@@ -103,6 +121,17 @@
         "file": "screen-reader.webm",
         "text": "screen-reader.txt",
         "textLabel": "Read what it says"
+      }
+    },
+    {
+      "id": "pr-comment",
+      "title": "Comments on every pull request",
+      "caption": "One comment on each pull request says whether it can ship and lists each fix with its pattern. Each new run updates the same comment.",
+      "alt": "The pull-request comment: the release verdict, results by area, and the first blocking fix opened to show the element, the fix and a link to its pattern.",
+      "try": "action",
+      "shot": {
+        "panel": "comment",
+        "targets": ["h2", "details[open]"]
       }
     }
   ]

@@ -161,7 +161,7 @@ jobs:
           fail-on: blocking # or incomplete, or never
 ```
 
-`ai-provider` defaults to `stub`, so no page evidence leaves the runner; `claude` or `openai` read their key from the step's `env`. The reports are kept as the run's `aee-reports` artifact, and the comment is also written to the job summary, for pull requests from forks, whose token cannot post. `aee comment <folder>... --post --fail-on blocking` is the same step from the command line. This repository runs the Action on every pull request against the test lab's fixed page (`.github/workflows/accessibility.yml`, with `fail-on: incomplete`), so a change that breaks the page turns CI red and says why in the comment.
+`ai-provider` defaults to `stub`, so no page evidence leaves the runner. `local` starts a free model on the runner itself (Linux x64; Ollama with `gemma4:e4b` unless the step's `env` sets `AEE_LLM_MODEL`): no key, and the evidence stays on the runner, for a few minutes of download per run. `claude` or `openai` read their key from the step's `env`. The reports are kept as the run's `aee-reports` artifact, and the comment is also written to the job summary, for pull requests from forks, whose token cannot post. `aee comment <folder>... --post --fail-on blocking` is the same step from the command line. This repository runs the Action on every pull request against the test lab's fixed page (`.github/workflows/accessibility.yml`, with `fail-on: incomplete` and the local model, or Claude once an `ANTHROPIC_API_KEY` secret exists), so a change that breaks the page turns CI red and says why in the comment.
 
 ### Before-and-after examples
 

@@ -18,6 +18,7 @@ name: Pages
       - scripts/generate-roadmap.mjs
       - scripts/generate-test-lab.mjs
       - scripts/site-page.mjs
+      - scripts/start-local-model.sh
       - docs/MASTER-PLAN.md
       - .github/workflows/pages.yml
   workflow_dispatch:
@@ -38,6 +39,11 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    # The AI suggestion shots come from a free model on the runner, or from Claude once an
+    # ANTHROPIC_API_KEY secret exists.
+    env:
+      AEE_LLM_PROVIDER: ${{ secrets.ANTHROPIC_API_KEY && 'claude' || 'local' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - name: Check out repository
@@ -64,6 +70,12 @@ jobs:
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      - name: Start the local model
+        if: env.AEE_LLM_PROVIDER == 'local'
+        run: |
+          npm run build
+          bash scripts/start-local-model.sh
 
       - name: Generate product shots and videos from a real run
         run: npm run site:shots

@@ -36,3 +36,8 @@ jobs:
           # The fixed page passes with complete evidence, so anything less, such as a lab that
           # failed to load, fails the job too.
           fail-on: incomplete
+          # A free model on the runner suggests names for what a change leaves nameless; Claude
+          # does once an ANTHROPIC_API_KEY secret exists.
+          ai-provider: ${{ secrets.ANTHROPIC_API_KEY && 'claude' || 'local' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
