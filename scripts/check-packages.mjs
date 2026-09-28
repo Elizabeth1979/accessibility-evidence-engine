@@ -44,6 +44,13 @@ try {
     "Packed an unexpected workspace package set."
   );
 
+  // A release carries every package at one version, since each depends on the others exactly.
+  assert.equal(
+    new Set(packages.map((entry) => entry.version)).size,
+    1,
+    "Every package must share one version."
+  );
+
   for (const entry of packages) {
     const files = entry.files.map((file) => file.path);
     assert.ok(files.includes("LICENSE"), `${entry.name} is missing LICENSE.`);
@@ -109,6 +116,14 @@ try {
     "function",
     "The @aee/cli/test fixture subpath is unavailable."
   );
+
+  // A spec in an ES module project imports the fixture by name, and Node sees only the names a
+  // CommonJS file spells out, so check it the way such a spec does.
+  writeFileSync(
+    path.join(installDirectory, "fixture-check.mjs"),
+    'import { expect, test } from "@aee/cli/test";\nif (typeof test !== "function" || typeof expect !== "function") process.exit(1);\n'
+  );
+  execFileSync(process.execPath, ["fixture-check.mjs"], { cwd: installDirectory, stdio: "pipe" });
 
   process.stdout.write(`Verified and installed ${packages.length} package tarballs.\n`);
 } finally {

@@ -1,0 +1,45 @@
+name: Release
+
+# Run by hand: packs every package at the version in their package.json files and publishes them
+# as one GitHub Release, which is how a project installs AEE until the packages are on npm.
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Pack and release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify the tarballs install into a fresh project
+        run: npm run test:package
+
+      - name: Pack
+        run: npm pack --workspaces --pack-destination release
+
+      # A release that already exists is never replaced: the job fails instead.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="v$(node -p 'require("./packages/cli/package.json").version')"
+          gh release create "$version" release/*.tgz --target "$GITHUB_SHA" --title "$version" \
+            --notes "Install every package from this release: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY#install-from-github"

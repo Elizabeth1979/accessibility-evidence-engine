@@ -21,6 +21,8 @@ test("an existing spec with only its import swapped produces findings", async ()
   await writeFile(path.join(suiteDir, "existing.spec.ts"), swapped, "utf8");
   // A state no page load reaches is checked only when the test names it.
   await writeFile(path.join(suiteDir, "dialog.spec.ts"), DIALOG_SPEC, "utf8");
+  // A test that takes the page but never loads one leaves nothing to check.
+  await writeFile(path.join(suiteDir, "blank.spec.ts"), BLANK_SPEC, "utf8");
   await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
   await promisify(execFile)(process.execPath, [
     require.resolve("@playwright/test/cli"),
@@ -53,7 +55,16 @@ test("an existing spec with only its import swapped produces findings", async ()
       checkpoints.map(({ actionId }) => actionId)
     ])
   ).toEqual([["image-alt", ["checkpoint-2-dialog-open"]]]);
+
+  expect(await assessmentComments(suiteDir, "blank")).toEqual([]);
 });
+
+const BLANK_SPEC = `import { expect, test } from "@aee/cli/test";
+
+test("reads the blank page without loading one", async ({ page }) => {
+  expect(await page.evaluate(() => document.title)).toBe("");
+});
+`;
 
 const DIALOG_SPEC = `import { expect, test } from "@aee/cli/test";
 
@@ -69,11 +80,16 @@ test("the help dialog opens and closes", async ({ page, checkpoint }) => {
 });
 `;
 
-/** The one assessment a spec's test wrote; each checkpoint's own run report sits below it. */
-async function readAssessment(suiteDir: string, spec: string) {
-  const comments = (await findFiles(suiteDir, "aee-pr-comment.md")).filter((file) =>
+/** The assessments a spec's tests wrote, one PR comment each. */
+async function assessmentComments(suiteDir: string, spec: string) {
+  return (await findFiles(suiteDir, "aee-pr-comment.md")).filter((file) =>
     path.relative(suiteDir, file).startsWith(path.join("results", `${spec}-`))
   );
+}
+
+/** The one assessment a spec's test wrote; each checkpoint's own run report sits below it. */
+async function readAssessment(suiteDir: string, spec: string) {
+  const comments = await assessmentComments(suiteDir, spec);
   expect(comments).toHaveLength(1);
   return JSON.parse(
     await readFile(path.join(path.dirname(comments[0]!), "aee-report.json"), "utf8")
