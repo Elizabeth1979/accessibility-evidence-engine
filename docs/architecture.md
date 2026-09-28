@@ -109,4 +109,4 @@ graph TD
 - Setup, capture, or teardown failures are not yet governed by the declared observer timeout and continuation policy.
 - The AI specialists read text evidence only: the image-purpose specialist does not see the image itself yet (see the master plan's Later list). Automatic remediation is not implemented.
 
-See [Evidence privacy](privacy.md) for the artifact trust boundary and [Observer lifecycle](observer-lifecycle.md) for phase-level behavior.
+See [Evidence privacy](privacy.md) for the artifact trust boundary, [Observer lifecycle](observer-lifecycle.md) for phase-level behavior, and the [architecture decision records](adr/README.md) for why the boundaries are where they are.
