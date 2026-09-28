@@ -29,6 +29,7 @@ import {
   type SchemaName
 } from "@aee/schemas";
 
+import { runVerifiedFix, type AcceptedFix } from "./fix-command";
 import {
   buildPullRequestComment,
   FAIL_ON_VALUES,
@@ -47,6 +48,14 @@ export {
   type ExecuteScenarioResult,
   type ScenarioIntegratedReport
 } from "./scenario-runner";
+
+export {
+  runVerifiedFix,
+  type AcceptedFix,
+  type VerifiedFix,
+  type VerifiedFixOptions,
+  type VerifiedFixResult
+} from "./fix-command";
 
 export {
   compileScenarioPlan,
@@ -277,12 +286,17 @@ export async function main(argv: string[]): Promise<void> {
 
   if (!command) {
     throw new Error(
-      "Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json> | aee comment <folder>... [--fail-on blocking|incomplete|never] [--post]"
+      `Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json> | aee comment <folder>... [--fail-on blocking|incomplete|never] [--post] | ${FIX_USAGE}`
     );
   }
 
   if (command === "comment") {
     await runCommentCommand(argv.slice(1));
+    return;
+  }
+
+  if (command === "fix") {
+    await runFixCommand(argv.slice(1));
     return;
   }
 
@@ -424,6 +438,69 @@ async function runCommentCommand(argv: string[]): Promise<void> {
     `${comment.reports} assessment${comment.reports === 1 ? "" : "s"}, verdict ${comment.verdict}, fail-on ${failOn}.\n`
   );
   if (failsOn(comment.verdict, failOn)) process.exitCode = 1;
+}
+
+const FIX_USAGE =
+  'aee fix <scenario.yml> <assessment-folder> --accept "<#id>[=<name>]"... --source <file> --start <command> [--output <dir>]';
+
+/**
+ * `aee fix`: applies the accepted name proposals from one assessment on a new branch, starts the app
+ * from that branch, reruns the same approved scenario and prints what the rerun confirmed. The exit
+ * code is 0 only when every fix is verified.
+ */
+async function runFixCommand(argv: string[]): Promise<void> {
+  const positionals: string[] = [];
+  const accept: AcceptedFix[] = [];
+  const values: Record<string, string> = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index]!;
+    if (!argument.startsWith("--")) {
+      positionals.push(argument);
+      continue;
+    }
+    const value = argv[index + 1];
+    if (!["--accept", "--source", "--start", "--output"].includes(argument)) {
+      throw new Error(`Unknown fix option: ${argument}`);
+    }
+    if (value === undefined || value.startsWith("--"))
+      throw new Error(`${argument} needs a value.`);
+    index += 1;
+    if (argument === "--accept") {
+      const [selector = "", ...name] = value.split("=");
+      accept.push(name.length ? { selector, name: name.join("=") } : { selector });
+    } else values[argument] = value;
+  }
+  const [scenarioPath, assessmentDir] = positionals;
+  const sourceFile = values["--source"];
+  const startCommand = values["--start"];
+  if (
+    positionals.length !== 2 ||
+    !scenarioPath ||
+    !assessmentDir ||
+    !accept.length ||
+    !sourceFile ||
+    !startCommand
+  ) {
+    throw new Error(`Usage: ${FIX_USAGE}`);
+  }
+  const result = await runVerifiedFix({
+    scenarioPath,
+    assessmentDir,
+    accept,
+    sourceFile,
+    startCommand,
+    outputDir: values["--output"]
+  });
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  for (const { selector, verdict, checks } of result.verifications) {
+    process.stderr.write(
+      `${selector}: ${verdict}. ${checks.map(({ detail }) => detail).join(" ")}\n`
+    );
+  }
+  process.stderr.write(
+    `Branch ${result.branch} holds the fix (${result.commit.slice(0, 7)}); review and push it yourself. Rerun report: ${result.rerun.reportFiles.html}\n`
+  );
+  if (result.verdict !== "pass") process.exitCode = 1;
 }
 
 if (require.main === module) {

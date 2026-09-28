@@ -27,14 +27,14 @@ same-checkpoint evidence and missing evidence cannot pass.
 Exit test: one journey correlates keyboard, pointer/hover, virtual-reader, visual, DOM/AOM, focus,
 axe, transcript, and video evidence without active-driver interference.
 
-## Milestone 3 — Context specialists and verified fixes (planned)
+## Milestone 3 — Context specialists and verified fixes (exit test passes for allowlisted names)
 
 - Implement provider-neutral specialists only for registry-allowlisted cases.
 - Require full-page visual, full DOM, full accessibility tree, tool results, and stable input hashes.
 - Label AI output in HTML, JSON, Markdown, and CLI; record prompt/model/provider provenance.
 - Add the cross-evidence verifier and contradiction handling.
 - Apply approved proposals only in an isolated worktree/branch and rerun the same journey.
-- Implement `--fix`; never merge or deploy automatically.
+- Implement `--fix` (`aee fix`); never merge or deploy automatically.
 
 Exit test: a missing button name is found by axe, worded contextually by a specialist, applied in
 isolation, and deterministically verified with visual/DOM/AOM/screen-reader agreement.

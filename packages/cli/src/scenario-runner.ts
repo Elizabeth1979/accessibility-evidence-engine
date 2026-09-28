@@ -315,7 +315,7 @@ interface FindingAi {
   notes?: string[];
 }
 
-/** One AI answer for one affected element, shown labelled as AI and never applied. */
+/** One AI answer for one affected element, labelled as AI and applied only once a person accepts it with `aee fix`. */
 interface AiSuggestion {
   selector: string;
   /** The proposed accessible name or text alternative; empty for a decorative image. */
@@ -982,6 +982,94 @@ async function writeIntegratedReport(
     writeFile(files.html, renderIntegratedHtml(report, views), "utf8"),
     copyFile(path.resolve(__dirname, "../assets/aee-display.woff2"), reportFont)
   ]);
+}
+
+/** A fix applied to source, as a rerun is asked to confirm it. */
+export interface AppliedFix {
+  ruleId: string;
+  selector: string;
+  /** The accessible name the fix gives the element. */
+  name: string;
+}
+
+export interface FixCheck {
+  id: "axe" | "reader" | "cross-evidence";
+  verdict: "pass" | "fail" | "unknown";
+  detail: string;
+}
+
+export interface FixVerification {
+  selector: string;
+  verdict: "pass" | "fail" | "unknown";
+  checks: FixCheck[];
+}
+
+/**
+ * Reads a rerun's evidence for each applied fix. Three checks must pass: axe no longer reports the
+ * rule on the element; the virtual reader, on the scenario's own commands, announced the element
+ * with the new name; and that command's cross-evidence judgment passed, so the accessibility tree
+ * holds the same role and name, the DOM was captured and the element is drawn on the page. A check
+ * with no evidence is unknown, never a pass, and so is the fix.
+ */
+export async function verifyAppliedFixes(
+  reportFile: string,
+  fixes: AppliedFix[]
+): Promise<FixVerification[]> {
+  const rootDir = path.dirname(reportFile);
+  const report = JSON.parse(await readFile(reportFile, "utf8")) as ScenarioIntegratedReport;
+  const [transcripts, actionReports, axeReports] = await Promise.all([
+    loadReaderTranscriptViews(report, rootDir),
+    loadActionReportViews(report, rootDir),
+    loadAxeReportViews(report, rootDir)
+  ]);
+  const axeRan = axeReports.filter(({ readError }) => !readError);
+  const entries = transcripts.flatMap((transcript) => transcript.entries);
+  return fixes.map(({ ruleId, selector, name }) => {
+    const check = (id: FixCheck["id"], verdict: FixCheck["verdict"], detail: string) => ({
+      id,
+      verdict,
+      detail
+    });
+    const stillFound = axeRan.some(({ violations }) =>
+      violations.some(({ id, targets }) => id === ruleId && targets.includes(selector))
+    );
+    const axe = !axeRan.length
+      ? check("axe", "unknown", "No axe result was recorded.")
+      : stillFound
+        ? check("axe", "fail", `axe still reports ${ruleId} on ${selector}.`)
+        : check("axe", "pass", `axe no longer reports ${ruleId} on ${selector}.`);
+    const reached = entries.filter(({ nodePath }) => nodePath === selector);
+    const entry = reached.find((candidate) => candidate.name === name) ?? reached[0];
+    const reader = !entry
+      ? check(
+          "reader",
+          "unknown",
+          `The virtual reader never reached ${selector}: add reader commands that do.`
+        )
+      : entry.name === name
+        ? check("reader", "pass", `Announced “${entry.announcement}”.`)
+        : check("reader", "fail", `Announced “${entry.announcement}”, not the name “${name}”.`);
+    const judgment = entry && readerJudgment(actionReports, entry);
+    const crossEvidence = judgment
+      ? check("cross-evidence", judgment.verdict, judgment.summary)
+      : check("cross-evidence", "unknown", `No cross-evidence judgment covers ${selector}.`);
+    const checks = [axe, reader, crossEvidence];
+    return { selector, verdict: overallVerdict(checks), checks };
+  });
+}
+
+/** The cross-evidence judgment of the reader command that produced a transcript entry. */
+function readerJudgment(
+  actionReports: ActionReportView[],
+  entry: ReaderEntryView
+): ActionJudgmentView | undefined {
+  return actionReports
+    .find(({ action }) => action.actionId === readerActionId(entry))
+    ?.judgments.find(({ judgeId }) => judgeId === "screen-reader");
+}
+
+function readerActionId(entry: ReaderEntryView): string {
+  return `command-${entry.sequence}-${entry.command}`;
 }
 
 async function loadReaderTranscriptViews(
@@ -2265,12 +2353,12 @@ const VERDICT_ORDER: Record<ScenarioIntegratedReport["verdict"], number> = {
   pass: 2
 };
 
-/** Fail when any assessment fails; pass only when every one passes; otherwise unknown. */
+/** Fail when any one fails; pass only when every one passes; otherwise unknown. */
 export function overallVerdict(
-  reports: ScenarioIntegratedReport[]
+  results: Array<{ verdict: ScenarioIntegratedReport["verdict"] }>
 ): ScenarioIntegratedReport["verdict"] {
-  if (reports.some(({ verdict }) => verdict === "fail")) return "fail";
-  return reports.length && reports.every(({ verdict }) => verdict === "pass") ? "pass" : "unknown";
+  if (results.some(({ verdict }) => verdict === "fail")) return "fail";
+  return results.length && results.every(({ verdict }) => verdict === "pass") ? "pass" : "unknown";
 }
 
 /**
@@ -3362,12 +3450,10 @@ function renderReaderOverview(
     .map((transcript) => {
       const rows = transcript.entries
         .map((entry) => {
-          const actionId = `command-${entry.sequence}-${entry.command}`;
-          const action = report.actions.find((candidate) => candidate.actionId === actionId);
-          const actionView = views.actionReports.find(
-            (candidate) => candidate.action.actionId === actionId
+          const action = report.actions.find(
+            (candidate) => candidate.actionId === readerActionId(entry)
           );
-          const judgment = actionView?.judgments.find(({ judgeId }) => judgeId === "screen-reader");
+          const judgment = readerJudgment(views.actionReports, entry);
           const links = action ? renderActionEvidenceLinks(report, action) : "—";
           const bounds = entry.visualBounds
             ? `${entry.visualBounds.width} × ${entry.visualBounds.height} at ${entry.visualBounds.x}, ${entry.visualBounds.y}`

@@ -86,6 +86,22 @@ Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
 comparisons authored in the YAML; allowed actions remain permissions rather than inferred steps.
 
+Once a person has reviewed a suggested name, `aee fix` applies it and proves it:
+
+```bash
+node packages/cli/dist/index.js fix scenario.yml aee-output/<assessment> \
+  --accept "#close-dialog" --source src/Dialog.tsx --start "npm run dev"
+```
+
+It sets the suggested name, or the one given as `--accept "#close-dialog=<name>"`, on the element with
+that id in the source file (HTML, JavaScript, JSX or TSX, tracked in git) and commits it on a new
+branch, `aee/fix-<assessment>`, in a separate git worktree, so your working copy is never touched.
+It then runs `--start` in that worktree, reruns the same approved scenario against it, and passes a
+fix only when the rerun confirms it three ways: axe no longer reports the element, the virtual reader
+announces the new name, and that announcement agrees with the accessibility tree and the rendered
+page. A change it cannot place safely, such as a name built from an expression, is left to a person
+with the exact change to make. It never merges or pushes: the branch is yours to review.
+
 Run the automated checks:
 
 ```bash
@@ -217,6 +233,7 @@ The homepage's feature cards come from `site/features.json`, the one list of wha
 | Deep focus state        | Document/deep active element, shadow/iframe chain, focus-visible styles, AX focus | Preserves synchronized focus evidence and deterministically checks explicit preserve, target, and dialog-transfer expectations                                     |
 | AI review routing       | Headings, icon labels, image purpose                                              | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                |
 | AI fix proposals        | Contextual accessible names and image alternatives                                | Registry-allowlisted specialists answer from captured evidence; output is always review-only and requires a verified rerun                                         |
+| Verified fixes          | `aee fix` on HTML, JavaScript, JSX and TSX                                        | Applies an accepted name on its own branch in a git worktree, reruns the approved scenario, and passes it only on axe, reader and cross-evidence agreement         |
 | Palette contrast        | Existing-token selection                                                          | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                                                     |
 | Interaction probes      | Isolated pointer/keyboard journeys, hover equivalence, motion stopping            | Runs only user-declared actions from matching seeded storage and landing URL, recaptures each action, and saves a validated trace                                  |
 
@@ -233,7 +250,7 @@ The Guidepup observer plus the interaction and standalone visual judges remain u
 | `@aee/observers`  | Built-in evidence observers and observer manifests                       |
 | `@aee/judges`     | Built-in judges, release gating, and judge manifests                     |
 | `@aee/reporter`   | JSON and Markdown reporters                                              |
-| `@aee/cli`        | Approved YAML scenario execution plus legacy fixture execution           |
+| `@aee/cli`        | Approved YAML scenario execution, verified fixes, and legacy fixtures    |
 
 ## Evidence privacy
 
@@ -251,7 +268,8 @@ Review artifacts before sharing them and use test accounts and non-production en
 - Observer timeout and continue-on-error policy fields exist, but engine-level enforcement is not implemented yet.
 - Several declared observers and judges remain extension scaffolds, as listed above.
 - Public npm packaging and a hosted engine runner are not available yet; the public site is a static demonstration with generated evidence artifacts.
-- AI proposals are not applied automatically and are not evidence of correctness. Callers must provide model credentials, review the suggested patch, and rerun appropriate judges.
+- AI proposals are never applied on their own and are not evidence of correctness. `aee fix` applies only names a person accepts, and a fix counts only when the rerun verifies it.
+- `aee fix` finds an element by its `#id` in one source file, and reruns a YAML scenario; checks made through the Playwright fixture are not rerun by it yet.
 
 ## Roadmap
 

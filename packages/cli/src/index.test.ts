@@ -12,6 +12,7 @@ import {
   compileScenarioPlan,
   createBootstrapPlan,
   loadScenario,
+  main,
   renderScenarioPlan,
   runWithPage,
   type AeeCliConfig
@@ -244,5 +245,55 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("aee fix explains its usage and refuses what it cannot apply before touching git", async () => {
+  await assert.rejects(
+    () => main(["fix", "scenario.yml"]),
+    /^Error: Usage: aee fix <scenario\.yml>/
+  );
+  await assert.rejects(
+    () => main(["fix", "scenario.yml", "folder", "--bogus", "x"]),
+    /Unknown fix option: --bogus/
+  );
+  await assert.rejects(
+    () => main(["fix", "scenario.yml", "folder", "--accept"]),
+    /--accept needs a value/
+  );
+
+  const assessment = await mkdtemp(path.join(os.tmpdir(), "aee-fix-"));
+  const finding = {
+    ruleId: "button-name",
+    instances: [{ selector: "#close" }],
+    remediation: { ai: { suggestions: [] } }
+  };
+  await writeFile(
+    path.join(assessment, "aee-report.json"),
+    JSON.stringify({ synthesis: { findings: [finding] } })
+  );
+  const fix = (accept: string) =>
+    main([
+      "fix",
+      "scenario.yml",
+      assessment,
+      "--accept",
+      accept,
+      "--source",
+      "a.html",
+      "--start",
+      "x"
+    ]);
+  try {
+    await assert.rejects(
+      () => fix("#open"),
+      /The assessment has no missing name or text alternative at #open to fix\./
+    );
+    await assert.rejects(
+      () => fix("#close"),
+      /No name was suggested for #close\. Give the one to use: --accept "#close=<name>"\./
+    );
+  } finally {
+    await rm(assessment, { recursive: true, force: true });
   }
 });
