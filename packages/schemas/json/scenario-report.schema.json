@@ -36,7 +36,7 @@
     "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "scenarioDigest": { "$ref": "#/$defs/digest" },
     "planDigest": { "$ref": "#/$defs/digest" },
-    "profile": { "enum": ["core", "at-fidelity"] },
+    "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
     "target": { "type": "string", "format": "uri" },
     "goal": { "type": "string", "minLength": 1 },
     "standard": { "type": "string", "minLength": 1 },

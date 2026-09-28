@@ -20,7 +20,7 @@
     "assessmentId": { "$ref": "./common.schema.json#/$defs/uid" },
     "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "scenarioDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-    "profile": { "enum": ["core", "at-fidelity"] },
+    "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
     "status": { "enum": ["completed", "partial"] },
     "createdAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
     "root": { "const": "." },
@@ -38,7 +38,8 @@
               "pointer",
               "keyboard",
               "portable-virtual-screen-reader",
-              "keyboard-pointer-sweep"
+              "keyboard-pointer-sweep",
+              "playwright-test"
             ]
           },
           "status": { "enum": ["completed", "blocked", "failed"] },

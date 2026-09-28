@@ -47,7 +47,7 @@
         }
       }
     },
-    "profile": { "enum": ["core", "at-fidelity"] },
+    "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
     "goal": { "type": "string", "minLength": 1 },
     "journeys": {
       "type": "array",

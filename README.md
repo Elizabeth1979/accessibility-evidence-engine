@@ -137,6 +137,8 @@ test("collect keyboard evidence", async ({ page }) => {
 });
 ```
 
+An existing spec gets the same checks by changing one import, `@playwright/test` to `@aee/cli/test`: every page load it starts is checkpointed and the test gets the full report and PR comment. See [the drop-in test fixture](docs/playwright-integration.md#drop-in-test-fixture).
+
 The `@aee/*` packages currently work as local npm workspaces in this repository; they have not yet been published to a package registry. See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
 
 ### Before-and-after examples

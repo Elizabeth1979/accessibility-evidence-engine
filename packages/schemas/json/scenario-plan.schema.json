@@ -27,7 +27,7 @@
     "planDigest": { "$ref": "#/$defs/digest" },
     "target": { "type": "string", "format": "uri" },
     "standard": { "type": "string", "minLength": 1 },
-    "profile": { "enum": ["core", "at-fidelity"] },
+    "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
     "goal": { "type": "string", "minLength": 1 },
     "approval": {
       "type": "object",

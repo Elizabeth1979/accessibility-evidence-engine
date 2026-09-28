@@ -1410,6 +1410,148 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   return laneResult;
 }
 
+/** Words as a lower-case, hyphenated id, for file and action names; "item" when none are left. */
+export function toSafeId(text: string, fallback = "item"): string {
+  return (
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60)
+      .replace(/-+$/, "") || fallback
+  );
+}
+
+export interface PageCheckpointLaneOptions<TPage extends PlaywrightPageLike> {
+  /** The page a test is driving; checkpoints observe it and never act on it. */
+  page: TPage;
+  projectRoot: string;
+  outputDir?: string;
+  laneId?: string;
+}
+
+export interface PageCheckpointStep {
+  sequence: number;
+  actionId: string;
+  name: string;
+  runId: string;
+  pageUrl: string;
+  results: RunSummary;
+  releaseVerdict: JudgmentVerdict;
+  reporterFiles: string[];
+  artifactFiles: string[];
+}
+
+export interface PageCheckpointLane {
+  laneId: string;
+  /** Captures the page as it is now; checkpoints run one at a time, in the order asked. */
+  checkpoint(name: string): Promise<void>;
+  /** Waits for every checkpoint, then writes the lane's evidence manifest. */
+  finish(): Promise<{
+    laneId: string;
+    steps: PageCheckpointStep[];
+    diagnostics: string[];
+    manifestFile: string;
+  }>;
+}
+
+/**
+ * Checkpoints a page that something else drives, such as a Playwright test: each checkpoint runs
+ * the same observers and judges as an input-comparison step, with no interaction of its own. A
+ * checkpoint that fails, for example because the test navigated while it ran, is recorded as a
+ * diagnostic and a failed action, so the report cannot read as complete.
+ */
+export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
+  options: PageCheckpointLaneOptions<TPage>
+): PageCheckpointLane {
+  const laneId = options.laneId ?? `page-checkpoints-${Date.now()}`;
+  assertSafeRunId(laneId);
+  const outputBase = options.outputDir ?? "aee-output";
+  const laneOutputDir = path.resolve(options.projectRoot, outputBase, laneId);
+  const runOutputDir = path.join(outputBase, laneId);
+  const manifestLane: EvidenceManifestLaneSource = {
+    id: laneId,
+    driver: "playwright-test",
+    status: "completed",
+    actions: []
+  };
+  const steps: PageCheckpointStep[] = [];
+  const diagnostics: string[] = [];
+  let queue = Promise.resolve();
+
+  const capture = async (name: string) => {
+    const sequence = manifestLane.actions.length + 1;
+    const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
+    const actionId = `checkpoint-${sequence}-${toSafeId(name)}`;
+    const manifestAction: EvidenceManifestActionSource = {
+      id: actionId,
+      sequence,
+      runId,
+      status: "failed",
+      reporterFiles: [],
+      artifactFiles: [],
+      runDir: path.resolve(options.projectRoot, runOutputDir, runId),
+      requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
+    };
+    manifestLane.actions.push(manifestAction);
+    const pageUrl = options.page.url();
+    try {
+      const result = await runAeeOnPage({
+        page: options.page,
+        projectRoot: options.projectRoot,
+        outputDir: runOutputDir,
+        runId,
+        observers: INPUT_COMPARISON_OBSERVERS,
+        judges: INPUT_COMPARISON_JUDGES,
+        checkpointName: `${laneId}:${sequence}:${name}`,
+        interaction: {
+          kind: "custom",
+          actor: "test",
+          meta: { laneId, laneSequence: sequence, checkpoint: name }
+        }
+      });
+      const outcome = readLaneStepOutcome(result, "Page checkpoint");
+      manifestAction.status = "completed";
+      manifestAction.reporterFiles = result.reporterFiles;
+      manifestAction.artifactFiles = result.artifactFiles;
+      steps.push({
+        sequence,
+        actionId,
+        name,
+        runId,
+        pageUrl,
+        results: outcome.results,
+        releaseVerdict: outcome.releaseVerdict,
+        reporterFiles: result.reporterFiles,
+        artifactFiles: result.artifactFiles
+      });
+    } catch (error) {
+      diagnostics.push(
+        `${laneId}: checkpoint "${name}" at ${pageUrl} did not finish: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
+  return {
+    laneId,
+    checkpoint(name) {
+      const run = queue.then(() => capture(name));
+      queue = run;
+      return run;
+    },
+    async finish() {
+      await queue;
+      await mkdir(laneOutputDir, { recursive: true });
+      const { manifestFile } = await writeEvidenceManifest({
+        assessmentId: laneId,
+        rootDir: laneOutputDir,
+        lanes: [manifestLane]
+      });
+      return { laneId, steps, diagnostics, manifestFile };
+    }
+  };
+}
+
 /**
  * Sweeps one page by keyboard and pointer in its own browser context, then records the result,
  * a full-page screenshot and where each finding is on it. Every navigation, including one a

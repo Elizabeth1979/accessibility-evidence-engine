@@ -104,6 +104,11 @@ try {
 
   const runSchema = requireFromConsumer("@aee/schemas/json/run.schema.json");
   assert.equal(runSchema.title, "AEE Run", "The public JSON Schema subpath is unavailable.");
+  assert.equal(
+    typeof requireFromConsumer("@aee/cli/test").test,
+    "function",
+    "The @aee/cli/test fixture subpath is unavailable."
+  );
 
   process.stdout.write(`Verified and installed ${packages.length} package tarballs.\n`);
 } finally {

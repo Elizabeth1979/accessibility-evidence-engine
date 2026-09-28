@@ -31,6 +31,7 @@ import {
   type KeyboardPointerSweepLaneDocument,
   type KeyboardPointerSweepLaneFinding,
   type KeyboardPointerSweepLaneResult,
+  type PageCheckpointStep,
   type SweepFindingKind,
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
@@ -51,7 +52,8 @@ import {
   compileScenarioPlan,
   loadScenario,
   type AeeScenario,
-  type ScenarioPlan
+  type ScenarioPlan,
+  type ScenarioProfile
 } from "./scenario";
 
 export interface ExecuteScenarioOptions {
@@ -64,7 +66,7 @@ export interface ExecuteScenarioOptions {
 export interface ScenarioActionReport {
   journeyId: string;
   laneId: string;
-  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader";
+  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader" | "playwright-test";
   actionId: string;
   sequence: number;
   runId: string;
@@ -81,7 +83,7 @@ export interface ScenarioIntegratedReport {
   scenarioId: string;
   scenarioDigest: string;
   planDigest: string;
-  profile: "core" | "at-fidelity";
+  profile: ScenarioProfile;
   target: string;
   goal: string;
   standard: string;
@@ -434,22 +436,11 @@ export async function executeScenario(
   const plannedLanes = countPlannedLanes(scenario);
   const assessmentId = `${scenario.id}-${Date.now()}`;
   const assessmentDir = path.resolve(options.outputDir ?? "aee-output", assessmentId);
-  const planFile = path.join(assessmentDir, "scenario-plan.json");
-  const manifestFile = path.join(assessmentDir, "manifest.json");
-  const reportFiles = {
-    html: path.join(assessmentDir, "aee-report.html"),
-    json: path.join(assessmentDir, "aee-report.json"),
-    markdown: path.join(assessmentDir, "aee-report.md"),
-    prComment: path.join(assessmentDir, "aee-pr-comment.md")
-  };
   const startedAt = new Date().toISOString();
   const childManifestFiles: string[] = [];
   const actions: ScenarioActionReport[] = [];
   const findings: Array<Record<string, unknown>> = [];
   const diagnostics: string[] = [];
-  const aiSuggester = createAiSuggester(options.aiProvider ?? aeeRunModelProvider());
-  await mkdir(assessmentDir, { recursive: true });
-  await writeFile(planFile, JSON.stringify(plan, null, 2), "utf8");
 
   const browser = options.browser ?? (await chromium.launch({ headless: true }));
   const ownsBrowser = !options.browser;
@@ -531,22 +522,74 @@ export async function executeScenario(
     if (ownsBrowser) await browser.close();
   }
 
+  return finishAssessment({
+    assessmentId,
+    assessmentDir,
+    scenario,
+    plan,
+    startedAt,
+    plannedLanes,
+    actions,
+    findings,
+    childManifestFiles,
+    diagnostics,
+    aiProvider: options.aiProvider
+  });
+}
+
+/** Where an assessment's plan, manifest and reports live. */
+function assessmentFiles(assessmentDir: string) {
+  return {
+    planFile: path.join(assessmentDir, "scenario-plan.json"),
+    manifestFile: path.join(assessmentDir, "manifest.json"),
+    reportFiles: {
+      html: path.join(assessmentDir, "aee-report.html"),
+      json: path.join(assessmentDir, "aee-report.json"),
+      markdown: path.join(assessmentDir, "aee-report.md"),
+      prComment: path.join(assessmentDir, "aee-pr-comment.md")
+    }
+  };
+}
+
+/**
+ * Turns the lanes' evidence into one assessment: the plan, the integrated report in every format
+ * and the aggregate manifest. `aee run` and the Playwright test fixture both end here, so a test's
+ * report reads exactly like a scenario's.
+ */
+export async function finishAssessment(input: {
+  assessmentId: string;
+  assessmentDir: string;
+  scenario: AeeScenario;
+  plan: ScenarioPlan;
+  startedAt: string;
+  plannedLanes: number;
+  actions: ScenarioActionReport[];
+  findings: Array<Record<string, unknown>>;
+  childManifestFiles: string[];
+  diagnostics: string[];
+  aiProvider?: ModelProvider;
+}): Promise<ExecuteScenarioResult> {
+  const { assessmentId, assessmentDir, scenario, plan, childManifestFiles } = input;
+  const { planFile, manifestFile, reportFiles } = assessmentFiles(assessmentDir);
+  const aiSuggester = createAiSuggester(input.aiProvider ?? aeeRunModelProvider());
+  await mkdir(assessmentDir, { recursive: true });
+  await writeFile(planFile, JSON.stringify(plan, null, 2), "utf8");
   const childEvidence = await loadChildEvidence(assessmentDir, childManifestFiles);
-  const consolidatedFindings = deduplicateFindings(findings);
+  const consolidatedFindings = deduplicateFindings(input.findings);
   const report = createIntegratedReport({
     assessmentId,
     scenario,
     plan,
-    startedAt,
+    startedAt: input.startedAt,
     finishedAt: new Date().toISOString(),
-    plannedLanes,
-    actions,
+    plannedLanes: input.plannedLanes,
+    actions: input.actions,
     findings: consolidatedFindings,
     artifacts: childEvidence.artifacts,
     completedLanes: childEvidence.completedLanes,
     missingArtifacts: childEvidence.missingArtifacts,
     failedArtifacts: childEvidence.failedArtifacts,
-    diagnostics,
+    diagnostics: input.diagnostics,
     assessmentDir,
     reportFiles,
     manifestFile,
@@ -685,6 +728,28 @@ async function collectVirtualReaderActions(
       lane.laneId,
       lane.driver,
       `command-${step.sequence}-${step.command}`,
+      step,
+      actions,
+      findings
+    );
+  }
+}
+
+/** A Playwright test's checkpoints, as actions of one lane, like a reader lane's commands. */
+export async function collectPageCheckpointActions(
+  rootDir: string,
+  journeyId: string,
+  lane: { laneId: string; steps: PageCheckpointStep[] },
+  actions: ScenarioActionReport[],
+  findings: Array<Record<string, unknown>>
+): Promise<void> {
+  for (const step of lane.steps) {
+    await collectAction(
+      rootDir,
+      journeyId,
+      lane.laneId,
+      "playwright-test",
+      step.actionId,
       step,
       actions,
       findings
@@ -1227,7 +1292,9 @@ function buildScenarioSynthesis(
     judgments.filter(({ judgeId }) => judgeId === "screen-reader")
   );
   const readerCounts = countVerdicts(readerJudgments.map(({ verdict }) => verdict));
-  const lanes = (["keyboard", "pointer", "portable-virtual-screen-reader"] as const)
+  const lanes = (
+    ["keyboard", "pointer", "portable-virtual-screen-reader", "playwright-test"] as const
+  )
     .map((driver) => {
       const laneReports = views.actionReports.filter(({ action }) => action.driver === driver);
       const judgments = laneReports.flatMap(({ judgments }) =>
@@ -1490,7 +1557,8 @@ function laneSummary(
       )
     )
   ];
-  return `${label} ran ${reports.length} authored action${reports.length === 1 ? "" : "s"}: ${counts.passed} direct checks passed, ${counts.failed} failed, and ${counts.unknown} were unresolved.${failingJudges.length ? ` Failing judges: ${failingJudges.join(", ")}.` : ""}`;
+  const noun = driver === "playwright-test" ? "checkpoint" : "authored action";
+  return `${label} ran ${reports.length} ${noun}${reports.length === 1 ? "" : "s"}: ${counts.passed} direct checks passed, ${counts.failed} failed, and ${counts.unknown} were unresolved.${failingJudges.length ? ` Failing judges: ${failingJudges.join(", ")}.` : ""}`;
 }
 
 function buildFindingSynthesis(
@@ -3313,19 +3381,21 @@ function humanFileName(filePath: string): string {
 }
 
 function humanActionName(actionId: string): string {
-  const words = actionId.replace(/^command-\d+-/, "").replaceAll("-", " ");
+  const words = actionId.replace(/^(command|checkpoint)-\d+-/, "").replaceAll("-", " ");
   return words.length > 0 ? `${words[0]!.toUpperCase()}${words.slice(1)}` : "Action";
 }
 
 function humanDriverName(driver: LaneDriver): string {
   if (driver === "portable-virtual-screen-reader") return "Portable virtual screen reader";
   if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
+  if (driver === "playwright-test") return "Playwright test";
   return driver === "keyboard" ? "Keyboard" : "Pointer";
 }
 
 function behaviorLabelForDriver(driver: LaneDriver): string {
   if (driver === "portable-virtual-screen-reader") return "Reader semantic agreement";
   if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
+  if (driver === "playwright-test") return "Page checkpoint";
   return "Focus management";
 }
 
