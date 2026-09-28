@@ -144,12 +144,13 @@
     "files": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["html", "json", "markdown", "prComment", "manifest", "plan"],
+      "required": ["html", "json", "markdown", "prComment", "csv", "manifest", "plan"],
       "properties": {
         "html": { "type": "string", "minLength": 1 },
         "json": { "type": "string", "minLength": 1 },
         "markdown": { "type": "string", "minLength": 1 },
         "prComment": { "type": "string", "minLength": 1 },
+        "csv": { "type": "string", "minLength": 1 },
         "manifest": { "type": "string", "minLength": 1 },
         "plan": { "type": "string", "minLength": 1 }
       }

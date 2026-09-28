@@ -507,6 +507,7 @@ test("validateSchema accepts an integrated scenario report", () => {
       json: "aee-report.json",
       markdown: "aee-report.md",
       prComment: "aee-pr-comment.md",
+      csv: "aee-fixes.csv",
       manifest: "manifest.json",
       plan: "scenario-plan.json"
     },

@@ -1,6 +1,6 @@
 # QA and designer view
 
-A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Step 7.3 built the Page view with its first two layers and the announcement list; [Build steps](#build-steps) lists the rest.
+A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Step 7.3 built the Page view with its first two layers and the announcement list, and step 7.4 the tickets and the CSV; [Build steps](#build-steps) lists the rest.
 
 ![Mockup of the Page view, drawn from a real run of the test lab's demo page: numbered issue markers and the screen reader's path on the page as tested, with the lists beside them.](diagrams/qa-designer-view-mockup.png)
 
@@ -69,9 +69,13 @@ Reading the phrase aloud with the browser's voice is left for later. If it is ad
 
 ## 3. Copy as ticket (from clip-to-ticket)
 
-- **Per fix:** each fix row in Fix review gets **Copy as ticket**, which puts the Markdown below on the clipboard.
-- **For all fixes:** Fix review gets **Download all as CSV**, one row per fix, with the same fields as columns so an issue tracker's CSV import can map them.
+Built in step 7.4:
+
+- **Per fix:** each fix row in Fix review has **Copy as ticket**, which puts the Markdown below on the clipboard. Where the browser blocks copying, as some do for a file opened from disk, the row opens its **Ticket text** and selects it instead, so Ctrl+C or Command+C finishes the job.
+- **For all fixes:** every run writes `aee-fixes.csv` beside the report, one row per fix with the same fields as columns, and Fix review links to it as **Download all fixes as CSV**. Cells follow RFC 4180. A cell that a spreadsheet would run as a formula (starting with =, +, -, @ or a tab) is kept as text, since page text can start with anything. Tests using the Playwright fixture get the CSV attached to their results.
 - **Offline:** the report calls no tracker API. It stays offline, and filing is the person's action.
+- **Expected and actual:** for an axe rule, "expected" is the rule's own requirement, such as "Buttons must have discernible text". For the sweep's own findings, a sentence says what should happen instead, such as "Tab reaches it, and Enter or Space does what a click does", since their titles name the problem. "Actual" is what the virtual screen reader announced at the element when the run reached it, and otherwise the measured failure, such as the contrast ratio.
+- **Page text is escaped:** it never turns into Markdown or HTML in the tracker. An axe message mentioning `<label>` stays text.
 
 | Field              | From the report                                                                                 | clip-to-ticket field |
 | ------------------ | ----------------------------------------------------------------------------------------------- | -------------------- |
@@ -96,23 +100,26 @@ Clip-to-ticket had no steps to reproduce and no expected and actual; a run knows
 - **Its WCAG and APG data files:** the registry already has each criterion's number, title, level and link, and the master plan keeps those files out unless the registry proves insufficient.
 - **Example media and names:** none of clip-to-ticket's example media or names come across.
 
-For example, the demo page's unnamed archive button, from a real run:
+For example, the demo page's unnamed archive button, from a real run with the lab's stand-in model:
 
 ```markdown
 ### Buttons must have discernible text: Archive project
 
 - **Severity:** Blocks release
-- **WCAG:** 4.1.2 Name, Role, Value (A) — https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html
-- **Rule:** button-name — https://dequeuniversity.com/rules/axe/4.13/button-name
+- **WCAG:** 4.1.2 Name, Role, Value (A) https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html
+- **Rule:** `button-name` https://dequeuniversity.com/rules/axe/4.13/button-name
 - **How to build it:** https://github.com/Elizabeth1979/a11y-skills/blob/<commit>/patterns/buttons.instructions.md
-- **Where:** /test-case.html, `#archive-project`, on page load
-- **Steps to reproduce:** Open /test-case.html. Move a screen reader to the archive button in the Projects list.
-- **Expected:** it is announced with a name that says what it does.
-- **Actual:** the virtual reader announced "button".
-- **Suggested fix:** give the button an accessible name, such as `aria-label`.
-- **AI suggestion, review before use:** "Archive Project Alpha" (stand-in model)
-- **Affected elements:** 1
-- **Evidence:** aee-report.html, crop `archive-project.png`
+- **Where:** http://127.0.0.1:4173/test-case.html, `#archive-project`, as the virtual screen reader read it
+- **Steps to reproduce:**
+  1. Open http://127.0.0.1:4173/test-case.html.
+  2. Find Archive project (#archive-project).
+  3. Check: Buttons must have discernible text.
+- **Expected:** Buttons must have discernible text
+- **Actual:** The virtual screen reader announced "button" at #archive-project.
+- **Suggested fix:** Buttons must have discernible text. Fix every affected element listed here, then rerun the same authored journey.
+- **AI suggestion, review before use:** "Archive Project Alpha" for #archive-project (suggested by AI, lab-fixture)
+- **Affected elements:** 1: Archive project (#archive-project)
+- **Evidence:** `aee-report.html`, `lab-page-virtual-reader/lab-page-virtual-reader-001/artifacts/visual-full-page-after.png`
 ```
 
 ## Data gaps
