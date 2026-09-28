@@ -18,8 +18,8 @@ inputs:
   ai-provider:
     description: >-
       Where allowlisted AI suggestions come from: `stub` (none), `local`, `claude` or `openai`.
-      `local` starts a free model on the runner (Linux x64, a few minutes to download), so no key
-      is needed and page evidence never leaves it. `claude` and `openai` read ANTHROPIC_API_KEY or
+      `local` starts a free model on the runner (Linux x64; about a minute to start, then up to two
+      per answer on its CPU), so no key is needed and page evidence never leaves it. `claude` and `openai` read ANTHROPIC_API_KEY or
       OPENAI_API_KEY from the step's env.
     default: stub
   reports:
