@@ -23,7 +23,7 @@ const HIGHLIGHT_COLOR = "#c2185b";
 
 interface Shot {
   /** The report tab the shot is on, or the run's pull-request comment. */
-  panel: "overview" | "findings" | "comment";
+  panel: "overview" | "page" | "findings" | "comment";
   /** The shot is the smallest box around all of these, highlighted. */
   targets: string[];
 }

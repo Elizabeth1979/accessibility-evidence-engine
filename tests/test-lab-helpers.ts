@@ -40,6 +40,7 @@ export interface ScenarioReport {
     findings: Array<{
       ruleId: string;
       advisory: boolean;
+      instances: Array<{ selector: string }>;
       pattern?: { url: string };
       checkpoints: Array<{ sweepPath?: string }>;
       remediation: {

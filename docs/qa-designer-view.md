@@ -1,6 +1,6 @@
 # QA and designer view
 
-A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Nothing here is built yet; [Build steps](#build-steps) proposes the steps that build it.
+A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Step 7.3 built the Page view with its first two layers and the announcement list; [Build steps](#build-steps) lists the rest.
 
 ![Mockup of the Page view, drawn from a real run of the test lab's demo page: numbered issue markers and the screen reader's path on the page as tested, with the lists beside them.](diagrams/qa-designer-view-mockup.png)
 
@@ -26,14 +26,21 @@ Each works on a live page or a recording. This view gives the same answers from 
 
 ## 1. Page view: overlays (from the bookmarklets)
 
-A new **Page view** tab (`#panel-page`), after Status & plan. It has four parts:
+A **Page view** tab (`#panel-page`), after Status & plan, built in step 7.3. It has three parts:
 
-- **Page state:** a picker, shown when the run has more than one checkpoint.
-- **Layers:** a group of checkboxes (`fieldset` and `legend`).
-- **Page:** the full-page screenshot, with the chosen layers drawn over it in SVG. Selecting it opens the existing image viewer.
-- **Lists:** one per chosen layer, beside the page on a desktop.
+- **Layers:** a group of checkboxes (`fieldset` and `legend`) that show or hide a layer's markers and its list together, with CSS alone.
+- **Page states:** one section per screenshot, named by what captured it, such as "As the virtual screen reader read it". Each box is drawn only on the screenshot it was measured on, never moved onto another capture. So a run whose findings come from two captures shows two sections, not a picker that could put a box on the wrong picture.
+- **Page and lists:** the full-page screenshot with the chosen layers drawn over it in SVG, then the lists.
+  - Selecting an item outlines its marker and moves the picture to it.
+  - The markers are hidden from assistive technology: the picture is one labelled image, and the lists say everything it shows.
 
-On a phone the full page is a thumbnail too small to read, as the mockup's phone width showed. So there the lists come first, and selecting an item shows a magnified crop of its element, the same crop Fix review uses; the report's rule is to magnify affected regions, not to show unreadable full-page thumbnails ([report surface](accessibility-report-surface.md)). The whole page still opens in the image viewer.
+On a phone the full page would be a thumbnail too small to read, as the mockup's phone width showed. The report's rule is to magnify affected regions rather than show unreadable full-page thumbnails ([report surface](accessibility-report-surface.md)). So on a phone:
+
+- the picture shows at a readable scale in a box pinned above the lists;
+- selecting an item moves the picture to it;
+- a focused item always scrolls clear of the pinned box.
+
+This replaced the separate crops first planned here, since one picture that moves shows the element in its surroundings.
 
 | Layer              | What it draws                                                                                            | Harvested from     | Data                                              |
 | ------------------ | -------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------- |
@@ -48,11 +55,10 @@ Unlike the bookmarklets, which read `document.querySelectorAll`, the boxes come 
 
 ## 2. What the screen reader said (from sr-visualizer)
 
-The Tested journeys tab gets an announcement list above today's reader table, which stays in the annex as the full evidence.
+The announcement list sits in the Page view, beside the path it lists, rather than on the Tested journeys tab: selecting an item outlines its element, which the journeys tab has no picture for. The reader table stays on the Tested journeys tab as the full evidence.
 
-- **Each item, in order:** its number, the phrase as announced, and role and name.
-  - A category mark: landmark, heading, control, form field or text. It is taken from the role, not guessed from the words as sr-visualizer does.
-  - An item announced without a name is marked "No name" in Finding Red, the same rule as the Virtual reader status row.
+- **Each item, in order:** its number, the phrase as announced, and its role and name in words. That replaces sr-visualizer's colour dot, which showed its place in the list, not a meaning.
+- **"No name":** an item announced without a name is marked "No name" in Finding Red, the same rule as the Virtual reader status row.
 - **Selecting an item** outlines its element on the page, which is the Screen reader path layer.
   - The list items are buttons with `aria-current` on the selected one.
   - Previous and Next move through them, with "3 of 6".

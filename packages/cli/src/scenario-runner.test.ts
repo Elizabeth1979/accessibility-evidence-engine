@@ -195,7 +195,10 @@ function exampleSynthesisInputs() {
     }
   ];
 
-  return { report, views: { transcripts: [], actionReports, axeReports, comparisons, sweeps: [] } };
+  return {
+    report,
+    views: { transcripts: [], actionReports, axeReports, comparisons, sweeps: [], screens: [] }
+  };
 }
 
 test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, and visual evidence", () => {
@@ -246,7 +249,8 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     actionReports,
     axeReports,
     comparisons,
-    sweeps: []
+    sweeps: [],
+    screens: []
   });
   assert.match(html, /Your accessibility status/);
   assert.match(html, /Ask this report/);
@@ -491,7 +495,8 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
     actionReports: [],
     axeReports: [],
     comparisons: [],
-    sweeps: []
+    sweeps: [],
+    screens: []
   });
 
   assert.match(synthesis.conclusion, /no confirmed fixes were emitted/);
