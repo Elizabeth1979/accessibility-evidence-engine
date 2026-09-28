@@ -149,7 +149,7 @@ approval:
 
     await page.goto(pathToFileURL(result.reportFiles.html).href);
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(5);
+    await expect(tabs).toHaveCount(6);
     await expect(page.getByRole("tab", { name: "Status & plan" })).toHaveAttribute(
       "aria-selected",
       "true"

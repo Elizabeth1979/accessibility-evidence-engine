@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -374,6 +374,14 @@ interface IntegratedHtmlViews {
   axeReports: AxeReportView[];
   comparisons: InputComparisonView[];
   sweeps: SweepView[];
+  screens: ScreenView[];
+}
+
+/** A full-page screenshot and its size in pixels, read from its PNG header. */
+interface ScreenView {
+  path: string;
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -963,14 +971,15 @@ async function writeIntegratedReport(
   rootDir: string,
   aiSuggester: AiSuggester
 ): Promise<void> {
-  const [transcripts, actionReports, axeReports, comparisons, sweeps] = await Promise.all([
+  const [transcripts, actionReports, axeReports, comparisons, sweeps, screens] = await Promise.all([
     loadReaderTranscriptViews(report, rootDir),
     loadActionReportViews(report, rootDir),
     loadAxeReportViews(report, rootDir),
     loadInputComparisonViews(report, rootDir),
-    loadSweepViews(report, rootDir)
+    loadSweepViews(report, rootDir),
+    loadScreenViews(report, rootDir)
   ]);
-  const views = { transcripts, actionReports, axeReports, comparisons, sweeps };
+  const views = { transcripts, actionReports, axeReports, comparisons, sweeps, screens };
   report.synthesis = buildScenarioSynthesis(report, views);
   await addAiSuggestions(report, views, aiSuggester);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
@@ -1206,6 +1215,36 @@ function comparisonLaneView(value: unknown): InputComparisonView["keyboard"] {
     visible: typeof observation.visible === "boolean" ? observation.visible : undefined,
     text: optionalStringField(observation, "text")
   };
+}
+
+/** Each full-page screenshot's size, so the Page view can scale boxes onto it. */
+async function loadScreenViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<ScreenView[]> {
+  const paths = [
+    ...new Set(
+      report.artifacts
+        .filter((artifact) => artifact.kind === "full-page-screenshot")
+        .map((artifact) => String(artifact.path))
+    )
+  ];
+  return Promise.all(
+    paths.map(async (screenPath) => {
+      // A PNG's width and height are the two big-endian numbers after its signature and IHDR tag.
+      const header = Buffer.alloc(24);
+      const file = await open(resolveReportPath(rootDir, screenPath)).catch(() => undefined);
+      if (!file) return { path: screenPath };
+      try {
+        await file.read(header, 0, 24, 0);
+      } finally {
+        await file.close();
+      }
+      return header.toString("latin1", 1, 4) === "PNG"
+        ? { path: screenPath, width: header.readUInt32BE(16), height: header.readUInt32BE(20) }
+        : { path: screenPath };
+    })
+  );
 }
 
 async function loadSweepViews(
@@ -2642,6 +2681,7 @@ function renderIntegratedHtml(
   );
   const tabLinks = [
     ["overview", "Status & plan"],
+    ["page", "Page view"],
     [
       "findings",
       `Fix review (${report.summary.findings}${report.summary.advisories ? ` + ${report.summary.advisories} advisory` : ""})`
@@ -2809,6 +2849,14 @@ summary{cursor:pointer;font-weight:700}
 img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
 figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
 .image-viewer-trigger{display:block;cursor:zoom-in}.image-viewer-trigger:focus-visible{outline:3px solid var(--focus);outline-offset:3px}.image-dialog{width:min(94vw,76rem);max-width:none;max-height:92vh;margin:auto;padding:0;border:1px solid var(--line-strong);border-radius:12px;color:var(--ink);background:var(--paper)}.image-dialog::backdrop{background:rgb(9 42 34/.82)}.image-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;border-bottom:1px solid var(--line);background:#fff}.image-dialog-header h2{margin:0;font:700 clamp(1.25rem,3vw,1.75rem)/1.1 var(--serif)}.image-dialog-close{border:1px solid var(--line-strong);border-radius:8px;padding:.55rem .8rem;color:var(--forest-deep);background:var(--paper);font:750 .9rem/1 var(--sans);cursor:pointer}.image-dialog-close:hover{color:#fff;background:var(--forest)}.image-dialog-visual{display:grid;min-height:18rem;max-height:72vh;place-items:center;overflow:auto;padding:1rem;background:var(--wash)}.image-dialog-visual>img{max-width:none;width:auto;max-height:68vh;object-fit:contain}.image-dialog-visual .target-crop,.image-dialog-visual .issue-crop{width:min(100%,70rem);height:auto;aspect-ratio:var(--viewer-aspect);pointer-events:none;cursor:default}.image-dialog-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 1rem;margin:0;padding:.85rem 1.25rem;border-top:1px solid var(--line);background:#fff}.image-dialog-footer span{color:var(--muted)}.image-dialog-footer a{font-weight:750}
+.layer-toggles{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;align-items:center;margin:0 0 1.5rem;padding:.6rem 1rem;border:1px solid var(--line);border-radius:10px}.layer-toggles legend{padding:0 .3rem;font-weight:750}.layer-toggles label{display:inline-flex;gap:.45rem;align-items:center;cursor:pointer}.layer-toggles input{width:1.15rem;height:1.15rem;margin:0;accent-color:var(--forest)}.layer-toggles input:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
+.page-state{margin:0 0 3rem}.page-state>h3{margin:0;font:700 1.35rem/1.2 var(--serif)}.page-state>.technical-id{margin:.2rem 0 1rem}
+.page-view{display:grid;grid-template-columns:minmax(0,1fr) minmax(16rem,22rem);gap:1.5rem;align-items:start}
+.page-canvas{position:sticky;top:1rem;max-height:85vh;overflow:auto;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface)}.page-canvas:focus-visible{outline:3px solid var(--focus);outline-offset:2px}.page-canvas svg{display:block;width:100%;height:auto}
+.page-marker .halo{fill:none;stroke:#fff;stroke-width:6;vector-effect:non-scaling-stroke}.page-marker .outline{fill:none;stroke-width:3;vector-effect:non-scaling-stroke}.page-marker.fail .outline{stroke:var(--fail)}.page-marker.advisory .outline{stroke:var(--unknown)}.page-marker.neutral .outline{stroke:var(--ink);stroke-dasharray:8 5}.page-marker .badge{stroke:#fff;stroke-width:2}.page-marker.fail .badge{fill:var(--fail)}.page-marker.advisory .badge{fill:var(--unknown)}.page-marker.neutral .badge{fill:var(--ink)}.page-marker text{fill:#fff;font:700 17px/1 var(--sans);text-anchor:middle}.page-marker.current .halo{stroke:var(--marker);stroke-width:12}
+.page-lists h4{margin:0 0 .5rem;font:700 1.1rem/1.2 var(--serif)}.page-lists section+section{margin-top:1.75rem}.marker-list{margin:0;padding:0;list-style:none}.marker-item{display:flex;gap:.7rem;width:100%;padding:.55rem .6rem;border:0;border-bottom:1px solid var(--line);color:inherit;background:none;font:inherit;text-align:left;cursor:pointer}.marker-item:hover{background:var(--wash)}.marker-item[aria-current=true]{background:var(--unknown-wash);box-shadow:inset 4px 0 0 var(--marker)}.marker-item small,.marker-unplaced small{display:block;color:var(--muted)}.marker-unplaced{padding:.55rem .6rem;border-bottom:1px solid var(--line)}.marker-number{display:grid;flex:none;place-items:center;min-width:1.75rem;height:1.75rem;border-radius:50%;color:#fff;font-size:.85rem;font-weight:750}.marker-number.fail{background:var(--fail)}.marker-number.advisory{background:var(--unknown)}.marker-number.neutral{border-radius:4px;background:var(--ink)}.marker-flag{padding:0 .3rem;border-radius:4px;color:var(--fail);background:var(--fail-wash);font-size:.8rem;font-weight:750}.marker-nav{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0 0 .5rem}.marker-nav button{padding:.35rem .8rem;border:1px solid var(--line-strong);border-radius:6px;color:var(--forest-deep);background:var(--surface);font:650 .9rem/1.2 var(--sans);cursor:pointer}.marker-nav button:hover{color:#fff;background:var(--forest)}.marker-scope{color:var(--muted);font-size:.9rem}
+#panel-page:has([data-layer-toggle=issues]:not(:checked)) [data-layer=issues],#panel-page:has([data-layer-toggle=reader]:not(:checked)) [data-layer=reader]{display:none}
+@media(max-width:900px){.page-view{grid-template-columns:1fr}.page-canvas{top:0;max-height:45vh;z-index:1}.page-canvas svg{width:min(var(--page-width),180vw)}.page-lists :is(button,h4){scroll-margin-top:calc(45vh + 1rem)}}
 @media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}.before-after{grid-template-columns:1fr}.planner-tools,.section-intro{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals,.journey-proof{grid-template-columns:1fr;gap:1rem}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
@@ -2819,6 +2867,7 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 <main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div>${readerStatus ? `<div><strong>${escapeHtml(readerStatus.result)}</strong><span>virtual reader</span></div>` : ""}</div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
+<section id="panel-page" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>The page as tested</h2><p>Each issue and what the screen reader said, drawn where they were found. Select an item to see it on the page.</p></div></div>${renderPageView(report, views)}</section>
 <section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report)}</section>
 <section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer sweep</h3>${renderSweepOverview(views)}</section><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
@@ -2942,6 +2991,34 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
     activate(index);
     history.replaceState(null,'','#panel-findings');
     list.scrollIntoView();
+  }));
+
+  const pagePanel=document.querySelector('#panel-page');
+  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const selectMarker=button=>{
+    const state=button.closest('.page-state');
+    state.querySelectorAll('.marker-item[aria-current]').forEach(item=>item.removeAttribute('aria-current'));
+    state.querySelectorAll('.page-marker.current').forEach(shape=>shape.classList.remove('current'));
+    button.setAttribute('aria-current','true');
+    const readerList=button.closest('[data-reader-list]');
+    if(readerList){
+      const items=[...readerList.querySelectorAll('.marker-item')];
+      readerList.querySelector('[data-reader-count]').textContent=(items.indexOf(button)+1)+' of '+items.length;
+    }
+    const shape=state.querySelector('[data-marker-shape="'+button.dataset.marker+'"]');
+    const canvas=state.querySelector('.page-canvas');
+    if(!shape||!canvas)return;
+    shape.classList.add('current');
+    shape.parentNode.appendChild(shape);
+    const box=shape.getBoundingClientRect();
+    const view=canvas.getBoundingClientRect();
+    canvas.scrollBy({left:box.left+box.width/2-view.left-view.width/2,top:box.top+box.height/2-view.top-view.height/2,behavior:reducedMotion?'auto':'smooth'});
+  };
+  pagePanel?.querySelectorAll('.marker-item').forEach(button=>button.addEventListener('click',()=>selectMarker(button)));
+  pagePanel?.querySelectorAll('[data-reader-step]').forEach(step=>step.addEventListener('click',()=>{
+    const items=[...step.closest('[data-reader-list]').querySelectorAll('.marker-item')];
+    const current=items.findIndex(item=>item.getAttribute('aria-current')==='true');
+    selectMarker(items[current<0?0:Math.min(items.length-1,Math.max(0,current+Number(step.dataset.readerStep)))]);
   }));
 
   const filterButtons=[...document.querySelectorAll('[data-fix-filter]')];
@@ -3437,6 +3514,178 @@ function renderActionEvidenceLinks(
     .filter((entry): entry is [string, string] => Boolean(entry[0]))
     .map(([href, label]) => `<li><a href="${encodeURI(href)}">${escapeHtml(label)}</a></li>`)
     .join("")}</ul>`;
+}
+
+interface PageMarker {
+  id: string;
+  number: number;
+  box: { x: number; y: number; width: number; height: number };
+  title: string;
+  detail: string;
+  /** The finding's result, or neutral for the reader's path, which is not a result. */
+  tone: "fail" | "advisory" | "neutral";
+  flag?: string;
+}
+
+/** One screenshot and every issue and announcement located on it. */
+interface PageState {
+  screenshot?: string;
+  label: string;
+  pageUrl?: string;
+  width?: number;
+  height?: number;
+  issues: PageMarker[];
+  unplaced: Array<{ title: string; detail: string }>;
+  reader: PageMarker[];
+}
+
+/**
+ * Groups every located finding instance and reader announcement by the screenshot it was measured
+ * on, so each box is drawn on the page as it was when it was found and never on another capture.
+ */
+function buildPageStates(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews
+): PageState[] {
+  const states = new Map<string, PageState>();
+  const stateFor = (screenshot: string | undefined, label: string, pageUrl?: string) => {
+    const key = screenshot ?? `no-screenshot:${label}`;
+    let state = states.get(key);
+    if (!state) {
+      const screen = views.screens.find(({ path: screenPath }) => screenPath === screenshot);
+      state = {
+        screenshot,
+        label,
+        pageUrl,
+        width: screen?.width,
+        height: screen?.height,
+        issues: [],
+        unplaced: [],
+        reader: []
+      };
+      states.set(key, state);
+    }
+    return state;
+  };
+  for (const finding of report.synthesis.findings) {
+    const checkpoint = finding.checkpoints[0];
+    const action = report.actions.find(({ runId }) => runId === checkpoint?.runId);
+    const state = stateFor(
+      checkpoint?.screenshotPath,
+      checkpoint ? pageStateLabel(checkpoint.driver, checkpoint.actionId) : "Page",
+      action?.pageUrl
+    );
+    for (const instance of finding.instances) {
+      const title = findingFixLabel(finding);
+      const detail = `${instance.label} · ${finding.advisory ? "Advisory" : "Blocks release"}`;
+      if (!instance.targetBox) {
+        state.unplaced.push({ title, detail });
+        continue;
+      }
+      // Boxes are in page pixels; a screenshot at a higher pixel ratio is scaled to them.
+      state.width = instance.targetBox.pageWidth;
+      state.height = instance.targetBox.pageHeight;
+      state.issues.push({
+        id: "",
+        number: 0,
+        box: instance.targetBox,
+        title,
+        detail,
+        tone: finding.advisory ? "advisory" : "fail"
+      });
+    }
+  }
+  for (const transcript of views.transcripts) {
+    const laneId = path.posix.dirname(transcript.path);
+    const located = transcript.entries.filter(({ visualBounds }) => visualBounds);
+    if (located.length === 0) continue;
+    const first = report.actions.find(
+      (action) => action.laneId === laneId && action.actionId === readerActionId(located[0]!)
+    );
+    if (!first) continue;
+    const state = stateFor(
+      actionArtifactPath(report, first, "full-page-screenshot", "after"),
+      pageStateLabel(first.driver, first.actionId),
+      transcript.pageUrl
+    );
+    for (const entry of located) {
+      state.reader.push({
+        id: "",
+        number: entry.sequence,
+        box: entry.visualBounds!,
+        title: `“${entry.announcement}”`,
+        detail: [entry.role, entry.name].filter(Boolean).join(" · "),
+        tone: "neutral",
+        ...(entry.role && announcedWithoutName({ role: entry.role, name: entry.name })
+          ? { flag: "No name" }
+          : {})
+      });
+    }
+  }
+  return [...states.values()].map((state, stateIndex) => {
+    // Numbered in reading order down the page, the order a person scans the picture in.
+    state.issues
+      .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x)
+      .forEach((marker, index) => {
+        marker.number = index + 1;
+        marker.id = `page-${stateIndex}-issue-${index + 1}`;
+      });
+    state.reader.forEach((marker) => (marker.id = `page-${stateIndex}-reader-${marker.number}`));
+    return state;
+  });
+}
+
+function pageStateLabel(driver: LaneDriver, actionId: string): string {
+  return driver === "keyboard-pointer-sweep"
+    ? "As the keyboard and pointer sweep found it"
+    : driver === "portable-virtual-screen-reader"
+      ? "As the virtual screen reader read it"
+      : `${humanDriverName(driver)}: ${humanActionName(actionId).toLowerCase()}`;
+}
+
+/**
+ * The Page view: the page as tested with each issue and the screen reader's path drawn where they
+ * were found. The lists carry everything and the picture mirrors them, so the view works by
+ * keyboard, by screen reader and with no screenshot at all. The picture stays in view beside the
+ * lists, or above them on a phone, at a readable scale, and moves to the item selected.
+ */
+function renderPageView(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
+  const size = ({ issues, unplaced, reader }: PageState) =>
+    issues.length + unplaced.length + reader.length;
+  // The page state with the most on it first: usually the page as it loaded.
+  const states = buildPageStates(report, views)
+    .filter((state) => size(state) > 0)
+    .sort((a, b) => size(b) - size(a));
+  if (states.length === 0) {
+    return '<p class="empty">Nothing was located on the page: no finding or announcement recorded a position.</p>';
+  }
+  const hasReader = states.some(({ reader }) => reader.length > 0);
+  const toggles = `<fieldset class="layer-toggles"><legend>Show on the page</legend><label><input type="checkbox" data-layer-toggle="issues" checked> Issues</label>${hasReader ? '<label><input type="checkbox" data-layer-toggle="reader" checked> Screen reader path</label>' : ""}</fieldset>`;
+  const markerButton = (marker: PageMarker, drawn: boolean) =>
+    `<li><button type="button" class="marker-item"${drawn ? ` data-marker="${marker.id}"` : ""}><span class="marker-number ${marker.tone}" aria-hidden="true">${marker.number}</span><span><b>${escapeHtml(marker.title)}</b>${marker.flag ? ` <span class="marker-flag">${escapeHtml(marker.flag)}</span>` : ""}<small>${escapeHtml(marker.detail)}</small></span></button></li>`;
+  const sections = states
+    .map((state) => {
+      const drawable = Boolean(state.screenshot && state.width && state.height);
+      const issueList =
+        state.issues.length + state.unplaced.length
+          ? `<section data-layer="issues"><h4>Issues on this page (${state.issues.length + state.unplaced.length})</h4><ol class="marker-list">${state.issues.map((marker) => markerButton(marker, drawable)).join("")}${state.unplaced.map(({ title, detail }) => `<li class="marker-unplaced"><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)} · no position was recorded</small></li>`).join("")}</ol></section>`
+          : "";
+      const readerList = state.reader.length
+        ? `<section data-layer="reader" data-reader-list><h4>What the screen reader said (${state.reader.length})</h4><p class="marker-nav"><button type="button" data-reader-step="-1">Previous</button><span data-reader-count aria-live="polite">${state.reader.length} announcements</span><button type="button" data-reader-step="1">Next</button></p><ol class="marker-list">${state.reader.map((marker) => markerButton(marker, drawable)).join("")}</ol><p class="marker-scope">Only what the scenario's reader commands reached. Add commands to cover more of the page.</p></section>`
+        : "";
+      const shape = (marker: PageMarker) => {
+        const { x, y, width, height } = marker.box;
+        const rect = `x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="${(width + 8).toFixed(1)}" height="${(Math.max(height, 2) + 8).toFixed(1)}"`;
+        const badgeX = marker.tone === "neutral" ? x + width + 6 : x - 16;
+        return `<g class="page-marker ${marker.tone}" data-marker-shape="${marker.id}"><rect class="halo" ${rect}/><rect class="outline" ${rect}/><g transform="translate(${badgeX.toFixed(1)} ${(y - 16).toFixed(1)})"><rect class="badge" width="32" height="28" rx="${marker.tone === "neutral" ? 4 : 14}"/><text x="16" y="20">${marker.number}</text></g></g>`;
+      };
+      const picture = drawable
+        ? `<div class="page-canvas" tabindex="0" role="group" aria-label="${escapeAttribute(state.label)}: the page as tested, scrollable" style="--page-width:${state.width}px"><svg viewBox="0 0 ${state.width} ${state.height}" role="img" aria-label="${escapeAttribute(`Page as tested with ${state.issues.length} issue markers${state.reader.length ? ` and ${state.reader.length} screen reader markers` : ""}; the lists name each one`)}"><g aria-hidden="true"><image href="${escapeAttribute(encodeURI(state.screenshot!))}" width="${state.width}" height="${state.height}" preserveAspectRatio="none"/><g data-layer="reader">${state.reader.map(shape).join("")}</g><g data-layer="issues">${state.issues.map(shape).join("")}</g></g></svg></div>`
+        : '<p class="empty">No screenshot was captured for this page state, so only the lists are shown.</p>';
+      return `<section class="page-state"><h3>${escapeHtml(state.label)}</h3>${state.pageUrl ? `<p class="technical-id">${escapeHtml(state.pageUrl)}</p>` : ""}<div class="page-view">${picture}<div class="page-lists">${issueList}${readerList}</div></div></section>`;
+    })
+    .join("");
+  return `${toggles}${sections}`;
 }
 
 function renderReaderOverview(
