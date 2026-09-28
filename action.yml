@@ -1,0 +1,92 @@
+name: Accessibility Evidence Engine
+description: Checks accessibility with AEE and keeps one pull-request comment with every fix and its pattern.
+branding:
+  icon: eye
+  color: green
+
+inputs:
+  run:
+    description: >-
+      A scenario file (.yml or .yaml), run with `aee run`, or a command that runs Playwright tests
+      importing `@aee/cli/test`, such as `npx playwright test`.
+    required: true
+  fail-on:
+    description: >-
+      When the job fails: `blocking` on a finding that blocks release, `incomplete` also when the
+      verdict is undecided, or `never`. A failing test command fails the job either way.
+    default: blocking
+  ai-provider:
+    description: >-
+      Where allowlisted AI suggestions come from: `stub` (none), `local`, `claude` or `openai`.
+      `claude` and `openai` read ANTHROPIC_API_KEY or OPENAI_API_KEY from the step's env.
+    default: stub
+  reports:
+    description: The folder a test command writes its results to; every assessment under it is read.
+    default: test-results
+  github-token:
+    description: Posts the comment; it needs the pull-requests write permission.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Install AEE
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci --no-audit --no-fund
+        npm run build
+
+    - name: Install Chromium for a scenario
+      if: endsWith(inputs.run, '.yml') || endsWith(inputs.run, '.yaml')
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npx playwright install --with-deps chromium
+
+    # Inputs reach the shell as environment variables, never pasted into the script.
+    - name: Run AEE
+      id: run
+      shell: bash
+      env:
+        AEE_RUN: ${{ inputs.run }}
+        AEE_LLM_PROVIDER: ${{ inputs.ai-provider }}
+        AEE_OUTPUT: ${{ runner.temp }}/aee-output
+      run: |
+        status=0
+        if [[ "$AEE_RUN" =~ \.ya?ml$ ]]; then
+          node "$GITHUB_ACTION_PATH/packages/cli/dist/index.js" run "$AEE_RUN" --output "$AEE_OUTPUT" || status=$?
+        else
+          bash -c "$AEE_RUN" || status=$?
+        fi
+        echo "status=$status" >> "$GITHUB_OUTPUT"
+
+    - name: Keep the reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: aee-reports
+        path: |
+          ${{ runner.temp }}/aee-output
+          ${{ inputs.reports }}
+        if-no-files-found: ignore
+
+    - name: Comment on the pull request
+      if: always()
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        AEE_FAIL_ON: ${{ inputs.fail-on }}
+        AEE_OUTPUT: ${{ runner.temp }}/aee-output
+        AEE_REPORTS: ${{ inputs.reports }}
+        RUN_STATUS: ${{ steps.run.outputs.status }}
+      run: |
+        status=0
+        node "$GITHUB_ACTION_PATH/packages/cli/dist/index.js" comment "$AEE_OUTPUT" "$AEE_REPORTS" \
+          --post --fail-on "$AEE_FAIL_ON" || status=$?
+        # A test command that failed fails the job too, whatever the accessibility verdict.
+        if [ "${RUN_STATUS:-1}" != "0" ]; then exit "${RUN_STATUS:-1}"; fi
+        exit "$status"
