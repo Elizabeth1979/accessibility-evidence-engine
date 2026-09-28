@@ -29,9 +29,25 @@ jobs:
         run: |
           npm run build
           bash scripts/start-local-model.sh
-      - run: npm run site:shots
-      - if: always()
-        run: grep -h "GIN\|level=ERROR\|level=WARN" "$RUNNER_TEMP/ollama/serve.log" | tail -60
+      - name: Measure one answer
+        run: |
+          cat > measure.js <<'JS'
+          // Temporary: one specialist-sized question, timed, with the model's default and with thinking off.
+          const { ACCESSIBILITY_ENGINEER_PROMPT, DEFAULT_LOCAL_MODEL } = require("@aee/ai-fixes");
+          const input = { selector: "#archive-project", role: "button", nearbyHeading: "Projects", nearbyText: "Project Alpha Website accessibility review", iconDescription: "<svg><path d=\"M4 8h16v12H4zM3 4h18v4H3zM9 12h6\"/></svg>" };
+          (async () => {
+            for (const think of ["default", false, "default"]) {
+              const started = Date.now();
+              const r = await fetch("http://127.0.0.1:11434/api/chat", { method: "POST", body: JSON.stringify({
+                model: DEFAULT_LOCAL_MODEL, stream: false, format: "json", options: { temperature: 0 },
+                ...(think === "default" ? {} : { think }),
+                messages: [{ role: "system", content: `${ACCESSIBILITY_ENGINEER_PROMPT}\nAnswer with only a JSON object {"text": string, "confidence": number}.` }, { role: "user", content: JSON.stringify(input) }]
+              }) }).then((response) => response.json());
+              console.log(JSON.stringify({ think, seconds: (Date.now() - started) / 1000, promptTokens: r.prompt_eval_count, promptSeconds: r.prompt_eval_duration / 1e9, outputTokens: r.eval_count, outputSeconds: r.eval_duration / 1e9, thinkingChars: (r.message?.thinking ?? "").length, content: r.message?.content, error: r.error }));
+            }
+          })();
+          JS
+          node measure.js
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
