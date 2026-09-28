@@ -338,11 +338,11 @@ test("a best-practice result is reported as advisory and never blocks release", 
   assert.equal(advisory?.ruleId, "empty-heading");
   assert.equal(advisory?.advisory, true);
   assert.equal(report.synthesis.affectedInstancesAtLargestCheckpoint, 4);
-  assert.match(report.synthesis.conclusion, /1 best-practice result is advisory/);
-  assert.match(semantics?.detail ?? "", /Best practice, advisory: Headings should not be empty/);
+  assert.match(report.synthesis.conclusion, /1 advisory result does not block release/);
+  assert.match(semantics?.detail ?? "", /Advisory: Headings should not be empty/);
   assert.match(
     html.match(/<article [^>]*id="review-empty-heading">[\s\S]*?<\/article>/)?.[0] ?? "",
-    /<span class="badge unknown">Best practice<\/span>/
+    /<span class="badge unknown">Advisory<\/span>/
   );
 });
 

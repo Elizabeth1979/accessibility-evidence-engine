@@ -23,7 +23,8 @@
     "dist/model-providers.d.ts",
     "dist/specialists.js",
     "dist/specialists.js.map",
-    "dist/specialists.d.ts"
+    "dist/specialists.d.ts",
+    "prompts/accessibility-engineer.md"
   ],
   "engines": {
     "node": ">=22"

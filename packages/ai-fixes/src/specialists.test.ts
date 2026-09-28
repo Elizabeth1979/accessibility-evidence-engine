@@ -5,11 +5,14 @@ import test from "node:test";
 
 import {
   accessibleNameSpecialist,
+  askSpecialist,
   imagePurposeSpecialist,
   imageRoleFromMarkup,
   proposeImageAlternativeFix,
+  SPECIALISTS,
   type ImagePurposeContext,
-  type ModelProvider
+  type ModelProvider,
+  type ModelRequest
 } from "./index";
 
 /** The remediation registry, read as a file: the AI package does not depend on @aee/schemas. */
@@ -18,10 +21,30 @@ const registry = JSON.parse(
 ) as { entries: Array<{ id: string; ai: { specialistId?: string; outputs: string[] } }> };
 
 test("each specialist is allowlisted in the registry and answers with exactly its outputs", () => {
-  for (const specialist of [accessibleNameSpecialist, imagePurposeSpecialist]) {
+  for (const specialist of SPECIALISTS) {
     const entry = registry.entries.find(({ ai }) => ai.specialistId === specialist.id);
     assert.ok(entry, `${specialist.id} is not allowlisted in the registry.`);
     assert.deepEqual(specialist.schema.required.sort(), [...entry.ai.outputs].sort());
+  }
+});
+
+test("every specialist runs with the accessibility-engineer prompt first", async () => {
+  const prompt = readFileSync(
+    path.join(__dirname, "../prompts/accessibility-engineer.md"),
+    "utf8"
+  ).trim();
+  for (const specialist of SPECIALISTS) {
+    const requests: ModelRequest[] = [];
+    const provider: ModelProvider = {
+      id: "recorder",
+      async ask(request) {
+        requests.push(request);
+        throw new Error("recorded");
+      }
+    };
+    await assert.rejects(askSpecialist(specialist, { selector: "#x" }, provider), /recorded/);
+    assert.ok(requests[0]?.instructions.startsWith(prompt), `${specialist.id} ran without it.`);
+    assert.ok(requests[0]?.instructions.endsWith(specialist.instructions));
   }
 });
 

@@ -334,7 +334,7 @@ The manifest indexes the trace, JSON and Markdown reports, run and bundle metada
 
 ## Keyboard and pointer sweep
 
-`runKeyboardPointerSweepLane(...)` checks one page by keyboard and mouse with no authored steps. It tabs to every stop, then reports mouse targets Tab never reaches (`pointer-only`) and content hover shows that keyboard focus never does (`hover-only`). With `activateControls: true` it also presses each on-page control by keyboard and by mouse from a fresh page, and reports a different result (`activation-differs`) or focus left on nothing visible (`focus-lost`). Links and form submit buttons are never pressed, and any navigation outside the allowed origins is stopped before it leaves the page.
+`runKeyboardPointerSweepLane(...)` checks one page by keyboard and mouse with no authored steps. It tabs to every stop, then reports mouse targets Tab never reaches (`pointer-only`) and content hover shows that keyboard focus never does (`hover-only`). It also compares how text looks with what the accessibility tree says, and reports a short line styled as a title (bold and larger than the body text, or 40% larger) that has no heading role (`looks-like-heading`). That one is advisory: typography cannot prove the author meant a heading, so it never blocks release. With `activateControls: true` it also presses each on-page control by keyboard and by mouse from a fresh page, and reports a different result (`activation-differs`) or focus left on nothing visible (`focus-lost`). Links and form submit buttons are never pressed, and any navigation outside the allowed origins is stopped before it leaves the page.
 
 ```ts
 const sweep = await runKeyboardPointerSweepLane({

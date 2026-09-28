@@ -271,7 +271,7 @@ interface FindingSynthesis {
   severity: string;
   /** The status row this finding belongs to. */
   area: "keyboard" | "semantics" | "contrast";
-  /** A best-practice result: reported, but it never blocks release. */
+  /** An axe best-practice rule or a heuristic sweep check: reported, but it never blocks release. */
   advisory: boolean;
   wcagCriteria: string[];
   /** The a11y-skills pattern that explains how to build this correctly, when the registry maps the rule. */
@@ -364,31 +364,49 @@ interface IntegratedHtmlViews {
   sweeps: SweepView[];
 }
 
-/** How the report names each sweep finding, who it affects, and how to fix it. */
-const SWEEP_FINDING_TEXT: Record<SweepFindingKind, { title: string; impact: string; fix: string }> =
-  {
-    "pointer-only": {
-      title: "Works with a mouse only",
-      impact: "Keyboard users cannot reach or press it.",
-      fix: "Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space."
-    },
-    "hover-only": {
-      title: "Shown on mouse hover only",
-      impact: "Keyboard and touch-screen users never see this content.",
-      fix: "Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element."
-    },
-    "activation-differs": {
-      title: "The keyboard does something different from a click",
-      impact: "Keyboard users do not get the result a mouse user gets.",
-      fix: "Make Enter, or Space for check boxes and switches, do exactly what a click does; a native button does this for free."
-    },
-    "focus-lost": {
-      title: "Focus is lost after an action",
-      impact:
-        "Keyboard and screen-reader users lose their place and have to start again from the top of the page.",
-      fix: "After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control."
-    }
-  };
+/**
+ * How the report names each sweep finding, who it affects, how to fix it, and its status row. A
+ * heuristic check is advisory: it measures how something looks, and only a person can confirm what
+ * the author meant.
+ */
+const SWEEP_FINDING_TEXT: Record<
+  SweepFindingKind,
+  { title: string; impact: string; fix: string; area: FindingSynthesis["area"]; advisory?: true }
+> = {
+  "pointer-only": {
+    title: "Works with a mouse only",
+    impact: "Keyboard users cannot reach or press it.",
+    fix: "Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space.",
+    area: "keyboard"
+  },
+  "hover-only": {
+    title: "Shown on mouse hover only",
+    impact: "Keyboard and touch-screen users never see this content.",
+    fix: "Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element.",
+    area: "keyboard"
+  },
+  "activation-differs": {
+    title: "The keyboard does something different from a click",
+    impact: "Keyboard users do not get the result a mouse user gets.",
+    fix: "Make Enter, or Space for check boxes and switches, do exactly what a click does; a native button does this for free.",
+    area: "keyboard"
+  },
+  "focus-lost": {
+    title: "Focus is lost after an action",
+    impact:
+      "Keyboard and screen-reader users lose their place and have to start again from the top of the page.",
+    fix: "After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control.",
+    area: "keyboard"
+  },
+  "looks-like-heading": {
+    title: "Looks like a heading, but is not one",
+    impact:
+      "Screen-reader users who move through the page by headings skip this section title, and do not hear where the section starts.",
+    fix: "Make it a real heading (h2 to h6) at the level the design shows. A summary is a button, so a heading inside it is lost: put the heading before the details element, or around the whole disclosure.",
+    area: "semantics",
+    advisory: true
+  }
+};
 
 function isSweepFindingKind(ruleId: string): ruleId is SweepFindingKind {
   return Object.hasOwn(SWEEP_FINDING_TEXT, ruleId);
@@ -636,7 +654,7 @@ function collectSweepFindings(
       id: `${sweep.laneId}:${kind}`,
       ruleId: kind,
       message: SWEEP_FINDING_TEXT[kind].title,
-      severity: "high",
+      severity: SWEEP_FINDING_TEXT[kind].advisory ? "low" : "high",
       source: { journeyId, laneId: sweep.laneId }
     });
   }
@@ -781,7 +799,9 @@ function createIntegratedReport(input: {
     input.failedArtifacts === 0 &&
     input.diagnostics.length === 0;
   // Axe failures arrive through the actions' release verdicts; sweep findings have no action.
-  const sweepFailed = input.findings.some(({ ruleId }) => isSweepFindingKind(String(ruleId)));
+  const sweepFailed = input.findings.some(
+    (finding) => isSweepFindingKind(String(finding.ruleId)) && !isAdvisoryFinding(finding)
+  );
   const verdict =
     failed > 0 || sweepFailed ? "fail" : !complete || unknown > 0 ? "unknown" : "pass";
   const report: ScenarioIntegratedReport = {
@@ -1242,7 +1262,7 @@ function buildScenarioSynthesis(
     ? ` ${uniqueIncompleteRules.length} distinct Axe rule${uniqueIncompleteRules.length === 1 ? " remains" : "s remain"} unresolved and require review.`
     : "";
   const advisoryNote = advisoryCount
-    ? ` ${advisoryCount} best-practice result${advisoryCount === 1 ? " is advisory and does" : "s are advisory and do"} not block release.`
+    ? ` ${advisoryCount} advisory result${advisoryCount === 1 ? " does" : "s do"} not block release.`
     : "";
   return {
     conclusion: `${positive.length ? `${positive.join("; ")}. ` : ""}Within the user-authored scope, ${negative}.${unresolved}${advisoryNote}`,
@@ -1279,9 +1299,7 @@ function buildStatusAreas(
     findings.filter((finding) => finding.area === area && !finding.advisory);
   const advisoryNote = (area: FindingSynthesis["area"]) => {
     const advisory = findings.filter((finding) => finding.area === area && finding.advisory);
-    return advisory.length
-      ? ` Best practice, advisory: ${advisory.map(({ title }) => title).join("; ")}.`
-      : "";
+    return advisory.length ? ` Advisory: ${advisory.map(({ title }) => title).join("; ")}.` : "";
   };
   const fixRequired = (id: StatusArea["id"], label: string, detail: string): StatusArea => ({
     id,
@@ -1593,8 +1611,8 @@ function buildSweepFindingSynthesis(
     ruleId: kind,
     title: text.title,
     severity: String(finding.severity ?? "high"),
-    area: "keyboard",
-    advisory: false,
+    area: text.area,
+    advisory: Boolean(text.advisory),
     wcagCriteria: entry.requirements
       .filter(({ standard, relationship }) => standard === "WCAG" && relationship === "primary")
       .map(({ requirementId }) => `WCAG ${requirementId}`),
@@ -1651,9 +1669,16 @@ function actionArtifactPath(
   return artifact ? String(artifact.path) : undefined;
 }
 
-/** A best-practice result from axe, tagged so by the axe judge: reported, never blocking. */
+/**
+ * Reported, never blocking: an axe best-practice result (the axe judge tags it so) or a sweep
+ * finding from a heuristic check.
+ */
 function isAdvisoryFinding(finding: Record<string, unknown>): boolean {
-  return Array.isArray(finding.tags) && finding.tags.includes("best-practice");
+  const ruleId = String(finding.ruleId);
+  return (
+    (Array.isArray(finding.tags) && finding.tags.includes("best-practice")) ||
+    (isSweepFindingKind(ruleId) && Boolean(SWEEP_FINDING_TEXT[ruleId].advisory))
+  );
 }
 
 /** Which status row an axe rule belongs to, from axe's own category tags. */
@@ -2053,7 +2078,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     `- ${report.summary.actions} user-authored actions evaluated across ${report.synthesis.lanes.length} active lanes`,
     `- ${report.synthesis.directJudgments.passed} direct judgments passed, ${report.synthesis.directJudgments.failed} failed, ${report.synthesis.directJudgments.unknown} unresolved`,
     `- ${report.summary.findings} grouped fixes covering ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected element-rule instances at the largest checkpoint`,
-    `- ${report.summary.advisories} best-practice results, advisory: they do not block release`,
+    `- ${report.summary.advisories} advisory results: they do not block release`,
     `- ${report.synthesis.uniqueIncompleteRules.length} unique incomplete Axe rules across ${report.synthesis.incompleteRuleResults} checkpoint results`,
     `- ${report.summary.artifacts} indexed artifacts`,
     "",
@@ -2081,7 +2106,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   if (report.findings.length === 0) lines.push("No findings were emitted.");
   for (const finding of report.synthesis.findings) {
     lines.push(
-      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}${finding.advisory ? " (best practice, advisory)" : ""}`,
+      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}${finding.advisory ? " (advisory)" : ""}`,
       "",
       finding.conclusion,
       "",
@@ -2217,7 +2242,7 @@ function renderIntegratedHtml(
     ["overview", "Status & plan"],
     [
       "findings",
-      `Fix review (${report.summary.findings}${report.summary.advisories ? ` + ${report.summary.advisories} best practice` : ""})`
+      `Fix review (${report.summary.findings}${report.summary.advisories ? ` + ${report.summary.advisories} advisory` : ""})`
     ],
     ["journeys", "Tested journeys"],
     ["media", `Visuals & video (${videos.length + screenshots.length})`],
@@ -2311,7 +2336,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
 .section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
 .planner-tools{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.planner-tools p{margin:0}.fix-filters{display:flex;flex-wrap:wrap;gap:.5rem}
-.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:4rem minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}
+.fix-list{margin-top:1rem}.fix-row{display:grid;grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr) 13rem;gap:1.5rem;padding:2rem 0;border-bottom:1px solid var(--line-strong)}.fix-order{display:flex;flex-direction:column;align-items:center;gap:.5rem}.fix-order span{color:var(--fail);font-weight:850}
 .fix-order span.advisory{color:var(--unknown)}.fix-order strong{font:700 2.6rem/1 var(--serif)}.fix-main{min-width:0}.fix-main>header{display:flex;justify-content:space-between;gap:1rem}.fix-main h3{max-width:30ch;margin:0;font:700 clamp(1.4rem,3vw,2rem)/1.1 var(--serif)}.effort{padding-left:1.5rem;border-left:1px solid var(--line)}.effort>strong{display:block;font:700 1.5rem/1.2 var(--serif)}.effort>span{color:var(--forest);font-weight:800}.effort p{color:var(--muted);font-size:.9rem}
 .fix-scope{display:flex;flex-wrap:wrap;gap:.25rem .65rem;margin:1rem 0;padding:.8rem 1rem;background:var(--wash);border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}.fix-scope strong{color:var(--forest)}.fix-scope span{color:var(--muted)}
 .before-after{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.25rem 0}.before-after figure{min-width:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.issue-crop{position:relative;display:block;height:15rem;overflow:hidden;background:#121212}.before-after img{width:100%;height:100%;object-fit:cover;object-position:top;border:0;border-radius:0}.current-state[data-rule-id="color-contrast"] .issue-crop img{transform:scale(1.85);transform-origin:50% 3%}.issue-crop b{position:absolute;left:.6rem;bottom:.6rem;padding:.32rem .5rem;border-radius:4px;color:#fff;background:rgb(9 42 34/.94);font-size:.72rem;letter-spacing:.02em}.target-crop-grid{display:grid;gap:.65rem;padding:.65rem;background:var(--wash)}.target-crop{position:relative;display:block;height:8.4rem;overflow:hidden;border:1px solid var(--line-strong);border-radius:8px;background:var(--forest-deep);color:#fff}.target-crop img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:var(--target-x) var(--target-y);filter:brightness(.78)}.target-crop i{position:absolute;left:var(--target-left);top:var(--target-y);width:var(--target-width);min-width:3rem;height:2rem;transform:translateY(-50%);border:3px solid var(--marker);border-radius:4px;background:rgb(246 183 60/.12)}.target-crop b,.target-crop span{position:absolute;left:.6rem;z-index:1;padding:.2rem .4rem;border-radius:4px;background:rgb(9 42 34/.94)}.target-crop b{top:.55rem}.target-crop span{bottom:.55rem;font-size:.72rem}.before-after figcaption{display:flex;flex-direction:column;gap:.35rem;margin:0;padding:.8rem 1rem;border-top:1px solid var(--line)}.before-after figcaption span{color:var(--muted);font-size:.85rem}.visual-targets{display:grid;gap:.35rem;margin:.25rem 0;padding:0;list-style:none}.visual-targets li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.2rem .75rem;padding:.4rem 0;border-top:1px solid var(--line)}.visual-targets b{font-size:.82rem}.visual-targets span{font-size:.78rem}.semantic-evidence{display:flex;min-height:15rem;flex-direction:column;justify-content:center;gap:.7rem;padding:1.25rem;background:var(--wash)}.semantic-evidence>strong{font:700 1.35rem/1.15 var(--serif)}.semantic-evidence p{margin:0;color:var(--muted)}.semantic-evidence code{display:block;margin-top:.35rem;padding:.65rem;background:#fff;border:1px solid var(--line);font-size:.74rem}.instance-chips{display:flex;flex-wrap:wrap;gap:.4rem}.instance-chips span{padding:.28rem .55rem;border:1px solid var(--line-strong);border-radius:999px;background:#fff;font-size:.72rem;font-weight:750}.preview-stage{display:flex;align-items:center;justify-content:center;gap:1rem;min-height:15rem;padding:1.25rem;background:var(--wash)}.semantic-preview .preview-stage>div:not(.change-arrow){display:flex;flex-direction:column;gap:.6rem}.semantic-preview .preview-stage span{font-size:.76rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}.semantic-preview code{display:block;padding:.8rem;background:#fff;border:1px solid var(--line)}.change-arrow{color:var(--forest);font:700 2rem/1 var(--serif)}.contrast-pair{display:flex;flex:1;min-width:0;flex-direction:column;gap:.45rem;color:var(--ink)}.contrast-pair>strong{font-size:.9rem}.contrast-pair small{color:var(--muted);line-height:1.45}.color-field{display:flex;min-height:6rem;align-items:center;justify-content:center;border:1px solid var(--line-strong);border-radius:8px}.color-field i{display:block;width:56%;height:1.15rem;border-radius:999px}.instance-list{width:100%;min-width:0;max-width:100%;overflow:hidden;margin:1.2rem 0;padding:1rem;background:#fff;border:1px solid var(--line-strong);border-radius:8px}.instance-list summary{color:var(--forest);font-weight:800}.instance-list>p{max-width:75ch;color:var(--muted)}.instance-list .table-wrap{width:100%;min-width:0;max-width:100%;overflow-x:auto}.instance-list table{font-size:.84rem}.instance-list th:first-child,.instance-list td:first-child{width:3rem;text-align:right}.instance-list td:nth-child(2){min-width:12rem}.instance-list td:nth-child(3){min-width:12rem}.instance-list td:last-child{min-width:24rem}.instance-list td small{display:block;margin-top:.45rem;color:var(--muted);line-height:1.4}.fix-actions{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem}.fix-actions a{font-weight:750}.estimate-note{max-width:75ch;color:var(--muted);font-size:.88rem}
@@ -2382,7 +2407,7 @@ summary{cursor:pointer;font-weight:700}
 img,video{display:block;max-width:100%;height:auto;border:1px solid var(--line-strong);border-radius:8px;background:#000}
 figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywhere}.raw-link{font-size:.92rem;font-weight:700}.empty{color:var(--muted);font-style:italic}
 .image-viewer-trigger{display:block;cursor:zoom-in}.image-viewer-trigger:focus-visible{outline:3px solid var(--focus);outline-offset:3px}.image-dialog{width:min(94vw,76rem);max-width:none;max-height:92vh;margin:auto;padding:0;border:1px solid var(--line-strong);border-radius:12px;color:var(--ink);background:var(--paper)}.image-dialog::backdrop{background:rgb(9 42 34/.82)}.image-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 1.25rem;border-bottom:1px solid var(--line);background:#fff}.image-dialog-header h2{margin:0;font:700 clamp(1.25rem,3vw,1.75rem)/1.1 var(--serif)}.image-dialog-close{border:1px solid var(--line-strong);border-radius:8px;padding:.55rem .8rem;color:var(--forest-deep);background:var(--paper);font:750 .9rem/1 var(--sans);cursor:pointer}.image-dialog-close:hover{color:#fff;background:var(--forest)}.image-dialog-visual{display:grid;min-height:18rem;max-height:72vh;place-items:center;overflow:auto;padding:1rem;background:var(--wash)}.image-dialog-visual>img{max-width:none;width:auto;max-height:68vh;object-fit:contain}.image-dialog-visual .target-crop,.image-dialog-visual .issue-crop{width:min(100%,70rem);height:auto;aspect-ratio:var(--viewer-aspect);pointer-events:none;cursor:default}.image-dialog-footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem 1rem;margin:0;padding:.85rem 1.25rem;border-top:1px solid var(--line);background:#fff}.image-dialog-footer span{color:var(--muted)}.image-dialog-footer a{font-weight:750}
-@media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:3rem minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
+@media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}.before-after{grid-template-columns:1fr}.planner-tools,.section-intro{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals,.journey-proof{grid-template-columns:1fr;gap:1rem}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
 @media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child,.score-facts div:nth-child(odd){padding:1rem 0;border-left:0;border-right:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
@@ -2547,7 +2572,7 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
     const row=(id)=>{const area=knowledge.status.find(candidate=>candidate.id===id);return area?area.label+': '+area.result+'. '+area.detail:'';};
     if(q.includes('keyboard')||q.includes('pointer')||q.includes('hover')||q.includes('focus'))return row('keyboard')+' This does not prove every control or page journey is keyboard accessible.';
     if(q.includes('screen reader')||q.includes('reader')||q.includes('announcement'))return row('reader')+' This is semantic simulation evidence, not VoiceOver or NVDA fidelity testing.';
-    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.blocking+' grouped fixes block release, covering '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint.'+(knowledge.advisories?' '+knowledge.advisories+' best-practice results are advisory and do not block release.':'')+' '+knowledge.incompleteRules.length+' rule types remain incomplete and need review'+(knowledge.incompleteRules.length?': '+knowledge.incompleteRules.join(', '):'')+'.';
+    if(q.includes('axe')||q.includes('automatic')||q.includes('incomplete')||q.includes('review'))return knowledge.blocking+' grouped fixes block release, covering '+knowledge.affectedInstancesAtLargestCheckpoint+' affected instances at the largest checkpoint.'+(knowledge.advisories?' '+knowledge.advisories+' advisory results do not block release.':'')+' '+knowledge.incompleteRules.length+' rule types remain incomplete and need review'+(knowledge.incompleteRules.length?': '+knowledge.incompleteRules.join(', '):'')+'.';
     if(q.includes('ai'))return 'No AI generated the conclusions in this report. The answers here are deterministic summaries of local captured evidence. AI may be used later only where the report labels it and must be verified.';
     if(q.includes('bad')||q.includes('good')||q.includes('status')||q.includes('score')||q.includes('accessible')||q.includes('release')){
       const scopeNote=' '+knowledge.status.map(area=>area.label+': '+area.result).join('; ')+'. This is not a whole-site accessibility score.';
@@ -2626,22 +2651,27 @@ function renderSweepOverview(views: IntegratedHtmlViews): string {
         return `<article class="finding-dossier"><p>${escapeHtml(readError ?? "The sweep record could not be read.")}</p></article>`;
       }
       const findings = document.findings ?? [];
+      const blocking = findings.filter(({ kind }) => !SWEEP_FINDING_TEXT[kind].advisory);
+      // Advisory results never fail the sweep's badge, as they never fail its status row.
       const badge =
         document.status !== "completed"
           ? { verdict: "unknown", label: document.status }
-          : findings.length
+          : blocking.length
             ? {
                 verdict: "fail",
-                label: `${findings.length} finding${findings.length === 1 ? "" : "s"}`
+                label: `${blocking.length} finding${blocking.length === 1 ? "" : "s"}`
               }
-            : { verdict: "pass", label: "No findings" };
+            : findings.length
+              ? { verdict: "unknown", label: `${findings.length} advisory` }
+              : { verdict: "pass", label: "No findings" };
       const pressed = document.activateControls
         ? `${document.activated?.length ?? 0} controls pressed by keyboard and by mouse`
         : `Controls not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed`;
       const rows = findings
         .map((finding, index) => {
           const { label, selector } = sweepFindingInstance(finding, index);
-          return `<li><strong>${escapeHtml(SWEEP_FINDING_TEXT[finding.kind].title)}:</strong> ${escapeHtml(label)} <code>${escapeHtml(selector)}</code></li>`;
+          const { title, advisory } = SWEEP_FINDING_TEXT[finding.kind];
+          return `<li><strong>${escapeHtml(title)}${advisory ? " (advisory)" : ""}:</strong> ${escapeHtml(label)} <code>${escapeHtml(selector)}</code></li>`;
         })
         .join("");
       return `<article class="finding-dossier"><header><div><h4>${escapeHtml(document.targetUrl)}</h4><p>${document.tabStops?.length ?? 0} tab stops · ${escapeHtml(pressed)}</p></div><span class="badge ${badge.verdict}">${escapeHtml(badge.label)}</span></header>${document.diagnostics ? `<p>${escapeHtml(document.diagnostics.join(" "))}</p>` : ""}${rows ? `<ul>${rows}</ul>` : ""}<p class="evidence-links"><a href="${encodeURI(sweepPath)}">Open the sweep record</a>${screenshotPath ? ` <a href="${encodeURI(screenshotPath)}">Open the page capture</a>` : ""}</p></article>`;
@@ -2672,10 +2702,10 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
   return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
 }
 
-/** A best-practice result is labelled as such, never with a severity that suggests it blocks. */
+/** An advisory result is labelled as such, never with a severity that suggests it blocks. */
 function renderFindingBadge(finding: FindingSynthesis): string {
   return finding.advisory
-    ? '<span class="badge unknown">Best practice</span>'
+    ? '<span class="badge unknown">Advisory</span>'
     : `<span class="badge fail">${escapeHtml(finding.severity)}</span>`;
 }
 
@@ -2747,7 +2777,7 @@ function renderPrioritySnapshot(report: ScenarioIntegratedReport): string {
   return `<ol class="priority-snapshot">${report.synthesis.findings
     .map((finding, index) => {
       const effort = findingEffort(finding.ruleId);
-      return `<li><span>${index + 1}</span><div><strong>${escapeHtml(finding.title)}</strong>${finding.advisory ? " (best practice)" : ""}<p>${escapeHtml(findingImpact(finding))}</p></div><b>${escapeHtml(effort.hours)}</b></li>`;
+      return `<li><span>${index + 1}</span><div><strong>${escapeHtml(finding.title)}</strong>${finding.advisory ? " (advisory)" : ""}<p>${escapeHtml(findingImpact(finding))}</p></div><b>${escapeHtml(effort.hours)}</b></li>`;
     })
     .join(
       ""

@@ -5,6 +5,8 @@ import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { parsePlan } from "../scripts/master-plan.mjs";
+
 const demoUrl = pathToFileURL(path.resolve("site/index.html")).href;
 
 test("public demo exposes its purpose and limitations", async ({ page }) => {
@@ -80,9 +82,10 @@ test("public demo has no serious axe violations or prohibited ARIA attributes", 
 test("the features section has a card for every feature and every milestone not yet done", async ({
   page
 }) => {
-  const { features } = JSON.parse(await readFile("site/features.json", "utf8")) as {
-    features: Array<{ title: string }>;
-  };
+  const { features, internalMilestones } = JSON.parse(
+    await readFile("site/features.json", "utf8")
+  ) as { features: Array<{ title: string }>; internalMilestones: Record<string, string> };
+  const milestones = parsePlan(await readFile("docs/MASTER-PLAN.md", "utf8"));
   await page.goto(demoUrl);
 
   const section = page.getByRole("region", { name: "Every feature, shown from a real run" });
@@ -91,10 +94,16 @@ test("the features section has a card for every feature and every milestone not 
   }
   await expect(section.getByRole("heading", { level: 3, name: "What's next" })).toBeVisible();
   // Work under way keeps its card; a finished milestone and housekeeping never get one.
-  await expect(section.getByText("In progress · M3", { exact: true })).toBeVisible();
-  await expect(section.getByText("Coming soon · M4", { exact: true })).toBeVisible();
-  await expect(section.getByText(/· M2$/)).toHaveCount(0);
-  await expect(section.getByText(/· M8$/)).toHaveCount(0);
+  for (const { id, steps } of milestones) {
+    const label = section.getByText(new RegExp(`· ${id}$`));
+    if (steps.every(({ done }) => done) || Object.hasOwn(internalMilestones, id)) {
+      await expect(label).toHaveCount(0);
+    } else {
+      await expect(label).toHaveText(
+        `${steps.some(({ done }) => done) ? "In progress" : "Coming soon"} · ${id}`
+      );
+    }
+  }
 });
 
 for (const viewport of [

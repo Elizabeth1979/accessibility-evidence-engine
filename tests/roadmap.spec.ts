@@ -4,6 +4,8 @@ import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
+import { sweepKeyboardAndPointer } from "@aee/playwright";
+
 const page = pathToFileURL(path.resolve("site/roadmap.html")).href;
 
 test.beforeAll(() => {
@@ -35,4 +37,15 @@ test("roadmap works at phone width without sideways scrolling", async ({ page: b
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   );
   expect(overflow).toBe(false);
+});
+
+test("the keyboard and pointer sweep finds nothing on the roadmap, where every title is a heading", async ({
+  page: browser
+}) => {
+  const { findings } = await sweepKeyboardAndPointer({
+    page: browser,
+    url: page,
+    activateControls: false
+  });
+  expect(findings).toEqual([]);
 });

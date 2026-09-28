@@ -1,8 +1,11 @@
 import {
+  capturePageDom,
   fetchAccessibilityTree,
   withCdpSession,
   type AccessibilityNode,
   type AccessibilityValue,
+  type CapturedDom,
+  type CapturedElement,
   type CdpContext,
   type CdpSession
 } from "./accessibility-tree";
@@ -347,7 +350,7 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
   return withCdpSession(page.context(), page, async (session) => {
     const [tree, dom, focused] = await Promise.all([
       fetchAccessibilityTree(session),
-      captureDom(session),
+      capturePageDom(session),
       activeElementNode(session)
     ]);
     const focusKey = focused === undefined ? undefined : dom.element(focused)?.nodePath;
@@ -446,92 +449,6 @@ function propertyValue(node: AccessibilityNode, name: string): unknown {
 function textValue(value: AccessibilityValue | undefined): string | undefined {
   const text = typeof value?.value === "string" ? value.value.trim() : "";
   return text || undefined;
-}
-
-interface CapturedElement {
-  tagName: string;
-  nodePath: string;
-  attribute(name: string): string | undefined;
-  visualBounds?: VirtualScreenReaderItem["visualBounds"];
-}
-
-interface CapturedDom {
-  element(backendNodeId: number): CapturedElement | undefined;
-}
-
-interface DomSnapshot {
-  strings: string[];
-  documents: Array<{
-    nodes: {
-      parentIndex: number[];
-      nodeType: number[];
-      nodeName: number[];
-      backendNodeId: number[];
-      attributes: number[][];
-    };
-    layout: { nodeIndex: number[]; bounds: number[][] };
-  }>;
-}
-
-/** One CDP snapshot of the DOM: every element's tag, attributes, place in the tree and layout box. */
-async function captureDom(session: CdpSession): Promise<CapturedDom> {
-  const { strings, documents } = (await session.send("DOMSnapshot.captureSnapshot", {
-    computedStyles: []
-  })) as DomSnapshot;
-  const { nodes, layout } = documents[0]!;
-  const indexByBackendId = new Map(nodes.backendNodeId.map((id, index) => [id, index]));
-  const boxes = new Map(layout.nodeIndex.map((node, index) => [node, layout.bounds[index]!]));
-  const tagName = (index: number) => strings[nodes.nodeName[index]!]!.toLowerCase();
-  const isElement = (index: number) =>
-    nodes.nodeType[index] === 1 && !tagName(index).startsWith("::");
-  const attribute = (index: number, name: string) => {
-    const pairs = nodes.attributes[index] ?? [];
-    for (let at = 0; at < pairs.length; at += 2) {
-      if (strings[pairs[at]!] === name) return strings[pairs[at + 1]!];
-    }
-    return undefined;
-  };
-  const elementChildren = new Map<number, number[]>();
-  nodes.parentIndex.forEach((parent, index) => {
-    if (!isElement(index)) return;
-    const siblings = elementChildren.get(parent) ?? [];
-    siblings.push(index);
-    elementChildren.set(parent, siblings);
-  });
-  // An element's id, or up to eight tag steps with their position among same-tag siblings.
-  const nodePath = (index: number) => {
-    const id = attribute(index, "id");
-    if (id) return `#${id}`;
-    const segments: string[] = [];
-    for (
-      let current = index;
-      current >= 0 && isElement(current) && segments.length < 8;
-      current = nodes.parentIndex[current]!
-    ) {
-      const tag = tagName(current);
-      const sameTag = (elementChildren.get(nodes.parentIndex[current]!) ?? []).filter(
-        (sibling) => tagName(sibling) === tag
-      );
-      segments.unshift(
-        sameTag.length > 1 ? `${tag}:nth-of-type(${sameTag.indexOf(current) + 1})` : tag
-      );
-    }
-    return segments.join(" > ");
-  };
-
-  return {
-    element(backendNodeId) {
-      const index = indexByBackendId.get(backendNodeId);
-      if (index === undefined || !isElement(index)) return undefined;
-      const [x = 0, y = 0, width = 0, height = 0] = boxes.get(index) ?? [];
-      return {
-        tagName: tagName(index),
-        nodePath: nodePath(index),
-        attribute: (name) => attribute(index, name),
-        ...(width > 0 && height > 0 ? { visualBounds: { x, y, width, height } } : {})
-      };
-    }
-  };
 }
 
 /** The DOM node that has focus, found the way the page sees it: document.activeElement. */

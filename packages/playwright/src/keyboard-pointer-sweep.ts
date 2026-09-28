@@ -1,3 +1,5 @@
+import { withCdpSession } from "./accessibility-tree";
+import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
 
 /**
@@ -5,16 +7,20 @@ import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison
  * - pointer-only: a mouse can click it, but the keyboard never reaches it;
  * - hover-only: content a hover reveals, which keyboard focus does not;
  * - activation-differs: pressing a control by keyboard does not do what clicking it does;
- * - focus-lost: after pressing a control by keyboard, focus is on nothing visible.
+ * - focus-lost: after pressing a control by keyboard, focus is on nothing visible;
+ * - looks-like-heading: text styled like a heading that the accessibility tree does not expose as
+ *   one, so the screen reader's heading key skips it.
  */
-export type SweepFindingKind = "pointer-only" | "hover-only" | "activation-differs" | "focus-lost";
+export type SweepFindingKind =
+  "pointer-only" | "hover-only" | "activation-differs" | "focus-lost" | "looks-like-heading";
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
   "pointer-only": "keyboard-operation",
   "hover-only": "hover-focus-equivalence",
   "activation-differs": "keyboard-operation",
-  "focus-lost": "focus-management"
+  "focus-lost": "focus-management",
+  "looks-like-heading": "heading-structure"
 } as const satisfies Record<SweepFindingKind, string>;
 
 export interface SweepFinding {
@@ -123,8 +129,16 @@ export async function sweepKeyboardAndPointer(
   const probe = <T>(request: ProbeRequest) => page.evaluate(runSweepProbe, request) as Promise<T>;
 
   await page.goto(url);
+  const findings: SweepFinding[] = (
+    await withCdpSession(page.context(), page, findHeadingLookalikes)
+  ).map(({ selector, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) =>
+    sweepFinding(
+      "looks-like-heading",
+      { selector, label: text },
+      `Styled like a heading (${fontSize}px, weight ${fontWeight}, against body text at ${bodyFontSize}px, weight ${bodyFontWeight}), but the accessibility tree does not expose it as a heading.`
+    )
+  );
   const tabStops = await collectTabStops(page, probe, options.maxTabStops ?? 200, onStep);
-  const findings: SweepFinding[] = [];
 
   for (const target of await probe<ProbedElement[]>({ mode: "pointer-only", tabStops })) {
     findings.push(

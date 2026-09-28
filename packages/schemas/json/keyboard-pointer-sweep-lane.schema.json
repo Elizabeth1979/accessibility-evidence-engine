@@ -59,9 +59,22 @@
       "additionalProperties": false,
       "required": ["kind", "concept", "selector", "label", "summary"],
       "properties": {
-        "kind": { "enum": ["pointer-only", "hover-only", "activation-differs", "focus-lost"] },
+        "kind": {
+          "enum": [
+            "pointer-only",
+            "hover-only",
+            "activation-differs",
+            "focus-lost",
+            "looks-like-heading"
+          ]
+        },
         "concept": {
-          "enum": ["keyboard-operation", "hover-focus-equivalence", "focus-management"]
+          "enum": [
+            "keyboard-operation",
+            "hover-focus-equivalence",
+            "focus-management",
+            "heading-structure"
+          ]
         },
         "selector": { "type": "string", "minLength": 1 },
         "label": { "type": "string" },

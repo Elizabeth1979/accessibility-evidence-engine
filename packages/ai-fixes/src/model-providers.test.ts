@@ -111,7 +111,8 @@ test("Claude answers in the specialist's schema, with refusal fallbacks on", asy
   const [request] = requests;
   assert.equal(request?.body.model, "claude-opus-5");
   assert.equal(request?.body.fallbacks, "default");
-  assert.equal(request?.body.system, accessibleNameSpecialist.instructions);
+  assert.match(String(request?.body.system), /^# Accessibility engineer: system prompt/);
+  assert.ok(String(request?.body.system).endsWith(accessibleNameSpecialist.instructions));
   assert.match(request?.headers.get("anthropic-beta") ?? "", /server-side-fallback-2026-07-01/);
   assert.deepEqual(
     (request?.body.output_config as { format: { schema: unknown } }).format.schema,
