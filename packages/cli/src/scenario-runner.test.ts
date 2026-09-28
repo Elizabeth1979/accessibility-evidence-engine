@@ -527,8 +527,11 @@ test("the fixes CSV has one quoted row per fix, and keeps page text that looks l
   const lines = csv.split("\r\n").filter(Boolean);
   assert.match(lines[0]!, /^Title,Severity,WCAG,Rule,Rule link,How to build it,Page,Elements/);
   assert.match(csv, /,"'=HYPERLINK\(""https:\/\/example\.com"",""Click""\)/);
-  assert.equal(
-    csv.match(/^(?:[^"\r\n]|"(?:[^"]|"")*")*\r\n/gm)?.length,
-    report.synthesis.findings.length + 1
-  );
+  // RFC 4180 rows, read back to back: a cell is bare, or quoted with "" for a quote inside it.
+  const cell = '(?:[^",\\r\\n]*|"(?:[^"]|"")*")';
+  const row = new RegExp(`${cell}(?:,${cell})*\\r\\n`, "y");
+  const read: string[] = [];
+  for (let match = row.exec(csv); match; match = row.exec(csv)) read.push(match[0]);
+  assert.equal(read.join(""), csv);
+  assert.equal(read.length, report.synthesis.findings.length + 1);
 });
