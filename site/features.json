@@ -53,7 +53,7 @@
     {
       "id": "page-view",
       "title": "Shows where on the page",
-      "caption": "It draws every issue on the page as it was tested, numbered, next to a list that works by keyboard and screen reader.",
+      "caption": "It draws every issue on the page as it was tested, numbered, next to a list that works by keyboard and screen reader. Switch on headings, Tab order, alt text or focus to check those too.",
       "alt": "The report's Page view: the tested page with numbered issue outlines, beside the numbered list of issues.",
       "try": "report",
       "shot": {

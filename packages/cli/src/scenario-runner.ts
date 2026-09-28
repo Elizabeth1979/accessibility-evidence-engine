@@ -24,6 +24,7 @@ import {
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
   type ElementContext,
+  type ElementMap,
   type EvidenceManifest,
   type InputComparisonResult,
   type InteractionComparisonBrowser,
@@ -379,6 +380,16 @@ interface IntegratedHtmlViews {
   comparisons: InputComparisonView[];
   sweeps: SweepView[];
   screens: ScreenView[];
+  elementMaps: ElementMapView[];
+}
+
+/** A checkpoint's element map and the full-page screenshot taken at the same moment. */
+interface ElementMapView {
+  path: string;
+  runId?: string;
+  screenshotPath?: string;
+  map?: ElementMap;
+  readError?: string;
 }
 
 /** A full-page screenshot and its size in pixels, read from its PNG header. */
@@ -990,15 +1001,25 @@ async function writeIntegratedReport(
   rootDir: string,
   aiSuggester: AiSuggester
 ): Promise<void> {
-  const [transcripts, actionReports, axeReports, comparisons, sweeps, screens] = await Promise.all([
-    loadReaderTranscriptViews(report, rootDir),
-    loadActionReportViews(report, rootDir),
-    loadAxeReportViews(report, rootDir),
-    loadInputComparisonViews(report, rootDir),
-    loadSweepViews(report, rootDir),
-    loadScreenViews(report, rootDir)
-  ]);
-  const views = { transcripts, actionReports, axeReports, comparisons, sweeps, screens };
+  const [transcripts, actionReports, axeReports, comparisons, sweeps, screens, elementMaps] =
+    await Promise.all([
+      loadReaderTranscriptViews(report, rootDir),
+      loadActionReportViews(report, rootDir),
+      loadAxeReportViews(report, rootDir),
+      loadInputComparisonViews(report, rootDir),
+      loadSweepViews(report, rootDir),
+      loadScreenViews(report, rootDir),
+      loadElementMapViews(report, rootDir)
+    ]);
+  const views = {
+    transcripts,
+    actionReports,
+    axeReports,
+    comparisons,
+    sweeps,
+    screens,
+    elementMaps
+  };
   report.synthesis = buildScenarioSynthesis(report, views);
   await addAiSuggestions(report, views, aiSuggester);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
@@ -1263,6 +1284,44 @@ async function loadScreenViews(
       return header.toString("latin1", 1, 4) === "PNG"
         ? { path: screenPath, width: header.readUInt32BE(16), height: header.readUInt32BE(20) }
         : { path: screenPath };
+    })
+  );
+}
+
+/** Each checkpoint's element map, paired with the full-page screenshot taken with it. */
+async function loadElementMapViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<ElementMapView[]> {
+  const runIdOf = (artifact: (typeof report.artifacts)[number]) => {
+    const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
+    return typeof provenance.runId === "string" ? provenance.runId : undefined;
+  };
+  const artifacts = report.artifacts.filter(
+    (artifact) => artifact.kind === "element-map" && artifact.phase === "after"
+  );
+  return Promise.all(
+    artifacts.map(async (artifact) => {
+      const artifactPath = String(artifact.path);
+      const runId = runIdOf(artifact);
+      const screenshot = report.artifacts.find(
+        (candidate) =>
+          candidate.kind === "full-page-screenshot" &&
+          candidate.phase === "after" &&
+          runIdOf(candidate) === runId
+      );
+      const view = {
+        path: artifactPath,
+        runId,
+        screenshotPath: screenshot ? String(screenshot.path) : undefined
+      };
+      try {
+        const document = await readReportJson(rootDir, artifactPath);
+        assertValidSchema("elementMap", document, artifactPath);
+        return { ...view, map: document as unknown as ElementMap };
+      } catch (error) {
+        return { ...view, readError: error instanceof Error ? error.message : String(error) };
+      }
     })
   );
 }
@@ -2878,8 +2937,9 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 .page-view{display:grid;grid-template-columns:minmax(0,1fr) minmax(16rem,22rem);gap:1.5rem;align-items:start}
 .page-canvas{position:sticky;top:1rem;max-height:85vh;overflow:auto;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface)}.page-canvas:focus-visible{outline:3px solid var(--focus);outline-offset:2px}.page-canvas svg{display:block;width:100%;height:auto}
 .page-marker .halo{fill:none;stroke:#fff;stroke-width:6;vector-effect:non-scaling-stroke}.page-marker .outline{fill:none;stroke-width:3;vector-effect:non-scaling-stroke}.page-marker.fail .outline{stroke:var(--fail)}.page-marker.advisory .outline{stroke:var(--unknown)}.page-marker.neutral .outline{stroke:var(--ink);stroke-dasharray:8 5}.page-marker .badge{stroke:#fff;stroke-width:2}.page-marker.fail .badge{fill:var(--fail)}.page-marker.advisory .badge{fill:var(--unknown)}.page-marker.neutral .badge{fill:var(--ink)}.page-marker text{fill:#fff;font:700 17px/1 var(--sans);text-anchor:middle}.page-marker.current .halo{stroke:var(--marker);stroke-width:12}
-.page-lists h4{margin:0 0 .5rem;font:700 1.1rem/1.2 var(--serif)}.page-lists section+section{margin-top:1.75rem}.marker-list{margin:0;padding:0;list-style:none}.marker-item{display:flex;gap:.7rem;width:100%;padding:.55rem .6rem;border:0;border-bottom:1px solid var(--line);color:inherit;background:none;font:inherit;text-align:left;cursor:pointer}.marker-item:hover{background:var(--wash)}.marker-item[aria-current=true]{background:var(--unknown-wash);box-shadow:inset 4px 0 0 var(--marker)}.marker-item small,.marker-unplaced small{display:block;color:var(--muted)}.marker-unplaced{padding:.55rem .6rem;border-bottom:1px solid var(--line)}.marker-number{display:grid;flex:none;place-items:center;min-width:1.75rem;height:1.75rem;border-radius:50%;color:#fff;font-size:.85rem;font-weight:750}.marker-number.fail{background:var(--fail)}.marker-number.advisory{background:var(--unknown)}.marker-number.neutral{border-radius:4px;background:var(--ink)}.marker-flag{padding:0 .3rem;border-radius:4px;color:var(--fail);background:var(--fail-wash);font-size:.8rem;font-weight:750}.marker-nav{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0 0 .5rem}.marker-nav button{padding:.35rem .8rem;border:1px solid var(--line-strong);border-radius:6px;color:var(--forest-deep);background:var(--surface);font:650 .9rem/1.2 var(--sans);cursor:pointer}.marker-nav button:hover{color:#fff;background:var(--forest)}.marker-scope{color:var(--muted);font-size:.9rem}
-#panel-page:has([data-layer-toggle=issues]:not(:checked)) [data-layer=issues],#panel-page:has([data-layer-toggle=reader]:not(:checked)) [data-layer=reader]{display:none}
+.page-lists h4{margin:0 0 .5rem;font:700 1.1rem/1.2 var(--serif)}.page-lists h5{margin:1rem 0 .4rem;font:700 1rem/1.2 var(--serif)}.page-lists section+section{margin-top:1.75rem}.marker-list{margin:0;padding:0;list-style:none}.marker-item{display:flex;gap:.7rem;width:100%;padding:.55rem .6rem;border:0;border-bottom:1px solid var(--line);color:inherit;background:none;font:inherit;text-align:left;cursor:pointer}.marker-item:hover{background:var(--wash)}.marker-item[aria-current=true]{background:var(--unknown-wash);box-shadow:inset 4px 0 0 var(--marker)}.marker-item small,.marker-unplaced small{display:block;color:var(--muted)}.marker-unplaced{padding:.55rem .6rem;border-bottom:1px solid var(--line)}.marker-number{display:grid;flex:none;place-items:center;min-width:1.75rem;height:1.75rem;border-radius:50%;color:#fff;font-size:.85rem;font-weight:750}.marker-number.fail{background:var(--fail)}.marker-number.advisory{background:var(--unknown)}.marker-number.neutral{border-radius:4px;background:var(--ink)}.marker-flag{padding:0 .3rem;border-radius:4px;color:var(--fail);background:var(--fail-wash);font-size:.8rem;font-weight:750}.marker-nav{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0 0 .5rem}.marker-nav button{padding:.35rem .8rem;border:1px solid var(--line-strong);border-radius:6px;color:var(--forest-deep);background:var(--surface);font:650 .9rem/1.2 var(--sans);cursor:pointer}.marker-nav button:hover{color:#fff;background:var(--forest)}.marker-scope{color:var(--muted);font-size:.9rem}
+${PAGE_LAYERS.map(({ id }) => `#panel-page:has([data-layer-toggle=${id}]:not(:checked)) [data-layer=${id}]`).join(",")}{display:none}
+.marker-list li[style]{padding-left:calc(var(--depth)*1.1rem)}.marker-unplaced{display:flex;gap:.7rem}.focus-crop{display:block;max-width:100%;height:auto;margin-top:.4rem;border:1px solid var(--line);border-radius:4px}
 @media(max-width:900px){.page-view{grid-template-columns:1fr}.page-canvas{top:0;max-height:45vh;z-index:1}.page-canvas svg{width:min(var(--page-width),180vw)}.page-lists :is(button,h4){scroll-margin-top:calc(45vh + 1rem)}}
 .visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}.copy-status{color:var(--pass);font-weight:650}.ticket-text{margin-top:.75rem}.ticket-text summary{cursor:pointer;font-weight:650;color:var(--forest)}.ticket-text textarea{display:block;width:100%;margin-top:.5rem;padding:.75rem;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink);font:.85rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}.ticket-text textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}.csv-download{font-weight:750}
 @media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
@@ -3730,32 +3790,118 @@ function renderActionEvidenceLinks(
     .join("")}</ul>`;
 }
 
+type PageLayerId = "issues" | "reader" | "headings" | "tab-order" | "images" | "focus";
+
+/** One item of a layer: a list entry, and an outline on the page wherever a box was recorded. */
 interface PageMarker {
   id: string;
-  number: number;
-  box: { x: number; y: number; width: number; height: number };
+  /** What the outline's badge and the list item's number say. */
+  badge: string;
+  box?: { x: number; y: number; width: number; height: number };
   title: string;
   detail: string;
-  /** The finding's result, or neutral for the reader's path, which is not a result. */
+  /** A result's colour: red where the item is flagged, neutral where it is only shown. */
   tone: "fail" | "advisory" | "neutral";
   flag?: string;
+  /** How far a heading is indented, by its level. */
+  depth?: number;
+  /** A close-up to show with the item. */
+  image?: string;
+  /** Listed after the layer's numbered items, such as a keyboard problem where Tab never goes. */
+  apart?: true;
 }
 
-/** One screenshot and every issue and announcement located on it. */
+/**
+ * The Page view's layers, in the order the switches list them. A layer shows only what the run
+ * measured, and the four added from the element map and the sweep start switched off.
+ */
+const PAGE_LAYERS: ReadonlyArray<{
+  id: PageLayerId;
+  label: string;
+  heading: string;
+  /** What one of its markers is, for the picture's text alternative. */
+  noun: string;
+  /** The heading of the items listed apart from the numbered ones. */
+  apartHeading?: string;
+  on: boolean;
+  /** The outline's badge sits left of it or right, so two layers on one element both read. */
+  badgeSide: "left" | "right";
+  scope?: string;
+}> = [
+  {
+    id: "issues",
+    label: "Issues",
+    heading: "Issues on this page",
+    noun: "issue",
+    on: true,
+    badgeSide: "left"
+  },
+  {
+    id: "reader",
+    label: "Screen reader path",
+    heading: "What the screen reader said",
+    noun: "announcement",
+    on: true,
+    badgeSide: "right",
+    scope:
+      "Only what the scenario's reader commands reached. Add commands to cover more of the page."
+  },
+  {
+    id: "headings",
+    label: "Headings",
+    heading: "Headings",
+    noun: "heading",
+    on: false,
+    badgeSide: "left",
+    scope:
+      "Indented by level, as a screen reader's heading list shows them. Whether a level suits its section is for a person to judge."
+  },
+  {
+    id: "tab-order",
+    label: "Tab order",
+    heading: "Tab order",
+    noun: "Tab order item",
+    apartHeading: "Keyboard problems where Tab never goes",
+    on: false,
+    badgeSide: "left",
+    scope: "In the order Tab reached each stop, with what the keyboard sweep found on it."
+  },
+  {
+    id: "images",
+    label: "Images and alt text",
+    heading: "Images and their text alternatives",
+    noun: "image",
+    on: false,
+    badgeSide: "right"
+  },
+  {
+    id: "focus",
+    label: "Focus indicator",
+    heading: "Focus indicator at each Tab stop",
+    noun: "focus indicator",
+    on: false,
+    badgeSide: "right",
+    scope:
+      "Each stop as Tab reached it. Focus counts as visible when the stop looks different with focus than without; its contrast is not measured."
+  }
+];
+
+/** One screenshot and everything located on it, layer by layer. */
 interface PageState {
   screenshot?: string;
   label: string;
   pageUrl?: string;
   width?: number;
   height?: number;
-  issues: PageMarker[];
-  unplaced: Array<{ title: string; detail: string }>;
-  reader: PageMarker[];
+  layers: Record<PageLayerId, PageMarker[]>;
+  /** Why this state's headings and images could not be shown. */
+  elementMapError?: string;
 }
 
 /**
- * Groups every located finding instance and reader announcement by the screenshot it was measured
- * on, so each box is drawn on the page as it was when it was found and never on another capture.
+ * Groups every located finding instance, reader announcement, heading, image and Tab stop by the
+ * screenshot it was measured on, so each box is drawn on the page as it was when it was found and
+ * never on another capture.
  */
 function buildPageStates(
   report: ScenarioIntegratedReport,
@@ -3773,9 +3919,7 @@ function buildPageStates(
         pageUrl,
         width: screen?.width,
         height: screen?.height,
-        issues: [],
-        unplaced: [],
-        reader: []
+        layers: { issues: [], reader: [], headings: [], "tab-order": [], images: [], focus: [] }
       };
       states.set(key, state);
     }
@@ -3790,21 +3934,17 @@ function buildPageStates(
       action?.pageUrl
     );
     for (const instance of finding.instances) {
-      const title = findingFixLabel(finding);
-      const detail = `${instance.label} · ${finding.advisory ? "Advisory" : "Blocks release"}`;
-      if (!instance.targetBox) {
-        state.unplaced.push({ title, detail });
-        continue;
+      if (instance.targetBox) {
+        // Boxes are in page pixels; a screenshot at a higher pixel ratio is scaled to them.
+        state.width = instance.targetBox.pageWidth;
+        state.height = instance.targetBox.pageHeight;
       }
-      // Boxes are in page pixels; a screenshot at a higher pixel ratio is scaled to them.
-      state.width = instance.targetBox.pageWidth;
-      state.height = instance.targetBox.pageHeight;
-      state.issues.push({
+      state.layers.issues.push({
         id: "",
-        number: 0,
-        box: instance.targetBox,
-        title,
-        detail,
+        badge: "",
+        ...(instance.targetBox ? { box: instance.targetBox } : {}),
+        title: findingFixLabel(finding),
+        detail: `${instance.label} · ${finding.advisory ? "Advisory" : "Blocks release"}${instance.targetBox ? "" : " · no position was recorded"}`,
         tone: finding.advisory ? "advisory" : "fail"
       });
     }
@@ -3823,9 +3963,9 @@ function buildPageStates(
       transcript.pageUrl
     );
     for (const entry of located) {
-      state.reader.push({
+      state.layers.reader.push({
         id: "",
-        number: entry.sequence,
+        badge: String(entry.sequence),
         box: entry.visualBounds!,
         title: `“${entry.announcement}”`,
         detail: [entry.role, entry.name].filter(Boolean).join(" · "),
@@ -3836,17 +3976,157 @@ function buildPageStates(
       });
     }
   }
+  for (const sweep of views.sweeps) {
+    const document = sweep.document;
+    if (!document) continue;
+    const state = stateFor(
+      sweep.screenshotPath,
+      pageStateLabel("keyboard-pointer-sweep", document.laneId),
+      document.targetUrl
+    );
+    addSweepLayers(state, sweep.path, document);
+  }
+  // Headings and images join the page state taken at the same moment. A run with no other state
+  // still shows its first page this way.
+  const withMaps = views.elementMaps.filter(({ screenshotPath }) => screenshotPath);
+  const firstMap = withMaps[0];
+  if (firstMap && !withMaps.some(({ screenshotPath }) => states.has(screenshotPath!))) {
+    const action = report.actions.find(({ runId }) => runId === firstMap.runId);
+    stateFor(
+      firstMap.screenshotPath,
+      action ? pageStateLabel(action.driver, action.actionId) : "Page",
+      action?.pageUrl
+    );
+  }
+  for (const view of withMaps) {
+    const state = states.get(view.screenshotPath!);
+    if (!state || state.layers.headings.length || state.layers.images.length) continue;
+    if (view.readError) state.elementMapError = view.readError;
+    else addElementMapLayers(state, view.map!);
+  }
   return [...states.values()].map((state, stateIndex) => {
-    // Numbered in reading order down the page, the order a person scans the picture in.
-    state.issues
-      .sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x)
-      .forEach((marker, index) => {
-        marker.number = index + 1;
-        marker.id = `page-${stateIndex}-issue-${index + 1}`;
-      });
-    state.reader.forEach((marker) => (marker.id = `page-${stateIndex}-reader-${marker.number}`));
+    // Issues are numbered in reading order down the page, the order a person scans the picture in.
+    state.layers.issues
+      .sort(
+        (a, b) =>
+          (a.box?.y ?? Infinity) - (b.box?.y ?? Infinity) || (a.box?.x ?? 0) - (b.box?.x ?? 0)
+      )
+      .forEach((marker, index) => (marker.badge = String(index + 1)));
+    for (const layer of PAGE_LAYERS) {
+      state.layers[layer.id].forEach(
+        (marker, index) => (marker.id = `page-${stateIndex}-${layer.id}-${index + 1}`)
+      );
+    }
     return state;
   });
+}
+
+/**
+ * Headings, indented by level and flagged where empty or where a level is skipped, and images,
+ * flagged where they have no text alternative.
+ */
+function addElementMapLayers(state: PageState, map: ElementMap): void {
+  let previousLevel = 0;
+  let imageNumber = 0;
+  for (const element of map.elements) {
+    if (element.kind === "heading") {
+      const level = element.level ?? 2;
+      const flag = !element.name
+        ? "Empty heading"
+        : previousLevel && level > previousLevel + 1
+          ? `Skips from H${previousLevel} to H${level}`
+          : undefined;
+      previousLevel = level;
+      state.layers.headings.push({
+        id: "",
+        badge: `H${level}`,
+        box: element.box,
+        title: element.name || "No text",
+        detail: `Level ${level}`,
+        tone: flag ? "fail" : "neutral",
+        depth: level - 1,
+        ...(flag ? { flag } : {})
+      });
+    } else {
+      imageNumber += 1;
+      state.layers.images.push({
+        id: "",
+        badge: String(imageNumber),
+        box: element.box,
+        title:
+          element.alt === "text"
+            ? element.name
+            : element.alt === "decorative"
+              ? "Decorative: screen readers skip it"
+              : "No text alternative",
+        detail: element.selector,
+        tone: element.alt === "missing" ? "fail" : "neutral",
+        ...(element.alt === "missing" ? { flag: "No alt" } : {})
+      });
+    }
+  }
+}
+
+/**
+ * The Tab stops in the order Tab reached them, each with the keyboard problems the sweep found on
+ * it, then the ones found where Tab never goes; and each stop's focus, as a close-up.
+ */
+function addSweepLayers(
+  state: PageState,
+  sweepPath: string,
+  document: KeyboardPointerSweepLaneDocument
+): void {
+  const keyboardFindings = (document.findings ?? []).filter(
+    ({ kind }) => SWEEP_FINDING_TEXT[kind].area === "keyboard"
+  );
+  const stops = document.tabStops ?? [];
+  const role = (value?: string) => value?.replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase();
+  stops.forEach((stop, index) => {
+    const found = keyboardFindings.filter(({ selector }) => selector === stop.selector);
+    const flags = [
+      ...(stop.label ? [] : ["No name"]),
+      ...found.map(({ kind }) => SWEEP_FINDING_TEXT[kind].title)
+    ];
+    const common = {
+      id: "",
+      badge: String(index + 1),
+      ...(stop.targetBox ? { box: stop.targetBox } : {}),
+      title: stop.label || stop.selector
+    };
+    state.layers["tab-order"].push({
+      ...common,
+      detail: [role(stop.role), ...found.map(({ summary }) => summary)].filter(Boolean).join(" · "),
+      tone: found.length ? "fail" : "neutral",
+      ...(flags.length ? { flag: flags.join(" · ") } : {})
+    });
+    state.layers.focus.push({
+      ...common,
+      detail:
+        stop.focusVisible === undefined
+          ? "Not measured"
+          : stop.focusVisible
+            ? "Focus visible"
+            : "Looks the same with and without focus",
+      tone: stop.focusVisible === false ? "fail" : "neutral",
+      ...(stop.focusVisible === false ? { flag: "No visible focus" } : {}),
+      ...(stop.focusCrop
+        ? { image: path.posix.join(path.posix.dirname(sweepPath), stop.focusCrop) }
+        : {})
+    });
+  });
+  for (const finding of keyboardFindings) {
+    if (stops.some(({ selector }) => selector === finding.selector)) continue;
+    state.layers["tab-order"].push({
+      id: "",
+      badge: "!",
+      ...(finding.targetBox ? { box: finding.targetBox } : {}),
+      title: finding.label || finding.selector,
+      detail: finding.summary,
+      tone: "fail",
+      flag: SWEEP_FINDING_TEXT[finding.kind].title,
+      apart: true
+    });
+  }
 }
 
 function pageStateLabel(driver: LaneDriver, actionId: string): string {
@@ -3858,45 +4138,84 @@ function pageStateLabel(driver: LaneDriver, actionId: string): string {
 }
 
 /**
- * The Page view: the page as tested with each issue and the screen reader's path drawn where they
- * were found. The lists carry everything and the picture mirrors them, so the view works by
- * keyboard, by screen reader and with no screenshot at all. The picture stays in view beside the
- * lists, or above them on a phone, at a readable scale, and moves to the item selected.
+ * The Page view: the page as tested with each layer drawn where it was measured. The lists carry
+ * everything and the picture mirrors them, so the view works by keyboard, by screen reader and
+ * with no screenshot at all. The picture stays in view beside the lists, or above them on a
+ * phone, at a readable scale, and moves to the item selected.
  */
 function renderPageView(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
-  const size = ({ issues, unplaced, reader }: PageState) =>
-    issues.length + unplaced.length + reader.length;
-  // The page state with the most on it first: usually the page as it loaded.
+  const size = (state: PageState, shown?: boolean) =>
+    PAGE_LAYERS.filter(({ on }) => shown === undefined || on === shown).reduce(
+      (total, { id }) => total + state.layers[id].length,
+      0
+    );
+  // What shows before any layer is switched on comes first: usually the page as it loaded.
   const states = buildPageStates(report, views)
-    .filter((state) => size(state) > 0)
-    .sort((a, b) => size(b) - size(a));
+    .filter((state) => size(state) > 0 || state.elementMapError)
+    .sort((a, b) => size(b, true) - size(a, true) || size(b) - size(a));
   if (states.length === 0) {
-    return '<p class="empty">Nothing was located on the page: no finding or announcement recorded a position.</p>';
+    return '<p class="empty">Nothing was located on the page: no finding, announcement, heading, image or Tab stop recorded a position.</p>';
   }
-  const hasReader = states.some(({ reader }) => reader.length > 0);
-  const toggles = `<fieldset class="layer-toggles"><legend>Show on the page</legend><label><input type="checkbox" data-layer-toggle="issues" checked> Issues</label>${hasReader ? '<label><input type="checkbox" data-layer-toggle="reader" checked> Screen reader path</label>' : ""}</fieldset>`;
-  const markerButton = (marker: PageMarker, drawn: boolean) =>
-    `<li><button type="button" class="marker-item"${drawn ? ` data-marker="${marker.id}"` : ""}><span class="marker-number ${marker.tone}" aria-hidden="true">${marker.number}</span><span><b>${escapeHtml(marker.title)}</b>${marker.flag ? ` <span class="marker-flag">${escapeHtml(marker.flag)}</span>` : ""}<small>${escapeHtml(marker.detail)}</small></span></button></li>`;
+  const layers = PAGE_LAYERS.filter(({ id }) => states.some((state) => state.layers[id].length));
+  const toggles = `<fieldset class="layer-toggles"><legend>Show on the page</legend>${layers
+    .map(
+      ({ id, label, on }) =>
+        `<label><input type="checkbox" data-layer-toggle="${id}"${on ? " checked" : ""}> ${escapeHtml(label)}</label>`
+    )
+    .join("")}</fieldset>`;
+  // An item is a button that outlines its element; one with no recorded position on a page with a
+  // picture has nothing to outline, so it is plain text.
+  const markerButton = (marker: PageMarker, drawable: boolean) => {
+    const content = `<span class="marker-number ${marker.tone}" aria-hidden="true">${escapeHtml(marker.badge)}</span><span><b>${escapeHtml(marker.title)}</b>${marker.flag ? ` <span class="marker-flag">${escapeHtml(marker.flag)}</span>` : ""}<small>${escapeHtml(marker.detail)}</small>${marker.image ? `<img class="focus-crop" src="${escapeAttribute(encodeURI(marker.image))}" alt="" loading="lazy">` : ""}</span>`;
+    const indent = marker.depth ? ` style="--depth:${marker.depth}"` : "";
+    return drawable && !marker.box
+      ? `<li class="marker-unplaced"${indent}>${content}</li>`
+      : `<li${indent}><button type="button" class="marker-item"${drawable ? ` data-marker="${marker.id}"` : ""}>${content}</button></li>`;
+  };
+  const shape = (marker: PageMarker, side: "left" | "right") => {
+    const { x, y, width, height } = marker.box!;
+    const rect = `x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="${(width + 8).toFixed(1)}" height="${(Math.max(height, 2) + 8).toFixed(1)}"`;
+    const badgeWidth = Math.max(32, 14 + marker.badge.length * 11);
+    const badgeX = side === "right" ? x + width + 6 : x - badgeWidth + 16;
+    return `<g class="page-marker ${marker.tone}" data-marker-shape="${marker.id}"><rect class="halo" ${rect}/><rect class="outline" ${rect}/><g transform="translate(${badgeX.toFixed(1)} ${(y - 16).toFixed(1)})"><rect class="badge" width="${badgeWidth}" height="28" rx="${side === "right" ? 4 : 14}"/><text x="${badgeWidth / 2}" y="20">${escapeHtml(marker.badge)}</text></g></g>`;
+  };
   const sections = states
     .map((state) => {
       const drawable = Boolean(state.screenshot && state.width && state.height);
-      const issueList =
-        state.issues.length + state.unplaced.length
-          ? `<section data-layer="issues"><h4>Issues on this page (${state.issues.length + state.unplaced.length})</h4><ol class="marker-list">${state.issues.map((marker) => markerButton(marker, drawable)).join("")}${state.unplaced.map(({ title, detail }) => `<li class="marker-unplaced"><b>${escapeHtml(title)}</b><small>${escapeHtml(detail)} · no position was recorded</small></li>`).join("")}</ol></section>`
-          : "";
-      const readerList = state.reader.length
-        ? `<section data-layer="reader" data-reader-list><h4>What the screen reader said (${state.reader.length})</h4><p class="marker-nav"><button type="button" data-reader-step="-1">Previous</button><span data-reader-count aria-live="polite">${state.reader.length} announcements</span><button type="button" data-reader-step="1">Next</button></p><ol class="marker-list">${state.reader.map((marker) => markerButton(marker, drawable)).join("")}</ol><p class="marker-scope">Only what the scenario's reader commands reached. Add commands to cover more of the page.</p></section>`
+      const lists = PAGE_LAYERS.filter(({ id }) => state.layers[id].length)
+        .map(({ id, heading, scope, apartHeading }) => {
+          const markers = state.layers[id];
+          const numbered = markers.filter(({ apart }) => !apart);
+          const apart = markers.filter(({ apart }) => apart);
+          const list = (items: PageMarker[], tag: "ol" | "ul") =>
+            `<${tag} class="marker-list">${items.map((marker) => markerButton(marker, drawable)).join("")}</${tag}>`;
+          const stepper =
+            id === "reader"
+              ? `<p class="marker-nav"><button type="button" data-reader-step="-1">Previous</button><span data-reader-count aria-live="polite">${markers.length} announcements</span><button type="button" data-reader-step="1">Next</button></p>`
+              : "";
+          return `<section data-layer="${id}"${id === "reader" ? " data-reader-list" : ""}><h4>${escapeHtml(heading)} (${numbered.length})</h4>${stepper}${numbered.length ? list(numbered, "ol") : ""}${apart.length ? `<h5>${escapeHtml(apartHeading ?? heading)} (${apart.length})</h5>${list(apart, "ul")}` : ""}${scope ? `<p class="marker-scope">${escapeHtml(scope)}</p>` : ""}</section>`;
+        })
+        .join("");
+      const mapError = state.elementMapError
+        ? `<p class="empty">Headings and images could not be read: ${escapeHtml(state.elementMapError)}</p>`
         : "";
-      const shape = (marker: PageMarker) => {
-        const { x, y, width, height } = marker.box;
-        const rect = `x="${(x - 4).toFixed(1)}" y="${(y - 4).toFixed(1)}" width="${(width + 8).toFixed(1)}" height="${(Math.max(height, 2) + 8).toFixed(1)}"`;
-        const badgeX = marker.tone === "neutral" ? x + width + 6 : x - 16;
-        return `<g class="page-marker ${marker.tone}" data-marker-shape="${marker.id}"><rect class="halo" ${rect}/><rect class="outline" ${rect}/><g transform="translate(${badgeX.toFixed(1)} ${(y - 16).toFixed(1)})"><rect class="badge" width="32" height="28" rx="${marker.tone === "neutral" ? 4 : 14}"/><text x="16" y="20">${marker.number}</text></g></g>`;
-      };
+      const drawn = PAGE_LAYERS.map(
+        ({ id, badgeSide }) =>
+          `<g data-layer="${id}">${state.layers[id]
+            .filter(({ box }) => box)
+            .map((marker) => shape(marker, badgeSide))
+            .join("")}</g>`
+      ).join("");
+      const counted = PAGE_LAYERS.map(({ id, noun }) => {
+        const count = state.layers[id].filter(({ box }) => box).length;
+        return count ? `${count} ${noun}${count === 1 ? "" : "s"}` : "";
+      })
+        .filter(Boolean)
+        .join(", ");
       const picture = drawable
-        ? `<div class="page-canvas" tabindex="0" role="group" aria-label="${escapeAttribute(state.label)}: the page as tested, scrollable" style="--page-width:${state.width}px"><svg viewBox="0 0 ${state.width} ${state.height}" role="img" aria-label="${escapeAttribute(`Page as tested with ${state.issues.length} issue markers${state.reader.length ? ` and ${state.reader.length} screen reader markers` : ""}; the lists name each one`)}"><g aria-hidden="true"><image href="${escapeAttribute(encodeURI(state.screenshot!))}" width="${state.width}" height="${state.height}" preserveAspectRatio="none"/><g data-layer="reader">${state.reader.map(shape).join("")}</g><g data-layer="issues">${state.issues.map(shape).join("")}</g></g></svg></div>`
+        ? `<div class="page-canvas" tabindex="0" role="group" aria-label="${escapeAttribute(state.label)}: the page as tested, scrollable" style="--page-width:${state.width}px"><svg viewBox="0 0 ${state.width} ${state.height}" role="img" aria-label="${escapeAttribute(`Page as tested, with markers for ${counted}; the lists name each one`)}"><g aria-hidden="true"><image href="${escapeAttribute(encodeURI(state.screenshot!))}" width="${state.width}" height="${state.height}" preserveAspectRatio="none"/>${drawn}</g></svg></div>`
         : '<p class="empty">No screenshot was captured for this page state, so only the lists are shown.</p>';
-      return `<section class="page-state"><h3>${escapeHtml(state.label)}</h3>${state.pageUrl ? `<p class="technical-id">${escapeHtml(state.pageUrl)}</p>` : ""}<div class="page-view">${picture}<div class="page-lists">${issueList}${readerList}</div></div></section>`;
+      return `<section class="page-state"><h3>${escapeHtml(state.label)}</h3>${state.pageUrl ? `<p class="technical-id">${escapeHtml(state.pageUrl)}</p>` : ""}<div class="page-view">${picture}<div class="page-lists">${lists}${mapError}</div></div></section>`;
     })
     .join("");
   return `${toggles}${sections}`;
@@ -4050,7 +4369,9 @@ function artifactKindLabel(kind: string): string {
     "accessibility-tree": "Accessibility trees",
     "axe-result": "Axe results",
     "dom-snapshot": "DOM snapshots",
+    "element-map": "Element maps",
     "evidence-bundle": "Evidence bundles",
+    "focus-crop": "Focus close-ups",
     "focus-state": "Focus states",
     "full-page-screenshot": "Full-page screenshots",
     "interaction-trace": "Interaction traces",
@@ -4072,7 +4393,10 @@ function artifactKindDescription(kind: string): string {
     "accessibility-tree": "Machine-readable accessibility roles, names, states, and relationships.",
     "axe-result": "Complete Axe output; use the Axe tab for a readable summary.",
     "dom-snapshot": "Full HTML captured at the interaction checkpoint.",
+    "element-map":
+      "Headings and images with their accessibility-tree roles, names and levels, and their boxes on the page.",
     "evidence-bundle": "Correlated records, artifacts, interactions, and judgments for one action.",
+    "focus-crop": "Each Tab stop with keyboard focus, as the keyboard sweep reached it.",
     "focus-state": "Deep active element, focus chain, focus-visible styles, and composite context.",
     "full-page-screenshot": "Rendered page context captured after or before an action.",
     "interaction-trace": "The declared pointer and keyboard action sequence and outcomes.",

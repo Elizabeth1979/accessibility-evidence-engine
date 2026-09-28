@@ -17,6 +17,8 @@ export interface AccessibilityValue {
 export interface AccessibilityNode {
   nodeId: string;
   ignored: boolean;
+  /** Why an ignored node is left out, such as `notRendered` or `emptyAlt`. */
+  ignoredReasons?: Array<{ name: string }>;
   /** `type` is `role` for an ARIA role and `internalRole` for Chromium's own names. */
   role?: AccessibilityValue;
   name?: AccessibilityValue;
@@ -52,6 +54,33 @@ export async function fetchAccessibilityTree(session: CdpSession): Promise<Acces
   return (await session.send("Accessibility.getFullAXTree")) as AccessibilityTree;
 }
 
+/**
+ * The focused element's role and name as the accessibility tree has them, which is what a screen
+ * reader announces when focus arrives. Nothing when focus is on no element.
+ */
+export async function describeFocusedElement(
+  session: CdpSession
+): Promise<{ role: string; name: string } | undefined> {
+  const { result } = (await session.send("Runtime.evaluate", {
+    expression: "document.activeElement"
+  })) as { result: { objectId?: string } };
+  if (!result.objectId) return undefined;
+  try {
+    const { nodes } = (await session.send("Accessibility.getPartialAXTree", {
+      objectId: result.objectId,
+      fetchRelatives: false
+    })) as AccessibilityTree;
+    const node = nodes[0];
+    if (!node) return undefined;
+    return {
+      role: String(node.role?.value ?? ""),
+      name: typeof node.name?.value === "string" ? node.name.value : ""
+    };
+  } finally {
+    await session.send("Runtime.releaseObject", { objectId: result.objectId });
+  }
+}
+
 /** An element as one CDP DOM snapshot records it. */
 export interface CapturedElement {
   tagName: string;
@@ -60,7 +89,10 @@ export interface CapturedElement {
   attribute(name: string): string | undefined;
   /** The computed styles the snapshot was asked for, by property name. */
   style: Record<string, string>;
+  /** Its box, when it has an area: what a sighted user can see. */
   visualBounds?: { x: number; y: number; width: number; height: number };
+  /** Its box whenever the page lays it out, even with no area, as an empty heading has. */
+  layoutBounds?: { x: number; y: number; width: number; height: number };
 }
 
 export interface CapturedDom {
@@ -150,6 +182,7 @@ export async function capturePageDom(
       style: Object.fromEntries(
         computedStyles.map((name, at) => [name, strings[styles[at] ?? -1] ?? ""])
       ),
+      ...(box === undefined ? {} : { layoutBounds: { x, y, width, height } }),
       ...(width > 0 && height > 0 ? { visualBounds: { x, y, width, height } } : {})
     };
     captured.set(index, element);

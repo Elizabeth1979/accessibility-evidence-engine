@@ -62,6 +62,7 @@ export interface EvidenceManifestArtifact {
     | "full-page-screenshot"
     | "dom-snapshot"
     | "accessibility-tree"
+    | "element-map"
     | "focus-state"
     | "axe-result"
     | "screen-reader-transcript"
@@ -74,6 +75,7 @@ export interface EvidenceManifestArtifact {
     | "evidence-bundle"
     | "interaction-trace"
     | "keyboard-pointer-sweep"
+    | "focus-crop"
     | "lane-metadata"
     | "evidence-manifest"
     | "html-report"
@@ -406,6 +408,8 @@ function inferArtifactMetadata(
   if (basename.startsWith("dom-")) return metadata("dom-snapshot", "text/html", phase, "dom");
   if (basename.startsWith("accessibility-tree-"))
     return metadata("accessibility-tree", "application/json", phase, "accessibility-tree");
+  if (basename.startsWith("element-map-"))
+    return metadata("element-map", "application/json", phase, "element-map");
   if (basename.startsWith("focus-"))
     return metadata("focus-state", "application/json", phase, "focus");
   if (basename.startsWith("axe-")) return metadata("axe-result", "application/json", phase, "axe");

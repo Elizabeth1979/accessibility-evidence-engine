@@ -11,6 +11,7 @@ export const schemaCatalog = {
   judgment: "json/judgment.schema.json",
   finding: "json/finding.schema.json",
   focusState: "json/focus-state.schema.json",
+  elementMap: "json/element-map.schema.json",
   remediationRegistry: "json/remediation-registry.schema.json",
   scenario: "json/scenario.schema.json",
   scenarioPlan: "json/scenario-plan.schema.json",

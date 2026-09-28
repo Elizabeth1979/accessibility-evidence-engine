@@ -30,6 +30,9 @@
     "dist/element-locations.js",
     "dist/element-locations.js.map",
     "dist/element-locations.d.ts",
+    "dist/element-map.js",
+    "dist/element-map.js.map",
+    "dist/element-map.d.ts",
     "dist/evidence-manifest.js",
     "dist/evidence-manifest.js.map",
     "dist/evidence-manifest.d.ts",
@@ -69,11 +72,12 @@
     "access": "public"
   },
   "dependencies": {
-    "@axe-core/playwright": "4.13.0",
     "@aee/core": "0.2.0",
     "@aee/judges": "0.2.0",
     "@aee/observers": "0.2.0",
     "@aee/reporter": "0.2.0",
-    "@aee/schemas": "0.2.0"
+    "@aee/schemas": "0.2.0",
+    "@axe-core/playwright": "4.13.0",
+    "pngjs": "7.0.0"
   }
 }

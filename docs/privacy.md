@@ -19,7 +19,7 @@ The URL scheme, host, port, and path remain visible because they are used to cor
 
 ## Evidence that is not automatically redacted
 
-DOM snapshots, accessibility-tree snapshots, virtual screen-reader transcripts, focus metadata, screenshots, target descriptions, and generated reports can contain page text, accessible names, form values, identifiers, filesystem paths, or other information from the tested environment. AEE cannot reliably remove this content without also damaging the evidence.
+DOM snapshots, accessibility-tree snapshots, element maps (each heading and image with its name), virtual screen-reader transcripts, focus metadata, screenshots (including the keyboard sweep's close-up of each Tab stop with focus), target descriptions, and generated reports can contain page text, accessible names, form values, identifiers, filesystem paths, or other information from the tested environment. AEE cannot reliably remove this content without also damaging the evidence.
 
 Optional AI fix providers can receive the bounded context supplied by the caller, including nearby headings, visible copy, icon descriptions, and destination or dialog text. AEE does not automatically redact that model input. Minimize it, prefer synthetic data, and review the selected provider's data-handling requirements before sending captured UI context.
 
@@ -33,7 +33,7 @@ Before sharing an output bundle:
 4. Do not commit `aee-output/`, `test-results/`, or `playwright-report/`; these paths are ignored by this repository but may need separate controls in a consuming project.
 5. Do not send captured production content to a model provider without authorization.
 
-You can omit an observer from `observers` to prevent that evidence type from being captured. Capture policy can also disable DOM, accessibility-tree, and screenshot collection:
+You can omit an observer from `observers` to prevent that evidence type from being captured. Capture policy can also disable DOM, accessibility-tree (with the element map read from it), and screenshot collection:
 
 ```ts
 policy: {

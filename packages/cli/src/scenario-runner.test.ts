@@ -199,7 +199,15 @@ function exampleSynthesisInputs() {
 
   return {
     report,
-    views: { transcripts: [], actionReports, axeReports, comparisons, sweeps: [], screens: [] }
+    views: {
+      transcripts: [],
+      actionReports,
+      axeReports,
+      comparisons,
+      sweeps: [],
+      screens: [],
+      elementMaps: []
+    }
   };
 }
 
@@ -252,7 +260,8 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     axeReports,
     comparisons,
     sweeps: [],
-    screens: []
+    screens: [],
+    elementMaps: []
   });
   assert.match(html, /Your accessibility status/);
   assert.match(html, /Ask this report/);
@@ -389,7 +398,7 @@ test("a sweep finding joins the report with its summary, fix pattern and place o
         path: "sweep-lane/keyboard-pointer-sweep.json",
         screenshotPath: "sweep-lane/full-page.png",
         document: {
-          schemaVersion: "0.1.0",
+          schemaVersion: "0.2.0",
           laneId: "sweep-lane",
           driver: "keyboard-pointer-sweep",
           isolation: "dedicated-browser-context",
@@ -400,7 +409,7 @@ test("a sweep finding joins the report with its summary, fix pattern and place o
           startedAt: "2026-09-16T00:00:00.000Z",
           finishedAt: "2026-09-16T00:00:05.000Z",
           blockedNavigations: [],
-          tabStops: ["#search"],
+          tabStops: [{ selector: "#search", label: "Search", focusVisible: true }],
           activated: [],
           findings: [
             {
@@ -498,7 +507,8 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
     axeReports: [],
     comparisons: [],
     sweeps: [],
-    screens: []
+    screens: [],
+    elementMaps: []
   });
 
   assert.match(synthesis.conclusion, /no confirmed fixes were emitted/);

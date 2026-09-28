@@ -65,6 +65,13 @@ export const defaultObserverManifests = [
       "focus-separation",
       "semantic-target"
     ]
+  },
+  {
+    id: "element-map",
+    displayName: "Element Map Observer",
+    version: "0.1.0",
+    kind: "observer" as const,
+    capabilities: ["element-map", "element-boxes"]
   }
 ];
 
@@ -73,6 +80,7 @@ export interface RuntimeObserverContext extends ObserverContext {
     content(): Promise<string>;
     snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
+    snapshotElementMap?(): Promise<unknown>;
     snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
     runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
     snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
@@ -215,6 +223,20 @@ export function createVirtualScreenReaderObserver(): ObserverPlugin {
   };
 }
 
+/** Records where each heading and image is, so a report can draw them on the full-page screenshot. */
+export function createElementMapObserver(): ObserverPlugin {
+  const manifest = defaultObserverManifests.find(({ id }) => id === "element-map")!;
+  return {
+    manifest,
+    async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureElementMapRecord(context as RuntimeObserverContext, "before")];
+    },
+    async captureAfter(context: ObserverContext): Promise<EvidenceRecord[]> {
+      return [await captureElementMapRecord(context as RuntimeObserverContext, "after")];
+    }
+  };
+}
+
 export function createUnsupportedObserver(observerId: string): ObserverPlugin {
   const manifest = defaultObserverManifests.find((candidate) => candidate.id === observerId);
 
@@ -263,6 +285,10 @@ export function createDefaultObserverPlugins(
 
     if (observerId === "virtual-screen-reader") {
       return createVirtualScreenReaderObserver();
+    }
+
+    if (observerId === "element-map") {
+      return createElementMapObserver();
     }
 
     return createUnsupportedObserver(observerId);
@@ -587,6 +613,55 @@ async function captureFocusRecord(
       focusTarget
     }
   };
+}
+
+async function captureElementMapRecord(
+  context: RuntimeObserverContext,
+  phase: "before" | "after"
+): Promise<EvidenceRecord> {
+  const record = (fields: Pick<EvidenceRecord, "status"> & Partial<EvidenceRecord>) => ({
+    id: `element-map:${phase}:${Date.now()}`,
+    runId: context.runId,
+    checkpointId: context.checkpointId,
+    interactionId: context.interactionId,
+    observerId: "element-map",
+    observerVersion: "0.1.0",
+    phase,
+    timestamp: getTimestamp(),
+    ...fields
+  });
+  const snapshotElementMap = context.page?.snapshotElementMap?.bind(context.page);
+  if (!snapshotElementMap) {
+    return record({
+      status: "unsupported",
+      diagnostics: ["The page cannot report its accessibility tree with element boxes."]
+    });
+  }
+  let elementMap: unknown;
+  try {
+    elementMap = await snapshotElementMap();
+  } catch (error) {
+    return record({
+      status: "observer_error",
+      diagnostics: [
+        `Element map capture failed: ${error instanceof Error ? error.message : String(error)}`
+      ]
+    });
+  }
+  const artifact = await maybeWriteArtifact(
+    context,
+    "element-map",
+    phase,
+    "element-map",
+    "json",
+    "application/json",
+    JSON.stringify(elementMap, null, 2)
+  );
+  return record({
+    status: "ok",
+    summary: `Captured the headings and images ${phase} the interaction.`,
+    artifacts: artifact ? [artifact] : []
+  });
 }
 
 async function captureVisualRecord(

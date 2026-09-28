@@ -1,4 +1,6 @@
-import { withCdpSession } from "./accessibility-tree";
+import { PNG } from "pngjs";
+
+import { describeFocusedElement, withCdpSession, type CdpSession } from "./accessibility-tree";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
 
@@ -38,9 +40,25 @@ export interface SweepStep {
   finishedAt: string;
 }
 
+/** A Tab stop, in the order Tab reached it. */
+export interface SweepTabStop {
+  selector: string;
+  /** Its accessible name, which a screen reader announces when Tab reaches it. */
+  label: string;
+  /** Its role in the accessibility tree. */
+  role?: string;
+  /**
+   * Whether the stop and its surroundings look different with keyboard focus than without it,
+   * compared pixel for pixel. Absent when it could not be measured.
+   */
+  focusVisible?: boolean;
+  /** A PNG of the stop and its surroundings with keyboard focus, as a keyboard user saw it. */
+  focusedCrop?: Uint8Array;
+}
+
 export interface KeyboardPointerSweepResult {
   url: string;
-  tabStops: string[];
+  tabStops: SweepTabStop[];
   /** Controls pressed to compare keyboard and pointer; empty unless activation was allowed. */
   activated: string[];
   findings: SweepFinding[];
@@ -67,6 +85,15 @@ export interface KeyboardPointerSweepCdpSession {
 
 export interface KeyboardPointerSweepPage {
   context(): { newCDPSession(page: unknown): Promise<KeyboardPointerSweepCdpSession> };
+  /** Playwright's page screenshot: the sweep frames regions of the viewport with it. */
+  screenshot(options: {
+    clip?: { x: number; y: number; width: number; height: number };
+    fullPage?: boolean;
+    path?: string;
+    animations?: "disabled";
+    caret?: "hide";
+    timeout?: number;
+  }): Promise<Uint8Array>;
   goto(url: string): Promise<unknown>;
   evaluate<Result, Arg>(
     pageFunction: (arg: Arg) => Result | Promise<Result>,
@@ -99,7 +126,17 @@ type ProbeRequest =
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
   | { mode: "document" }
-  | { mode: "focus-lost"; document: number };
+  | { mode: "focus-lost"; document: number }
+  | { mode: "frame"; selector: string }
+  | { mode: "blur" }
+  | { mode: "scroll-to"; x: number; y: number };
+
+/** A region of the viewport around a Tab stop, and the scroll position it was taken at. */
+interface FocusFrame {
+  scrollX: number;
+  scrollY: number;
+  clip: { x: number; y: number; width: number; height: number };
+}
 
 interface ProbedElement {
   selector: string;
@@ -138,9 +175,15 @@ export async function sweepKeyboardAndPointer(
       `Styled like a heading (${fontSize}px, weight ${fontWeight}, against body text at ${bodyFontSize}px, weight ${bodyFontWeight}), but the accessibility tree does not expose it as a heading.`
     )
   );
-  const tabStops = await collectTabStops(page, probe, options.maxTabStops ?? 200, onStep);
+  const tabStops = await withCdpSession(page.context(), page, (session) =>
+    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep)
+  );
+  const stopSelectors = tabStops.map(({ selector }) => selector);
 
-  for (const target of await probe<ProbedElement[]>({ mode: "pointer-only", tabStops })) {
+  for (const target of await probe<ProbedElement[]>({
+    mode: "pointer-only",
+    tabStops: stopSelectors
+  })) {
     findings.push(
       sweepFinding(
         "pointer-only",
@@ -160,7 +203,7 @@ export async function sweepKeyboardAndPointer(
       for (const rule of hoverRules) {
         const revealed = await revealedOnHover(page, probe, rule);
         if (revealed.length === 0) continue;
-        if (await revealedOnFocus(page, probe, rule, revealed, tabStops)) continue;
+        if (await revealedOnFocus(page, probe, rule, revealed, stopSelectors)) continue;
         findings.push(
           sweepFinding(
             "hover-only",
@@ -175,7 +218,10 @@ export async function sweepKeyboardAndPointer(
   const activated: string[] = [];
   if (options.activateControls) {
     await page.goto(url);
-    for (const control of await probe<PressableControl[]>({ mode: "pressable", tabStops })) {
+    for (const control of await probe<PressableControl[]>({
+      mode: "pressable",
+      tabStops: stopSelectors
+    })) {
       activated.push(control.selector);
       findings.push(
         ...(await timed(
@@ -229,28 +275,89 @@ async function timed<Result>(
   return result;
 }
 
+/**
+ * Presses Tab until focus returns to a stop already reached, capturing each stop's surroundings
+ * with focus. Then, with focus on nothing, it captures the same regions again: focus is visible
+ * where the two differ, which is what WCAG 2.4.7 asks for.
+ */
 async function collectTabStops(
   page: KeyboardPointerSweepPage,
+  session: CdpSession,
   probe: <T>(request: ProbeRequest) => Promise<T>,
   maxTabStops: number,
   onStep: KeyboardPointerSweepOptions["onStep"]
-): Promise<string[]> {
-  const stops: string[] = [];
-  const isNewStop = (active: ProbedElement | null): active is ProbedElement =>
-    active !== null && !stops.includes(active.selector);
+): Promise<SweepTabStop[]> {
+  const stops: Array<SweepTabStop & { frame: FocusFrame | null }> = [];
+  const isNewStop = (active: SweepTabStop | null): active is SweepTabStop =>
+    active !== null && !stops.some(({ selector }) => selector === active.selector);
   for (let index = 0; index < maxTabStops; index += 1) {
     const active = await timed(
       onStep,
       (found) => (isNewStop(found) ? `Tab ${stops.length + 1}: ${describeElement(found)}` : ""),
-      async () => {
+      async (): Promise<SweepTabStop | null> => {
         await page.keyboard.press("Tab");
-        return probe<ProbedElement | null>({ mode: "active" });
+        const element = await probe<ProbedElement | null>({ mode: "active" });
+        const described = element && (await describeFocusedElement(session));
+        return element && described
+          ? { selector: element.selector, label: described.name, role: described.role }
+          : element;
       }
     );
     if (!isNewStop(active)) break;
-    stops.push(active.selector);
+    const frame = await probe<FocusFrame | null>({ mode: "frame", selector: active.selector });
+    const focusedCrop = frame ? await captureFrame(page, frame) : undefined;
+    stops.push({ ...active, frame, ...(focusedCrop ? { focusedCrop } : {}) });
   }
-  return stops;
+  await probe({ mode: "blur" });
+  const measured: SweepTabStop[] = [];
+  for (const { frame, ...stop } of stops) {
+    if (frame && stop.focusedCrop) {
+      await probe({ mode: "scroll-to", x: frame.scrollX, y: frame.scrollY });
+      const unfocused = await captureFrame(page, frame);
+      if (unfocused) stop.focusVisible = visiblyDifferent(stop.focusedCrop, unfocused);
+    }
+    measured.push(stop);
+  }
+  return measured;
+}
+
+/** A colour channel moving by more than this, out of 255, is a change a person could see. */
+const VISIBLE_CHANNEL_CHANGE = 32;
+/** Fewer changed pixels than this are rendering noise, not an indicator. */
+const VISIBLE_PIXEL_COUNT = 4;
+
+/**
+ * Whether two captures of one frame look different. Rendering noise, such as a corner's
+ * anti-aliasing shifting by a shade between captures, stays below the thresholds.
+ */
+function visiblyDifferent(first: Uint8Array, second: Uint8Array): boolean {
+  const [one, two] = [first, second].map((png) => PNG.sync.read(Buffer.from(png)));
+  if (one!.width !== two!.width || one!.height !== two!.height) return true;
+  let changed = 0;
+  for (let index = 0; index < one!.data.length; index += 1) {
+    if (Math.abs(one!.data[index]! - two!.data[index]!) <= VISIBLE_CHANNEL_CHANGE) continue;
+    changed += 1;
+    if (changed >= VISIBLE_PIXEL_COUNT) return true;
+    // Count each pixel once, whichever of its channels moved.
+    index += 3 - (index % 4);
+  }
+  return false;
+}
+
+/**
+ * A PNG of one frame, with animations finished and the text caret hidden so that only focus can
+ * change it. A capture that times out leaves that stop unmeasured rather than stopping the sweep.
+ */
+async function captureFrame(
+  page: KeyboardPointerSweepPage,
+  { clip }: FocusFrame
+): Promise<Uint8Array | undefined> {
+  try {
+    return await page.screenshot({ clip, animations: "disabled", caret: "hide", timeout: 5_000 });
+  } catch (error) {
+    if (error instanceof Error && error.name === "TimeoutError") return undefined;
+    throw error;
+  }
 }
 
 /** The text of the content that hovering the rule's element makes visible. */
@@ -359,6 +466,18 @@ function runSweepProbe(request: ProbeRequest): unknown {
       .slice(0, 80);
   const isVisible = (element: Element): boolean =>
     element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  // A mouse can only reach what lies on the page. A skip link parked above the top until it has
+  // focus is visible to the browser, yet no pointer can hover it.
+  const onPage = (element: Element): boolean => {
+    const box = element.getBoundingClientRect();
+    const root = document.documentElement;
+    return (
+      box.right + scrollX > 0 &&
+      box.bottom + scrollY > 0 &&
+      box.left + scrollX < root.scrollWidth &&
+      box.top + scrollY < root.scrollHeight
+    );
+  };
   const find = (selectors: string[]) =>
     selectors
       .map((selector) => document.querySelector(selector))
@@ -417,7 +536,9 @@ function runSweepProbe(request: ProbeRequest): unknown {
               const hover = selector.slice(0, at).trim();
               const revealed = selector.replaceAll(":hover", "").trim();
               for (const element of document.querySelectorAll(hover)) {
-                if (isVisible(element)) rules.push({ hover: selectorFor(element), revealed });
+                if (isVisible(element) && onPage(element)) {
+                  rules.push({ hover: selectorFor(element), revealed });
+                }
               }
             }
           } else if ("cssRules" in rule) {
@@ -476,5 +597,32 @@ function runSweepProbe(request: ProbeRequest): unknown {
       const active = document.activeElement;
       return active === null || active === document.body || !isVisible(active);
     }
+    // Centres the element in the viewport and frames it with a margin, since a focus indicator is
+    // often drawn around an element rather than on it. Scrolling is instant, so the frame is taken
+    // where the page settles even when the page asks for smooth scrolling.
+    case "frame": {
+      const element = document.querySelector(request.selector);
+      if (!element) return null;
+      element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+      const box = element.getBoundingClientRect();
+      // Whole pixels, so both captures sample the page on the same pixel grid.
+      const margin = 12;
+      const left = Math.max(0, Math.floor(box.left - margin));
+      const top = Math.max(0, Math.floor(box.top - margin));
+      const right = Math.min(innerWidth, Math.ceil(box.right + margin));
+      const bottom = Math.min(innerHeight, Math.ceil(box.bottom + margin));
+      if (right - left < 1 || bottom - top < 1) return null;
+      return {
+        scrollX,
+        scrollY,
+        clip: { x: left, y: top, width: right - left, height: bottom - top }
+      };
+    }
+    case "blur":
+      (document.activeElement as HTMLElement | null)?.blur();
+      return null;
+    case "scroll-to":
+      scrollTo({ left: request.x, top: request.y, behavior: "instant" });
+      return null;
   }
 }
