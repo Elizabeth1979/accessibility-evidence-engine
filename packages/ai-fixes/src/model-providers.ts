@@ -159,6 +159,13 @@ export function createClaudeModelProvider(options: ClaudeModelProviderOptions = 
 export const DEFAULT_LOCAL_BASE_URL = "http://localhost:11434/v1";
 export const DEFAULT_LOCAL_MODEL = "gemma4:e4b";
 
+/**
+ * How long one local answer may take. On a machine with no GPU, such as a CI runner, reading the
+ * specialist prompt alone can take more than two minutes, so this only stops a server that has
+ * stopped answering.
+ */
+export const LOCAL_MODEL_TIMEOUT_MS = 10 * 60_000;
+
 export interface LocalModelProviderOptions {
   /** An OpenAI-compatible base URL; defaults to Ollama's. */
   baseUrl?: string;
@@ -166,7 +173,7 @@ export interface LocalModelProviderOptions {
   model?: string;
   /** Most local runtimes ignore it; vLLM and hosted gateways may require it. */
   apiKey?: string;
-  /** A cold local model can take a while to load on its first request. */
+  /** Defaults to LOCAL_MODEL_TIMEOUT_MS. */
   timeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }
@@ -203,7 +210,7 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
             { role: "user", content: JSON.stringify(request.input) }
           ]
         }),
-        signal: AbortSignal.timeout(options.timeoutMs ?? 120_000)
+        signal: AbortSignal.timeout(options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS)
       });
 
       if (!response.ok) {
