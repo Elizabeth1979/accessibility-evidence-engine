@@ -1410,16 +1410,19 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   return laneResult;
 }
 
-/** Words as a lower-case, hyphenated id, for file and action names; "item" when none are left. */
+/**
+ * Words as a lower-case, hyphenated id of at most 60 characters, for file and action names;
+ * `fallback` when no words are left. Joining the words, rather than trimming hyphens with an
+ * anchored regex, keeps it linear however many hyphens the text has.
+ */
 export function toSafeId(text: string, fallback = "item"): string {
-  return (
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60)
-      .replace(/-+$/, "") || fallback
-  );
+  const id = text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join("-")
+    .slice(0, 60);
+  return (id.endsWith("-") ? id.slice(0, -1) : id) || fallback;
 }
 
 export interface PageCheckpointLaneOptions<TPage extends PlaywrightPageLike> {
