@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   aeeRunModelProvider,
   buildScenarioSynthesisForTest,
+  renderFixesCsvForTest,
   renderIntegratedHtmlForTest,
   renderPullRequestComment,
   type ScenarioActionReport,
@@ -91,6 +92,7 @@ function exampleSynthesisInputs() {
       json: "aee-report.json",
       markdown: "aee-report.md",
       prComment: "aee-pr-comment.md",
+      csv: "aee-fixes.csv",
       manifest: "manifest.json",
       plan: "scenario-plan.json"
     },
@@ -514,4 +516,19 @@ test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a
     "claude:claude-opus-5"
   );
   assert.equal(aeeRunModelProvider({ AEE_LLM_PROVIDER: "local" }).id, "local:gemma4:e4b");
+});
+
+test("the fixes CSV has one quoted row per fix, and keeps page text that looks like a formula as text", () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  // A spreadsheet runs a cell starting with = as a formula, and page text can start with anything.
+  report.synthesis.findings[0]!.instances[0]!.detail = '=HYPERLINK("https://example.com","Click")';
+  const csv = renderFixesCsvForTest(report, views);
+  const lines = csv.split("\r\n").filter(Boolean);
+  assert.match(lines[0]!, /^Title,Severity,WCAG,Rule,Rule link,How to build it,Page,Elements/);
+  assert.match(csv, /,"'=HYPERLINK\(""https:\/\/example\.com"",""Click""\)/);
+  assert.equal(
+    csv.match(/^(?:[^"\r\n]|"(?:[^"]|"")*")*\r\n/gm)?.length,
+    report.synthesis.findings.length + 1
+  );
 });

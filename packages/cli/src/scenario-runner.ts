@@ -43,6 +43,7 @@ import {
   patternForAxeRule,
   patternLink,
   remediationEntry,
+  remediationRegistry,
   type PatternLink
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "playwright";
@@ -120,6 +121,7 @@ export interface ScenarioIntegratedReport {
     json: string;
     markdown: string;
     prComment: string;
+    csv: string;
     manifest: string;
     plan: string;
   };
@@ -138,6 +140,8 @@ interface ReportFiles {
   markdown: string;
   /** The report as one pull-request comment. */
   prComment: string;
+  /** Every fix as one row, for an issue tracker's CSV import. */
+  csv: string;
 }
 
 export interface ExecuteScenarioResult {
@@ -391,28 +395,40 @@ interface ScreenView {
  */
 const SWEEP_FINDING_TEXT: Record<
   SweepFindingKind,
-  { title: string; impact: string; fix: string; area: FindingSynthesis["area"]; advisory?: true }
+  {
+    title: string;
+    /** What should happen instead, as a ticket's "expected". */
+    expected: string;
+    impact: string;
+    fix: string;
+    area: FindingSynthesis["area"];
+    advisory?: true;
+  }
 > = {
   "pointer-only": {
     title: "Works with a mouse only",
+    expected: "Tab reaches it, and Enter or Space does what a click does.",
     impact: "Keyboard users cannot reach or press it.",
     fix: "Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space.",
     area: "keyboard"
   },
   "hover-only": {
     title: "Shown on mouse hover only",
+    expected: "What shows on mouse hover also shows when its trigger gets keyboard focus.",
     impact: "Keyboard and touch-screen users never see this content.",
     fix: "Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element.",
     area: "keyboard"
   },
   "activation-differs": {
     title: "The keyboard does something different from a click",
+    expected: "Pressing it with the keyboard does what clicking it does.",
     impact: "Keyboard users do not get the result a mouse user gets.",
     fix: "Make Enter, or Space for check boxes and switches, do exactly what a click does; a native button does this for free.",
     area: "keyboard"
   },
   "focus-lost": {
     title: "Focus is lost after an action",
+    expected: "After the action, keyboard focus is on something visible and sensible.",
     impact:
       "Keyboard and screen-reader users lose their place and have to start again from the top of the page.",
     fix: "After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control.",
@@ -420,6 +436,7 @@ const SWEEP_FINDING_TEXT: Record<
   },
   "looks-like-heading": {
     title: "Looks like a heading, but is not one",
+    expected: "Text that looks like a section heading is marked up as a heading.",
     impact:
       "Screen-reader users who move through the page by headings skip this section title, and do not hear where the section starts.",
     fix: "Make it a real heading (h2 to h6) at the level the design shows. A summary is a button, so a heading inside it is lost: put the heading before the details element, or around the whole disclosure.",
@@ -554,7 +571,8 @@ function assessmentFiles(assessmentDir: string) {
       html: path.join(assessmentDir, "aee-report.html"),
       json: path.join(assessmentDir, "aee-report.json"),
       markdown: path.join(assessmentDir, "aee-report.md"),
-      prComment: path.join(assessmentDir, "aee-pr-comment.md")
+      prComment: path.join(assessmentDir, "aee-pr-comment.md"),
+      csv: path.join(assessmentDir, "aee-fixes.csv")
     }
   };
 }
@@ -934,6 +952,7 @@ function createIntegratedReport(input: {
       json: relativePath(input.assessmentDir, input.reportFiles.json),
       markdown: relativePath(input.assessmentDir, input.reportFiles.markdown),
       prComment: relativePath(input.assessmentDir, input.reportFiles.prComment),
+      csv: relativePath(input.assessmentDir, input.reportFiles.csv),
       manifest: relativePath(input.assessmentDir, input.manifestFile),
       plan: relativePath(input.assessmentDir, input.planFile)
     },
@@ -988,6 +1007,7 @@ async function writeIntegratedReport(
     writeFile(files.json, JSON.stringify(report, null, 2), "utf8"),
     writeFile(files.markdown, renderIntegratedMarkdown(report), "utf8"),
     writeFile(files.prComment, renderPullRequestComment(report), "utf8"),
+    writeFile(files.csv, renderFixesCsv(report, views), "utf8"),
     writeFile(files.html, renderIntegratedHtml(report, views), "utf8"),
     copyFile(path.resolve(__dirname, "../assets/aee-display.woff2"), reportFont)
   ]);
@@ -1654,6 +1674,10 @@ export function buildScenarioSynthesisForTest(
 }
 
 /** Pure HTML entry point used to verify the portable report without running a browser journey. */
+export function renderFixesCsvForTest(report: ScenarioIntegratedReport, views: unknown): string {
+  return renderFixesCsv(report, views as IntegratedHtmlViews);
+}
+
 export function renderIntegratedHtmlForTest(
   report: ScenarioIntegratedReport,
   views: unknown
@@ -2857,6 +2881,7 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 .page-lists h4{margin:0 0 .5rem;font:700 1.1rem/1.2 var(--serif)}.page-lists section+section{margin-top:1.75rem}.marker-list{margin:0;padding:0;list-style:none}.marker-item{display:flex;gap:.7rem;width:100%;padding:.55rem .6rem;border:0;border-bottom:1px solid var(--line);color:inherit;background:none;font:inherit;text-align:left;cursor:pointer}.marker-item:hover{background:var(--wash)}.marker-item[aria-current=true]{background:var(--unknown-wash);box-shadow:inset 4px 0 0 var(--marker)}.marker-item small,.marker-unplaced small{display:block;color:var(--muted)}.marker-unplaced{padding:.55rem .6rem;border-bottom:1px solid var(--line)}.marker-number{display:grid;flex:none;place-items:center;min-width:1.75rem;height:1.75rem;border-radius:50%;color:#fff;font-size:.85rem;font-weight:750}.marker-number.fail{background:var(--fail)}.marker-number.advisory{background:var(--unknown)}.marker-number.neutral{border-radius:4px;background:var(--ink)}.marker-flag{padding:0 .3rem;border-radius:4px;color:var(--fail);background:var(--fail-wash);font-size:.8rem;font-weight:750}.marker-nav{display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;margin:0 0 .5rem}.marker-nav button{padding:.35rem .8rem;border:1px solid var(--line-strong);border-radius:6px;color:var(--forest-deep);background:var(--surface);font:650 .9rem/1.2 var(--sans);cursor:pointer}.marker-nav button:hover{color:#fff;background:var(--forest)}.marker-scope{color:var(--muted);font-size:.9rem}
 #panel-page:has([data-layer-toggle=issues]:not(:checked)) [data-layer=issues],#panel-page:has([data-layer-toggle=reader]:not(:checked)) [data-layer=reader]{display:none}
 @media(max-width:900px){.page-view{grid-template-columns:1fr}.page-canvas{top:0;max-height:45vh;z-index:1}.page-canvas svg{width:min(var(--page-width),180vw)}.page-lists :is(button,h4){scroll-margin-top:calc(45vh + 1rem)}}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}.copy-status{color:var(--pass);font-weight:650}.ticket-text{margin-top:.75rem}.ticket-text summary{cursor:pointer;font-weight:650;color:var(--forest)}.ticket-text textarea{display:block;width:100%;margin-top:.5rem;padding:.75rem;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink);font:.85rem/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}.ticket-text textarea:focus-visible{outline:3px solid var(--focus);outline-offset:2px}.csv-download{font-weight:750}
 @media(max-width:1000px){.decision-room{grid-template-columns:1fr}.fix-row{grid-template-columns:minmax(5.5rem,max-content) minmax(0,1fr)}.effort{grid-column:2;padding:1rem 0 0;border-left:0;border-top:1px solid var(--line)}}
 @media(max-width:900px){.header-inner,.scoreboard{grid-template-columns:1fr}.header-meta{align-self:auto}.score-facts{grid-template-columns:repeat(2,minmax(0,1fr));padding:1.5rem}.score-facts div{padding:1rem;border-left:0;border-top:1px solid rgb(255 255 255/.2)}.score-facts div:nth-child(odd){border-right:1px solid rgb(255 255 255/.2)}.evidence-preview{grid-template-columns:1fr}.coverage-table td:last-child{min-width:18rem}.before-after{grid-template-columns:1fr}.planner-tools,.section-intro{align-items:flex-start;flex-direction:column}}
 @media(max-width:680px){.notice-grid,.remediation-grid,.outcome-pair,.lane-visuals,.journey-proof{grid-template-columns:1fr;gap:1rem}.remediation-grid section+section{border-left:0;border-top:1px solid var(--line-strong);padding:1.25rem 0 0}.finding-dossier>header{grid-template-columns:1fr}.coverage-table td:last-child{min-width:14rem}.health-row{grid-template-columns:auto minmax(0,1fr)}.health-result{grid-column:2}.fix-row{grid-template-columns:1fr;gap:.75rem}.fix-order{align-items:center;flex-direction:row}.effort{grid-column:1}.preview-stage{min-height:12rem}.ask-form{flex-direction:column}}
@@ -2868,7 +2893,7 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
 <section id="panel-page" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>The page as tested</h2><p>Each issue and what the screen reader said, drawn where they were found. Select an item to see it on the page.</p></div></div>${renderPageView(report, views)}</section>
-<section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report)}</section>
+<section id="panel-findings" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Grouped fix review</h2><p>Each row is one shared component or token fix. Expand its instance list to see every page location found at the largest checkpoint.</p></div></div>${renderFixPlanner(report, views)}</section>
 <section id="panel-journeys" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Tested user journeys</h2><p>Behavior results for keyboard, pointer, and the portable virtual reader.</p></div></div><section class="annex-block"><h3>Keyboard and pointer sweep</h3>${renderSweepOverview(views)}</section><section class="annex-block"><h3>Keyboard and pointer overview</h3>${renderKeyboardOverview(report, views)}</section><section class="annex-block"><h3>Virtual screen-reader report</h3>${renderReaderOverview(report, views)}</section></section>
 <section id="panel-media" class="tab-panel" data-tab-panel><h2>Visual evidence and recordings</h2><section class="panel"><h3>Interaction videos</h3><div class="media-grid">${
     videos.length
@@ -3021,6 +3046,20 @@ figure{margin:0}figcaption{margin:.6rem 0;color:var(--muted);overflow-wrap:anywh
     selectMarker(items[current<0?0:Math.min(items.length-1,Math.max(0,current+Number(step.dataset.readerStep)))]);
   }));
 
+  document.querySelectorAll('[data-copy-ticket]').forEach(button=>button.addEventListener('click',async()=>{
+    const row=button.closest('.fix-row');
+    const text=row.querySelector('.ticket-text textarea');
+    const status=row.querySelector('[data-copy-status]');
+    try{
+      await navigator.clipboard.writeText(text.value);
+      status.textContent='Ticket copied. Paste it into your issue tracker.';
+    }catch{
+      row.querySelector('.ticket-text').open=true;
+      text.focus();
+      text.select();
+      status.textContent='Copying is blocked here, so the ticket text is selected: press Ctrl+C or Command+C.';
+    }
+  }));
   const filterButtons=[...document.querySelectorAll('[data-fix-filter]')];
   const fixRows=[...document.querySelectorAll('[data-fix-size]')];
   filterButtons.forEach(button=>{
@@ -3158,7 +3197,182 @@ function renderSweepOverview(views: IntegratedHtmlViews): string {
     .join("");
 }
 
-function renderFixPlanner(report: ScenarioIntegratedReport): string {
+/** One grouped fix as a ticket someone else can act on, from the report alone. */
+interface FixTicket {
+  title: string;
+  severity: string;
+  wcag: string[];
+  rule: string;
+  ruleLink?: string;
+  pattern?: string;
+  page: string;
+  elements: string[];
+  pageState: string;
+  steps: string[];
+  expected: string;
+  actual: string[];
+  suggestedFix: string;
+  aiSuggestion?: string;
+  affected: string;
+  evidence: string[];
+}
+
+/** WCAG and axe requirement titles and links, by requirement id, from the remediation registry. */
+const REGISTRY_REQUIREMENTS = new Map(
+  remediationRegistry.entries
+    .flatMap(({ requirements }) => requirements)
+    .map((requirement) => [`${requirement.standard}:${requirement.requirementId}`, requirement])
+);
+
+function fixTicket(
+  report: ScenarioIntegratedReport,
+  views: IntegratedHtmlViews,
+  finding: FindingSynthesis
+): FixTicket {
+  const checkpoint = finding.checkpoints[0];
+  const page =
+    report.actions.find(({ runId }) => runId === checkpoint?.runId)?.pageUrl ??
+    report.journeys[0]?.startUrl ??
+    report.target;
+  const labels = finding.instances.map(({ label }) => label);
+  const first = finding.instances[0];
+  const axeRule = REGISTRY_REQUIREMENTS.get(`axe-core:${finding.ruleId}`);
+  const ai = finding.remediation.ai;
+  const shorten = (text: string) =>
+    text.length > 300 ? `${text.slice(0, 300).replace(/\s+\S*$/, "")}…` : text;
+  // What the reader said at the element is the clearest "actual"; axe's check list is the fallback.
+  const announced = finding.instances.flatMap(({ selector }) => {
+    const entry = views.transcripts
+      .flatMap(({ entries }) => entries)
+      .find(({ nodePath }) => nodePath === selector);
+    return entry
+      ? [`The virtual screen reader announced "${entry.announcement}" at ${selector}.`]
+      : [];
+  });
+  const expected = isSweepFindingKind(finding.ruleId)
+    ? SWEEP_FINDING_TEXT[finding.ruleId].expected
+    : finding.title;
+  return {
+    title: `${finding.title}: ${labels.slice(0, 2).join(", ")}${labels.length > 2 ? ` and ${labels.length - 2} more` : ""}`,
+    severity: finding.advisory ? "Advisory, does not block release" : "Blocks release",
+    wcag: finding.wcagCriteria.map((criterion) => {
+      const requirement = REGISTRY_REQUIREMENTS.get(`WCAG:${criterion.replace(/^WCAG\s*/, "")}`);
+      return requirement
+        ? `${requirement.requirementId} ${requirement.title}${requirement.level ? ` (${requirement.level})` : ""} ${requirement.url}`
+        : criterion;
+    }),
+    rule: finding.ruleId,
+    ruleLink: axeRule?.url,
+    pattern: finding.pattern?.url,
+    page,
+    elements: finding.instances.map(({ selector }) => selector),
+    pageState: checkpoint
+      ? pageStateLabel(checkpoint.driver, checkpoint.actionId)
+      : "The page as tested",
+    steps: [
+      `Open ${page}.`,
+      ...(checkpoint?.driver === "playwright-test"
+        ? [
+            `Reach the state the test checked: ${humanActionName(checkpoint.actionId).toLowerCase()}.`
+          ]
+        : []),
+      first ? `Find ${first.label} (${first.selector}).` : "Find the affected element.",
+      `Check: ${expected.replace(/\.$/, "")}.`
+    ],
+    expected,
+    actual: announced.length
+      ? announced.slice(0, 3)
+      : [
+          ...new Set(finding.instances.flatMap(({ detail }) => (detail ? [shorten(detail)] : [])))
+        ].slice(0, 3),
+    suggestedFix: finding.remediation.deterministic,
+    aiSuggestion:
+      ai.status === "suggested" && ai.suggestions?.length
+        ? `${ai.suggestions.map(({ selector, text }) => `"${text}" for ${selector}`).join("; ")} (suggested by AI${ai.providerId ? `, ${ai.providerId}` : ""})`
+        : undefined,
+    affected: `${finding.instanceCount}: ${finding.instances
+      .slice(0, 10)
+      .map(({ label, selector }) => `${label} (${selector})`)
+      .join("; ")}${finding.instanceCount > 10 ? ` and ${finding.instanceCount - 10} more` : ""}`,
+    evidence: [
+      report.files.html,
+      ...(checkpoint?.screenshotPath ? [checkpoint.screenshotPath] : [])
+    ]
+  };
+}
+
+/** A ticket in Markdown that renders as written in GitHub, Jira Cloud and Linear. */
+function renderTicketMarkdown(ticket: FixTicket): string {
+  // Page text can hold `<label>` or `*`, which Markdown would read as markup.
+  const text = (value: string) => value.replace(/[\\`*_[\]<>]/g, "\\$&");
+  const code = (value: string) => `\`${value.replaceAll("`", "'")}\``;
+  const field = (name: string, value: string) => `- **${name}:**${value ? ` ${value}` : ""}`;
+  return [
+    `### ${text(ticket.title)}`,
+    "",
+    field("Severity", ticket.severity),
+    field("WCAG", ticket.wcag.map(text).join("; ") || "Not mapped"),
+    field("Rule", `${code(ticket.rule)}${ticket.ruleLink ? ` ${ticket.ruleLink}` : ""}`),
+    ...(ticket.pattern ? [field("How to build it", ticket.pattern)] : []),
+    field(
+      "Where",
+      `${ticket.page}, ${ticket.elements.slice(0, 3).map(code).join(", ")}, ${text(ticket.pageState.toLowerCase())}`
+    ),
+    field("Steps to reproduce", ""),
+    ...ticket.steps.map((step, index) => `  ${index + 1}. ${text(step)}`),
+    field("Expected", text(ticket.expected)),
+    field("Actual", ticket.actual.map(text).join(" ") || "See the report's evidence."),
+    field("Suggested fix", text(ticket.suggestedFix)),
+    ...(ticket.aiSuggestion
+      ? [field("AI suggestion, review before use", text(ticket.aiSuggestion))]
+      : []),
+    field("Affected elements", text(ticket.affected)),
+    field("Evidence", ticket.evidence.map(code).join(", "))
+  ].join("\n");
+}
+
+const CSV_COLUMNS: Array<[string, (ticket: FixTicket) => string]> = [
+  ["Title", (ticket) => ticket.title],
+  ["Severity", (ticket) => ticket.severity],
+  ["WCAG", (ticket) => ticket.wcag.join("; ")],
+  ["Rule", (ticket) => ticket.rule],
+  ["Rule link", (ticket) => ticket.ruleLink ?? ""],
+  ["How to build it", (ticket) => ticket.pattern ?? ""],
+  ["Page", (ticket) => ticket.page],
+  ["Elements", (ticket) => ticket.elements.join("; ")],
+  ["Page state", (ticket) => ticket.pageState],
+  [
+    "Steps to reproduce",
+    (ticket) => ticket.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")
+  ],
+  ["Expected", (ticket) => ticket.expected],
+  ["Actual", (ticket) => ticket.actual.join("\n")],
+  ["Suggested fix", (ticket) => ticket.suggestedFix],
+  ["AI suggestion, review before use", (ticket) => ticket.aiSuggestion ?? ""],
+  ["Affected elements", (ticket) => ticket.affected],
+  ["Evidence", (ticket) => ticket.evidence.join("; ")]
+];
+
+/**
+ * Every fix as one CSV row (RFC 4180), for an issue tracker's import. A cell a spreadsheet would
+ * run as a formula, one starting with =, +, -, @ or a tab, is kept as text.
+ */
+function renderFixesCsv(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
+  const cell = (value: string) => {
+    const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+    return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+  };
+  const rows = [
+    CSV_COLUMNS.map(([name]) => name),
+    ...report.synthesis.findings.map((finding) => {
+      const ticket = fixTicket(report, views, finding);
+      return CSV_COLUMNS.map(([, value]) => value(ticket));
+    })
+  ];
+  return `${rows.map((row) => row.map(cell).join(",")).join("\r\n")}\r\n`;
+}
+
+function renderFixPlanner(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
   if (report.synthesis.findings.length === 0) {
     return '<p class="empty">No confirmed findings need a fix plan in this authored scope.</p>';
   }
@@ -3175,10 +3389,10 @@ function renderFixPlanner(report: ScenarioIntegratedReport): string {
             : "P2";
       const screenshot = representative?.screenshotPath;
       const video = report.artifacts.find((artifact) => artifact.kind === "interaction-video");
-      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span${finding.advisory ? ' class="advisory"' : ""}>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)}${finding.wcagCriteria.length ? ` · ${finding.wcagCriteria.map(escapeHtml).join(", ")}` : ""}</p></div>${renderFindingBadge(finding)}</header><p>${escapeHtml(findingImpact(finding))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderAiSuggestions(finding.remediation.ai)}${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button></div></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
+      return `<article class="fix-row" data-fix-size="${escapeAttribute(effort.size.toLowerCase())}" id="review-${escapeAttribute(finding.ruleId)}"><div class="fix-order"><span${finding.advisory ? ' class="advisory"' : ""}>${escapeHtml(priority)}</span><strong>${index + 1}</strong></div><div class="fix-main"><header><div><h3>${escapeHtml(findingFixLabel(finding))}</h3><p class="technical-id">${escapeHtml(finding.ruleId)}${finding.wcagCriteria.length ? ` · ${finding.wcagCriteria.map(escapeHtml).join(", ")}` : ""}</p></div>${renderFindingBadge(finding)}</header><p>${escapeHtml(findingImpact(finding))}</p>${renderPatternLink(finding)}<div class="fix-scope"><strong>One grouped fix</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"} in ${finding.componentCount} component group${finding.componentCount === 1 ? "" : "s"}, repeated at ${finding.checkpointCount} checkpoints.</span></div><div class="before-after">${renderCurrentEvidence(finding, screenshot)}${renderProposedFix(finding)}</div>${renderAiSuggestions(finding.remediation.ai)}${renderFindingInstances(finding)}<div class="fix-actions"><a href="#finding-${escapeAttribute(finding.ruleId)}" data-open-annex>Inspect correlated evidence</a>${video ? `<a href="${encodeURI(String(video.path))}">Watch tested journey</a>` : ""}<button type="button" class="ask-about" data-question="What should I do about ${escapeAttribute(finding.ruleId)}?">Ask this report</button><button type="button" class="ask-about" data-copy-ticket>Copy as ticket<span class="visually-hidden"> for ${escapeHtml(findingFixLabel(finding))}</span></button><span class="copy-status" role="status" data-copy-status></span></div><details class="ticket-text"><summary>Ticket text<span class="visually-hidden"> for ${escapeHtml(findingFixLabel(finding))}</span></summary><textarea readonly rows="14" aria-label="${escapeAttribute(`Ticket for ${findingFixLabel(finding)}`)}">${escapeHtml(renderTicketMarkdown(fixTicket(report, views, finding)))}</textarea></details></div><aside class="effort"><strong>${escapeHtml(effort.size)}</strong><span>${escapeHtml(effort.hours)}</span><p>${escapeHtml(effort.rationale)}</p></aside></article>`;
     })
     .join("");
-  return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
+  return `<div class="planner-tools"><p><strong>Estimated focused effort:</strong> ${escapeHtml(totalEffortSummary(report.synthesis.findings))}</p><a class="csv-download" href="${encodeURI(report.files.csv)}" download>Download all fixes as CSV</a><div class="fix-filters" role="group" aria-label="Filter fix plan"><button type="button" class="filter-active" data-fix-filter="all">All fixes</button><button type="button" data-fix-filter="small">Quick wins</button><button type="button" data-fix-filter="medium">Medium effort</button></div></div><div class="fix-list">${rows}</div><p class="estimate-note">Effort is a planning estimate based on the captured components and includes focused regression checks. It does not include release process, design approval, or unrelated refactoring.</p>`;
 }
 
 /** An advisory result is labelled as such, never with a severity that suggests it blocks. */

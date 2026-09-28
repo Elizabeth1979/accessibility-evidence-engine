@@ -110,6 +110,7 @@ export const test = base.extend<AeeTestFixtures>({
       path: reportFiles.prComment,
       contentType: "text/markdown"
     });
+    await testInfo.attach("aee-fixes.csv", { path: reportFiles.csv, contentType: "text/csv" });
   },
   checkpoint: async ({ page }, use) => {
     await use(checkpoints.get(page)!);
