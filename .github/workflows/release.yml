@@ -32,8 +32,11 @@ jobs:
       - name: Verify the tarballs install into a fresh project
         run: npm run test:package
 
+      # npm writes into the destination but does not create it.
       - name: Pack
-        run: npm pack --workspaces --pack-destination release
+        run: |
+          mkdir release
+          npm pack --workspaces --pack-destination release
 
       # A version that is already tagged is never reused: the job fails instead of attaching new
       # tarballs to an older commit.
