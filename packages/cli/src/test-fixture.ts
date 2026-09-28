@@ -44,11 +44,13 @@ export const test = base.extend<AeeTestFixtures>({
     const checkpoint = (name: string) =>
       base.step(`AEE checkpoint: ${name}`, () => lane.checkpoint(name), { box: true });
     checkpoints.set(page, checkpoint);
+    let loaded = false;
     for (const method of PAGE_LOADS) {
       const load: (...args: never[]) => Promise<unknown> = page[method].bind(page);
       Object.defineProperty(page, method, {
         value: async (...args: never[]) => {
           const response = await load(...args);
+          loaded = true;
           await checkpoint(`after ${method}`);
           return response;
         }
@@ -57,7 +59,10 @@ export const test = base.extend<AeeTestFixtures>({
 
     await use(page);
 
-    if (testInfo.status === testInfo.expectedStatus && !page.isClosed()) {
+    // A test that never loads a page, such as one that only calls `page.request`, leaves the blank
+    // page every tab starts on, and checking that would report its missing title and language.
+    const leftAPage = loaded || page.url() !== "about:blank";
+    if (testInfo.status === testInfo.expectedStatus && !page.isClosed() && leftAPage) {
       await checkpoint("test end");
     }
     const { laneId, steps, diagnostics, manifestFile } = await lane.finish();
@@ -111,4 +116,7 @@ export const test = base.extend<AeeTestFixtures>({
   }
 });
 
+// With Playwright's types, such as `Page`, so swapping a spec's import is the only change. `expect`
+// is named, not starred: an ES module importing this CommonJS file sees only the names it spells out.
 export { expect } from "@playwright/test";
+export type * from "@playwright/test";

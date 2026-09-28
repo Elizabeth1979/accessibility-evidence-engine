@@ -1,6 +1,6 @@
 {
   "name": "@aee/playwright",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Playwright adapter for evidence-first accessibility investigations with Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -70,10 +70,10 @@
   },
   "dependencies": {
     "@axe-core/playwright": "4.13.0",
-    "@aee/core": "0.1.0",
-    "@aee/judges": "0.1.0",
-    "@aee/observers": "0.1.0",
-    "@aee/reporter": "0.1.0",
-    "@aee/schemas": "0.1.0"
+    "@aee/core": "0.2.0",
+    "@aee/judges": "0.2.0",
+    "@aee/observers": "0.2.0",
+    "@aee/reporter": "0.2.0",
+    "@aee/schemas": "0.2.0"
   }
 }

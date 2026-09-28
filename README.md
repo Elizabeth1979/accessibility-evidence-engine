@@ -99,6 +99,24 @@ npm run test:playwright
 
 `aee-output/`, `test-results/`, and `playwright-report/` are intentionally ignored by Git.
 
+## Install from GitHub
+
+The packages are not on npm yet. Each [release](https://github.com/Elizabeth1979/accessibility-evidence-engine/releases) carries all eight as tarballs. Install them together from one release, since each package depends on the others at exactly that version:
+
+```bash
+npm install --save-dev \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-ai-fixes-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-cli-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-core-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-judges-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-observers-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-playwright-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-reporter-0.2.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-schemas-0.2.0.tgz
+```
+
+Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.2.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
+
 ## Playwright integration
 
 `runAeeOnPage(...)` brackets a real Playwright action with the same observer, judge, and reporting pipeline:
@@ -139,7 +157,7 @@ test("collect keyboard evidence", async ({ page }) => {
 
 An existing spec gets the same checks by changing one import, `@playwright/test` to `@aee/cli/test`: every page load it starts is checkpointed and the test gets the full report and PR comment. See [the drop-in test fixture](docs/playwright-integration.md#drop-in-test-fixture).
 
-The `@aee/*` packages currently work as local npm workspaces in this repository; they have not yet been published to a package registry. See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
+The `@aee/*` packages are not on a package registry yet; [install them from GitHub](#install-from-github). See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
 
 ## GitHub Action
 

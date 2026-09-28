@@ -384,15 +384,19 @@ after the scenario or test command.
 
 ## Drop-in test fixture
 
-An existing Playwright spec gets AEE by changing one import:
+Once AEE is [installed from GitHub](../README.md#install-from-github), an existing Playwright spec
+gets it by changing one import:
 
 ```diff
 - import { expect, test } from "@playwright/test";
 + import { expect, test } from "@aee/cli/test";
 ```
 
-Every page load the test starts (`goto`, `reload`, `setContent`, `goBack`, `goForward`) is
-checkpointed as soon as it returns, and so is the page as a passing test leaves it. A checkpoint
+`@aee/cli/test` also re-exports Playwright's types, such as `Page`, so a spec that imports them on
+the same line needs no other change. Every page load the test starts (`goto`, `reload`,
+`setContent`, `goBack`, `goForward`) is checkpointed as soon as it returns, and so is the page as a
+passing test leaves it, unless the test never loaded one: a test that only calls `page.request`
+leaves the blank page every tab starts on, and that is not checked. A checkpoint
 runs the same focus, DOM, accessibility-tree, visual and axe capture as an `aee run` step, on the
 test's own page and session, and waits for the load that started it, so the test never races it.
 For a state no page load reaches, such as an open dialog, the test names one:
