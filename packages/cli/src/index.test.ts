@@ -86,9 +86,10 @@ test("runWithPage records the capture policy and filtered observer set", async (
 
     const report = JSON.parse(await readFile(reportPath, "utf8")) as JsonReport;
 
+    // No interaction runs, so the page is captured once.
     assert.deepEqual(
       report.records.map((record) => record.observerId),
-      ["dom", "dom"]
+      ["dom"]
     );
     assert.deepEqual(report.run.config?.selectedObservers, ["dom"]);
     assert.deepEqual(report.run.config?.capturePolicy, {

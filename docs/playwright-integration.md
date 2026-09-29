@@ -7,7 +7,7 @@ The package currently resolves through this repository's npm workspace and has n
 ## What it does
 
 - Builds a checkpoint and interaction for the current page
-- Runs the selected observers before and after capture
+- Runs the selected observers before and after the interaction, or once when there is none to perform
 - Produces evidence bundles, judgments, findings, and report artifacts
 - Optionally writes `run.json`, `bundle.json`, and reporter output to disk
 

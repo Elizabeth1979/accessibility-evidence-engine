@@ -61,11 +61,11 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
   try {
     await runObserverLifecycle(input.observerPlugins, "setup", input.observerContext);
 
-    const beforeRecords = await capturePhase(
-      input.observerPlugins,
-      "before",
-      input.observerContext
-    );
+    // "Before" is only there to compare with "after" around an interaction; with none to perform,
+    // the page is captured once, as it is.
+    const beforeRecords = input.executeInteraction
+      ? await capturePhase(input.observerPlugins, "before", input.observerContext)
+      : [];
 
     if (input.executeInteraction) {
       await input.executeInteraction({
