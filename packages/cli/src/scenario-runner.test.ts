@@ -76,7 +76,8 @@ function exampleSynthesisInputs() {
       plannedLanes: 3,
       completedLanes: 3,
       missingArtifacts: 0,
-      failedArtifacts: 0
+      failedArtifacts: 0,
+      plannedChecks: { keyboard: true, reader: true }
     },
     actions,
     artifacts,
@@ -496,6 +497,8 @@ test("the PR comment puts blocking fixes first and AI last, and shows page text 
 
 test("scenario synthesis clearly reports an empty authored scope", () => {
   const report = {
+    profile: "playwright-test",
+    completeness: { plannedChecks: { keyboard: false, reader: false } },
     actions: [],
     artifacts: [],
     findings: [],
@@ -516,6 +519,16 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
   assert.equal(synthesis.findings.length, 0);
   assert.equal(synthesis.lanes.length, 0);
   assert.deepEqual(synthesis.reader, { commands: 0, passed: 0, failed: 0, unknown: 0 });
+  // Checks the run does not include say so, rather than asking for a review of nothing.
+  assert.deepEqual(
+    synthesis.status.map(({ id, verdict, result }) => [id, verdict, result]),
+    [
+      ["keyboard", "not-run", "Not in this run"],
+      ["reader", "not-run", "Not in this run"],
+      ["semantics", "unknown", "Needs review"],
+      ["contrast", "unknown", "Needs review"]
+    ]
+  );
 });
 
 test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a key is set", () => {

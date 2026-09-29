@@ -23,6 +23,7 @@ import {
   runKeyboardPointerSweepLane,
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
+  type ContrastMeasurement,
   type ElementContext,
   type ElementMap,
   type EvidenceManifest,
@@ -99,6 +100,8 @@ export interface ScenarioIntegratedReport {
     completedLanes: number;
     missingArtifacts: number;
     failedArtifacts: number;
+    /** Whether the plan runs the keyboard and mouse sweep and the virtual screen reader at all. */
+    plannedChecks: { keyboard: boolean; reader: boolean };
   };
   summary: {
     actions: number;
@@ -192,6 +195,10 @@ interface AxeNodeView {
   targetBox?: AxeTargetBox;
   /** The page around the element, captured for the AI specialists that may be asked about it. */
   context?: ElementContext;
+  /** Why axe could not decide the element: its reason key and its own words. */
+  undecided?: { key: string; message: string };
+  /** AEE's measurement of the pixels behind a text whose contrast axe could not decide. */
+  contrast?: ContrastMeasurement;
 }
 
 interface AxeTargetBox {
@@ -363,12 +370,15 @@ export interface ScenarioSynthesis {
   /** One row per area, computed once from the findings and evidence; every view renders these. */
   status: StatusArea[];
   findings: FindingSynthesis[];
+  /** Each text whose contrast is left for a person, once, with why it could not be decided. */
+  undecidedContrast: Array<{ selector: string; reason: string }>;
 }
 
 export interface StatusArea {
   id: "keyboard" | "reader" | "semantics" | "contrast";
   label: string;
-  verdict: "pass" | "fail" | "unknown";
+  /** `not-run`: the run does not include this check, so it says nothing either way. */
+  verdict: "pass" | "fail" | "unknown" | "not-run";
   result: string;
   detail: string;
 }
@@ -936,7 +946,8 @@ function createIntegratedReport(input: {
       plannedLanes: input.plannedLanes,
       completedLanes: input.completedLanes,
       missingArtifacts: input.missingArtifacts,
-      failedArtifacts: input.failedArtifacts
+      failedArtifacts: input.failedArtifacts,
+      plannedChecks: plannedChecks(input.plan)
     },
     summary: {
       actions: input.actions.length,
@@ -978,6 +989,17 @@ function createIntegratedReport(input: {
   return report;
 }
 
+/** The checks the plan runs besides axe, read from its steps. */
+function plannedChecks(
+  plan: ScenarioPlan
+): ScenarioIntegratedReport["completeness"]["plannedChecks"] {
+  const steps = plan.journeys.flatMap(({ steps }) => steps.map(({ id }) => id));
+  return {
+    keyboard: steps.includes("inventory-interactions"),
+    reader: steps.some((id) => id.startsWith("reader-command-"))
+  };
+}
+
 function emptyScenarioSynthesis(): ScenarioSynthesis {
   return {
     conclusion: "Synthesis is generated from the completed evidence set.",
@@ -991,7 +1013,8 @@ function emptyScenarioSynthesis(): ScenarioSynthesis {
     comparisons: [],
     reader: { commands: 0, passed: 0, failed: 0, unknown: 0 },
     status: [],
-    findings: []
+    findings: [],
+    undecidedContrast: []
   };
 }
 
@@ -1449,6 +1472,10 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       targetBox: axeTargetBox(node.aeeTarget),
       context: isRecord(node.aeeContext)
         ? (node.aeeContext as unknown as ElementContext)
+        : undefined,
+      undecided: undecidedReason(node),
+      contrast: isRecord(node.aeeContrast)
+        ? (node.aeeContrast as unknown as ContrastMeasurement)
         : undefined
     }));
     const targets = nodes.map(({ target }) => target).filter(Boolean);
@@ -1477,6 +1504,50 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       nodes
     };
   });
+}
+
+/** axe's reason for leaving a node undecided, from its first check. */
+function undecidedReason(node: Record<string, unknown>): AxeNodeView["undecided"] {
+  const check = Array.isArray(node.any) && isRecord(node.any[0]) ? node.any[0] : undefined;
+  if (!check) return undefined;
+  const data = isRecord(check.data) ? check.data : {};
+  return {
+    key: typeof data.messageKey === "string" ? data.messageKey : "",
+    message: optionalStringField(check, "message") ?? ""
+  };
+}
+
+/** What is behind a text axe could not measure, in plain words, by axe's reason key. */
+const CONTRAST_OBSTACLES: Record<string, string> = {
+  bgGradient: "text over a gradient",
+  bgImage: "text over a background image",
+  imgNode: "text over an image",
+  bgOverlap: "another element overlaps it",
+  fgAlpha: "the text is see-through",
+  elmPartiallyObscured: "part of it is covered",
+  pseudoContent: "a pseudo-element sits behind it"
+};
+
+/** Why a text's contrast is left for a person, with AEE's measurement when there is one. */
+function undecidedContrastReason(node: AxeNodeView): string {
+  const obstacle =
+    CONTRAST_OBSTACLES[node.undecided?.key ?? ""] ??
+    (node.undecided?.message || "axe could not decide");
+  const measured = node.contrast;
+  if (!measured) return obstacle;
+  if (measured.verdict === "unmeasured") return `${obstacle}; not measured, as ${measured.reason}`;
+  return `${obstacle}, measured at ${measured.lowest.ratio}:1 to ${measured.highest.ratio}:1 against what is behind it, where ${measured.requiredRatio}:1 is needed`;
+}
+
+/** Every text whose contrast is left for a person, once, in the order the checkpoints met them. */
+function undecidedContrast(views: IntegratedHtmlViews): ScenarioSynthesis["undecidedContrast"] {
+  const texts = new Map<string, string>();
+  for (const { incomplete } of views.axeReports) {
+    for (const node of incomplete.find(({ id }) => id === "color-contrast")?.nodes ?? []) {
+      if (!texts.has(node.target)) texts.set(node.target, undecidedContrastReason(node));
+    }
+  }
+  return [...texts].map(([selector, reason]) => ({ selector, reason }));
 }
 
 function buildScenarioSynthesis(
@@ -1529,7 +1600,15 @@ function buildScenarioSynthesis(
       equivalence.verdict === "pass" && expectation.verdict === "pass"
   ).length;
   const reader = { commands: readerJudgments.length, ...readerCounts };
-  const status = buildStatusAreas(findings, views, reader, uniqueIncompleteRules);
+  const undecided = undecidedContrast(views);
+  const status = buildStatusAreas(
+    report,
+    findings,
+    views,
+    reader,
+    uniqueIncompleteRules,
+    undecided
+  );
   // A lane's good news is only told when its status row did not fail, so the two never disagree.
   const rowFailed = (id: StatusArea["id"]) =>
     status.some((area) => area.id === id && area.verdict === "fail");
@@ -1566,7 +1645,8 @@ function buildScenarioSynthesis(
     comparisons: views.comparisons,
     reader,
     status,
-    findings
+    findings,
+    undecidedContrast: undecided
   };
 }
 
@@ -1576,10 +1656,12 @@ function buildScenarioSynthesis(
  * never fail a row.
  */
 function buildStatusAreas(
+  report: ScenarioIntegratedReport,
   findings: FindingSynthesis[],
   views: IntegratedHtmlViews,
   reader: ScenarioSynthesis["reader"],
-  uniqueIncompleteRules: string[]
+  uniqueIncompleteRules: string[],
+  undecided: ScenarioSynthesis["undecidedContrast"]
 ): StatusArea[] {
   const blockingIn = (area: FindingSynthesis["area"]) =>
     findings.filter((finding) => finding.area === area && !finding.advisory);
@@ -1608,6 +1690,16 @@ function buildStatusAreas(
     result: "No confirmed issue",
     detail
   });
+  const notRun = (id: StatusArea["id"], label: string, detail: string): StatusArea => ({
+    id,
+    label,
+    verdict: "not-run",
+    result: "Not in this run",
+    detail
+  });
+  const { plannedChecks } = report.completeness;
+  // The test fixture checks each page with axe alone; a scenario run adds the other checks.
+  const axeOnly = report.profile === "playwright-test";
   const titles = (list: FindingSynthesis[]) => `${list.map(({ title }) => title).join("; ")}.`;
   const rulesRan = views.axeReports.length > 0;
 
@@ -1622,13 +1714,19 @@ function buildStatusAreas(
   const pressed = views.sweeps.every(({ document }) => document?.activateControls);
   const keyboard = keyboardFindings.length
     ? fixRequired("keyboard", "Keyboard access", titles(keyboardFindings))
-    : swept && comparisonsPassed
-      ? noIssue(
+    : !plannedChecks.keyboard
+      ? notRun(
           "keyboard",
           "Keyboard access",
-          `Tab reached every mouse target and focus showed everything hover did. ${pressed ? "Each control pressed by keyboard matched the click and kept focus." : `Controls were not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed.`}`
+          "This run checked each page with axe only; a scenario run (aee run) adds the keyboard and mouse sweep."
         )
-      : needsReview("keyboard", "Keyboard access", "No complete keyboard result was available.");
+      : swept && comparisonsPassed
+        ? noIssue(
+            "keyboard",
+            "Keyboard access",
+            `Tab reached every mouse target and focus showed everything hover did. ${pressed ? "Each control pressed by keyboard matched the click and kept focus." : `Controls were not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed.`}`
+          )
+        : needsReview("keyboard", "Keyboard access", "No complete keyboard result was available.");
 
   const unnamed = new Map<string, string>();
   for (const { entries } of views.transcripts) {
@@ -1648,21 +1746,29 @@ function buildStatusAreas(
         "Virtual reader",
         `Announced without a name: ${[...unnamed.values()].join(", ")}.`
       )
-    : reader.commands > 0 && reader.failed === 0
-      ? {
-          id: "reader" as const,
-          label: "Virtual reader",
-          verdict: "pass" as const,
-          result: `${reader.passed}/${reader.commands} commands passed`,
-          detail: "Each announcement matched the accessibility tree, visuals and focus state."
-        }
-      : needsReview(
+    : !plannedChecks.reader
+      ? notRun(
           "reader",
           "Virtual reader",
-          reader.commands
-            ? `${reader.commands - reader.passed} of ${reader.commands} commands did not pass the cross-evidence check.`
-            : "No virtual screen-reader commands were run."
-        );
+          axeOnly
+            ? "This run checked each page with axe only; a scenario run (aee run) adds the virtual screen reader."
+            : "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
+        )
+      : reader.commands > 0 && reader.failed === 0
+        ? {
+            id: "reader" as const,
+            label: "Virtual reader",
+            verdict: "pass" as const,
+            result: `${reader.passed}/${reader.commands} commands passed`,
+            detail: "Each announcement matched the accessibility tree, visuals and focus state."
+          }
+        : needsReview(
+            "reader",
+            "Virtual reader",
+            reader.commands
+              ? `${reader.commands - reader.passed} of ${reader.commands} commands did not pass the cross-evidence check.`
+              : "No virtual screen-reader commands were run."
+          );
 
   const semanticFindings = blockingIn("semantics");
   const semantics = semanticFindings.length
@@ -1682,7 +1788,7 @@ function buildStatusAreas(
       ? needsReview(
           "contrast",
           "Visual contrast",
-          "axe could not measure the contrast of some text, for example over an image or a gradient; check those ratios by hand."
+          `${undecided.length} ${undecided.length === 1 ? "text needs" : "texts need"} a person: axe could not measure what is behind ${undecided.length === 1 ? "it" : "them"}, and the pixels did not settle it. Each is listed with why.`
         )
       : rulesRan
         ? noIssue(
@@ -2561,7 +2667,7 @@ function commentHeadline(report: ScenarioIntegratedReport): string {
 
 /** Everything under a comment's headline; sections take the heading level given. */
 function commentBody(report: ScenarioIntegratedReport, heading: string): string[] {
-  const { findings, status, uniqueIncompleteRules } = report.synthesis;
+  const { findings, status, uniqueIncompleteRules, undecidedContrast } = report.synthesis;
   const blocking = findings.filter(({ advisory }) => !advisory);
   const advisory = findings.filter(({ advisory }) => advisory);
   const lines = [
@@ -2584,6 +2690,18 @@ function commentBody(report: ScenarioIntegratedReport, heading: string): string[
   if (uniqueIncompleteRules.length) {
     lines.push(
       `${uniqueIncompleteRules.length} axe ${uniqueIncompleteRules.length === 1 ? "check" : "checks"} could not decide and ${uniqueIncompleteRules.length === 1 ? "needs" : "need"} a person: ${uniqueIncompleteRules.map(commentCode).join(", ")}.`,
+      ""
+    );
+  }
+  if (undecidedContrast.length) {
+    const hidden = undecidedContrast.length - COMMENT_ELEMENTS_PER_FINDING;
+    lines.push(
+      `**Contrast left for a person (${undecidedContrast.length}):**`,
+      "",
+      ...undecidedContrast
+        .slice(0, COMMENT_ELEMENTS_PER_FINDING)
+        .map(({ selector, reason }) => `- ${commentCode(selector)}: ${commentText(reason)}`),
+      ...(hidden > 0 ? [`- and ${hidden} more in the full report`] : []),
       ""
     );
   }
@@ -2856,7 +2974,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .question-chips{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem}.question-chips button,.fix-filters button,.ask-about{border:1px solid var(--line-strong);border-radius:999px;padding:.5rem .75rem;color:var(--forest-deep);background:var(--paper);font:700 .84rem/1.2 var(--sans);cursor:pointer}.question-chips button:hover,.fix-filters button:hover,.ask-about:hover,.filter-active{color:#fff!important;background:var(--forest)!important}
 .ask-form{display:flex;gap:.5rem;margin-top:auto}.ask-form label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}.ask-form input{min-width:0;flex:1;border:1px solid var(--line-strong);border-radius:8px;padding:.75rem;font:inherit;color:var(--ink);background:#fff}.ask-form button{border:0;border-radius:8px;padding:.75rem 1rem;color:#fff;background:var(--forest);font:800 .9rem/1 var(--sans);cursor:pointer}.ask-form button:hover{background:var(--forest-deep)}
 .assistant-answer{min-height:6rem;margin:1rem 0 0;padding:1rem;background:var(--wash);border-radius:8px;color:#29493f}.assistant-answer p{margin:0}.assistant-answer strong{color:var(--forest-deep)}
-.health-map{border-top:1px solid var(--line-strong);margin:1.5rem 0 2rem}.health-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1rem;align-items:center;padding:1rem 0;border-bottom:1px solid var(--line)}.health-signal{width:.75rem;height:.75rem;border-radius:50%}.health-signal.pass{background:var(--pass)}.health-signal.fail{background:var(--fail)}.health-signal.unknown{background:var(--unknown)}.health-row strong,.health-row span{display:block}.health-row span{color:var(--muted);font-size:.9rem}.health-result{font-size:.9rem}.health-result.pass{color:var(--pass)}.health-result.fail{color:var(--fail)}.health-result.unknown{color:var(--unknown)}
+.health-map{border-top:1px solid var(--line-strong);margin:1.5rem 0 2rem}.health-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:1rem;align-items:center;padding:1rem 0;border-bottom:1px solid var(--line)}.health-signal{width:.75rem;height:.75rem;border-radius:50%}.health-signal.pass{background:var(--pass)}.health-signal.fail{background:var(--fail)}.health-signal.unknown{background:var(--unknown)}.health-signal.not-run{background:var(--line-strong)}.health-row strong,.health-row span{display:block}.health-row span{color:var(--muted);font-size:.9rem}.health-result{font-size:.9rem}.health-result.pass{color:var(--pass)}.health-result.fail{color:var(--fail)}.health-result.unknown{color:var(--unknown)}.health-result.not-run{color:var(--muted)}.health-detail{padding:0 0 1rem 1.75rem;border-bottom:1px solid var(--line)}.health-detail summary{cursor:pointer;padding:.5rem 0}.health-detail li{overflow-wrap:anywhere}
 .journey-proof{display:grid;grid-template-columns:minmax(15rem,.72fr) minmax(0,1.28fr);gap:clamp(1.25rem,4vw,3rem);align-items:center;margin:0 0 1.5rem;padding:clamp(1.25rem,3vw,2rem);color:#fff;background:var(--forest-deep);border-radius:12px}.journey-proof h3{margin:0 0 .55rem;font:700 clamp(1.45rem,3vw,2rem)/1.1 var(--serif)}.journey-proof p{margin:.45rem 0;color:#d7e9e2}.journey-proof ol{margin:.8rem 0;padding-left:1.25rem}.journey-proof li{margin:.25rem 0}.journey-proof a{color:var(--mint);font-weight:750}.journey-proof video{width:100%;border-color:var(--line-strong);background:#000}.journey-proof-links{display:flex;flex-wrap:wrap;gap:.4rem 1rem;margin-top:1rem!important;font-size:.88rem}
 .priority-snapshot{padding:0;list-style:none;border-top:1px solid var(--line-strong)}.priority-snapshot li{display:grid;grid-template-columns:2rem minmax(0,1fr) max-content;gap:1rem;align-items:start;padding:1rem 0;border-bottom:1px solid var(--line)}.priority-snapshot li>span{display:grid;width:1.8rem;height:1.8rem;place-items:center;border-radius:50%;color:#fff;background:var(--forest);font-weight:800}.priority-snapshot p{margin:.2rem 0 0;color:var(--muted);font-size:.9rem}.priority-snapshot b{color:var(--forest)}
 .section-intro{display:flex;align-items:end;justify-content:space-between;gap:2rem;margin-bottom:1rem}.section-intro h2{margin:0;font:700 clamp(2rem,4vw,3.5rem)/1.05 var(--serif);letter-spacing:-.025em}.section-intro p{max-width:58ch;margin:0;color:var(--muted)}
@@ -3208,13 +3326,17 @@ function renderStatusAreas(report: ScenarioIntegratedReport): string {
   const keyboardTimeline = laneArtifact(laneSuffix, "video-sidecar");
   const keyboardPoster = laneArtifact(laneSuffix, "viewport-screenshot");
   const keyboardActions = report.actions.filter(({ driver }) => driver === "keyboard");
+  const { undecidedContrast } = report.synthesis;
+  const undecidedContrastList = undecidedContrast.length
+    ? `<details class="health-detail"><summary>Texts left for a person (${undecidedContrast.length})</summary><ul>${undecidedContrast.map(({ selector, reason }) => `<li><code>${escapeHtml(selector)}</code>: ${escapeHtml(reason)}</li>`).join("")}</ul></details>`
+    : "";
   const keyboardRecording = keyboardVideo
     ? `<section class="journey-proof" aria-labelledby="keyboard-recording-heading"><div><h3 id="keyboard-recording-heading">${authored ? "Keyboard journey recording" : "Keyboard sweep recording"}</h3><p>${authored ? "Watch the isolated keyboard lane that produced this result. The recording shows only the user-authored test actions—not a claim about every keyboard path on the page." : "Watch the sweep press Tab through every stop, hover what shows more on hover, and press each control it was allowed to. The descriptions name each step."}</p>${keyboardActions.length ? `<ol>${keyboardActions.map(({ actionId }) => `<li>${escapeHtml(humanActionName(actionId))}</li>`).join("")}</ol>` : ""}<p class="journey-proof-links">${keyboardCaptions ? `<a href="${encodeURI(String(keyboardCaptions.path))}">Read action descriptions</a>` : ""}${keyboardTimeline ? `<a href="${encodeURI(String(keyboardTimeline.path))}">Inspect timed action data</a>` : ""}<a href="${encodeURI(String(keyboardVideo.path))}" download>Download recording</a></p></div><video controls preload="metadata"${keyboardPoster ? ` poster="${encodeURI(String(keyboardPoster.path))}"` : ""} aria-label="Keyboard testing journey recording"><source src="${encodeURI(String(keyboardVideo.path))}" type="video/webm">${keyboardCaptions ? `<track kind="descriptions" src="${encodeURI(String(keyboardCaptions.path))}" srclang="en" label="Action descriptions">` : ""}<a href="${encodeURI(String(keyboardVideo.path))}">Download the keyboard journey recording</a></video></section>`
     : "";
   return `<div class="health-map">${report.synthesis.status
     .map(
       ({ id, label, verdict, result, detail }) =>
-        `<div class="health-row" data-status="${escapeAttribute(id)}"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${id === "keyboard" ? keyboardRecording : ""}`
+        `<div class="health-row" data-status="${escapeAttribute(id)}"><span class="health-signal ${verdict}" aria-hidden="true"></span><div><strong>${escapeHtml(label)}</strong><span>${escapeHtml(detail)}</span></div><b class="health-result ${verdict}">${escapeHtml(result)}</b></div>${id === "keyboard" ? keyboardRecording : ""}${id === "contrast" ? undecidedContrastList : ""}`
     )
     .join("")}</div>`;
 }

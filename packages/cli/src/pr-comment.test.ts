@@ -23,6 +23,7 @@ function assessment(
     synthesis: {
       status: [],
       uniqueIncompleteRules: [],
+      undecidedContrast: [],
       findings:
         verdict === "fail"
           ? [

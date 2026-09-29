@@ -10,6 +10,7 @@ import {
   aggregateEvidenceManifests,
   comparePointerAndKeyboardOutcomes,
   createPortableVirtualScreenReader,
+  measureAgainstPixels,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
   persistInteractionVideo,
@@ -695,4 +696,42 @@ test("toSafeId joins the words of any text into a short hyphenated id", () => {
   assert.equal(toSafeId(`${"a".repeat(59)} b`), "a".repeat(59));
   assert.equal(toSafeId("-".repeat(100_000)), "item");
   assert.equal(toSafeId("!!!", "test"), "test");
+});
+
+test("contrast measured from the pixels behind a text passes, fails or stays for a person", () => {
+  const grey: [number, number, number, number] = [0x77, 0x77, 0x77, 255];
+  const measure = (pixels: Array<[number, number, number]>, text = grey) =>
+    measureAgainstPixels(text, pixels, 4.5);
+  // #777 has 4.68:1 on black and 4.47:1 on white, either side of the 4.5:1 that text needs.
+  assert.deepEqual(
+    measure([
+      [0, 0, 0],
+      [0, 0, 0]
+    ]),
+    {
+      verdict: "pass",
+      requiredRatio: 4.5,
+      foreground: "#777777",
+      lowest: { ratio: 4.68, background: "#000000" },
+      highest: { ratio: 4.68, background: "#000000" }
+    }
+  );
+  assert.equal(
+    measure([
+      [255, 255, 255],
+      [0xe1, 0xe1, 0xe1]
+    ])?.verdict,
+    "fail"
+  );
+  // Enough contrast over part of what is behind it and too little over the rest: a person decides.
+  const mixed = measure([
+    [255, 255, 255],
+    [0, 0, 0]
+  ]);
+  assert.equal(mixed?.verdict, "undecided");
+  assert.deepEqual([mixed?.lowest.background, mixed?.highest.background], ["#ffffff", "#000000"]);
+  // A see-through text is blended onto each pixel first: half-transparent black on white is grey.
+  assert.equal(measure([[255, 255, 255]], [0, 0, 0, 255])?.verdict, "pass");
+  assert.equal(measure([[255, 255, 255]], [0, 0, 0, 128])?.verdict, "fail");
+  assert.equal(measure([]), undefined);
 });

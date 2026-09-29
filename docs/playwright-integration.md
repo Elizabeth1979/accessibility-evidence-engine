@@ -215,7 +215,7 @@ This expectation is intentionally explicit. AEE does not infer that every DOM ch
 
 ## Screenshot and axe example
 
-The visual observer writes separate viewport and full-page PNG artifacts before and after an interaction. The axe observer writes the unmodified axe 4.13 JSON result, including passes, violations, incomplete, and inapplicable checks. Pair the `axe` observer with the `axe` judge so violations and incomplete checks reach the release gate.
+The visual observer writes separate viewport and full-page PNG artifacts before and after an interaction. The axe observer writes the axe 4.13 JSON result, including passes, violations, incomplete, and inapplicable checks. AEE adds to it in one way that changes a result: when axe leaves a text's `color-contrast` check incomplete because a gradient, a background image or an image is behind the text, AEE hides that text, takes a full-page screenshot and measures the text's color against every pixel behind it. The check passes when every pixel gives the required ratio and fails when none does, and the node moves to the rule's passes or violations with the measurement in `aeeContrast`; a failing node's message gives the measured range in axe's wording. When some pixels pass and some fail, or the text has a shadow or outline, the check stays incomplete with its measurement or reason attached. Pair the `axe` observer with the `axe` judge so violations and incomplete checks reach the release gate.
 
 ```ts
 await runAeeOnPage({
@@ -413,7 +413,7 @@ Each test gets one assessment in its output folder (`test-results/<test>/aee/`) 
 `aee-report.html`, `aee-report.json`, `aee-report.md`, `aee-pr-comment.md` and `manifest.json`
 as `aee run`, and the HTML report and PR comment are attached to the test's results. Its plan
 profile is `playwright-test`: the fixture only observes what the test does, so the keyboard and
-pointer sweep and the virtual reader do not run, and those status rows read "Needs review". The
+pointer sweep and the virtual reader do not run, and those status rows read "Not in this run". The
 fixture reports; it never fails a test. `@playwright/test` is a peer dependency, so the fixture
 extends the runner the project already has.
 

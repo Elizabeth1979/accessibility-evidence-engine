@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- **Contrast measured from the screenshot** when axe cannot decide it: for text over a gradient, a background image or an image, AEE hides the text, captures what is behind it and compares the text's color with every pixel there. The check passes when every pixel gives the required ratio and fails when none does; a failure is a finding with the measured range and colors. Text whose pixels both pass and fail, or that has a shadow or outline, is left for a person, and the PR comment and report list each one with why.
 - Four more **Page view** layers, off until switched on: **Headings**, indented by level with empty and skipped levels flagged; **Tab order**, each stop numbered in the order Tab reached it with the keyboard problems found on it; **Images and alt text**, flagging images with no text alternative; and **Focus indicator**, a close-up of each Tab stop with focus, flagged where it looks the same with and without it. Every checkpoint saves an element map (`element-map-after.json`) of its headings and images, and the keyboard sweep records each Tab stop's accessible name, box and close-up.
 - **Copy as ticket** on every fix in the HTML report: a Markdown ticket with severity, WCAG criterion, rule, pattern, where, steps to reproduce, expected and actual, the suggested fix and any AI suggestion labelled as AI. Every run also writes `aee-fixes.csv`, one row per fix for an issue tracker's import, and the Playwright fixture attaches it to test results.
 - A **Page view** tab in the HTML report: the page as tested, with every located issue and the virtual screen reader's path drawn where they were found, each numbered and listed beside it. Layers switch on and off, selecting an item moves the picture to it, and on a phone the picture stays pinned above the lists at a readable scale. From the QA and designer view spec (`docs/qa-designer-view.md`).
@@ -18,6 +19,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Changed
 
+- A status row for a check the run does not include, such as the keyboard sweep and virtual reader under the Playwright test fixture, reads "Not in this run" instead of "Needs review". The integrated report records the checks its plan runs (`completeness.plannedChecks`) and the texts whose contrast is left for a person (`synthesis.undecidedContrast`).
 - The keyboard sweep record (`keyboard-pointer-sweep.json`) is schema 0.2.0: each Tab stop is an object with its name, role, box, close-up and whether focus is visible, not a selector. The plan now lists the element map, so an approved scenario's plan digest changes and needs approving again.
 
 ### Security
