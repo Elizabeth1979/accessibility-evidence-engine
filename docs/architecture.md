@@ -39,11 +39,11 @@ Owns the JSON Schema documents and runtime validation. The CLI and Playwright ad
 
 ### `@aee/playwright`
 
-Adapts real Playwright pages and virtual fixture pages to the shared execution pipeline. It owns interaction bracketing, fixed-delay stabilization, Playwright-specific accessibility/focus/network adapters, artifact output, the `runAeeOnPage(...)` entry point, and dedicated-context virtual-reader lane orchestration.
+Adapts real Playwright pages and virtual fixture pages to the shared execution pipeline. It owns interaction bracketing, fixed-delay stabilization, Playwright-specific accessibility/focus/network adapters, artifact output, the `runAeeOnPage(...)` entry point, and dedicated-context virtual-reader lane orchestration. Its keyboard sweep records each Tab stop's accessible name, box and a close-up with focus, and counts focus as visible when that close-up differs from the same region without focus, decoding both with `pngjs`.
 
 ### `@aee/observers`
 
-Owns observer manifests and built-in DOM, accessibility-tree, focus, visual, pinned axe 4.13, portable virtual-reader transcript, and network observers. Guidepup remains an unsupported extension point. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
+Owns observer manifests and built-in DOM, accessibility-tree, element-map, focus, visual, pinned axe 4.13, portable virtual-reader transcript, and network observers. The element map records each heading and image with its accessibility-tree role, name and level and its box on the full-page screenshot, so a report can draw them without querying the page. Guidepup remains an unsupported extension point. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
 
 ### `@aee/judges`
 

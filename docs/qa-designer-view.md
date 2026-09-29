@@ -1,6 +1,6 @@
 # QA and designer view
 
-A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Step 7.3 built the Page view with its first two layers and the announcement list, and step 7.4 the tickets and the CSV; [Build steps](#build-steps) lists the rest.
+A design spec for master plan step 7.1: bring three tools the owner already built into the HTML report, so QA and designers get a report made for them, not only for developers. Step 7.3 built the Page view with its first two layers and the announcement list, step 7.4 the tickets and the CSV, and step 7.5 the Headings, Tab order, Images and Focus indicator layers.
 
 ![Mockup of the Page view, drawn from a real run of the test lab's demo page: numbered issue markers and the screen reader's path on the page as tested, with the lists beside them.](diagrams/qa-designer-view-mockup.png)
 
@@ -42,16 +42,20 @@ On a phone the full page would be a thumbnail too small to read, as the mockup's
 
 This replaced the separate crops first planned here, since one picture that moves shows the element in its surroundings.
 
-| Layer              | What it draws                                                                                            | Harvested from     | Data                                              |
-| ------------------ | -------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------------------------- |
-| Issues (on)        | A numbered outline for each affected element: red when it blocks release, amber when advisory            | New                | Exists: each finding instance's `targetBox`       |
-| Screen reader path | A numbered dashed outline for each announced item, in reading order                                      | sr-visualizer      | Exists: each reader entry's `visualBounds`        |
-| Headings           | An "H1"–"H6" label and outline for each heading; the list is indented by level and flags a skipped level | highlight-headings | Needs the element map (gap 1)                     |
-| Tab order          | A numbered badge for each Tab stop, in the order Tab reached it                                          | show-tab-order     | Needs a box per sweep stop (gap 2)                |
-| Images and alt     | For each image: "No alt" (red), "Decorative", or its alt text                                            | show-alt-text      | Needs the element map (gap 1)                     |
-| Focus indicator    | For each Tab stop, a crop of it focused, or "No visible focus" where the sweep measured none             | focus-indicator    | Measured already in focus state; crops need gap 2 |
+Issues and the screen reader path start switched on; the other four start off, so the picture stays readable until someone asks for more.
 
-Unlike the bookmarklets, which read `document.querySelectorAll`, the boxes come from the browser's own DOM snapshot, so content in shadow roots is included. Frames are a gap today: the snapshot reads the top document only, and the element map should add each frame's document, offset by its frame's box.
+| Layer              | What it draws                                                                                                          | Harvested from     | Data                                                 |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------- | ------------------ | ---------------------------------------------------- |
+| Issues             | A numbered outline for each affected element: red when it blocks release, amber when advisory                          | New                | Each finding instance's `targetBox`                  |
+| Screen reader path | A numbered dashed outline for each announced item, in reading order                                                    | sr-visualizer      | Each reader entry's `visualBounds`                   |
+| Headings           | An "H1"–"H6" label and outline for each heading; the list is indented by level and flags an empty heading or a skip    | highlight-headings | The element map                                      |
+| Tab order          | A numbered badge for each Tab stop, in the order Tab reached it, with the keyboard problems found on it                | show-tab-order     | Each sweep Tab stop's name, role and box             |
+| Images and alt     | For each image: "No alt" (red), "Decorative", or its alt text                                                          | show-alt-text      | The element map                                      |
+| Focus indicator    | For each Tab stop, a close-up of it with focus, flagged "No visible focus" where it looks the same with and without it | focus-indicator    | Each sweep Tab stop's close-up and focus measurement |
+
+Unlike the bookmarklets, which read `document.querySelectorAll`, the boxes come from the browser's own DOM snapshot, so content in shadow roots is included. Headings and images get their role, name and level from the accessibility tree, as a screen reader does.
+
+A heading level can be wrong without skipping one: the lab's Workspace settings is a level 3 heading under Projects, although it is a peer section. The layer does not flag that, since only the page's meaning tells it is wrong. It indents the heading under Projects, where a person sees it. Frames are a gap today: the snapshot reads the top document only, and the element map should add each frame's document, offset by its frame's box.
 
 ## 2. What the screen reader said (from sr-visualizer)
 
@@ -122,21 +126,13 @@ For example, the demo page's unnamed archive button, from a real run with the la
 - **Evidence:** `aee-report.html`, `lab-page-virtual-reader/lab-page-virtual-reader-001/artifacts/visual-full-page-after.png`
 ```
 
-## Data gaps
+## Data the layers read
 
-The build closes three. None needs a new browser call:
+Step 7.5 closed the three gaps this spec found. None needs a new kind of browser access:
 
-1. **Element map.** The reader and the heading check already read a DOM snapshot with every element's box (`captureDomSnapshot`), but the saved `dom-snapshot` artifact is the page's HTML only. The build persists one JSON artifact per checkpoint from that same snapshot. It lists headings, images, landmarks and focusable elements, each with its role, name, level or alt state, and its box in page coordinates.
-2. **Tab stop boxes.** The sweep records each stop as a selector. The build adds its box, and whether focus was visible, from the focus state the sweep already measures.
-3. **Page size for reader boxes.** A reader entry's `visualBounds` has no page width and height. The build takes them from the checkpoint's screenshot, or records them, so outlines scale.
-
-## Build steps
-
-Proposed as master plan steps 7.3 to 7.5, in order of value for the data that exists:
-
-1. **Page view with the Issues and Screen reader path layers, and the announcement list.** The data exists. _Done when:_ on the lab's demo page, every finding and every announcement has an outline at its element; the layers and lists work by keyboard; and axe finds no violations in each state, desktop and phone.
-2. **Copy as ticket, and the CSV.** _Done when:_ a copied ticket pasted into a GitHub issue shows every field, and the CSV opens with one row per fix.
-3. **The element map and tab stop boxes, then the Headings, Tab order, Images and Focus indicator layers.** _Done when:_ the lab's demo page's heading, keyboard and alt text issues each show on their layer, and the fixed page shows the same layers with nothing flagged.
+1. **Element map.** Every checkpoint saves `element-map-after.json` beside its full-page screenshot, from the same accessibility tree and DOM snapshot the reader reads. It lists the page's headings and images, each with its role, name, level or alt state, and its box in page coordinates. An empty heading keeps its place although it has no height. Landmarks and focusable elements are left out until a layer draws them.
+2. **Tab stops.** The sweep records each stop's accessible name and role, from the accessibility tree, and its box on the sweep's screenshot. It saves a close-up of each stop as Tab reached it, then takes the same region again with focus removed. Focus counts as visible when the two differ by more than rendering noise: pixels, not styles, so a ring drawn on a wrapper, or a colour change, counts. It says nothing about the indicator's contrast (WCAG 2.4.11, 2.4.13).
+3. **Page size for reader boxes.** Taken from the checkpoint's screenshot, since 7.3.
 
 ## Out of scope
 

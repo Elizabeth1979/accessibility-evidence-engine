@@ -70,4 +70,4 @@ privacy:
 
 approval:
   required: true
-  approvedPlanDigest: sha256:40cb7697a162f9e5f52354bf06e6882891a5efbe83741b2b487b833ae9ba4cef
+  approvedPlanDigest: sha256:6a547a725ee15f3658bd45f5a4254e90f6eb44f1051ed29e7b85505adf814fb2

@@ -5,6 +5,7 @@ import addFormats from "ajv-formats";
 import checkpointSchema from "../json/checkpoint.schema.json";
 import cliConfigSchema from "../json/cli-config.schema.json";
 import commonSchema from "../json/common.schema.json";
+import elementMapSchema from "../json/element-map.schema.json";
 import evidenceBundleSchema from "../json/evidence-bundle.schema.json";
 import evidenceRecordSchema from "../json/evidence-record.schema.json";
 import evidenceManifestSchema from "../json/evidence-manifest.schema.json";
@@ -39,6 +40,7 @@ const schemaDocuments = {
   judgment: judgmentSchema,
   finding: findingSchema,
   focusState: focusStateSchema,
+  elementMap: elementMapSchema,
   remediationRegistry: remediationRegistrySchema,
   scenario: scenarioSchema,
   scenarioPlan: scenarioPlanSchema,
@@ -65,6 +67,7 @@ const schemaTitles: Record<SchemaName, string> = {
   judgment: "AEE judgment payload",
   finding: "AEE finding payload",
   focusState: "AEE deep focus state",
+  elementMap: "AEE element map",
   remediationRegistry: "AEE remediation registry",
   scenario: "AEE user-controlled scenario",
   scenarioPlan: "AEE compiled scenario plan",

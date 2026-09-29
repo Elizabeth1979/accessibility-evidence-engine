@@ -33,6 +33,7 @@ import {
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import { captureElementMap } from "./element-map";
 import { describeElementContexts } from "./element-context";
 import {
   locateElements,
@@ -43,7 +44,8 @@ import {
   sweepKeyboardAndPointer,
   type KeyboardPointerSweepPage,
   type SweepFinding,
-  type SweepStep
+  type SweepStep,
+  type SweepTabStop
 } from "./keyboard-pointer-sweep";
 import {
   writeEvidenceManifest,
@@ -60,6 +62,7 @@ import {
 export * from "./accessibility-tree";
 export * from "./element-context";
 export * from "./element-locations";
+export * from "./element-map";
 export * from "./evidence-manifest";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
@@ -324,7 +327,6 @@ export interface InputComparisonResult {
 }
 
 export interface KeyboardPointerSweepLanePage extends KeyboardPointerSweepPage {
-  screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>;
   video?(): PlaywrightVideoLike | null;
 }
 
@@ -363,9 +365,16 @@ export interface KeyboardPointerSweepLaneFinding extends SweepFinding {
   targetBox?: ElementLocation;
 }
 
+export interface KeyboardPointerSweepLaneTabStop extends Omit<SweepTabStop, "focusedCrop"> {
+  /** Where the stop is on the lane's full-page screenshot. */
+  targetBox?: ElementLocation;
+  /** The file, beside this record, showing the stop with keyboard focus. */
+  focusCrop?: string;
+}
+
 /** The evidence file a sweep lane writes; it carries no local file paths. */
 export interface KeyboardPointerSweepLaneDocument {
-  schemaVersion: "0.1.0";
+  schemaVersion: "0.2.0";
   laneId: string;
   driver: "keyboard-pointer-sweep";
   isolation: "dedicated-browser-context";
@@ -377,7 +386,7 @@ export interface KeyboardPointerSweepLaneDocument {
   finishedAt: string;
   /** Navigations outside the allowed origins, stopped before they left the page. */
   blockedNavigations: string[];
-  tabStops?: string[];
+  tabStops?: KeyboardPointerSweepLaneTabStop[];
   activated?: string[];
   findings?: KeyboardPointerSweepLaneFinding[];
   diagnostics?: string[];
@@ -385,7 +394,7 @@ export interface KeyboardPointerSweepLaneDocument {
 
 export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLaneDocument {
   status: "completed";
-  tabStops: string[];
+  tabStops: KeyboardPointerSweepLaneTabStop[];
   activated: string[];
   findings: KeyboardPointerSweepLaneFinding[];
   sweepFile: string;
@@ -548,7 +557,8 @@ export function resolveObserverIdsForCapturePolicy(
       return capturePolicy.includeDomSnapshot;
     }
 
-    if (observerId === "accessibility-tree") {
+    // The element map is read from the accessibility tree, so it carries the same names.
+    if (observerId === "accessibility-tree" || observerId === "element-map") {
       return capturePolicy.includeAccessibilityTree;
     }
 
@@ -681,13 +691,21 @@ const VIRTUAL_READER_LANE_OBSERVERS = [
   "dom",
   "accessibility-tree",
   "visual",
+  "element-map",
   "axe",
   "virtual-screen-reader"
 ];
 
 const VIRTUAL_READER_LANE_JUDGES = ["screen-reader", "axe", "release"];
 
-const INPUT_COMPARISON_OBSERVERS = ["focus", "dom", "accessibility-tree", "visual", "axe"];
+const INPUT_COMPARISON_OBSERVERS = [
+  "focus",
+  "dom",
+  "accessibility-tree",
+  "visual",
+  "element-map",
+  "axe"
+];
 const INPUT_COMPARISON_JUDGES = ["axe", "release"];
 
 const INPUT_LANE_REQUIRED_ARTIFACTS = [
@@ -1579,7 +1597,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   const screenshotFile = path.join(laneOutputDir, "full-page.png");
   const manifestFile = path.join(laneOutputDir, "manifest.json");
   const header = {
-    schemaVersion: "0.1.0" as const,
+    schemaVersion: "0.2.0" as const,
     laneId,
     driver: "keyboard-pointer-sweep" as const,
     isolation: "dedicated-browser-context" as const,
@@ -1592,6 +1610,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   const steps: SweepStep[] = [];
   let sweep:
     Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
+  const focusCropFiles: string[] = [];
   let pageVideo: PlaywrightVideoLike | null | undefined;
   let runError: unknown;
 
@@ -1626,8 +1645,27 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       page,
       result.findings.map(({ selector }) => selector)
     );
+    const stopLocations = await locateElements(
+      page,
+      result.tabStops.map(({ selector }) => selector)
+    );
+    const tabStops: KeyboardPointerSweepLaneTabStop[] = [];
+    for (const [index, { focusedCrop, ...stop }] of result.tabStops.entries()) {
+      const focusCrop = focusedCrop ? `tab-stop-${index + 1}.png` : undefined;
+      if (focusedCrop && focusCrop) {
+        const file = path.join(laneOutputDir, focusCrop);
+        await writeFile(file, focusedCrop);
+        focusCropFiles.push(file);
+      }
+      const targetBox = stopLocations[index];
+      tabStops.push({
+        ...stop,
+        ...(targetBox ? { targetBox } : {}),
+        ...(focusCrop ? { focusCrop } : {})
+      });
+    }
     sweep = {
-      tabStops: result.tabStops,
+      tabStops,
       activated: result.activated,
       findings: result.findings.map((finding, index) => {
         const targetBox = locations[index];
@@ -1696,7 +1734,13 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
               laneId
             }
           ]
-        : [])
+        : []),
+      ...focusCropFiles.map((file) => ({
+        path: file,
+        kind: "focus-crop" as const,
+        phase: "lane" as const,
+        laneId
+      }))
     ]
   });
   if (!sweep) throw runError;
@@ -2386,6 +2430,13 @@ async function createObserverPage(
       return page.content();
     },
     snapshotAccessibilityTree,
+    snapshotElementMap: cdpPage.context
+      ? async () => {
+          const elementMap = await withCdpSession(cdpPage.context!(), page, captureElementMap);
+          assertValidSchema("elementMap", elementMap, "element map");
+          return elementMap;
+        }
+      : undefined,
     snapshotFocusTarget,
     snapshotScreenshot,
     runAxeAnalysis,

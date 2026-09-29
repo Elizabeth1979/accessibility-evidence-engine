@@ -5,6 +5,7 @@ export type ArtifactKind =
   | "screenshot"
   | "dom-snapshot"
   | "accessibility-tree"
+  | "element-map"
   | "network-log"
   | "screen-reader-log"
   | "axe-result"

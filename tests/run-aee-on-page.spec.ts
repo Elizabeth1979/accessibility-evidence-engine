@@ -835,7 +835,7 @@ test("input comparison runs declared pointer and keyboard actions in isolated co
     await access(comparison.manifestFile);
     const manifest = JSON.parse(await readFile(comparison.manifestFile, "utf8"));
     expect(manifest.status).toBe("completed");
-    expect(manifest.summary.available).toBe(39);
+    expect(manifest.summary.available).toBe(43);
     expect(manifest.artifacts.every(({ integrity }: { integrity?: string }) => integrity)).toBe(
       true
     );

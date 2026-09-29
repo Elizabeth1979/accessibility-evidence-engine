@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/element-map.schema.json",
+  "title": "AEE Element Map",
+  "description": "The headings and images on the page at one checkpoint, in reading order, with their accessibility-tree role, name and level and their box on the full-page screenshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "captureType", "elements"],
+  "properties": {
+    "schemaVersion": { "const": "0.1.0" },
+    "captureType": { "const": "element-map" },
+    "elements": { "type": "array", "items": { "$ref": "#/$defs/element" } }
+  },
+  "$defs": {
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "role", "name", "selector", "box"],
+      "properties": {
+        "kind": { "enum": ["heading", "image"] },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "level": { "type": "integer", "minimum": 1 },
+        "alt": { "enum": ["text", "decorative", "missing"] },
+        "selector": { "type": "string", "minLength": 1 },
+        "box": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y", "width", "height"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "width": { "type": "number", "minimum": 0 },
+            "height": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "heading" } } },
+          "then": { "required": ["level"] },
+          "else": { "required": ["alt"] }
+        }
+      ]
+    }
+  }
+}

@@ -6,10 +6,19 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- Four more **Page view** layers, off until switched on: **Headings**, indented by level with empty and skipped levels flagged; **Tab order**, each stop numbered in the order Tab reached it with the keyboard problems found on it; **Images and alt text**, flagging images with no text alternative; and **Focus indicator**, a close-up of each Tab stop with focus, flagged where it looks the same with and without it. Every checkpoint saves an element map (`element-map-after.json`) of its headings and images, and the keyboard sweep records each Tab stop's accessible name, box and close-up.
 - **Copy as ticket** on every fix in the HTML report: a Markdown ticket with severity, WCAG criterion, rule, pattern, where, steps to reproduce, expected and actual, the suggested fix and any AI suggestion labelled as AI. Every run also writes `aee-fixes.csv`, one row per fix for an issue tracker's import, and the Playwright fixture attaches it to test results.
 - A **Page view** tab in the HTML report: the page as tested, with every located issue and the virtual screen reader's path drawn where they were found, each numbered and listed beside it. Layers switch on and off, selecting an item moves the picture to it, and on a phone the picture stays pinned above the lists at a readable scale. From the QA and designer view spec (`docs/qa-designer-view.md`).
 - `@aee/mcp`, an MCP server for coding agents: `explain` returns the a11y-skills pattern for an axe rule, an AEE finding or a UI element through the remediation registry, `findings` reads a run's fixes, and `run` runs an approved scenario. a11y-skills is now pinned in `@aee/mcp`, not the root package.
 - `aee fix`: applies a reviewed name suggestion to an HTML, JavaScript, JSX or TSX file on its own branch in a git worktree, starts the app from there, reruns the same approved scenario, and passes each fix only when axe, the virtual reader and the reader's agreement with the accessibility tree and the rendered page all confirm it. It never merges or pushes.
+
+### Fixed
+
+- The keyboard sweep no longer stops on a page whose skip link waits above the top of the page until it has focus. It hovers only what a mouse can reach, where before it waited on the skip link until the whole sweep timed out.
+
+### Changed
+
+- The keyboard sweep record (`keyboard-pointer-sweep.json`) is schema 0.2.0: each Tab stop is an object with its name, role, box, close-up and whether focus is visible, not a selector. The plan now lists the element map, so an approved scenario's plan digest changes and needs approving again.
 
 ## [0.2.0] - 2026-09-28
 
