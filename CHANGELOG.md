@@ -20,6 +20,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 - The keyboard sweep record (`keyboard-pointer-sweep.json`) is schema 0.2.0: each Tab stop is an object with its name, role, box, close-up and whether focus is visible, not a selector. The plan now lists the element map, so an approved scenario's plan digest changes and needs approving again.
 
+### Security
+
+- `fast-uri`, which `ajv` uses to validate schemas, is updated to 3.1.8 for two high-severity advisories (GHSA-qw65-cvwx-89v3, GHSA-58mr-gqgx-xq4g).
+
 ## [0.2.0] - 2026-09-28
 
 ### Added
