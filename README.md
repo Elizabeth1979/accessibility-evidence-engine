@@ -131,6 +131,8 @@ npm install --save-dev \
   https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-schemas-0.2.0.tgz
 ```
 
+AEE uses your project's Playwright, 1.50 or later, so installing it leaves your `@playwright/test` as it is.
+
 `@aee/mcp`, the coding-agent server below, is new since 0.2.0: until the next release, run it from a clone.
 
 Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.2.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.

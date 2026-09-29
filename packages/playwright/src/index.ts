@@ -85,9 +85,6 @@ export interface PlaywrightPageLike {
   teardownNetworkTracking?(options?: unknown): Promise<void>;
   snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
   video?(): PlaywrightVideoLike | null;
-  accessibility?: {
-    snapshot(options?: unknown): Promise<unknown>;
-  };
 }
 
 export interface VirtualPageFixture {
@@ -1966,11 +1963,9 @@ async function createObserverPage(
   const networkTracker = createNetworkTracker(eventedPage);
   const snapshotAccessibilityTree = page.snapshotAccessibilityTree
     ? async () => page.snapshotAccessibilityTree?.()
-    : page.accessibility?.snapshot
-      ? async () => page.accessibility?.snapshot?.()
-      : cdpPage.context
-        ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
-        : undefined;
+    : cdpPage.context
+      ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
+      : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
     : evaluatablePage.evaluate

@@ -416,8 +416,9 @@ Each test gets one assessment in its output folder (`test-results/<test>/aee/`) 
 as `aee run`, and the HTML report and PR comment are attached to the test's results. Its plan
 profile is `playwright-test`: the fixture only observes what the test does, so the keyboard and
 pointer sweep and the virtual reader do not run, and those status rows read "Not in this run". The
-fixture reports; it never fails a test. `@playwright/test` is a peer dependency, so the fixture
-extends the runner the project already has.
+fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
+the fixture extends the runner the project already has and `aee run` launches the same Playwright:
+installing AEE leaves a project's Playwright as it was.
 
 ## Network example
 

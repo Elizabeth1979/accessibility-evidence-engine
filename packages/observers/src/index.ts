@@ -87,9 +87,6 @@ export interface RuntimeObserverContext extends ObserverContext {
     setupNetworkTracking?(options?: unknown): Promise<void>;
     snapshotNetworkLog?(options?: unknown): Promise<unknown>;
     teardownNetworkTracking?(options?: unknown): Promise<void>;
-    accessibility?: {
-      snapshot(options?: unknown): Promise<unknown>;
-    };
   };
   artifactDir?: string;
   captureLabel?: string;
@@ -393,9 +390,7 @@ async function captureAccessibilityRecord(
   context: RuntimeObserverContext,
   phase: "before" | "after"
 ): Promise<EvidenceRecord> {
-  const snapshotAccessibilityTree =
-    context.page?.snapshotAccessibilityTree?.bind(context.page) ??
-    context.page?.accessibility?.snapshot?.bind(context.page.accessibility);
+  const snapshotAccessibilityTree = context.page?.snapshotAccessibilityTree?.bind(context.page);
 
   if (!snapshotAccessibilityTree) {
     return {
