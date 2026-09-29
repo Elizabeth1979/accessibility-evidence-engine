@@ -314,7 +314,8 @@ test("runAeeOnPage captures evidence from a real Playwright page", async ({ page
   expect(result.outputDir).toBeDefined();
   expect(result.outputDir?.startsWith(outputBaseDir)).toBe(true);
   expect(result.reporterFiles).toHaveLength(2);
-  expect(result.artifactFiles).toHaveLength(4);
+  // No interaction runs, so each observer captures the page once.
+  expect(result.artifactFiles).toHaveLength(2);
 
   await Promise.all([
     ...result.reporterFiles.map((filePath) => access(filePath)),
@@ -336,7 +337,7 @@ test("runAeeOnPage captures evidence from a real Playwright page", async ({ page
     fail: 0,
     unknown: 0
   });
-  expect(report.records).toHaveLength(4);
+  expect(report.records).toHaveLength(2);
   expect(report.records).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
@@ -487,7 +488,7 @@ test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements"
     }
   });
 
-  expect(result.artifactFiles).toHaveLength(2);
+  expect(result.artifactFiles).toHaveLength(1);
   const rawResults = await Promise.all(
     result.artifactFiles.map(async (filePath) => JSON.parse(await readFile(filePath, "utf8")))
   );

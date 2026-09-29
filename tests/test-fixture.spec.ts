@@ -24,6 +24,7 @@ test("an existing spec with only its import swapped produces findings", async ()
   // A test that takes the page but never loads one leaves nothing to check.
   await writeFile(path.join(suiteDir, "blank.spec.ts"), BLANK_SPEC, "utf8");
   await writeFile(path.join(suiteDir, "gradients.spec.ts"), GRADIENTS_SPEC, "utf8");
+  await writeFile(path.join(suiteDir, "late.spec.ts"), LATE_SPEC, "utf8");
   await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
   await promisify(execFile)(process.execPath, [
     require.resolve("@playwright/test/cli"),
@@ -58,6 +59,18 @@ test("an existing spec with only its import swapped produces findings", async ()
   ).toEqual([["image-alt", ["checkpoint-2-dialog-open"]]]);
 
   expect(await assessmentComments(suiteDir, "blank")).toEqual([]);
+
+  // A checkpoint does nothing to the page, so it captures it once: there is no "before".
+  expect(existing.artifacts.filter(({ path: file }) => /-before\./.test(file))).toEqual([]);
+  // It captures the page once the app has drawn it: an image added 400 ms after the load is seen
+  // by the load's own checkpoint, though the test moves on to another page straight away.
+  const late = await readAssessment(suiteDir, "late");
+  expect(
+    late.synthesis.findings.map(({ ruleId, checkpoints }) => [
+      ruleId,
+      checkpoints.map(({ actionId }) => actionId)
+    ])
+  ).toEqual([["image-alt", ["checkpoint-1-after-setcontent"]]]);
 
   // The fixture checks pages with axe alone, and its rows say so instead of asking for a review.
   expect(existing.synthesis.status.map(({ id, result }) => [id, result]).slice(0, 2)).toEqual([
@@ -107,6 +120,16 @@ test("text over gradients", async ({ page }) => {
 });
 `;
 
+const LATE_SPEC = `import { test } from "@aee/cli/test";
+
+test("a gallery the app draws after it loads", async ({ page }) => {
+  await page.setContent(\`<!doctype html><html lang="en"><title>Gallery</title><main><h1>Gallery</h1>
+    </main><script>setTimeout(() => document.querySelector("main").insertAdjacentHTML("beforeend",
+      '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">'), 400);</script></html>\`);
+  await page.setContent(\`<!doctype html><html lang="en"><title>Done</title><main><h1>Done</h1></main></html>\`);
+});
+`;
+
 const BLANK_SPEC = `import { expect, test } from "@aee/cli/test";
 
 test("reads the blank page without loading one", async ({ page }) => {
@@ -145,6 +168,7 @@ async function readAssessment(suiteDir: string, spec: string) {
     profile: string;
     verdict: string;
     actions: Array<{ driver: string; actionId: string }>;
+    artifacts: Array<{ path: string }>;
     synthesis: {
       status: Array<{ id: string; result: string }>;
       findings: Array<{
