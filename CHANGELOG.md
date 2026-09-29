@@ -19,6 +19,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Changed
 
+- The pull-request comment for several tests is one summary: each status row with how many tests had each result, every distinct problem once with "seen in N tests" and their names, and the tests by outcome. An element failing a rule is one problem however many tests render it. On a 118-test suite the comment went from 57,858 characters, one block per test, to 7,139.
 - A status row for a check the run does not include, such as the keyboard sweep and virtual reader under the Playwright test fixture, reads "Not in this run" instead of "Needs review". The integrated report records the checks its plan runs (`completeness.plannedChecks`) and the texts whose contrast is left for a person (`synthesis.undecidedContrast`).
 - The keyboard sweep record (`keyboard-pointer-sweep.json`) is schema 0.2.0: each Tab stop is an object with its name, role, box, close-up and whether focus is visible, not a selector. The plan now lists the element map, so an approved scenario's plan digest changes and needs approving again.
 

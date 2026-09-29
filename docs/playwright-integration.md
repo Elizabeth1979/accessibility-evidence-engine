@@ -376,8 +376,10 @@ the comment leaves out.
 
 `aee comment <folder>...` gathers every assessment under the folders (a scenario's, or each test's
 from the fixture) into the one comment AEE keeps on a pull request. One assessment reads like its own
-PR comment; several are listed failing first, each collapsed under its test or scenario, and the rest
-are named when GitHub's size limit is reached. With `--post` it finds its earlier comment by the
+PR comment. Several make one summary: each status row with how many tests had each result, every
+distinct problem once with the tests that saw it, and the tests by outcome. An element failing a rule
+is one problem however many tests render it, so the comment grows with the problems, not the tests;
+past GitHub's size limit the rest are counted. With `--post` it finds its earlier comment by the
 hidden marker it starts with and updates it, or creates it on the first run; `--fail-on blocking`
 (default), `incomplete` or `never` sets the exit code. The GitHub Action (`action.yml`) runs this
 after the scenario or test command.

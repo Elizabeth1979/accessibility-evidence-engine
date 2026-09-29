@@ -2575,12 +2575,6 @@ export const PR_COMMENT_MARKER = "<!-- aee-pr-comment -->";
 /** GitHub refuses a comment over 65,536 characters; this leaves room for the frame around it. */
 const COMMENT_LIMIT = 60_000;
 
-const VERDICT_ORDER: Record<ScenarioIntegratedReport["verdict"], number> = {
-  fail: 0,
-  unknown: 1,
-  pass: 2
-};
-
 /** Fail when any one fails; pass only when every one passes; otherwise unknown. */
 export function overallVerdict(
   results: Array<{ verdict: ScenarioIntegratedReport["verdict"] }>
@@ -2622,38 +2616,247 @@ export function renderPullRequestSummary(
       ""
     ].join("\n");
   }
-  const sorted = [...reports].sort(
-    (left, right) => VERDICT_ORDER[left.verdict] - VERDICT_ORDER[right.verdict]
-  );
-  const count = (verdict: ScenarioIntegratedReport["verdict"]) =>
-    reports.filter((report) => report.verdict === verdict).length;
+  return renderSuiteSummary(reports, footer);
+}
+
+/** How a status row's results are ordered in a suite: what needs work first. */
+const STATUS_ORDER: Record<StatusArea["verdict"], number> = {
+  fail: 0,
+  unknown: 1,
+  pass: 2,
+  "not-run": 3
+};
+
+/** Test names listed per outcome before the rest are left to the full reports. */
+const COMMENT_NAMES_PER_GROUP = 30;
+
+/**
+ * Several assessments, such as each test of a suite, as one summary: the status rows counted
+ * across them, each distinct problem once with the tests that saw it, and the tests by outcome.
+ * A shared component's problem is listed once however many tests render it, so the comment
+ * grows with the number of problems, not the number of tests.
+ */
+function renderSuiteSummary(reports: ScenarioIntegratedReport[], footer: string): string {
+  // A test suite writes one assessment per test; anything else is named for what it is.
+  const noun = reports.every(({ profile }) => profile === "playwright-test")
+    ? { one: "test", many: "tests" }
+    : { one: "assessment", many: "assessments" };
+  const plural = (count: number) => `${count} ${count === 1 ? noun.one : noun.many}`;
+  const withVerdict = (verdict: ScenarioIntegratedReport["verdict"]) =>
+    reports.filter((report) => report.verdict === verdict);
   const verdict = overallVerdict(reports);
   const headline =
     verdict === "fail"
-      ? `release blocked by ${count("fail")} of ${reports.length} assessments`
+      ? `release blocked by ${withVerdict("fail").length} of ${plural(reports.length)}`
       : verdict === "pass"
-        ? `nothing blocks release in ${reports.length} assessments`
-        : `not decided for ${count("unknown")} of ${reports.length} assessments`;
-  const lines = [PR_COMMENT_MARKER, `## Accessibility: ${headline}`, ""];
+        ? `nothing blocks release in ${plural(reports.length)}`
+        : `not decided for ${withVerdict("unknown").length} of ${plural(reports.length)}`;
+  const head = [
+    PR_COMMENT_MARKER,
+    `## Accessibility: ${headline}`,
+    "",
+    `| Area | Result (${noun.many}) |`,
+    "| --- | --- |",
+    ...suiteStatusRows(reports),
+    ""
+  ];
+
+  const problems = suiteFindings(reports);
+  const incompleteRules = [
+    ...new Set(reports.flatMap(({ synthesis }) => synthesis.uniqueIncompleteRules))
+  ].sort();
+  const undecided = suiteUndecidedContrast(reports);
+  const passed = withVerdict("pass");
+  const tail = [
+    ...commentAiSuggestions(
+      problems.map(({ finding }) => finding),
+      "###"
+    ),
+    ...(incompleteRules.length
+      ? [
+          `${incompleteRules.length} axe ${incompleteRules.length === 1 ? "check" : "checks"} could not decide and ${incompleteRules.length === 1 ? "needs" : "need"} a person: ${incompleteRules.map(commentCode).join(", ")}.`,
+          ""
+        ]
+      : []),
+    ...(undecided.length
+      ? [
+          `**Contrast left for a person (${undecided.length}):**`,
+          "",
+          ...undecided
+            .slice(0, COMMENT_ELEMENTS_PER_FINDING)
+            .map(
+              ({ selector, reason, tests }) =>
+                `- ${commentCode(selector)}: ${commentText(reason)} (${plural(tests)})`
+            ),
+          ...(undecided.length > COMMENT_ELEMENTS_PER_FINDING
+            ? [`- and ${undecided.length - COMMENT_ELEMENTS_PER_FINDING} more in the full reports`]
+            : []),
+          ""
+        ]
+      : []),
+    `### ${noun.many[0]!.toUpperCase()}${noun.many.slice(1)} (${reports.length})`,
+    "",
+    ...(["fail", "unknown"] as const).flatMap((outcome) => {
+      const group = withVerdict(outcome);
+      return group.length
+        ? [
+            `**${outcome === "fail" ? "Release blocked" : "Not decided"} (${group.length}):** ${commentNames(group)}`,
+            ""
+          ]
+        : [];
+    }),
+    ...(passed.length
+      ? [
+          "<details>",
+          `<summary>Nothing blocks release (${passed.length})</summary>`,
+          "",
+          commentNames(passed),
+          "",
+          "</details>",
+          ""
+        ]
+      : []),
+    footer,
+    ""
+  ];
+
+  // Problems are listed until GitHub's size limit, blocking ones first; the rest are counted.
+  const lines = [...head];
+  const size = (parts: string[]) => parts.join("\n").length;
   let shown = 0;
-  for (const report of sorted) {
+  for (const [index, { finding, tests }] of problems.entries()) {
+    const heading =
+      index === 0 || problems[index - 1]!.finding.advisory !== finding.advisory
+        ? [
+            finding.advisory
+              ? `### Advisory: reported, never blocks release (${problems.filter(({ finding }) => finding.advisory).length})`
+              : `### Blocking fixes (${problems.filter(({ finding }) => !finding.advisory).length})`,
+            ""
+          ]
+        : [];
     const block = [
-      "<details>",
-      `<summary><strong>${commentHtml(report.goal)}</strong>: ${commentHtml(commentHeadline(report))}</summary>`,
-      "",
-      ...commentBody(report, "####"),
-      "</details>",
-      ""
-    ].join("\n");
-    if (lines.join("\n").length + block.length > COMMENT_LIMIT) break;
-    lines.push(block);
+      ...heading,
+      // Problems of one rule on different elements share a title; the first element tells them apart.
+      ...commentFinding(finding, {
+        names: tests,
+        noun,
+        element:
+          problems.filter((other) => other.finding.title === finding.title).length > 1
+            ? finding.instances[0]?.label
+            : undefined
+      })
+    ];
+    if (size([...lines, ...block, ...tail]) > COMMENT_LIMIT) break;
+    lines.push(...block);
     shown += 1;
   }
-  if (shown < sorted.length) {
-    lines.push(`${sorted.length - shown} more assessments are in the full reports.`, "");
+  if (shown < problems.length) {
+    lines.push(`${problems.length - shown} more problems are in the full reports.`, "");
   }
-  lines.push(footer, "");
-  return lines.join("\n");
+  return [...lines, ...tail].join("\n");
+}
+
+/** Names of tests or scenarios, up to a readable number; the rest are left to the full reports. */
+function commentNames(group: Array<{ goal: string }>): string {
+  const hidden = group.length - COMMENT_NAMES_PER_GROUP;
+  return `${group
+    .slice(0, COMMENT_NAMES_PER_GROUP)
+    .map(({ goal }) => commentText(goal))
+    .join("; ")}${hidden > 0 ? `; and ${hidden} more in the full reports` : ""}`;
+}
+
+/** Each status row across the assessments: every result it had, with how many had it. */
+function suiteStatusRows(reports: ScenarioIntegratedReport[]): string[] {
+  return reports[0]!.synthesis.status.map(({ id, label }) => {
+    const results = new Map<string, { verdict: StatusArea["verdict"]; count: number }>();
+    for (const report of reports) {
+      const row = report.synthesis.status.find((area) => area.id === id);
+      if (!row) continue;
+      const entry = results.get(row.result) ?? { verdict: row.verdict, count: 0 };
+      entry.count += 1;
+      results.set(row.result, entry);
+    }
+    const cells = [...results]
+      .sort(([, left], [, right]) => STATUS_ORDER[left.verdict] - STATUS_ORDER[right.verdict])
+      .map(([result, { count }]) => (results.size === 1 ? result : `${result} (${count})`));
+    return `| ${commentText(label)} | ${commentText(cells.join(" · "))} |`;
+  });
+}
+
+/**
+ * Each distinct problem across the assessments once, blocking first. An element failing a rule is
+ * one problem however many assessments saw it; elements of one rule that the same assessments
+ * saw are listed together, as the shared component they usually are. The first assessment to
+ * report an element gives the problem's wording and fix.
+ */
+function suiteFindings(
+  reports: ScenarioIntegratedReport[]
+): Array<{ finding: FindingSynthesis; tests: string[] }> {
+  type Seen = { finding: FindingSynthesis; instance?: FindingInstanceSynthesis; tests: string[] };
+  const rules = new Map<string, Map<string, Seen>>();
+  for (const report of reports) {
+    for (const finding of report.synthesis.findings) {
+      const rule = `${finding.advisory ? "advisory" : "blocking"}:${finding.ruleId}`;
+      const elements = rules.get(rule) ?? new Map<string, Seen>();
+      rules.set(rule, elements);
+      for (const instance of finding.instances.length ? finding.instances : [undefined]) {
+        const seen = elements.get(instance?.selector ?? "") ?? { finding, instance, tests: [] };
+        if (!seen.tests.includes(report.goal)) seen.tests.push(report.goal);
+        elements.set(instance?.selector ?? "", seen);
+      }
+    }
+  }
+  const problems = [...rules.values()].flatMap((elements) => {
+    const groups = new Map<string, Seen[]>();
+    for (const seen of elements.values()) {
+      const key = seen.tests.join("\u0000");
+      groups.set(key, [...(groups.get(key) ?? []), seen]);
+    }
+    return [...groups.values()].map((group) => {
+      const { finding, tests } = group[0]!;
+      const instances = group.flatMap(({ instance }) => (instance ? [instance] : []));
+      const selectors = new Set(instances.map(({ selector }) => selector));
+      const suggestions = group
+        .flatMap(({ finding: source }) => source.remediation.ai.suggestions ?? [])
+        .filter(
+          (suggestion, index, all) =>
+            selectors.has(suggestion.selector) &&
+            all.findIndex(({ selector }) => selector === suggestion.selector) === index
+        );
+      return {
+        finding: {
+          ...finding,
+          instances,
+          instanceCount: instances.length,
+          remediation: {
+            ...finding.remediation,
+            ai: finding.remediation.ai.suggestions
+              ? { ...finding.remediation.ai, suggestions }
+              : finding.remediation.ai
+          }
+        },
+        tests
+      };
+    });
+  });
+  return problems.sort(
+    (left, right) => Number(left.finding.advisory) - Number(right.finding.advisory)
+  );
+}
+
+/** Each text left for a person across the assessments once, with how many saw it. */
+function suiteUndecidedContrast(
+  reports: ScenarioIntegratedReport[]
+): Array<{ selector: string; reason: string; tests: number }> {
+  const texts = new Map<string, { selector: string; reason: string; tests: number }>();
+  for (const report of reports) {
+    for (const { selector, reason } of report.synthesis.undecidedContrast) {
+      const entry = texts.get(selector) ?? { selector, reason, tests: 0 };
+      entry.tests += 1;
+      texts.set(selector, entry);
+    }
+  }
+  return [...texts.values()];
 }
 
 function commentHeadline(report: ScenarioIntegratedReport): string {
@@ -2680,7 +2883,11 @@ function commentBody(report: ScenarioIntegratedReport, heading: string): string[
   ];
   const section = (title: string, group: FindingSynthesis[]) =>
     group.length
-      ? [`${heading} ${title} (${group.length})`, "", ...group.flatMap(commentFinding)]
+      ? [
+          `${heading} ${title} (${group.length})`,
+          "",
+          ...group.flatMap((finding) => commentFinding(finding))
+        ]
       : [];
   lines.push(
     ...section("Blocking fixes", blocking),
@@ -2708,10 +2915,18 @@ function commentBody(report: ScenarioIntegratedReport, heading: string): string[
   return lines;
 }
 
-function commentFinding(finding: FindingSynthesis): string[] {
+/** One finding, collapsed; in a suite summary, with the tests that saw it. */
+function commentFinding(
+  finding: FindingSynthesis,
+  seenIn?: { names: string[]; noun: { one: string; many: string }; element?: string }
+): string[] {
   const facts = [
     finding.wcagCriteria.join(", "),
-    `${finding.instanceCount} ${finding.instanceCount === 1 ? "element" : "elements"}`
+    seenIn?.element ? `on “${seenIn.element}”` : "",
+    `${finding.instanceCount} ${finding.instanceCount === 1 ? "element" : "elements"}`,
+    seenIn
+      ? `seen in ${seenIn.names.length} ${seenIn.names.length === 1 ? seenIn.noun.one : seenIn.noun.many}`
+      : ""
   ].filter(Boolean);
   const hidden = finding.instances.length - COMMENT_ELEMENTS_PER_FINDING;
   return [
@@ -2731,6 +2946,9 @@ function commentFinding(finding: FindingSynthesis): string[] {
     "",
     `**Pattern:** ${finding.pattern ? `[${commentText(finding.pattern.id)}](${encodeURI(finding.pattern.url)}) (a11y-skills)` : "none mapped for this rule yet"}`,
     "",
+    ...(seenIn
+      ? [`**Seen in:** ${commentNames(seenIn.names.map((name) => ({ goal: name })))}`, ""]
+      : []),
     "</details>",
     ""
   ];
