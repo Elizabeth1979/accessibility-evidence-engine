@@ -48,7 +48,7 @@ import {
   remediationRegistry,
   type PatternLink
 } from "@aee/schemas";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type Page } from "@playwright/test";
 
 import {
   ACTIVATE_PAGE_CONTROLS,

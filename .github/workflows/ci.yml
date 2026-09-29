@@ -58,11 +58,12 @@ jobs:
       - name: Enforce unit coverage
         run: npm run test:coverage
 
-      - name: Verify package tarballs
-        run: npm run test:package
-
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+
+      # Installs AEE into a project on the oldest Playwright it supports and runs it there.
+      - name: Verify package tarballs
+        run: npm run test:package
 
       - name: Run browser tests
         run: npm run test:playwright

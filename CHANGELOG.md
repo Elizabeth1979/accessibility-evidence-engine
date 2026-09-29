@@ -15,10 +15,12 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Fixed
 
+- On Playwright 1.50 to 1.56, a checkpoint recorded Playwright's simplified accessibility snapshot, which leaves out landmarks, instead of the browser's full accessibility tree, so the reader's agreement check failed on correct pages. Every checkpoint now reads the browser's tree.
 - The keyboard sweep no longer stops on a page whose skip link waits above the top of the page until it has focus. It hovers only what a mouse can reach, where before it waited on the skip link until the whole sweep timed out.
 
 ### Changed
 
+- AEE uses the project's Playwright: `@aee/cli` accepts `@playwright/test` from 1.50 as a peer and no longer depends on `playwright`, and `aee run` launches Chromium through `@playwright/test`, so installing AEE leaves a project's Playwright as it was. CI installs the packages into a project on Playwright 1.50.0 and runs the fixture and `aee run` there.
 - A run with no interaction to perform, such as each test fixture checkpoint, captures the page once instead of before and after, and a checkpoint first waits until the page has stopped changing for 250 ms (at most 3 seconds). On a 130-test suite the time went from 4.6 to 3.4 minutes and the evidence from 419 to 239 MB, with every result the same.
 - The pull-request comment for several tests is one summary: each status row with how many tests had each result, every distinct problem once with "seen in N tests" and their names, and the tests by outcome. An element failing a rule is one problem however many tests render it. On a 118-test suite the comment went from 57,858 characters, one block per test, to 7,139.
 - A status row for a check the run does not include, such as the keyboard sweep and virtual reader under the Playwright test fixture, reads "Not in this run" instead of "Needs review". The integrated report records the checks its plan runs (`completeness.plannedChecks`) and the texts whose contrast is left for a person (`synthesis.undecidedContrast`).
