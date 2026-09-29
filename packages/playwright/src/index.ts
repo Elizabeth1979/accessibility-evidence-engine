@@ -34,6 +34,7 @@ import {
 } from "./virtual-screen-reader";
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
 import { captureElementMap } from "./element-map";
+import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { describeElementContexts } from "./element-context";
 import {
   locateElements,
@@ -60,6 +61,7 @@ import {
   type PlaywrightVideoLike
 } from "./interaction-video";
 export * from "./accessibility-tree";
+export * from "./contrast-measurement";
 export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
@@ -2362,11 +2364,15 @@ async function createObserverPage(
     ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
     : evaluatablePage.evaluate
       ? async (options: { tags: string[] }) => {
-          const result = await new AxeBuilder({
+          const axeResult = await new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
             .withTags(options.tags)
             .analyze();
+          // Contrast axe could not decide over an image or a gradient is measured from the pixels.
+          const result = nativeScreenshot
+            ? await settleContrastByPixels(page as unknown as ContrastMeasuringPage, axeResult)
+            : axeResult;
           const targets = result.violations.flatMap((rule, ruleIndex) =>
             rule.nodes.map((node, nodeIndex) => ({
               key: `${ruleIndex}:${nodeIndex}`,

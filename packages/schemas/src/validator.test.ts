@@ -462,7 +462,8 @@ test("validateSchema accepts an integrated scenario report", () => {
       plannedLanes: 1,
       completedLanes: 1,
       missingArtifacts: 0,
-      failedArtifacts: 0
+      failedArtifacts: 0,
+      plannedChecks: { keyboard: false, reader: true }
     },
     summary: {
       actions: 1,
@@ -498,7 +499,8 @@ test("validateSchema accepts an integrated scenario report", () => {
           detail: "Every authored reader command matched the page."
         }
       ],
-      findings: []
+      findings: [],
+      undecidedContrast: []
     },
     artifacts: [],
     diagnostics: [],

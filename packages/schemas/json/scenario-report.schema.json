@@ -52,14 +52,25 @@
         "plannedLanes",
         "completedLanes",
         "missingArtifacts",
-        "failedArtifacts"
+        "failedArtifacts",
+        "plannedChecks"
       ],
       "properties": {
         "status": { "enum": ["complete", "incomplete"] },
         "plannedLanes": { "type": "integer", "minimum": 1 },
         "completedLanes": { "type": "integer", "minimum": 0 },
         "missingArtifacts": { "type": "integer", "minimum": 0 },
-        "failedArtifacts": { "type": "integer", "minimum": 0 }
+        "failedArtifacts": { "type": "integer", "minimum": 0 },
+        "plannedChecks": {
+          "description": "Whether the plan runs the keyboard and mouse sweep and the virtual screen reader at all.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["keyboard", "reader"],
+          "properties": {
+            "keyboard": { "type": "boolean" },
+            "reader": { "type": "boolean" }
+          }
+        }
       }
     },
     "summary": {
@@ -94,7 +105,8 @@
         "comparisons",
         "reader",
         "status",
-        "findings"
+        "findings",
+        "undecidedContrast"
       ],
       "properties": {
         "conclusion": { "type": "string", "minLength": 1 },
@@ -130,13 +142,26 @@
             "properties": {
               "id": { "enum": ["keyboard", "reader", "semantics", "contrast"] },
               "label": { "type": "string", "minLength": 1 },
-              "verdict": { "enum": ["pass", "fail", "unknown"] },
+              "verdict": { "enum": ["pass", "fail", "unknown", "not-run"] },
               "result": { "type": "string", "minLength": 1 },
               "detail": { "type": "string", "minLength": 1 }
             }
           }
         },
-        "findings": { "type": "array", "items": { "type": "object" } }
+        "findings": { "type": "array", "items": { "type": "object" } },
+        "undecidedContrast": {
+          "description": "Each text whose contrast is left for a person, once, with why it could not be decided.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["selector", "reason"],
+            "properties": {
+              "selector": { "type": "string", "minLength": 1 },
+              "reason": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "artifacts": { "type": "array", "items": { "type": "object" } },

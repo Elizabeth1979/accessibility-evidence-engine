@@ -153,7 +153,8 @@ Each active lane also produces `video.webm`, a schema-validated `video.json` act
   checkpoint. Video can be temporary for passing runs but persists for failure, review, and demo.
 - Raw axe output includes passes, violations, incomplete, and inapplicable results. Pin axe version
   and the cumulative WCAG 2.0, 2.1, and 2.2 A/AA rule selection, including disabled-by-default
-  choices.
+  choices. A `color-contrast` check axe left incomplete over a gradient or image, and AEE settled
+  from the screenshot, is moved to passes or violations and keeps its measurement in `aeeContrast`.
 - A verified rerun records its parent run, scenario digest, environment equivalence, intended
   differences, resolved findings, introduced findings, and all attempts.
 - Evidence stays local/private by default. Export requires explicit selection, redaction, and a

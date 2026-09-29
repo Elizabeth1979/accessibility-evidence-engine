@@ -220,7 +220,19 @@ Each "day" is one focused session. Skipping days is fine; skipping order is not.
 **Outcome:** Every repo in the review list has its verdict carried out.
 
 - [ ] **8.1** Work the review list: archive each repo on the day its harvest row is ticked (README banner saying it is superseded by accessibility-evidence-engine, then GitHub's Archive button), and delete a "Delete" repo after the owner's last look. These steps block nothing and can run between milestones. _Done when:_ every review-list row is carried out.
-- [ ] **8.2** Restructure the homepage around the finished tool: one story from problem to fix, rebuilt from the features section and product shots, once the big changes of M2–M6 have landed. _Done when:_ the homepage passes axe, a keyboard pass and a virtual screen-reader pass on desktop and phone, and every claim on it links to a shot or a live page.
+
+### M9 — Works on a real app
+
+**Outcome:** A team can leave AEE on in its test suite: every result is decided or says why, each problem shows once, and the suite stays fast.
+
+Each step fixes what adopting AEE in albums-studio (5.1) found, measured on that same suite before and after.
+
+- [ ] **9.1** Say why a result is not decided ([#50](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/50)): a status row for a check the run does not include says so instead of "Needs review", and contrast that axe cannot measure over an image or a gradient is measured from the screenshot, decided where every pixel behind the text agrees. _Done when:_ fewer of albums-studio's assessments end "not decided" than the 98 of 119 in 5.1, and each one left names its elements and why in the PR comment.
+- [ ] **9.2** One problem, listed once ([#49](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/49)): the PR comment lists each distinct finding once with the tests that saw it. _Done when:_ a finding three tests see appears once in the comment, "seen in 3 tests", and albums-studio's comment is a fraction of its 5.1 size.
+- [ ] **9.3** Fast enough to leave on ([#48](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/48)): a fixture checkpoint captures once, and a passing test keeps its report but not its screenshots. _Done when:_ albums-studio's suite time and evidence size are measured before and after, and both drop.
+- [ ] **9.4** Keep the project's Playwright ([#51](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/51)): AEE's Playwright ranges start at the oldest version it works with, and Playwright is a peer. _Done when:_ CI runs the fixture test on that oldest version, and installing AEE leaves a project's Playwright as it was.
+- [ ] **9.5** Two keyboard sweep bugs: a press that loads a page mid-read ([#57](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/57)), and a start address with a `#fragment` ([#64](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/64)). _Done when:_ a test makes each case certain, fails before the fix and passes after it.
+- [ ] **9.6** (was 8.2) Restructure the homepage around the finished tool: one story from problem to fix, rebuilt from the features section and product shots, once the tool works on a real app. _Done when:_ the homepage passes axe, a keyboard pass and a virtual screen-reader pass on desktop and phone, and every claim on it links to a shot or a live page.
 
 ## Later (parked)
 
