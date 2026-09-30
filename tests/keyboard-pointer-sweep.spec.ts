@@ -261,3 +261,95 @@ test("the sweep hovers only what a mouse can reach, such as not a skip link park
     { kind: "hover-only", label: "Renews on 1 March" }
   ]);
 });
+
+test("the sweep walks Tab from the top of the page, whatever #fragment the address opens at", async ({
+  page
+}) => {
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(`<!doctype html>
+<html lang="en">
+  <head><title>Fragment</title></head>
+  <body>
+    <main>
+      <h1>Fragment</h1>
+      <a id="above" href="#target">Jump to the section</a>
+      <div style="height: 1500px"></div>
+      <section id="target" aria-label="Section"><button id="inside" type="button">Inside</button></section>
+    </main>
+  </body>
+</html>`)}#target`,
+    activateControls: false
+  });
+
+  expect(result.tabStops.map(({ selector }) => selector)).toEqual(["#above", "#inside"]);
+  expect(result.findings).toEqual([]);
+});
+
+test("the sweep reads the page a press loads, even when the load cuts its read short", async ({
+  page
+}) => {
+  const site = await startHtmlServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      request.url === "/next"
+        ? `<!doctype html><html lang="en"><head><title>Next</title></head><body><main><h1>Next</h1></main></body></html>`
+        : `<!doctype html>
+<html lang="en">
+  <head><title>Start</title></head>
+  <body>
+    <main>
+      <h1>Start</h1>
+      <button id="next" type="button">Next page</button>
+    </main>
+    <script>
+      document.querySelector("#next").addEventListener("click", () => {
+        location.href = "/next";
+      });
+    </script>
+  </body>
+</html>`
+    );
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page: cutShortFirstReadAfterEachLoad(page, "/next"),
+      url: `${site.origin}/`,
+      activateControls: true
+    });
+
+    expect(result.activated).toEqual(["#next"]);
+    expect(result.findings).toEqual([]);
+  } finally {
+    await site.close();
+  }
+});
+
+/**
+ * The page, except that the first read after each load of `pathname` fails as Playwright fails a
+ * read the load lands in the middle of. A real browser lands a load mid-read only now and then,
+ * under load, so the test makes it happen every time.
+ */
+function cutShortFirstReadAfterEachLoad(page: Page, pathname: string): Page {
+  let cutShort = true;
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) cutShort = new URL(frame.url()).pathname !== pathname;
+  });
+  return new Proxy(page, {
+    get(target, key) {
+      if (key === "evaluate") {
+        return (...args: Parameters<Page["evaluate"]>) => {
+          if (cutShort) return target.evaluate(...args);
+          cutShort = true;
+          return Promise.reject(
+            new Error(
+              "page.evaluate: Execution context was destroyed, most likely because of a navigation"
+            )
+          );
+        };
+      }
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+}
