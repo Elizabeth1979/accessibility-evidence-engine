@@ -1,6 +1,6 @@
 {
   "name": "@aee/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Approved-scenario command-line runner and verified fixes for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -70,13 +70,13 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/ai-fixes": "0.2.0",
-    "@aee/core": "0.2.0",
-    "@aee/judges": "0.2.0",
-    "@aee/observers": "0.2.0",
-    "@aee/playwright": "0.2.0",
-    "@aee/reporter": "0.2.0",
-    "@aee/schemas": "0.2.0",
+    "@aee/ai-fixes": "0.3.0",
+    "@aee/core": "0.3.0",
+    "@aee/judges": "0.3.0",
+    "@aee/observers": "0.3.0",
+    "@aee/playwright": "0.3.0",
+    "@aee/reporter": "0.3.0",
+    "@aee/schemas": "0.3.0",
     "@babel/parser": "^7.29.9",
     "parse5": "^7.3.0",
     "yaml": "^2.9.1"

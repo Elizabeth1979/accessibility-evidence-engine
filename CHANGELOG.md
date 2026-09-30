@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - **Contrast measured from the screenshot** when axe cannot decide it: for text over a gradient, a background image or an image, AEE hides the text, captures what is behind it and compares the text's color with every pixel there. The check passes when every pixel gives the required ratio and fails when none does; a failure is a finding with the measured range and colors. Text whose pixels both pass and fail, or that has a shadow or outline, is left for a person, and the PR comment and report list each one with why.
@@ -100,6 +102,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.3.0...HEAD
