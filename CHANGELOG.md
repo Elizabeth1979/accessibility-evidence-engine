@@ -31,6 +31,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 ### Security
 
 - `fast-uri`, which `ajv` uses to validate schemas, is updated to 3.1.8 for two high-severity advisories (GHSA-qw65-cvwx-89v3, GHSA-58mr-gqgx-xq4g).
+- `brace-expansion`, which the linting tools use (a development dependency, not shipped), is updated to 5.0.12 for three high-severity advisories (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
 
 ## [0.2.0] - 2026-09-28
 
