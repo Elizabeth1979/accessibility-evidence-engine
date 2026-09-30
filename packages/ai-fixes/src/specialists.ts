@@ -37,9 +37,31 @@ export async function askSpecialist<Input extends object, Answer>(
     name: specialist.id.replaceAll("-", "_"),
     instructions: `${ACCESSIBILITY_ENGINEER_PROMPT}\n\n## This request\n\nThis request is one narrow step of the method above. Answer only with the JSON object its schema asks for; the finding card and coverage format do not apply to it.\n\n${specialist.instructions}`,
     input,
-    schema: specialist.schema
+    schema: citingOnly(specialist.schema, evidenceFields(input))
   });
   return specialist.parse(value, input);
+}
+
+/** The input fields that hold evidence: the only names an answer may cite. */
+function evidenceFields(input: object): string[] {
+  return Object.entries(input)
+    .filter(([, evidence]) => typeof evidence === "string" && evidence.trim())
+    .map(([id]) => id);
+}
+
+/**
+ * The answer's schema, with its citations limited to the fields this input holds. A runtime that
+ * enforces the schema then cannot cite anything else, such as an element's selector in place of
+ * the field that holds it.
+ */
+function citingOnly(schema: AnswerSchema, fields: string[]): AnswerSchema {
+  return {
+    ...schema,
+    properties: {
+      ...schema.properties,
+      citedEvidenceIds: { type: "array", items: { type: "string", enum: fields } }
+    }
+  };
 }
 
 // Ported from accessibility-engine's judge prompt: quality in context, grounded in evidence only.
@@ -247,9 +269,7 @@ function readConfidence(value: unknown): number {
 
 /** Every cited id must name an input field that holds evidence: an answer cannot cite nothing. */
 function readCitations(value: unknown, input: object): string[] {
-  const available = Object.entries(input)
-    .filter(([, evidence]) => typeof evidence === "string" && evidence.trim())
-    .map(([id]) => id);
+  const available = evidenceFields(input);
   const cited = Array.isArray(value) ? [...new Set(value)] : [];
   if (cited.length === 0) {
     throw new Error("citedEvidenceIds must name the evidence the answer relies on.");

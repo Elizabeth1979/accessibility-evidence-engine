@@ -76,7 +76,32 @@ test("an accessible name must say what the control does and cite evidence it was
     () => parse({ citedEvidenceIds: ["destinationText"] }),
     /not given: destinationText/
   );
+  // A small local model once cited the selector itself, not the field that holds it.
+  assert.throws(
+    () => parse({ citedEvidenceIds: ["#archive-project"] }),
+    /not given: #archive-project/
+  );
   assert.throws(() => parse({ confidence: 2 }), /between 0 and 1/);
+});
+
+test("a request lets an answer cite only the fields its input holds", async () => {
+  // An empty field holds no evidence, so it cannot be cited either.
+  const input = { ...iconContext, nearbyText: " " };
+  for (const specialist of SPECIALISTS) {
+    const requests: ModelRequest[] = [];
+    const provider: ModelProvider = {
+      id: "recorder",
+      async ask(request) {
+        requests.push(request);
+        throw new Error("recorded");
+      }
+    };
+    await assert.rejects(askSpecialist(specialist, input, provider), /recorded/);
+    assert.deepEqual(requests[0]?.schema.properties.citedEvidenceIds, {
+      type: "array",
+      items: { type: "string", enum: ["selector", "role", "iconDescription", "nearbyHeading"] }
+    });
+  }
 });
 
 test("the markup decides an image's role only when it says so", () => {
