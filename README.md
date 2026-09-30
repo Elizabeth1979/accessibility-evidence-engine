@@ -117,35 +117,35 @@ npm run test:playwright
 
 ## Install from GitHub
 
-The packages are not on npm yet. Each [release](https://github.com/Elizabeth1979/accessibility-evidence-engine/releases) carries all eight as tarballs. Install them together from one release, since each package depends on the others at exactly that version:
+The packages are not on npm yet. Each [release](https://github.com/Elizabeth1979/accessibility-evidence-engine/releases) carries every package as a tarball. Install them together from one release, since each package depends on the others at exactly that version:
 
 ```bash
 npm install --save-dev \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-ai-fixes-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-cli-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-core-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-judges-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-observers-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-playwright-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-reporter-0.2.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.2.0/aee-schemas-0.2.0.tgz
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-ai-fixes-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-cli-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-core-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-judges-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-observers-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-playwright-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-reporter-0.3.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-schemas-0.3.0.tgz
 ```
 
 AEE uses your project's Playwright, 1.50 or later, so installing it leaves your `@playwright/test` as it is.
 
-`@aee/mcp`, the coding-agent server below, is new since 0.2.0: until the next release, run it from a clone.
+For the coding-agent server below, add `https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-mcp-0.3.0.tgz` to the same command.
 
-Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.2.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
+Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.3.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
 
 ## Coding agents (MCP)
 
-`@aee/mcp` is an MCP server for coding agents. Its `explain` tool answers "explain button-name" (or `pointer-only`, `dialog-modal`, "icon button") with the [a11y-skills](https://github.com/Elizabeth1979/a11y-skills) pattern the reports link to, at the same pinned commit: the rules with good and bad examples, a complete example, the WCAG criteria and a checklist. `findings` reads a folder of AEE assessments and returns their fixes as the pull-request comment lists them, and `run` runs a scenario a person has approved. It cannot apply a fix; `aee fix` does that after review. Add it to Claude Code from a built clone:
+`@aee/mcp` is an MCP server for coding agents. Its `explain` tool answers "explain button-name" (or `pointer-only`, `dialog-modal`, "icon button") with the [a11y-skills](https://github.com/Elizabeth1979/a11y-skills) pattern the reports link to, at the same pinned commit: the rules with good and bad examples, a complete example, the WCAG criteria and a checklist. `findings` reads a folder of AEE assessments and returns their fixes as the pull-request comment lists them, and `run` runs a scenario a person has approved. It cannot apply a fix; `aee fix` does that after review. Once it is [installed](#install-from-github), add it to Claude Code from the project:
 
 ```bash
-claude mcp add aee -- node /path/to/accessibility-evidence-engine/packages/mcp/dist/bin.js
+claude mcp add aee -- npx aee-mcp
 ```
 
-Other agents take the same command in their MCP settings: `{"command": "node", "args": ["/path/to/accessibility-evidence-engine/packages/mcp/dist/bin.js"]}`. The server tells the agent to answer from the pattern rather than from memory.
+Other agents take the same command in their MCP settings: `{"command": "npx", "args": ["aee-mcp"]}`. The server tells the agent to answer from the pattern rather than from memory.
 
 ## Playwright integration
 
