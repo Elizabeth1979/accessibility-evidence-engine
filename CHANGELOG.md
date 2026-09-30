@@ -15,6 +15,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Fixed
 
+- The keyboard sweep walks Tab from the top of the page when its address has a `#fragment`. It used to start at the fragment's target and report every control above it as mouse-only.
+- The keyboard sweep no longer stops with "Execution context was destroyed" when a pressed control loads another page while the page is being read. It reads the page that loaded instead.
 - On Playwright 1.50 to 1.56, a checkpoint recorded Playwright's simplified accessibility snapshot, which leaves out landmarks, instead of the browser's full accessibility tree, so the reader's agreement check failed on correct pages. Every checkpoint now reads the browser's tree.
 - The keyboard sweep no longer stops on a page whose skip link waits above the top of the page until it has focus. It hovers only what a mouse can reach, where before it waited on the skip link until the whole sweep timed out.
 
@@ -29,6 +31,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 ### Security
 
 - `fast-uri`, which `ajv` uses to validate schemas, is updated to 3.1.8 for two high-severity advisories (GHSA-qw65-cvwx-89v3, GHSA-58mr-gqgx-xq4g).
+- `brace-expansion`, which the linting tools use (a development dependency, not shipped), is updated to 5.0.12 for three high-severity advisories (GHSA-q2hr-2g5m-vwhr, GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p).
 
 ## [0.2.0] - 2026-09-28
 

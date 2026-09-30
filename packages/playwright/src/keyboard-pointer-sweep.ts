@@ -95,6 +95,8 @@ export interface KeyboardPointerSweepPage {
     timeout?: number;
   }): Promise<Uint8Array>;
   goto(url: string): Promise<unknown>;
+  isClosed(): boolean;
+  waitForLoadState(): Promise<void>;
   evaluate<Result, Arg>(
     pageFunction: (arg: Arg) => Result | Promise<Result>,
     arg: Arg
@@ -129,6 +131,7 @@ type ProbeRequest =
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string }
   | { mode: "blur" }
+  | { mode: "start-at-top" }
   | { mode: "scroll-to"; x: number; y: number };
 
 /** A region of the viewport around a Tab stop, and the scroll position it was taken at. */
@@ -163,7 +166,16 @@ export async function sweepKeyboardAndPointer(
   options: KeyboardPointerSweepOptions
 ): Promise<KeyboardPointerSweepResult> {
   const { page, url, onStep } = options;
-  const probe = <T>(request: ProbeRequest) => page.evaluate(runSweepProbe, request) as Promise<T>;
+  const probe = async <T>(request: ProbeRequest): Promise<T> => {
+    try {
+      return (await page.evaluate(runSweepProbe, request)) as T;
+    } catch (error) {
+      // A press can load another page while the page is being read: read the page it loaded.
+      if (page.isClosed() || !/Execution context was destroyed/.test(String(error))) throw error;
+      await page.waitForLoadState();
+      return (await page.evaluate(runSweepProbe, request)) as T;
+    }
+  };
 
   await page.goto(url);
   const findings: SweepFinding[] = (
@@ -276,9 +288,9 @@ async function timed<Result>(
 }
 
 /**
- * Presses Tab until focus returns to a stop already reached, capturing each stop's surroundings
- * with focus. Then, with focus on nothing, it captures the same regions again: focus is visible
- * where the two differ, which is what WCAG 2.4.7 asks for.
+ * Presses Tab from the top of the page until focus returns to a stop already reached, capturing
+ * each stop's surroundings with focus. Then, with focus on nothing, it captures the same regions
+ * again: focus is visible where the two differ, which is what WCAG 2.4.7 asks for.
  */
 async function collectTabStops(
   page: KeyboardPointerSweepPage,
@@ -290,6 +302,7 @@ async function collectTabStops(
   const stops: Array<SweepTabStop & { frame: FocusFrame | null }> = [];
   const isNewStop = (active: SweepTabStop | null): active is SweepTabStop =>
     active !== null && !stops.some(({ selector }) => selector === active.selector);
+  await probe({ mode: "start-at-top" });
   for (let index = 0; index < maxTabStops; index += 1) {
     const active = await timed(
       onStep,
@@ -621,6 +634,17 @@ function runSweepProbe(request: ProbeRequest): unknown {
     case "blur":
       (document.activeElement as HTMLElement | null)?.blur();
       return null;
+    // Tab starts where a keyboard user starting at the top would. An address's #fragment moves the
+    // starting point to its target, and blur() leaves it where focus was, so the body is focused:
+    // it takes focus only with a tabindex, which it gets back as it was.
+    case "start-at-top": {
+      const tabIndex = document.body.getAttribute("tabindex");
+      document.body.tabIndex = -1;
+      document.body.focus({ preventScroll: true });
+      if (tabIndex === null) document.body.removeAttribute("tabindex");
+      else document.body.setAttribute("tabindex", tabIndex);
+      return null;
+    }
     case "scroll-to":
       scrollTo({ left: request.x, top: request.y, behavior: "instant" });
       return null;
