@@ -15,6 +15,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Fixed
 
+- The keyboard sweep no longer reports the items of a tablist, menu, listbox, tree, grid, radio group or toolbar as mouse-only when that widget's arrow keys, Home or End reach them, as the APG patterns ask.
+- The keyboard sweep's reset between checks reloads an address with a `#fragment`. It used to only scroll to the fragment, keeping whatever the previous check had changed.
 - The keyboard sweep walks Tab from the top of the page when its address has a `#fragment`. It used to start at the fragment's target and report every control above it as mouse-only.
 - The keyboard sweep no longer stops with "Execution context was destroyed" when a pressed control loads another page while the page is being read. It reads the page that loaded instead.
 - On Playwright 1.50 to 1.56, a checkpoint recorded Playwright's simplified accessibility snapshot, which leaves out landmarks, instead of the browser's full accessibility tree, so the reader's agreement check failed on correct pages. Every checkpoint now reads the browser's tree.

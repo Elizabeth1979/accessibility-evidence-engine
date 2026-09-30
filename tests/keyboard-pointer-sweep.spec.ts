@@ -353,3 +353,57 @@ function cutShortFirstReadAfterEachLoad(page: Page, pathname: string): Page {
     }
   });
 }
+
+test("the sweep counts a tab arrow keys reach as reachable, and reports a mouse target they do not", async ({
+  page
+}) => {
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(`<!doctype html>
+<html lang="en">
+  <head><title>Tabs</title><style>[role="tab"], .open { cursor: pointer; }</style></head>
+  <body>
+    <main>
+      <h1>Tabs</h1>
+      <div role="tablist" aria-label="Sections">
+        <button role="tab" id="first" type="button" aria-selected="true">First</button>
+        <button role="tab" id="second" type="button" aria-selected="false" tabindex="-1">Second</button>
+        <button role="tab" id="third" type="button" aria-selected="false" tabindex="-1">Third</button>
+        <span id="more" onclick="this.textContent = 'More shown'">More</span>
+      </div>
+      <div role="tabpanel" id="panel-first"><button class="open" type="button">Open first</button></div>
+      <div role="tabpanel" id="panel-second" hidden><button class="open" type="button">Open second</button></div>
+      <div role="tabpanel" id="panel-third" hidden><button class="open" type="button">Open third</button></div>
+    </main>
+    <script>
+      // The APG tabs pattern: one tab in the Tab order, Left, Right, Home and End move between them.
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      document.querySelector('[role="tablist"]').addEventListener("keydown", (event) => {
+        const at = tabs.indexOf(document.activeElement);
+        const next = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[event.key];
+        if (next === undefined || at < 0) return;
+        const tab = tabs[(next + tabs.length) % tabs.length];
+        for (const other of tabs) {
+          other.tabIndex = other === tab ? 0 : -1;
+          other.setAttribute("aria-selected", String(other === tab));
+          document.getElementById("panel-" + other.id).hidden = other !== tab;
+        }
+        tab.focus();
+        event.preventDefault();
+      });
+    </script>
+  </body>
+</html>`)}#sections`,
+    activateControls: false
+  });
+
+  // The arrow keys switch panels; the page is loaded again afterwards, even at a #fragment, so the
+  // second and third panels' buttons, which Tab never met, are not reported either.
+  expect(result.tabStops.map(({ selector }) => selector)).toEqual([
+    "#first",
+    "#panel-first > button:nth-of-type(1)"
+  ]);
+  expect(result.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
+    { kind: "pointer-only", selector: "#more" }
+  ]);
+});
