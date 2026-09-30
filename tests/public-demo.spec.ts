@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,24 +9,188 @@ import { expect, test } from "@playwright/test";
 import { parsePlan } from "../scripts/master-plan.mjs";
 
 const demoUrl = pathToFileURL(path.resolve("site/index.html")).href;
+const howUrl = pathToFileURL(path.resolve("site/how-it-works.html")).href;
 
-test("public demo exposes its purpose and limitations", async ({ page }) => {
+interface Chapter {
+  id: string;
+  step: string;
+  title: string;
+}
+
+interface Feature {
+  id: string;
+  chapter: string;
+  title: string;
+  video?: { file: string; captions?: string; text: string };
+}
+
+async function readFeatureList() {
+  return JSON.parse(await readFile("site/features.json", "utf8")) as {
+    tryLinks: Record<string, { href: string }>;
+    internalMilestones: Record<string, string>;
+    chapters: Chapter[];
+    features: Feature[];
+  };
+}
+
+test("the homepage tells one story, from the problem to the fix", async ({ page }) => {
+  const { chapters, features } = await readFeatureList();
   await page.goto(demoUrl);
 
   await expect(page).toHaveTitle("Accessibility Evidence Engine");
   await expect(
     page.getByRole("heading", {
       level: 1,
-      name: "Accessibility results with the evidence attached."
+      name: "Find the accessibility problems your tests walk past."
     })
   ).toBeVisible();
   await expect(page.getByText(/not a complete WCAG scanner/i)).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeAttached();
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeAttached();
+
+  // The map at the top names the chapters in the order the page tells them.
+  await expect(
+    page
+      .getByRole("navigation", { name: "From problem to fix" })
+      .getByRole("list")
+      .getByRole("link")
+  ).toHaveText(chapters.map(({ step, title }) => `${step}: ${title}`));
+  await expect(page.locator("#story > section h2")).toHaveText(chapters.map(({ title }) => title));
+  // Each chapter holds its own feature cards, in the order site/features.json lists them.
+  for (const { id, title } of chapters) {
+    await expect(
+      page.getByRole("region", { name: title }).getByRole("heading", { level: 3 })
+    ).toHaveText(features.filter(({ chapter }) => chapter === id).map((feature) => feature.title));
+  }
+});
+
+test("what's next has a card for every milestone not yet done, and goes once all are", async ({
+  page
+}) => {
+  const { internalMilestones } = await readFeatureList();
+  const milestones = parsePlan(await readFile("docs/MASTER-PLAN.md", "utf8"));
+  const upcoming = milestones.filter(
+    ({ id, steps }) => !Object.hasOwn(internalMilestones, id) && steps.some(({ done }) => !done)
+  );
+  await page.goto(demoUrl);
+
+  await expect(page.getByRole("region", { name: "Coming to AEE" })).toHaveCount(
+    upcoming.length > 0 ? 1 : 0
+  );
+  // Work under way keeps its card; a finished milestone and housekeeping never get one.
+  for (const { id, steps } of milestones) {
+    const label = page.getByText(new RegExp(`· ${id}$`));
+    if (upcoming.some((milestone) => milestone.id === id)) {
+      await expect(label).toHaveText(
+        `${steps.some(({ done }) => done) ? "In progress" : "Coming soon"} · ${id}`
+      );
+    } else {
+      await expect(label).toHaveCount(0);
+    }
+  }
+});
+
+test("every claim on the homepage links to a shot or a live page that exists", async ({ page }) => {
+  const { tryLinks, features } = await readFeatureList();
+  // Publishing builds the roadmap and the test lab from the plan and the lab contract.
+  for (const script of ["generate-roadmap.mjs", "generate-test-lab.mjs"]) {
+    execFileSync(process.execPath, [path.join("scripts", script)]);
+  }
+  // It also makes the shots, and `npm run site:shots` fails when one the feature list names is
+  // missing, so a shot link is sound when the feature list names it.
+  const shots = new Set([
+    ...Object.values(tryLinks).map(({ href }) => href),
+    ...features.flatMap(({ id, video }) =>
+      (video ? [video.file, video.text, video.captions ?? []].flat() : [`${id}.png`]).map(
+        (file) => `shots/${file}`
+      )
+    )
+  ]);
+  await page.goto(demoUrl);
+
+  for (const part of await page.locator("main section").all()) {
+    await expect(part.locator("a[href]").first(), await part.innerText()).toBeAttached();
+  }
+  for (const card of await page.locator("#story .feature-card").all()) {
+    await expect(card.locator(".feature-links a")).toHaveCount(2);
+  }
+  const hrefs = await page
+    .locator("a[href]")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("href")!));
+  for (const href of new Set(hrefs)) {
+    if (href.startsWith("#")) {
+      await expect(page.locator(href), href).toHaveCount(1);
+    } else if (href.startsWith("https://")) {
+      expect(href).toMatch(/^https:\/\/github\.com\/Elizabeth1979\//);
+    } else if (href.startsWith("shots/")) {
+      expect(shots.has(href), href).toBe(true);
+    } else {
+      const [file, fragment] = href.split("#");
+      const html = await readFile(path.join("site", file!), "utf8");
+      if (fragment) expect(html, href).toContain(`id="${fragment}"`);
+    }
+  }
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1280, height: 900 },
+  { name: "phone", width: 390, height: 844 }
+]) {
+  test(`the homepage passes axe and works by keyboard on ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto(demoUrl);
+
+    const results = await new AxeBuilder({ page }).analyze();
+    expect(results.violations.map(({ id }) => id)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true
+    );
+
+    // Tab reaches every link and video in the order they appear, each with a visible focus ring.
+    // A video's own controls are several stops in a row; they count as that one video, and the
+    // browser rings each of them itself, inside the video, where page styles cannot reach.
+    const focusable = page.locator("a[href], video");
+    const expected = await focusable.evaluateAll((elements) =>
+      elements.map((element) => element.outerHTML)
+    );
+    const reached: string[] = [];
+    for (let stops = 0; reached.length < expected.length && stops < 200; stops += 1) {
+      await page.keyboard.press("Tab");
+      const focused = await page.evaluate(() => {
+        const active = document.activeElement!;
+        const style = getComputedStyle(active);
+        return {
+          html: active.outerHTML,
+          visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0
+        };
+      });
+      if (reached.at(-1) === focused.html) continue;
+      expect(focused.visible, focused.html).toBe(true);
+      reached.push(focused.html);
+    }
+    expect(reached).toEqual(expected);
+  });
+}
+
+test("the How it works page has no axe violations or prohibited ARIA attributes", async ({
+  page
+}) => {
+  await page.goto(howUrl);
+
+  const results = await new AxeBuilder({ page }).analyze();
+  const seriousViolations = results.violations.filter(({ impact }) =>
+    ["serious", "critical"].includes(impact ?? "")
+  );
+  const prohibitedAria = [...results.violations, ...results.incomplete].filter(
+    ({ id }) => id === "aria-prohibited-attr"
+  );
+
+  expect(seriousViolations).toEqual([]);
+  expect(prohibitedAria).toEqual([]);
 });
 
 test("evidence flow renders a branching graph with a text equivalent", async ({ page }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   const graph = page.getByRole("img", { name: /flowchart of the AEE architecture/i });
   await expect(graph).toBeVisible();
@@ -48,7 +213,7 @@ test("evidence flow renders a branching graph with a text equivalent", async ({ 
 test("generated remediation table stays readable and identifies AI boundaries", async ({
   page
 }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   const registry = page.getByRole("region", { name: "Remediation registry table" });
   await expect(registry.getByRole("table")).toBeVisible();
@@ -62,93 +227,8 @@ test("generated remediation table stays readable and identifies AI boundaries", 
   );
 });
 
-test("public demo has no serious axe violations or prohibited ARIA attributes", async ({
-  page
-}) => {
-  await page.goto(demoUrl);
-
-  const results = await new AxeBuilder({ page }).analyze();
-  const seriousViolations = results.violations.filter(({ impact }) =>
-    ["serious", "critical"].includes(impact ?? "")
-  );
-  const prohibitedAria = [...results.violations, ...results.incomplete].filter(
-    ({ id }) => id === "aria-prohibited-attr"
-  );
-
-  expect(seriousViolations).toEqual([]);
-  expect(prohibitedAria).toEqual([]);
-});
-
-test("the features section has a card for every feature and every milestone not yet done", async ({
-  page
-}) => {
-  const { features, internalMilestones } = JSON.parse(
-    await readFile("site/features.json", "utf8")
-  ) as { features: Array<{ title: string }>; internalMilestones: Record<string, string> };
-  const milestones = parsePlan(await readFile("docs/MASTER-PLAN.md", "utf8"));
-  await page.goto(demoUrl);
-
-  const section = page.getByRole("region", { name: "Every feature, shown from a real run" });
-  for (const { title } of features) {
-    await expect(section.getByRole("heading", { level: 3, name: title })).toBeVisible();
-  }
-  await expect(section.getByRole("heading", { level: 3, name: "What's next" })).toBeVisible();
-  // Work under way keeps its card; a finished milestone and housekeeping never get one.
-  for (const { id, steps } of milestones) {
-    const label = section.getByText(new RegExp(`· ${id}$`));
-    if (steps.every(({ done }) => done) || Object.hasOwn(internalMilestones, id)) {
-      await expect(label).toHaveCount(0);
-    } else {
-      await expect(label).toHaveText(
-        `${steps.some(({ done }) => done) ? "In progress" : "Coming soon"} · ${id}`
-      );
-    }
-  }
-});
-
-for (const viewport of [
-  { name: "desktop", width: 1280, height: 900 },
-  { name: "phone", width: 390, height: 844 }
-]) {
-  test(`the features section passes axe and works by keyboard on ${viewport.name}`, async ({
-    page
-  }) => {
-    await page.setViewportSize(viewport);
-    await page.goto(demoUrl);
-
-    const results = await new AxeBuilder({ page }).include("#features").analyze();
-    expect(results.violations.map(({ id }) => id)).toEqual([]);
-
-    // Tab reaches every link and video in the order they appear, each with a visible focus ring.
-    // A video's own controls are several stops in a row; they count as that one video, and the
-    // browser rings each of them itself, inside the video, where page styles cannot reach.
-    const focusable = page.locator("#features").locator("a, video");
-    const expected = await focusable.evaluateAll((elements) =>
-      elements.map((element) => element.outerHTML)
-    );
-    await page.getByRole("link", { name: "What it does" }).focus();
-    await page.keyboard.press("Enter");
-    const reached: string[] = [];
-    for (let stops = 0; reached.length < expected.length && stops < 100; stops += 1) {
-      await page.keyboard.press("Tab");
-      const focused = await page.evaluate(() => {
-        const active = document.activeElement!;
-        const style = getComputedStyle(active);
-        return {
-          html: active.outerHTML,
-          visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0
-        };
-      });
-      if (reached.at(-1) === focused.html) continue;
-      expect(focused.visible, focused.html).toBe(true);
-      reached.push(focused.html);
-    }
-    expect(reached).toEqual(expected);
-  });
-}
-
 test("slideshow shows only one focused before-and-after example", async ({ page }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   await expect(
     page.getByRole("heading", { name: "One issue. One before. One after." })
@@ -173,7 +253,7 @@ test("slideshow shows only one focused before-and-after example", async ({ page 
 });
 
 test("slideshow supports buttons and arrow-key navigation", async ({ page }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   const next = page.getByRole("button", { name: "Show next example" });
   await next.click();
@@ -198,7 +278,7 @@ test("slideshow supports buttons and arrow-key navigation", async ({ page }) => 
 });
 
 test("slideshow images and generated evidence agree", async ({ page }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   const [
     axeUnnamed,
@@ -254,7 +334,7 @@ test("slideshow images and generated evidence agree", async ({ page }) => {
 });
 
 test("evidence is readable in place and raw artifacts are downloads", async ({ page }) => {
-  await page.goto(demoUrl);
+  await page.goto(howUrl);
 
   await page.getByText("Read the evidence behind these examples").click();
 

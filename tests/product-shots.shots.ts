@@ -110,7 +110,7 @@ test("product shots and videos come from a real run of the demo page", async ({
 
   // And every homepage card shows its real shot or video.
   await page.goto(pathToFileURL(path.resolve("site", "index.html")).href);
-  const cards = page.locator("#features img, #features video");
+  const cards = page.locator("#story img, #story video");
   await expect(cards).toHaveCount(features.length);
   for (const card of await cards.all()) {
     await card.scrollIntoViewIfNeeded();

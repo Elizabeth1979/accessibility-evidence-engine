@@ -17,7 +17,7 @@ const schemaPath = path.join(
 );
 const siteJsonPath = path.join(root, "site", "data", "remediation-registry.json");
 const siteSchemaPath = path.join(root, "site", "data", "remediation-registry.schema.json");
-const siteHtmlPath = path.join(root, "site", "index.html");
+const siteHtmlPath = path.join(root, "site", "how-it-works.html");
 
 const registryText = await readFile(registryPath, "utf8");
 const schemaText = await readFile(schemaPath, "utf8");
@@ -51,7 +51,7 @@ if (checkOnly) {
   const currentSchema = await readFile(siteSchemaPath, "utf8").catch(() => "");
   const drift = [];
 
-  if (currentHtml !== expectedHtml) drift.push("site/index.html registry table");
+  if (currentHtml !== expectedHtml) drift.push("site/how-it-works.html registry table");
   if (currentJson !== expectedJson) drift.push("site/data/remediation-registry.json");
   if (currentSchema !== expectedSchema) {
     drift.push("site/data/remediation-registry.schema.json");

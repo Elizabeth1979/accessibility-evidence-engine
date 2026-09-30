@@ -213,7 +213,7 @@ jobs:
 
 ### Before-and-after examples
 
-The [public demo](https://elizabeth1979.github.io/accessibility-evidence-engine/#examples) is a learner-controlled slideshow with six focused comparisons: an icon-only label, a heading hierarchy that passes axe's selected automatic rules, modal focus management, palette-aware contrast repair, hover-versus-keyboard equivalence, and animation stopping. Each slide shows one Before and one After image. Nothing autoplays, and detailed artifacts stay collapsed until requested.
+The [How it works page](https://elizabeth1979.github.io/accessibility-evidence-engine/how-it-works.html#examples) has a learner-controlled slideshow with six focused comparisons: an icon-only label, a heading hierarchy that passes axe's selected automatic rules, modal focus management, palette-aware contrast repair, hover-versus-keyboard equivalence, and animation stopping. Each slide shows one Before and one After image. Nothing autoplays, and detailed artifacts stay collapsed until requested.
 
 Rebuild the axe and AEE evidence plus the public images locally with:
 
@@ -225,7 +225,7 @@ npm run demo:record
 
 `npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature, two videos with text versions (the keyboard sweep's own recording, and a screen reader reading the page with screen-reader-cli `audit --record`) and the run's full report as a sample. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
 
-The homepage's feature cards come from `site/features.json`, the one list of what each feature is called, what its shot shows and what its caption says; the shots are cropped from the same file. Its "what's next" cards come from the master-plan milestones that still have open steps, marked "In progress" once one is done. `npm run site:generate` rebuilds the cards and `npm run site:check` (in CI) fails when they drift, so a change to a feature or to the plan updates its card in the same PR.
+The homepage tells one story, from finding a problem to shipping the fix, in four chapters: Find, Show, Fix and Ship. Its feature cards come from `site/features.json`, the one list of the chapters and of what each feature is called, which chapter it sits in, what its shot shows and what its caption says; the shots are cropped from the same file. Its "what's next" section lists the master-plan milestones that still have open steps, marked "In progress" once one is done, and goes once none is left. `npm run site:generate` rebuilds them and `npm run site:check` (in CI) fails when they drift, so a change to a feature or to the plan updates its card in the same PR. The evidence flow, the remediation registry, the before-and-after examples and the accessibility experiments are on `site/how-it-works.html`.
 
 ## Current capabilities
 
