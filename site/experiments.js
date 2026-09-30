@@ -41,6 +41,6 @@ if (enabledIssues.size) {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && enabledIssues.size) {
     event.preventDefault();
-    location.assign(new URL("index.html#experiments", location.href).href);
+    location.assign(`${location.pathname}#experiments`);
   }
 });

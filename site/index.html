@@ -5,13 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Focused before-and-after accessibility examples from Accessibility Evidence Engine."
+      content="Accessibility Evidence Engine checks every page your Playwright tests open, the way people use it, and attaches the evidence to each problem it finds."
     />
     <title>Accessibility Evidence Engine</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="styles.css" />
-    <script src="demo.js" defer></script>
-    <script src="experiments.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -21,11 +19,9 @@
         ><span>Accessibility Evidence Engine</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a href="#features">What it does</a><a href="#how-it-works">Evidence flow</a
-        ><a href="#examples">Examples</a>
-        <a href="#experiments">Accessibility experiments</a>
-        <a href="#boundaries">Boundaries</a><a href="test-lab.html">Test lab</a
-        ><a href="roadmap.html">Roadmap</a
+        <a href="#find">What it does</a><a href="#real-app">On a real app</a
+        ><a href="#start">Get started</a><a href="how-it-works.html">How it works</a
+        ><a href="test-lab.html">Test lab</a><a href="roadmap.html">Roadmap</a
         ><a href="https://github.com/Elizabeth1979/accessibility-evidence-engine">GitHub</a>
       </nav>
     </header>
@@ -33,1199 +29,356 @@
     <main id="main" tabindex="-1">
       <section class="hero" id="top" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">Experimental open-source developer tool</p>
-          <h1 id="hero-title">Accessibility results with the evidence attached.</h1>
+          <p class="eyebrow">Open source · Runs in your Playwright tests</p>
+          <h1 id="hero-title">Find the accessibility problems your tests walk past.</h1>
           <p class="lede">
-            AEE combines deterministic checks with review-only contextual analysis, then preserves
-            the before-and-after evidence needed to verify a fix.
+            Swap one import in your end-to-end tests. At every page they open, AEE checks it the way
+            people use it and attaches the evidence to each problem it finds.
+          </p>
+          <p class="proof">
+            On a real app with 130 end-to-end tests, it found two colour-contrast failures that the
+            app's own axe checks never reached.
+            <a href="https://github.com/Elizabeth1979/albums-studio/pull/58#issuecomment-5874004915"
+              >Read that pull-request comment</a
+            >
           </p>
           <div class="hero-actions">
-            <a class="button primary" href="#experiments">Try accessibility experiments</a>
-            <a class="button secondary" href="#examples">See the examples</a>
-            <a
-              class="button secondary"
-              href="https://github.com/Elizabeth1979/accessibility-evidence-engine#quick-start"
-              >Read the quick start</a
-            >
+            <a class="button primary" href="shots/report/aee-report.html">Open a sample report</a>
+            <a class="button secondary" href="#start">Get started</a>
+            <a class="button secondary" href="how-it-works.html">How it works</a>
           </div>
           <p class="preview-note">
             AEE is a public preview, not a complete WCAG scanner or accessibility certification.
+            <a href="#boundaries">What a pass means</a>
           </p>
         </div>
-        <section class="report-preview" aria-labelledby="report-preview-title">
-          <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-          <p class="mono muted" id="report-preview-title">Example AEE report summary</p>
-          <div class="preview-verdict pass">
-            <span aria-hidden="true">✓</span> Verified rerun passed
-          </div>
-          <dl class="metrics">
-            <div>
-              <dt>Before</dt>
-              <dd>Fail</dd>
-            </div>
-            <div>
-              <dt>After</dt>
-              <dd>Pass</dd>
-            </div>
-            <div>
-              <dt>Evidence</dt>
-              <dd>Linked</dd>
-            </div>
-          </dl>
-          <div class="trace-line"><span>review</span><strong>Context explains the fix</strong></div>
-          <div class="trace-line">
-            <span>rerun</span><strong>Evidence verifies behavior</strong>
-          </div>
-        </section>
+        <nav class="story-map" aria-labelledby="story-map-title">
+          <p class="eyebrow" id="story-map-title">From problem to fix</p>
+          <!-- story-map:start -->
+          <ol>
+            <li>
+              <a href="#find"><strong>Find:</strong> It uses the page the way people do</a>
+            </li>
+            <li>
+              <a href="#show"
+                ><strong>Show:</strong> It shows where each problem is, and who it stops</a
+              >
+            </li>
+            <li>
+              <a href="#fix"><strong>Fix:</strong> It proposes a fix you can check</a>
+            </li>
+            <li>
+              <a href="#ship"><strong>Ship:</strong> It says whether the change can ship</a>
+            </li>
+          </ol>
+          <!-- story-map:end -->
+          <p>
+            Every picture below comes from a real run on the
+            <a href="test-lab.html">test lab's demo page</a>, made again from the current code each
+            time the site is published.
+          </p>
+        </nav>
       </section>
 
-      <section class="section features" id="features" aria-labelledby="features-title">
+      <div id="story">
+        <!-- features:start -->
+        <section class="section chapter" id="find" aria-labelledby="find-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 1 · Find</p>
+              <h2 id="find-title">It uses the page the way people do</h2>
+            </div>
+            <p>
+              At every page your end-to-end tests open, it checks keyboard use, what a screen reader
+              hears, page structure and colour contrast.
+            </p>
+          </div>
+          <ul class="feature-grid">
+            <li class="feature-card">
+              <h3 id="feature-finds-the-bug">Checks what people rely on</h3>
+              <img
+                src="shots/finds-the-bug.png"
+                alt="Four report rows, keyboard access, virtual reader, semantics and visual contrast, each with its result."
+              />
+              <p>
+                It checks keyboard use, screen-reader use, page structure and colour contrast, and
+                marks what needs fixing.
+              </p>
+              <p class="feature-links">
+                <a href="shots/finds-the-bug.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-keyboard">Uses the page with a keyboard alone</h3>
+              <video controls preload="metadata" aria-labelledby="feature-keyboard">
+                <source src="shots/keyboard.webm" type="video/webm" />
+                <track
+                  kind="captions"
+                  src="shots/keyboard.vtt"
+                  srclang="en"
+                  label="Steps"
+                  default
+                />
+              </video>
+              <p>
+                Using only the keyboard, it tabs to every control, then presses each one to check it
+                does what a click does.
+              </p>
+              <p class="feature-links">
+                <a href="shots/keyboard.txt">Read the steps</a
+                ><a href="test-lab.html">See the page it tested</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-screen-reader">Reads the page like a screen reader</h3>
+              <video controls preload="metadata" aria-labelledby="feature-screen-reader">
+                <source src="shots/screen-reader.webm" type="video/webm" />
+              </video>
+              <p>What a blind user hears: a screen reader reads the page from top to bottom.</p>
+              <p class="feature-links">
+                <a href="shots/screen-reader.txt">Read what it says</a
+                ><a href="test-lab.html">See the page it tested</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-screen-reader-hears">Hears what a screen reader hears</h3>
+              <img
+                src="shots/screen-reader-hears.png"
+                alt="The report&#39;s virtual reader row, listing each item announced without a name."
+              />
+              <p>
+                It lists what a screen reader announces with no name, where a blind user cannot tell
+                what a control does.
+              </p>
+              <p class="feature-links">
+                <a href="shots/screen-reader-hears.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+          </ul>
+        </section>
+        <section class="section chapter" id="show" aria-labelledby="show-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 2 · Show</p>
+              <h2 id="show-title">It shows where each problem is, and who it stops</h2>
+            </div>
+            <p>
+              Every finding points at its spot on the page as it was tested, and says in plain words
+              who it affects.
+            </p>
+          </div>
+          <ul class="feature-grid">
+            <li class="feature-card">
+              <h3 id="feature-page-view">Shows where on the page</h3>
+              <img
+                src="shots/page-view.png"
+                alt="The report&#39;s Page view: the tested page with numbered issue outlines, beside the numbered list of issues."
+              />
+              <p>
+                It draws every issue on the page as it was tested, numbered, next to a list that
+                works by keyboard and screen reader. Switch on headings, Tab order, alt text or
+                focus to check those too.
+              </p>
+              <p class="feature-links">
+                <a href="shots/page-view.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-every-affected-spot">Points to every affected spot</h3>
+              <img
+                src="shots/every-affected-spot.png"
+                alt="A crop of the tested page with the affected text outlined and labelled."
+              />
+              <p>It marks each affected spot on a picture of the page.</p>
+              <p class="feature-links">
+                <a href="shots/every-affected-spot.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-explains-it">Explains who each problem affects</h3>
+              <img
+                src="shots/explains-it.png"
+                alt="A fix in the report: its title and a sentence on who the problem affects."
+              />
+              <p>Each problem says, in plain words, who it affects.</p>
+              <p class="feature-links">
+                <a href="shots/explains-it.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+          </ul>
+        </section>
+        <section class="section chapter" id="fix" aria-labelledby="fix-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 3 · Fix</p>
+              <h2 id="fix-title">It proposes a fix you can check</h2>
+            </div>
+            <p>
+              Each fix comes with the evidence to check it. AI only suggests: it is labelled as AI
+              and never passes or fails anything.
+            </p>
+          </div>
+          <ul class="feature-grid">
+            <li class="feature-card">
+              <h3 id="feature-how-to-fix">Proposes a fix you can check</h3>
+              <img
+                src="shots/how-to-fix.png"
+                alt="The current text colour next to a proposed colour, each with its contrast ratio."
+              />
+              <p>
+                It proposes a fix you can check: a colour that passes, next to the one that fails.
+              </p>
+              <p class="feature-links">
+                <a href="shots/how-to-fix.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-ai-suggestion">Suggests a name, labelled as AI</h3>
+              <img
+                src="shots/ai-suggestion.png"
+                alt="A nameless button on the tested page and, below it, the name AI suggests for it, labelled as an AI suggestion to review before use."
+              />
+              <p>
+                Where a control has no name, AI suggests one from the text around it. The suggestion
+                is labelled as AI and never passes or fails anything.
+              </p>
+              <p class="feature-links">
+                <a href="shots/ai-suggestion.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+          </ul>
+        </section>
+        <section class="section chapter" id="ship" aria-labelledby="ship-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Step 4 · Ship</p>
+              <h2 id="ship-title">It says whether the change can ship</h2>
+            </div>
+            <p>One verdict for the run, in the report and in a comment on the pull request.</p>
+          </div>
+          <ul class="feature-grid">
+            <li class="feature-card">
+              <h3 id="feature-release-blocked">Says whether the page can ship</h3>
+              <img
+                src="shots/release-blocked.png"
+                alt="The report&#39;s headline: the release verdict and the number of fixes needed first."
+              />
+              <p>It says whether the page is ready to ship, and how many fixes stand in the way.</p>
+              <p class="feature-links">
+                <a href="shots/release-blocked.png">Open the shot full size</a
+                ><a href="shots/report/aee-report.html">Open the sample report</a>
+              </p>
+            </li>
+            <li class="feature-card">
+              <h3 id="feature-pr-comment">Comments on every pull request</h3>
+              <img
+                src="shots/pr-comment.png"
+                alt="The pull-request comment: the release verdict, results by area, and the first blocking fix opened to show the element, the fix and a link to its pattern."
+              />
+              <p>
+                One comment on each pull request says whether it can ship and lists each fix with
+                its pattern. Each new run updates the same comment.
+              </p>
+              <p class="feature-links">
+                <a href="shots/pr-comment.png">Open the shot full size</a
+                ><a
+                  href="https://github.com/Elizabeth1979/accessibility-evidence-engine#github-action"
+                  >Add it to a repository</a
+                >
+              </p>
+            </li>
+          </ul>
+        </section>
+        <!-- features:end -->
+      </div>
+
+      <section class="section real-app" id="real-app" aria-labelledby="real-app-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">What it does</p>
-            <h2 id="features-title">Every feature, shown from a real run</h2>
+            <p class="eyebrow">On a real app</p>
+            <h2 id="real-app-title">A photo-album app, 130 tests, one import changed</h2>
           </div>
           <p>
-            Each picture and video comes from running the tool on the test lab's demo page. They are
-            made again from the current code every time the site is published.
+            albums-studio is a React app. Its tests import AEE's test instead of Playwright's, and
+            its CI posts the result as a comment without ever failing the build.
           </p>
         </div>
-        <!-- features:start -->
-        <ul class="feature-grid">
-          <li class="feature-card">
-            <h3 id="feature-release-blocked">Says whether the page can ship</h3>
-            <img
-              src="shots/release-blocked.png"
-              alt="The report&#39;s headline: the release verdict and the number of fixes needed first."
-              loading="lazy"
-            />
-            <p>It says whether the page is ready to ship, and how many fixes stand in the way.</p>
-            <p class="feature-links">
-              <a href="shots/release-blocked.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
+        <ul class="stat-grid">
+          <li>
+            <strong>2</strong> contrast failures the app's own axe checks missed: a button's hover
+            colour and the line under a failed upload
           </li>
-          <li class="feature-card">
-            <h3 id="feature-finds-the-bug">Checks what people rely on</h3>
-            <img
-              src="shots/finds-the-bug.png"
-              alt="Four report rows, keyboard access, virtual reader, semantics and visual contrast, each with its result."
-              loading="lazy"
-            />
+          <li>
+            <strong>114 of 118</strong> tests' pages decided, pass or fail; the other 4 are listed
+            for a person to check
+          </li>
+          <li><strong>1.56</strong> the Playwright version the app had, left as it was</li>
+        </ul>
+        <p class="feature-links">
+          <a href="https://github.com/Elizabeth1979/albums-studio/pull/58#issuecomment-5874004915"
+            >Read the pull-request comment</a
+          >
+          <a href="https://github.com/Elizabeth1979/albums-studio/pull/58">See the pull request</a>
+        </p>
+      </section>
+
+      <section class="section start" id="start" aria-labelledby="start-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Get started</p>
+            <h2 id="start-title">Three changes to a Playwright project</h2>
+          </div>
+          <p>AEE uses your project's Playwright, version 1.50 or later.</p>
+        </div>
+        <ol class="start-steps">
+          <li>
+            <h3>Install it</h3>
             <p>
-              It checks keyboard use, screen-reader use, page structure and colour contrast, and
-              marks what needs fixing.
-            </p>
-            <p class="feature-links">
-              <a href="shots/finds-the-bug.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
+              Install the packages from the
+              <a
+                href="https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/latest"
+                >latest release</a
+              >, as the
+              <a
+                href="https://github.com/Elizabeth1979/accessibility-evidence-engine#install-from-github"
+                >install guide</a
+              >
+              shows.
             </p>
           </li>
-          <li class="feature-card">
-            <h3 id="feature-screen-reader-hears">Hears what a screen reader hears</h3>
-            <img
-              src="shots/screen-reader-hears.png"
-              alt="The report&#39;s virtual reader row, listing each item announced without a name."
-              loading="lazy"
-            />
+          <li>
+            <h3>Swap one import</h3>
+            <pre><code>import { test, expect } from "@aee/cli/test";</code></pre>
             <p>
-              It lists what a screen reader announces with no name, where a blind user cannot tell
-              what a control does.
-            </p>
-            <p class="feature-links">
-              <a href="shots/screen-reader-hears.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-page-view">Shows where on the page</h3>
-            <img
-              src="shots/page-view.png"
-              alt="The report&#39;s Page view: the tested page with numbered issue outlines, beside the numbered list of issues."
-              loading="lazy"
-            />
-            <p>
-              It draws every issue on the page as it was tested, numbered, next to a list that works
-              by keyboard and screen reader. Switch on headings, Tab order, alt text or focus to
-              check those too.
-            </p>
-            <p class="feature-links">
-              <a href="shots/page-view.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-explains-it">Explains who each problem affects</h3>
-            <img
-              src="shots/explains-it.png"
-              alt="A fix in the report: its title and a sentence on who the problem affects."
-              loading="lazy"
-            />
-            <p>Each problem says, in plain words, who it affects.</p>
-            <p class="feature-links">
-              <a href="shots/explains-it.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-how-to-fix">Proposes a fix you can check</h3>
-            <img
-              src="shots/how-to-fix.png"
-              alt="The current text colour next to a proposed colour, each with its contrast ratio."
-              loading="lazy"
-            />
-            <p>
-              It proposes a fix you can check: a colour that passes, next to the one that fails.
-            </p>
-            <p class="feature-links">
-              <a href="shots/how-to-fix.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-ai-suggestion">Suggests a name, labelled as AI</h3>
-            <img
-              src="shots/ai-suggestion.png"
-              alt="A nameless button on the tested page and, below it, the name AI suggests for it, labelled as an AI suggestion to review before use."
-              loading="lazy"
-            />
-            <p>
-              Where a control has no name, AI suggests one from the text around it. The suggestion
-              is labelled as AI and never passes or fails anything.
-            </p>
-            <p class="feature-links">
-              <a href="shots/ai-suggestion.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-every-affected-spot">Points to every affected spot</h3>
-            <img
-              src="shots/every-affected-spot.png"
-              alt="A crop of the tested page with the affected text outlined and labelled."
-              loading="lazy"
-            />
-            <p>It marks each affected spot on a picture of the page.</p>
-            <p class="feature-links">
-              <a href="shots/every-affected-spot.png">Open the shot full size</a
-              ><a href="shots/report/aee-report.html">Open the sample report</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-keyboard">Uses the page with a keyboard alone</h3>
-            <video controls preload="metadata" aria-labelledby="feature-keyboard">
-              <source src="shots/keyboard.webm" type="video/webm" />
-              <track kind="captions" src="shots/keyboard.vtt" srclang="en" label="Steps" default />
-            </video>
-            <p>
-              Using only the keyboard, it tabs to every control, then presses each one to check it
-              does what a click does.
-            </p>
-            <p class="feature-links">
-              <a href="shots/keyboard.txt">Read the steps</a
-              ><a href="test-lab.html">See the page it tested</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-screen-reader">Reads the page like a screen reader</h3>
-            <video controls preload="metadata" aria-labelledby="feature-screen-reader">
-              <source src="shots/screen-reader.webm" type="video/webm" />
-            </video>
-            <p>What a blind user hears: a screen reader reads the page from top to bottom.</p>
-            <p class="feature-links">
-              <a href="shots/screen-reader.txt">Read what it says</a
-              ><a href="test-lab.html">See the page it tested</a>
-            </p>
-          </li>
-          <li class="feature-card">
-            <h3 id="feature-pr-comment">Comments on every pull request</h3>
-            <img
-              src="shots/pr-comment.png"
-              alt="The pull-request comment: the release verdict, results by area, and the first blocking fix opened to show the element, the fix and a link to its pattern."
-              loading="lazy"
-            />
-            <p>
-              One comment on each pull request says whether it can ship and lists each fix with its
-              pattern. Each new run updates the same comment.
-            </p>
-            <p class="feature-links">
-              <a href="shots/pr-comment.png">Open the shot full size</a
-              ><a
-                href="https://github.com/Elizabeth1979/accessibility-evidence-engine#github-action"
-                >Add it to a repository</a
+              Every page a test opens is then checked.
+              <a
+                href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/playwright-integration.md"
+                >Read the Playwright guide</a
               >
             </p>
           </li>
-        </ul>
-        <h3 class="coming-soon-title">What's next</h3>
-        <ul class="feature-grid">
-          <li class="feature-card coming-soon">
-            <p class="coming-soon-label">In progress · M9</p>
-            <h4>Works on a real app</h4>
+          <li>
+            <h3>Comment on pull requests</h3>
             <p>
-              A team can leave AEE on in its test suite: every result is decided or says why, each
-              problem shows once, and the suite stays fast.
+              Run the end-to-end step through the AEE Action for one comment on each pull request.
+              <a href="https://github.com/Elizabeth1979/accessibility-evidence-engine#github-action"
+                >Set up the Action</a
+              >
             </p>
           </li>
-        </ul>
-        <!-- features:end -->
+        </ol>
       </section>
 
-      <section class="section experiments" id="experiments" aria-labelledby="experiments-title">
-        <h2 id="experiments-title">Plant an accessibility Easter egg</h2>
-        <p>
-          This main page starts with the fixes in place. Activate a deliberate issue, test this same
-          URL, then reset and compare the evidence.
-        </p>
-        <p id="experiment-status" role="status">Baseline: no intentional issues enabled.</p>
-        <form action="index.html#experiments" method="get">
-          <fieldset>
-            <legend>Choose which issues to plant on this page</legend>
-            <label
-              ><input type="checkbox" name="issue" value="icon-labels" /> Remove the names of the
-              Previous and Next icon buttons</label
-            >
-            <label
-              ><input type="checkbox" name="issue" value="headings" /> Make Examples a child of
-              Evidence flow in the heading outline</label
-            >
-            <label
-              ><input type="checkbox" name="issue" value="body-hidden" /> Put aria-hidden="true" on
-              the body</label
-            >
-          </fieldset>
-          <p>
-            Body hiding affects the entire page, including these controls, and can mask other
-            findings. Press Escape to restore the baseline at any time.
-          </p>
-          <div class="hero-actions">
-            <button class="button primary" type="submit">Apply selected issues</button>
-            <a class="button secondary" id="reset-experiments" href="index.html#experiments"
-              >Reset to accessible baseline</a
-            >
-          </div>
-        </form>
-        <details>
-          <summary>What should each experiment reveal?</summary>
-          <ul>
-            <li>
-              <strong>Icon names:</strong> Axe should report two unnamed buttons. Test whether their
-              purpose is understandable with a screen reader.
-            </li>
-            <li>
-              <strong>Heading relationships:</strong> Evidence flow and Examples are peer sections.
-              Nesting Examples beneath Evidence flow is wrong even with no skipped heading level; a
-              contextual review is needed.
-            </li>
-            <li>
-              <strong>Hidden body:</strong> compare automated findings and the actual accessibility
-              tree. Browser and assistive-technology behavior can differ.
-            </li>
-          </ul>
-          <p>
-            The selected issues stay in the URL for repeatable runs. Nothing is saved between visits
-            to the clean URL. A passing automated check does not certify full accessibility.
-          </p>
-        </details>
-        <noscript
-          ><p>
-            JavaScript is required to plant issues. Without it, the baseline page is shown.
-          </p></noscript
-        >
-      </section>
+      <!-- upcoming:start -->
 
-      <section class="section" id="how-it-works" aria-labelledby="how-title">
-        <div class="flow-heading">
-          <div>
-            <p class="eyebrow">One interaction, evidence from every lane</p>
-            <h2 id="how-title">See exactly how an accessibility result is produced</h2>
-          </div>
-          <p>
-            A deterministic orchestrator runs the same scenario through focused evidence workers. AI
-            is optional and receives only questions that require contextual judgment.
-          </p>
-        </div>
-
-        <figure class="workflow-map">
-          <div
-            class="workflow-graph-scroll"
-            role="region"
-            aria-label="Accessibility Evidence Engine architecture graph"
-            tabindex="0"
-          >
-            <img
-              class="workflow-graph"
-              src="diagrams/aee-evidence-pipeline.svg"
-              alt="Flowchart of the AEE architecture. A journey branches into isolated pointer, keyboard, virtual screen-reader, and optional VoiceOver or NVDA lanes. Each lane loops through before capture, one meaningful action, and after capture while passive observers collect synchronized evidence. Evidence is correlated, checked by deterministic rules, routed to AI only for permitted contextual judgments, verified across evidence, and published as one report."
-              width="1281"
-              height="1691"
-            />
-          </div>
-          <figcaption>
-            <span><strong>Green</strong> is deterministic or available.</span>
-            <span><strong>Amber</strong> is optional, contextual, or planned.</span>
-            <a href="diagrams/aee-evidence-pipeline.svg">Open the graph full size</a>
-          </figcaption>
-        </figure>
-
-        <details class="workflow-details">
-          <summary>Read the graph as six text steps</summary>
-          <ol>
-            <li><strong>Define:</strong> version the journey, actions, policy, and tools.</li>
-            <li>
-              <strong>Isolate:</strong> run pointer, keyboard, virtual-reader, and optional real-AT
-              drivers in separate browser contexts.
-            </li>
-            <li>
-              <strong>Capture:</strong> record a synchronized state before and after every
-              meaningful action using passive visual, DOM, AOM, focus, axe, transcript, and video
-              observers.
-            </li>
-            <li><strong>Correlate:</strong> join immutable artifacts into one evidence graph.</li>
-            <li>
-              <strong>Analyze:</strong> run deterministic rules first, route only allowlisted
-              contextual questions to labeled AI, then verify across all evidence.
-            </li>
-            <li>
-              <strong>Report:</strong> publish one linked HTML, JSON, and Markdown report; any fix
-              is isolated and must pass a verified rerun.
-            </li>
-          </ol>
-        </details>
-
-        <p class="flow-note">
-          This is the target evidence architecture. Colors distinguish deterministic or available
-          work from optional, contextual, or planned integrations.
-          <a
-            href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/evidence-run-layout.md"
-            >Read the artifact contract and Mermaid source on GitHub</a
-          >.
-        </p>
-
-        <section
-          class="registry-section"
-          id="remediation-registry"
-          aria-labelledby="registry-title"
-        >
-          <div class="section-heading registry-heading">
-            <div>
-              <p class="eyebrow">Deterministic first, AI by exception</p>
-              <h3 id="registry-title">How findings map to evidence and fixes</h3>
-            </div>
-            <p>
-              This table is generated from the versioned
-              <a href="data/remediation-registry.json">JSON registry</a>. “Partial” and “Planned”
-              describe implementation status, not accessibility conformance.
-            </p>
-          </div>
-          <div
-            class="registry-table-wrap"
-            tabindex="0"
-            role="region"
-            aria-label="Remediation registry table"
-          >
-            <table class="registry-table">
-              <caption>
-                Detection, AI scope, and verification requirements by accessibility issue
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Issue and mapping</th>
-                  <th scope="col">Deterministic detection</th>
-                  <th scope="col">AI contribution</th>
-                  <th scope="col">Verification</th>
-                </tr>
-              </thead>
-              <tbody>
-                <!-- remediation-registry:start -->
-                <tr>
-                  <th scope="row">
-                    <strong>Missing or unsuitable accessible name</strong>
-                    <span class="registry-status partial">Partial</span>
-                    <span
-                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html"
-                        >WCAG 4.1.2</a
-                      >,
-                      <a href="https://dequeuniversity.com/rules/axe/4.13/button-name"
-                        >axe-core button-name</a
-                      >,
-                      <a href="https://dequeuniversity.com/rules/axe/4.13/link-name"
-                        >axe-core link-name</a
-                      >,
-                      <a href="https://dequeuniversity.com/rules/axe/4.13/label"
-                        >axe-core label</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>Run pinned axe-core rules at each meaningful checkpoint.</li>
-                      <li>
-                        Compute the accessible name and compare it with the rendered role and
-                        visible text.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong class="ai-label">AI-assisted</strong
-                    ><span
-                      >Suggest a concise, context-specific name when deterministic checks can prove
-                      a name problem but cannot author the wording.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>
-                        Rerun the same journey and prove the computed name is non-empty and unique
-                        enough for the task.
-                      </li>
-                      <li>
-                        Match visible purpose, DOM, accessibility tree, and screen-reader output.
-                      </li>
-                      <li>Confirm keyboard activation and resulting user outcome are unchanged.</li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Image purpose and text alternative</strong>
-                    <span class="registry-status planned">Planned</span>
-                    <span
-                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/non-text-content.html"
-                        >WCAG 1.1.1</a
-                      >,
-                      <a href="https://dequeuniversity.com/rules/axe/4.13/image-alt"
-                        >axe-core image-alt</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>
-                        Identify rendered non-text content and its exposed alternative or hidden
-                        state.
-                      </li>
-                      <li>Flag mechanically provable missing alternatives and role conflicts.</li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong class="ai-label">AI-assisted</strong
-                    ><span
-                      >Classify an image as decorative, informative, functional, or complex and
-                      draft text only when page context is required.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>
-                        Confirm the rendered image, nearby content, DOM treatment, accessibility
-                        tree, and spoken output express the same purpose.
-                      </li>
-                      <li>
-                        For decorative images, verify they are absent from the accessibility tree
-                        and spoken output.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Visual and semantic heading structure</strong>
-                    <span class="registry-status partial">Partial</span>
-                    <span
-                      ><a
-                        href="https://www.w3.org/WAI/WCAG22/Understanding/info-and-relationships.html"
-                        >WCAG 1.3.1</a
-                      >,
-                      <a href="https://dequeuniversity.com/rules/axe/4.13/empty-heading"
-                        >axe-core empty-heading</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>
-                        Extract the complete semantic heading outline and structural relationships.
-                      </li>
-                      <li>
-                        Record visual typography and grouping signals without deciding meaning.
-                      </li>
-                      <li>
-                        Flag, as advisory, a short line styled as a title (bold and larger than the
-                        body text, or 40% larger) that has no heading role in the accessibility
-                        tree.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong class="ai-label">AI-assisted</strong
-                    ><span
-                      >Compare the full visual hierarchy with the full DOM and accessibility-tree
-                      outline when the intended relationships require contextual judgment.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>Re-extract the full outline after the fix.</li>
-                      <li>
-                        Confirm visual grouping, DOM hierarchy, accessibility tree, and
-                        screen-reader heading navigation agree.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Text and component color contrast</strong>
-                    <span class="registry-status partial">Partial</span>
-                    <span
-                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html"
-                        >WCAG 1.4.3</a
-                      >,
-                      <a href="https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html"
-                        >WCAG 1.4.11</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>
-                        Use axe-core where foreground and background colors can be determined.
-                      </li>
-                      <li>
-                        Calculate WCAG contrast ratios from resolved colors; never let a model
-                        estimate the ratio.
-                      </li>
-                      <li>
-                        Select the closest passing supplied design token using deterministic
-                        color-distance and contrast calculations.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong class="ai-label">AI-assisted</strong
-                    ><span
-                      >Locate complex rendered foreground and background regions or explain brand
-                      intent when deterministic extraction is inconclusive.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>Recompute the exact contrast ratio from the final rendered colors.</li>
-                      <li>
-                        Verify default, hover, focus, active, disabled, and error states that apply
-                        to the component.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Keyboard operation and activation</strong>
-                    <span class="registry-status partial">Partial</span>
-                    <span
-                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/keyboard.html"
-                        >WCAG 2.1.1</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>
-                        Drive Tab, Shift+Tab, Enter, Space, arrows, Escape, and role-specific keys
-                        through the active keyboard lane.
-                      </li>
-                      <li>
-                        Record document.activeElement, deep active element, aria-activedescendant,
-                        visible focus, and accessibility-tree focus after every meaningful action.
-                      </li>
-                      <li>
-                        Compare the observed outcome with the scenario&#39;s authorized expected
-                        outcome.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong>Deterministic only</strong
-                    ><span
-                      >Keyboard operability and focus movement are verified from recorded behavior,
-                      not inferred by AI.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>Repeat the same role-aware key sequence in an isolated active lane.</li>
-                      <li>
-                        Confirm focus moves only when required and the user outcome matches pointer
-                        activation.
-                      </li>
-                      <li>
-                        Require explicit authorization before destructive or financial actions.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Hover and keyboard-focus equivalence</strong>
-                    <span class="registry-status planned">Planned</span>
-                    <span
-                      ><a
-                        href="https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html"
-                        >WCAG 1.4.13</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>Run hover and keyboard paths in separate active browser contexts.</li>
-                      <li>
-                        Capture synchronized before and after evidence for hover, focus, Enter, and
-                        Space when appropriate to the role.
-                      </li>
-                      <li>
-                        Compare available user outcomes rather than requiring identical
-                        implementation events.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong>Deterministic only</strong
-                    ><span
-                      >Equivalent behavior is decided from traces and outcomes; AI does not
-                      substitute for exercising both paths.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>
-                        Verify hover content is dismissible, hoverable, and persistent where WCAG
-                        requires it.
-                      </li>
-                      <li>
-                        Verify the equivalent information or control is reachable and usable by
-                        keyboard and represented consistently to the screen reader.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <strong>Focus management after interface changes</strong>
-                    <span class="registry-status partial">Partial</span>
-                    <span
-                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html"
-                        >WCAG 2.4.3</a
-                      >,
-                      <a href="https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
-                        >WCAG 4.1.3</a
-                      ></span
-                    >
-                  </th>
-                  <td>
-                    <ul>
-                      <li>
-                        Record focus and aria-activedescendant before and after every meaningful
-                        action.
-                      </li>
-                      <li>
-                        Detect loss of focus, hidden focused elements, and focus outside an opened
-                        modal.
-                      </li>
-                      <li>
-                        Record live-region and screen-reader output separately from focus movement.
-                      </li>
-                    </ul>
-                  </td>
-                  <td class="registry-ai">
-                    <strong>Deterministic only</strong
-                    ><span
-                      >Focus movement and announcements are observable state. AI may explain
-                      evidence later but cannot decide or cause the movement.</span
-                    >
-                  </td>
-                  <td>
-                    <ul>
-                      <li>Confirm only the active input driver moves focus.</li>
-                      <li>
-                        Do not both move focus and announce the same update unless the interaction
-                        pattern requires both.
-                      </li>
-                      <li>
-                        Match focus, visible context, DOM, accessibility tree, and spoken output
-                        after the action.
-                      </li>
-                    </ul>
-                  </td>
-                </tr>
-                <!-- remediation-registry:end -->
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-
-      <section class="section examples-section" id="examples" aria-labelledby="examples-title">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Six focused examples</p>
-            <h2 id="examples-title">One issue. One before. One after.</h2>
-          </div>
-          <p>
-            Choose an example and compare the two images. Nothing advances automatically, so you
-            control where to focus.
-          </p>
-        </div>
-        <div
-          class="example-slideshow"
-          role="region"
-          aria-roledescription="carousel"
-          aria-label="Accessibility before-and-after examples"
-        >
-          <article class="example-slide" data-slide="0" aria-labelledby="slide-icon-title">
-            <div class="slide-intro">
-              <p class="slide-count">Example 1 of 6 · Contextual AI review</p>
-              <h3 id="slide-icon-title">Give an icon-only button a useful name</h3>
-              <p>
-                axe detects the missing name. AEE uses the icon, project heading, and destination
-                copy to suggest the product-specific label “Delete Project Alpha.”
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption>
-                  <strong>Before</strong><span>axe finds an unnamed button</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/icon-label/before.png"
-                  alt="Before: Project Alpha row with a highlighted trash icon button. The axe result says the button has an empty accessible name."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After review</strong><span>specific label, then verified rerun</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/icon-label/after.png"
-                  alt="After review: the trash button has the accessible name Delete Project Alpha, inferred from the icon and surrounding project context, and passes on rerun."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <article
-            class="example-slide"
-            data-slide="1"
-            aria-labelledby="slide-heading-title"
-            hidden
-          >
-            <div class="slide-intro">
-              <p class="slide-count">Example 2 of 6 · Full-page hierarchy</p>
-              <h3 id="slide-heading-title">Make the semantic outline match the visual structure</h3>
-              <p>
-                axe passes the valid heading sequence. AEE sees that “Settings” visually groups
-                three sections and proposes the missing parent relationship for review.
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption>
-                  <strong>Before</strong><span>valid levels, missing relationship</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/heading-structure/02-axe-result.png"
-                  alt="Before: axe passes a DOM outline containing H1 Project Alpha followed by H2 General, H2 Members, and H2 Danger zone, although Settings visually groups them."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After review</strong><span>visual and semantic hierarchy align</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/heading-structure/03-aee-suggestion.png"
-                  alt="After review: AEE proposes H2 Settings with General, Members, and Danger zone nested beneath it as H3 headings."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <article class="example-slide" data-slide="2" aria-labelledby="slide-focus-title" hidden>
-            <div class="slide-intro">
-              <p class="slide-count">Example 3 of 6 · Behavioral evidence</p>
-              <h3 id="slide-focus-title">Move focus into an opened modal</h3>
-              <p>
-                The same Playwright interaction runs twice. Before, focus remains on the trigger
-                behind the dialog. After the fix, focus lands on Cancel inside it.
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption>
-                  <strong>Before</strong><span>focus remains behind the dialog</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/recorded-modal-focus-issue/artifacts/visual-after.png"
-                  alt="Before: the Delete Project Alpha dialog is open, but keyboard focus remains on the delete trigger behind the dialog."
-                  width="1280"
-                  height="720"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After fix</strong><span>focus enters the dialog</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/recorded-modal-focus-fixed/artifacts/visual-after.png"
-                  alt="After fix: the same dialog is open and the Cancel button inside it has visible keyboard focus."
-                  width="1280"
-                  height="720"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <article class="example-slide" data-slide="3" aria-labelledby="slide-color-title" hidden>
-            <div class="slide-intro">
-              <p class="slide-count">Example 4 of 6 · Palette-aware repair</p>
-              <h3 id="slide-color-title">
-                Choose the closest passing color already in the palette
-              </h3>
-              <p>
-                The contrast failure is objective. AEE measures the existing design tokens and
-                proposes the perceptually closest one that passes—without inventing a new color.
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption>
-                  <strong>Before</strong><span>brand color measures 4.12:1</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/palette-contrast/before.png"
-                  alt="Before: secondary dashboard text uses the brand color 607a71, which measures 4.12 to 1 against the dark background and fails the 4.5 to 1 requirement."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After review</strong><span>nearest passing token measures 7.73:1</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/palette-contrast/after.png"
-                  alt="After review: AEE selects the existing Text subtle token 91aaa2, the closest supplied palette color that passes at 7.73 to 1."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <article class="example-slide" data-slide="4" aria-labelledby="slide-hover-title" hidden>
-            <div class="slide-intro">
-              <p class="slide-count">Example 5 of 6 · Interaction equivalence</p>
-              <h3 id="slide-hover-title">Expose hover information to keyboard users</h3>
-              <p>
-                AEE runs the pointer and keyboard paths from the same reset state, then compares
-                their observable outcomes instead of assuming equivalent CSS means equivalent use.
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption>
-                  <strong>Before</strong><span>tooltip appears only on hover</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/hover-keyboard/before.png"
-                  alt="Before: hovering over a revenue chart point reveals a tooltip, while keyboard focus reveals nothing; AEE marks the outcomes different."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After fix</strong><span>hover and focus reveal the same information</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/hover-keyboard/after.png"
-                  alt="After fix: both mouse hover and keyboard focus reveal the same revenue tooltip, and AEE verifies equivalent outcomes."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <article class="example-slide" data-slide="5" aria-labelledby="slide-motion-title" hidden>
-            <div class="slide-intro">
-              <p class="slide-count">Example 6 of 6 · Time-based verification</p>
-              <h3 id="slide-motion-title">Verify that a Pause control really stops animation</h3>
-              <p>
-                AEE samples after the stop request twice. That distinguishes lasting stillness from
-                a single screenshot that merely caught the animation between frames.
-              </p>
-            </div>
-            <div class="before-after">
-              <figure>
-                <figcaption><strong>Before</strong><span>Pause has no effect</span></figcaption>
-                <img
-                  src="demo-artifacts/motion-control/before.png"
-                  alt="Before: a live-updates ticker continues moving after the Pause animation button is pressed; AEE observes one active animation and changing samples."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-              <figure>
-                <figcaption>
-                  <strong>After fix</strong><span>motion stops and remains stable</span>
-                </figcaption>
-                <img
-                  src="demo-artifacts/motion-control/after.png"
-                  alt="After fix: pressing Pause leaves zero active animations and two stable samples, so AEE verifies that motion stopped."
-                  width="1080"
-                  height="620"
-                />
-              </figure>
-            </div>
-          </article>
-
-          <div class="slideshow-controls">
-            <button type="button" id="previous-example" aria-label="Show previous example">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M19 12H5m6-6-6 6 6 6" />
-              </svg>
-            </button>
-            <div class="slide-picker" role="group" aria-label="Choose an example">
-              <button type="button" data-slide-target="0" aria-pressed="true">Icon label</button>
-              <button type="button" data-slide-target="1" aria-pressed="false">Headings</button>
-              <button type="button" data-slide-target="2" aria-pressed="false">Modal focus</button>
-              <button type="button" data-slide-target="3" aria-pressed="false">Color</button>
-              <button type="button" data-slide-target="4" aria-pressed="false">Hover</button>
-              <button type="button" data-slide-target="5" aria-pressed="false">Animation</button>
-            </div>
-            <button type="button" id="next-example" aria-label="Show next example">
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M5 12h14m-6-6 6 6-6 6" />
-              </svg>
-            </button>
-          </div>
-          <p class="slideshow-status" id="slideshow-status" aria-live="polite">
-            Example 1 of 6: Icon label
-          </p>
-        </div>
-
-        <details class="evidence-library">
-          <summary>Read the evidence behind these examples</summary>
-          <div class="evidence-summaries">
-            <section aria-labelledby="icon-evidence-title">
-              <p class="evidence-number">Example 1</p>
-              <h3 id="icon-evidence-title">Icon label</h3>
-              <dl>
-                <div>
-                  <dt>Automatic check</dt>
-                  <dd><span class="evidence-state fail">Fail</span> Button has no name.</dd>
-                </div>
-                <div>
-                  <dt>Contextual review</dt>
-                  <dd>The trash icon and “Project Alpha” identify the action and its object.</dd>
-                </div>
-                <div>
-                  <dt>Reviewed change</dt>
-                  <dd><code>aria-label="Delete Project Alpha"</code></dd>
-                </div>
-                <div>
-                  <dt>Verified rerun</dt>
-                  <dd><span class="evidence-state pass">Pass</span> Button has a specific name.</dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/axe-unnamed-icon.json" download
-                  >axe result before fix (.json)</a
-                >
-                <a href="demo-artifacts/ai-label-suggestion.json" download
-                  >Reviewed proposal (.json)</a
-                >
-                <a href="demo-artifacts/axe-named-icon.json" download
-                  >axe verification after fix (.json)</a
-                >
-              </details>
-            </section>
-
-            <section aria-labelledby="heading-evidence-title">
-              <p class="evidence-number">Example 2</p>
-              <h3 id="heading-evidence-title">Heading hierarchy</h3>
-              <dl>
-                <div>
-                  <dt>Automatic check</dt>
-                  <dd><span class="evidence-state pass">Pass</span> Heading levels do not skip.</dd>
-                </div>
-                <div>
-                  <dt>Contextual review</dt>
-                  <dd>“Settings” visually groups General, Members, and Danger zone.</dd>
-                </div>
-                <div>
-                  <dt>Reviewed change</dt>
-                  <dd>Make Settings an <code>h2</code> and its three sections <code>h3</code>s.</dd>
-                </div>
-                <div>
-                  <dt>Why AEE adds value</dt>
-                  <dd>The issue is the missing relationship, not an invalid heading sequence.</dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/axe-heading-structure.json" download
-                  >axe heading result (.json)</a
-                >
-                <a href="demo-artifacts/ai-heading-suggestion.json" download
-                  >Reviewed proposal (.json)</a
-                >
-              </details>
-            </section>
-
-            <section aria-labelledby="focus-evidence-title">
-              <p class="evidence-number">Example 3</p>
-              <h3 id="focus-evidence-title">Modal focus</h3>
-              <dl>
-                <div>
-                  <dt>Before</dt>
-                  <dd>
-                    <span class="evidence-state fail">Fail</span> Focus remains behind the dialog.
-                  </dd>
-                </div>
-                <div>
-                  <dt>Observed evidence</dt>
-                  <dd>The modal opens, but the focused element is still its trigger.</dd>
-                </div>
-                <div>
-                  <dt>Fix</dt>
-                  <dd>Move focus to the Cancel button when the modal opens.</dd>
-                </div>
-                <div>
-                  <dt>Verified rerun</dt>
-                  <dd><span class="evidence-state pass">Pass</span> Focus enters the dialog.</dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/recorded-modal-focus-issue/aee-report.json" download
-                  >Failure report (.json)</a
-                >
-                <a href="demo-artifacts/recorded-modal-focus-fixed/aee-report.json" download
-                  >Verified report (.json)</a
-                >
-              </details>
-            </section>
-
-            <section aria-labelledby="color-evidence-title">
-              <p class="evidence-number">Example 4</p>
-              <h3 id="color-evidence-title">Palette-aware contrast</h3>
-              <dl>
-                <div>
-                  <dt>Measured failure</dt>
-                  <dd><span class="evidence-state fail">Fail</span> 4.12:1 instead of 4.50:1.</dd>
-                </div>
-                <div>
-                  <dt>Bounded candidates</dt>
-                  <dd>AEE considers only colors supplied from the project palette.</dd>
-                </div>
-                <div>
-                  <dt>Reviewed change</dt>
-                  <dd>Select <code>Text subtle #91aaa2</code>, measured at 7.73:1.</dd>
-                </div>
-                <div>
-                  <dt>Why no LLM?</dt>
-                  <dd>Contrast and perceptual distance are deterministic calculations.</dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/palette-contrast/evidence.json" download
-                  >Palette contrast evidence (.json)</a
-                >
-              </details>
-            </section>
-
-            <section aria-labelledby="hover-evidence-title">
-              <p class="evidence-number">Example 5</p>
-              <h3 id="hover-evidence-title">Hover and keyboard</h3>
-              <dl>
-                <div>
-                  <dt>Pointer path</dt>
-                  <dd>Hover reveals “Revenue increased 18 percent.”</dd>
-                </div>
-                <div>
-                  <dt>Keyboard path</dt>
-                  <dd>
-                    <span class="evidence-state fail">Fail</span> The broken version reveals
-                    nothing.
-                  </dd>
-                </div>
-                <div>
-                  <dt>Fix</dt>
-                  <dd>Use a focusable control and expose the tooltip on focus.</dd>
-                </div>
-                <div>
-                  <dt>Verified rerun</dt>
-                  <dd>
-                    <span class="evidence-state pass">Pass</span> Both paths return the same
-                    outcome.
-                  </dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/hover-keyboard/evidence.json" download
-                  >Interaction comparison (.json)</a
-                >
-              </details>
-            </section>
-
-            <section aria-labelledby="motion-evidence-title">
-              <p class="evidence-number">Example 6</p>
-              <h3 id="motion-evidence-title">Animation control</h3>
-              <dl>
-                <div>
-                  <dt>Before</dt>
-                  <dd>
-                    <span class="evidence-state fail">Fail</span> One animation remains active.
-                  </dd>
-                </div>
-                <div>
-                  <dt>Verification method</dt>
-                  <dd>Request Pause, wait, sample, wait again, and sample again.</dd>
-                </div>
-                <div>
-                  <dt>Fix</dt>
-                  <dd>Connect the Pause control to the running animation.</dd>
-                </div>
-                <div>
-                  <dt>Verified rerun</dt>
-                  <dd>
-                    <span class="evidence-state pass">Pass</span> Zero active animations; state
-                    stays stable.
-                  </dd>
-                </div>
-              </dl>
-              <details class="raw-downloads">
-                <summary>Download raw developer files</summary>
-                <a href="demo-artifacts/motion-control/evidence.json" download
-                  >Motion verification (.json)</a
-                >
-              </details>
-            </section>
-          </div>
-        </details>
-      </section>
+      <!-- upcoming:end -->
 
       <section class="section boundaries" id="boundaries" aria-labelledby="boundaries-title">
         <div>
@@ -1250,6 +403,13 @@
             </ul>
           </article>
         </div>
+        <p class="feature-links">
+          <a href="how-it-works.html#how-it-works">See how a result is decided</a>
+          <a
+            href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/PRODUCT.md"
+            >Read the product principles</a
+          >
+        </p>
       </section>
 
       <section class="cta" aria-labelledby="cta-title">

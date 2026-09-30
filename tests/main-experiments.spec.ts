@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-const home = pathToFileURL(path.resolve("site/index.html")).href;
+const home = pathToFileURL(path.resolve("site/how-it-works.html")).href;
 
 test("baseline and every example have no Axe violations", async ({ page }) => {
   await page.goto(home);
@@ -16,7 +16,7 @@ test("baseline and every example have no Axe violations", async ({ page }) => {
 });
 
 for (const issue of ["icon-labels", "headings", "body-hidden"]) {
-  test(`main page plants ${issue} and Escape restores baseline`, async ({ page }) => {
+  test(`How it works page plants ${issue} and Escape restores baseline`, async ({ page }) => {
     await page.goto(`${home}?issue=${issue}#experiments`);
     await expect(page.locator("body")).toHaveAttribute("data-issues", issue);
     const result = await new AxeBuilder({ page }).analyze();
@@ -48,10 +48,7 @@ test("experiments are discoverable on mobile and keyboard accessible", async ({ 
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.locator("#main")).toBeFocused();
-  await expect(
-    page.getByRole("link", { name: "Accessibility experiments", exact: true })
-  ).toBeVisible();
-  await page.getByRole("link", { name: "Try accessibility experiments" }).click();
+  await page.getByRole("link", { name: "Accessibility experiments", exact: true }).click();
   const checkbox = page.locator('input[value="headings"]');
   await checkbox.focus();
   await page.keyboard.press("Space");
