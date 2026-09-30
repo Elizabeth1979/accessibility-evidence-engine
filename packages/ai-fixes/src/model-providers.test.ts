@@ -26,6 +26,18 @@ const context: AccessibleLabelContext = {
   nearbyText: "Website accessibility review"
 };
 
+/** The schema every request for this context carries: citations limited to its fields. */
+const schema = {
+  ...accessibleNameSpecialist.schema,
+  properties: {
+    ...accessibleNameSpecialist.schema.properties,
+    citedEvidenceIds: {
+      type: "array",
+      items: { type: "string", enum: Object.keys(context) }
+    }
+  }
+};
+
 const answer = {
   suggestedName: "Archive Project Alpha",
   rationale: "The archive icon sits in the Project Alpha row.",
@@ -116,7 +128,7 @@ test("Claude answers in the specialist's schema, with refusal fallbacks on", asy
   assert.match(request?.headers.get("anthropic-beta") ?? "", /server-side-fallback-2026-07-01/);
   assert.deepEqual(
     (request?.body.output_config as { format: { schema: unknown } }).format.schema,
-    accessibleNameSpecialist.schema
+    schema
   );
   assert.equal(
     JSON.parse(String((request?.body.messages as [{ content: string }])[0].content)).selector,
@@ -137,7 +149,7 @@ test("a Claude refusal is an error, never an answer", async () => {
   );
 });
 
-test("a local model is asked over the OpenAI-compatible chat API, with the schema in its prompt and thinking off", async () => {
+test("a local model is asked over the OpenAI-compatible chat API, held to the schema its prompt also carries, with thinking off", async () => {
   let requestBody: {
     model?: string;
     reasoning_effort?: string;
@@ -166,10 +178,11 @@ test("a local model is asked over the OpenAI-compatible chat API, with the schem
     assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
     assert.equal(requestBody.model, "tiny");
     assert.equal(requestBody.reasoning_effort, "none");
-    assert.deepEqual(requestBody.response_format, { type: "json_object" });
-    assert.ok(
-      requestBody.messages?.[0].content.includes(JSON.stringify(accessibleNameSpecialist.schema))
-    );
+    assert.deepEqual(requestBody.response_format, {
+      type: "json_schema",
+      json_schema: { name: "accessible_name_specialist", strict: true, schema }
+    });
+    assert.ok(requestBody.messages?.[0].content.includes(JSON.stringify(schema)));
   } finally {
     server.close();
   }
@@ -195,7 +208,7 @@ test("OpenAI's Responses API gets a strict, named schema and store: false", asyn
     type: "json_schema",
     name: "accessible_name_specialist",
     strict: true,
-    schema: accessibleNameSpecialist.schema
+    schema
   });
 });
 

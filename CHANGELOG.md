@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Fixed
+
+- An AI suggestion from a local model could cite something other than its evidence, such as the element's selector, and so be discarded. Each request's schema now lists the only fields the answer may cite, and the local provider asks the runtime to enforce the schema (`response_format` json_schema) rather than only describing it in the prompt.
+
 ### Changed
 
 - The homepage tells one story, from finding a problem to shipping its fix, in four chapters of feature cards (Find, Show, Fix and Ship), with a real app's results and three steps to get started. Every claim on it links to a shot or a live page. The evidence flow, remediation registry, before-and-after examples and accessibility experiments moved to a new How it works page.
