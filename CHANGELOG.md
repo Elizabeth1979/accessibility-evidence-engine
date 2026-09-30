@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Fixed
 
+- The keyboard and pointer sweep's video shows the page throughout. It used to jump to a Tab stop's close-up, or the page shrunk, in a grey frame, and could end on a grey-edged frame: Chromium's recording shows what a clipped or full-page screenshot draws. Each Tab stop's close-up is now cut from a capture of the whole viewport, and the lane's full-page screenshot is taken in a second, unrecorded browser context.
 - An AI suggestion from a local model could cite something other than its evidence, such as the element's selector, and so be discarded. Each request's schema now lists the only fields the answer may cite, and the local provider asks the runtime to enforce the schema (`response_format` json_schema) rather than only describing it in the prompt.
 
 ### Changed

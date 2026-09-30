@@ -1582,10 +1582,28 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
   };
 }
 
+/** Stops every navigation that leaves the allowed origins, including one a pressed control starts. */
+async function keepNavigationsWithin<TPage extends KeyboardPointerSweepLanePage>(
+  context: KeyboardPointerSweepLaneContext<TPage>,
+  allowedOrigins: string[],
+  blockedNavigations: string[]
+): Promise<void> {
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    if (request.isNavigationRequest() && !allowedOrigins.includes(new URL(request.url()).origin)) {
+      blockedNavigations.push(request.url());
+      await route.abort("blockedbyclient");
+    } else {
+      await route.continue();
+    }
+  });
+}
+
 /**
- * Sweeps one page by keyboard and pointer in its own browser context, then records the result,
- * a full-page screenshot and where each finding is on it. Every navigation, including one a
- * pressed control starts, is stopped unless it stays inside the allowed origins.
+ * Sweeps one page by keyboard and pointer in its own recorded browser context, then records the
+ * result, and, from a fresh load in an unrecorded context, a full-page screenshot and where each
+ * finding is on it. In both, every navigation is stopped unless it stays inside the allowed
+ * origins.
  */
 export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerSweepLanePage>(
   options: RunKeyboardPointerSweepLaneOptions<TPage>
@@ -1627,19 +1645,14 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   const context = await options.browser.newContext({
     recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
   });
+  // The full-page screenshot comes from a context that is not recorded: a full-page capture
+  // redraws the page at another size, and the recording keeps that frame until the page next
+  // changes, which can be the end of the video.
+  const stillContext = await options.browser.newContext();
   try {
-    await context.route("**/*", async (route) => {
-      const request = route.request();
-      if (
-        request.isNavigationRequest() &&
-        !allowedOrigins.includes(new URL(request.url()).origin)
-      ) {
-        blockedNavigations.push(request.url());
-        await route.abort("blockedbyclient");
-      } else {
-        await route.continue();
-      }
-    });
+    for (const each of [context, stillContext]) {
+      await keepNavigationsWithin(each, allowedOrigins, blockedNavigations);
+    }
     const page = await context.newPage();
     pageVideo = page.video?.();
     const result = await sweepKeyboardAndPointer({
@@ -1648,14 +1661,15 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       activateControls: options.activateControls,
       onStep: (step) => steps.push(step)
     });
-    await page.goto(options.targetUrl);
-    await page.screenshot({ path: screenshotFile, fullPage: true });
+    const still = await stillContext.newPage();
+    await still.goto(options.targetUrl);
+    await still.screenshot({ path: screenshotFile, fullPage: true });
     const locations = await locateElements(
-      page,
+      still,
       result.findings.map(({ selector }) => selector)
     );
     const stopLocations = await locateElements(
-      page,
+      still,
       result.tabStops.map(({ selector }) => selector)
     );
     const tabStops: KeyboardPointerSweepLaneTabStop[] = [];
@@ -1685,6 +1699,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     runError = error;
   } finally {
     await context.close();
+    await stillContext.close();
   }
 
   const status = sweep ? "completed" : blockedNavigations.length > 0 ? "blocked" : "failed";

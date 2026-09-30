@@ -1,7 +1,9 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { expect, test, type Page } from "@playwright/test";
+import { PNG } from "pngjs";
 
 import { runKeyboardPointerSweepLane, sweepKeyboardAndPointer } from "@aee/playwright";
 
@@ -160,6 +162,83 @@ test("the sweep lane records a video whose descriptions name each step", async (
     await site.close();
   }
 });
+
+test("the sweep lane's video shows the page in every frame, never a close-up in a grey frame", async ({
+  browser,
+  page
+}, testInfo) => {
+  // Six Tab stops on a coloured page. Playwright pads a frame smaller than the video with grey, so
+  // a frame that shows a close-up or a shrunken page has grey in its corner instead of the page.
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head>
+    <title>Frames</title>
+    <style>body { margin: 0; min-height: 100vh; background: #f4e3b8; }</style>
+  </head>
+  <body>
+    <main>
+      <h1>Frames</h1>
+      ${["One", "Two", "Three", "Four", "Five", "Six"].map((name) => `<button type="button">${name}</button>`).join("")}
+    </main>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    expect(lane.tabStops).toHaveLength(6);
+    const corners = await videoCorners(page, lane.video!.videoFile);
+    expect(corners.length).toBeGreaterThan(10);
+    expect(
+      corners.filter((pixel) => pixel.every((channel) => Math.abs(channel - 128) <= 3))
+    ).toEqual([]);
+  } finally {
+    await site.close();
+  }
+});
+
+/** The bottom-right pixel of a recording every 0.1 seconds, read from screenshots of it. */
+async function videoCorners(page: Page, videoFile: string): Promise<number[][]> {
+  const player = path.join(path.dirname(videoFile), "player.html");
+  await writeFile(player, `<video src="${path.basename(videoFile)}" muted></video>`);
+  await page.goto(pathToFileURL(player).href);
+  const video = page.locator("video");
+  const duration = await video.evaluate(async (element: HTMLVideoElement) => {
+    if (element.readyState < 1) {
+      await new Promise((loaded) =>
+        element.addEventListener("loadedmetadata", loaded, { once: true })
+      );
+    }
+    // A recording states no duration until its end has been read.
+    if (!Number.isFinite(element.duration)) {
+      element.currentTime = Number.MAX_SAFE_INTEGER;
+      await new Promise((read) => element.addEventListener("timeupdate", read, { once: true }));
+    }
+    return element.duration;
+  });
+  const corners: number[][] = [];
+  for (let time = 0; time < duration; time += 0.1) {
+    await video.evaluate(async (element: HTMLVideoElement, seconds) => {
+      element.currentTime = seconds;
+      while (element.seeking || element.readyState < 2) {
+        await new Promise((wait) => setTimeout(wait, 20));
+      }
+      await new Promise((drawn) => requestAnimationFrame(() => requestAnimationFrame(drawn)));
+    }, time);
+    const frame = PNG.sync.read(await video.screenshot());
+    const corner = ((frame.height - 4) * frame.width + frame.width - 4) * 4;
+    corners.push([...frame.data.subarray(corner, corner + 3)]);
+  }
+  return corners;
+}
 
 test("the sweep lane records where each Tab stop is and whether focus visibly changes it", async ({
   browser
