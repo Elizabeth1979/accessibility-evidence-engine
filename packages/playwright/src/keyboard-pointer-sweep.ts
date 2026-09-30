@@ -85,9 +85,8 @@ export interface KeyboardPointerSweepCdpSession {
 
 export interface KeyboardPointerSweepPage {
   context(): { newCDPSession(page: unknown): Promise<KeyboardPointerSweepCdpSession> };
-  /** Playwright's page screenshot: the sweep frames regions of the viewport with it. */
+  /** Playwright's page screenshot: the sweep cuts each Tab stop's frame from a viewport capture. */
   screenshot(options: {
-    clip?: { x: number; y: number; width: number; height: number };
     fullPage?: boolean;
     path?: string;
     animations?: "disabled";
@@ -141,7 +140,10 @@ type ProbeRequest =
 interface FocusFrame {
   scrollX: number;
   scrollY: number;
+  /** In CSS pixels. */
   clip: { x: number; y: number; width: number; height: number };
+  /** Device pixels per CSS pixel, the scale of a viewport capture. */
+  pixelRatio: number;
 }
 
 interface ProbedElement {
@@ -431,17 +433,29 @@ function visiblyDifferent(first: Uint8Array, second: Uint8Array): boolean {
 /**
  * A PNG of one frame, with animations finished and the text caret hidden so that only focus can
  * change it. A capture that times out leaves that stop unmeasured rather than stopping the sweep.
+ * The frame is cut from a capture of the whole viewport: Chromium's screencast, which a recording
+ * of the sweep is made from, shows a clipped capture for that moment instead of the page.
  */
 async function captureFrame(
   page: KeyboardPointerSweepPage,
-  { clip }: FocusFrame
+  { clip, pixelRatio }: FocusFrame
 ): Promise<Uint8Array | undefined> {
+  let viewport: Uint8Array;
   try {
-    return await page.screenshot({ clip, animations: "disabled", caret: "hide", timeout: 5_000 });
+    viewport = await page.screenshot({ animations: "disabled", caret: "hide", timeout: 5_000 });
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") return undefined;
     throw error;
   }
+  const source = PNG.sync.read(Buffer.from(viewport));
+  const x = Math.round(clip.x * pixelRatio);
+  const y = Math.round(clip.y * pixelRatio);
+  const frame = new PNG({
+    width: Math.min(Math.round(clip.width * pixelRatio), source.width - x),
+    height: Math.min(Math.round(clip.height * pixelRatio), source.height - y)
+  });
+  PNG.bitblt(source, frame, x, y, frame.width, frame.height, 0, 0);
+  return PNG.sync.write(frame);
 }
 
 /** The text of the content that hovering the rule's element makes visible. */
@@ -721,7 +735,8 @@ function runSweepProbe(request: ProbeRequest): unknown {
       return {
         scrollX,
         scrollY,
-        clip: { x: left, y: top, width: right - left, height: bottom - top }
+        clip: { x: left, y: top, width: right - left, height: bottom - top },
+        pixelRatio: devicePixelRatio
       };
     }
     case "blur":
