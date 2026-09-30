@@ -95,6 +95,7 @@ export interface KeyboardPointerSweepPage {
     timeout?: number;
   }): Promise<Uint8Array>;
   goto(url: string): Promise<unknown>;
+  reload(): Promise<unknown>;
   isClosed(): boolean;
   waitForLoadState(): Promise<void>;
   evaluate<Result, Arg>(
@@ -121,7 +122,9 @@ export interface KeyboardPointerSweepOptions {
 }
 
 type ProbeRequest =
-  | { mode: "active" }
+  | { mode: "active"; within?: string }
+  | { mode: "composite-stops"; selectors: string[]; tabStops: string[] }
+  | { mode: "focus"; selector: string }
   | { mode: "pointer-only"; tabStops: string[] }
   | { mode: "hover-rules"; styleSheets: string[] }
   | { mode: "visible"; selector: string }
@@ -192,10 +195,7 @@ export async function sweepKeyboardAndPointer(
   );
   const stopSelectors = tabStops.map(({ selector }) => selector);
 
-  for (const target of await probe<ProbedElement[]>({
-    mode: "pointer-only",
-    tabStops: stopSelectors
-  })) {
+  for (const target of await pointerOnlyTargets(page, probe, url, stopSelectors, onStep)) {
     findings.push(
       sweepFinding(
         "pointer-only",
@@ -229,7 +229,7 @@ export async function sweepKeyboardAndPointer(
 
   const activated: string[] = [];
   if (options.activateControls) {
-    await page.goto(url);
+    await loadAfresh(page, url);
     for (const control of await probe<PressableControl[]>({
       mode: "pressable",
       tabStops: stopSelectors
@@ -246,6 +246,77 @@ export async function sweepKeyboardAndPointer(
   }
 
   return { url, tabStops, activated, findings };
+}
+
+/** The keys that move focus inside a composite widget, whichever way it is laid out. */
+const COMPOSITE_KEYS = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Home", "End"];
+/** At most this many items are walked in one widget, as `maxTabStops` bounds the Tab walk. */
+const MAX_COMPOSITE_ITEMS = 100;
+
+/**
+ * Mouse targets no key reaches. Tabs, a menu, a listbox, a tree, a grid, a radio group or a toolbar
+ * is one Tab stop, and its arrow keys, Home and End move focus inside it, as the APG patterns ask.
+ * So before a target inside one is reported, those keys are pressed from its Tab stop, from every
+ * item they reach. They move focus and, in some widgets, the selection; Enter and Space are never
+ * pressed, and the page is loaded again afterwards.
+ */
+async function pointerOnlyTargets(
+  page: KeyboardPointerSweepPage,
+  probe: <T>(request: ProbeRequest) => Promise<T>,
+  url: string,
+  tabStops: string[],
+  onStep: KeyboardPointerSweepOptions["onStep"]
+): Promise<ProbedElement[]> {
+  const targets = await probe<ProbedElement[]>({ mode: "pointer-only", tabStops });
+  const widgets = await probe<Array<{ widget: string; stop: string }>>({
+    mode: "composite-stops",
+    selectors: targets.map(({ selector }) => selector),
+    tabStops
+  });
+  if (widgets.length === 0) return targets;
+  const reached = await timed(
+    onStep,
+    () => "From each widget's Tab stop, press the arrow keys, Home and End",
+    async () => {
+      const items: string[] = [];
+      for (const { widget, stop } of widgets) {
+        items.push(...(await walkComposite(page, probe, widget, stop)));
+      }
+      return items;
+    }
+  );
+  await loadAfresh(page, url);
+  return probe<ProbedElement[]>({ mode: "pointer-only", tabStops: [...tabStops, ...reached] });
+}
+
+/** Every item of one widget its keys reach, starting from its Tab stop. */
+async function walkComposite(
+  page: KeyboardPointerSweepPage,
+  probe: <T>(request: ProbeRequest) => Promise<T>,
+  widget: string,
+  stop: string
+): Promise<string[]> {
+  const reached = [stop];
+  for (let index = 0; index < reached.length && reached.length < MAX_COMPOSITE_ITEMS; index += 1) {
+    for (const key of COMPOSITE_KEYS) {
+      // By script, not by locator, which waits for an item a key removed, such as a closed menu's.
+      if (!(await probe<boolean>({ mode: "focus", selector: reached[index]! }))) break;
+      await page.keyboard.press(key);
+      const active = await probe<ProbedElement | null>({ mode: "active", within: widget });
+      if (active && !reached.includes(active.selector)) reached.push(active.selector);
+    }
+  }
+  return reached;
+}
+
+/**
+ * Loads the page at its address again, as it first loaded. Going to an address with a #fragment
+ * only scrolls to the fragment when the page is already there, keeping whatever a check changed,
+ * so such an address is reloaded.
+ */
+async function loadAfresh(page: KeyboardPointerSweepPage, url: string): Promise<void> {
+  await page.goto(url);
+  if (new URL(url).hash) await page.reload();
 }
 
 async function readStyleSheetTexts(page: KeyboardPointerSweepPage): Promise<string[]> {
@@ -415,7 +486,7 @@ async function pressControl(
   let focusLost = false;
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
-      await page.goto(url);
+      await loadAfresh(page, url);
       loadedDocument = await probe<number>({ mode: "document" });
     },
     performPointerInteraction: () => target.click(),
@@ -500,7 +571,29 @@ function runSweepProbe(request: ProbeRequest): unknown {
     case "active": {
       const active = document.activeElement;
       if (!active || active === document.body) return null;
+      if (request.within && !document.querySelector(request.within)?.contains(active)) return null;
       return { selector: selectorFor(active), label: labelFor(active) };
+    }
+    // The composite widget each target sits in, with the Tab stop inside it that its arrow keys
+    // start from, once per widget. A widget whose items Tab never reaches has none.
+    case "composite-stops": {
+      const stops = find(request.tabStops);
+      const widgets = new Map<string, string>();
+      for (const target of find(request.selectors)) {
+        const widget = target.closest(
+          '[role="tablist"], [role="menubar"], [role="menu"], [role="listbox"], [role="tree"], [role="treegrid"], [role="grid"], [role="radiogroup"], [role="toolbar"]'
+        );
+        const stop = widget && stops.find((element) => widget.contains(element));
+        if (stop) widgets.set(selectorFor(widget), selectorFor(stop));
+      }
+      return [...widgets].map(([widget, stop]) => ({ widget, stop }));
+    }
+    // Focuses an item again, to press the next key from it: false when it is gone or cannot take it.
+    case "focus": {
+      const element = document.querySelector(request.selector);
+      if (!(element instanceof HTMLElement || element instanceof SVGElement)) return false;
+      element.focus();
+      return document.activeElement === element;
     }
     case "pointer-only": {
       // A mouse target is the outermost element showing a pointer cursor, or one with an inline
