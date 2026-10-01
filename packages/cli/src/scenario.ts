@@ -200,20 +200,32 @@ const PROFILE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
 ];
 
 /**
- * A Playwright test drives the page itself, so its plan is only what the test fixture observes:
- * no sweep, reader or authored actions of AEE's own.
+ * A Playwright test drives the page itself, so its plan is what the test fixture does: it observes
+ * every load and checkpoint, and on the page it checks in full, where the test ends, it sweeps by
+ * keyboard and mouse before the reader commands the journey lists. The fixture checks a page in
+ * full once per run, so a journey with reader commands is a page it checked.
  */
-const TEST_FIXTURE_STEPS: ScenarioPlan["journeys"][number]["steps"] = [
-  step(
-    "capture-on-load",
-    "After every page load the test starts (goto, reload, setContent, back and forward), capture synchronized viewport, full-page, DOM, accessibility-tree, and focus evidence and run the pinned WCAG rule selection."
-  ),
-  step(
-    "capture-at-checkpoints",
-    "Capture the same evidence at every checkpoint the test names, and where the test leaves the page."
-  ),
-  ...PROFILE_STEPS.filter(({ id }) => id === "correlate-evidence" || id === "publish-report")
-];
+function testFixtureSteps(journey: ScenarioJourney): ScenarioPlan["journeys"][number]["steps"] {
+  return [
+    step(
+      "capture-on-load",
+      "After every page load the test starts (goto, reload, setContent, back and forward), capture synchronized viewport, full-page, DOM, accessibility-tree, and focus evidence and run the pinned WCAG rule selection."
+    ),
+    step(
+      "capture-at-checkpoints",
+      "Capture the same evidence at every checkpoint the test names, and where the test leaves the page."
+    ),
+    ...(journey.virtualScreenReaderCommands?.length
+      ? [
+          step(
+            "inventory-interactions",
+            "Where the test passed and ended, sweep the page by keyboard and mouse on the test's own page, from a fresh load, keeping the test's session and routes: Tab to every stop, then find mouse targets Tab never reaches and content hover shows that keyboard focus never does. Controls are not pressed."
+          )
+        ]
+      : []),
+    ...PROFILE_STEPS.filter(({ id }) => id === "correlate-evidence" || id === "publish-report")
+  ];
+}
 
 const ACTION_STEP_LABELS: Record<string, string> = {
   navigate: "Permit declared navigation only within the approved target origins.",
@@ -276,7 +288,7 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
     goal: journey.goal,
     startUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
     steps: [
-      ...(scenario.profile === "playwright-test" ? TEST_FIXTURE_STEPS : PROFILE_STEPS).map(
+      ...(scenario.profile === "playwright-test" ? testFixtureSteps(journey) : PROFILE_STEPS).map(
         (entry) => ({ ...entry })
       ),
       ...journey.allowedActions.map((action) => ({
@@ -288,7 +300,10 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
       })),
       ...(journey.virtualScreenReaderCommands ?? []).map((command, index) => ({
         id: `reader-command-${index + 1}-${command}`,
-        label: `Run the user-selected virtual screen-reader command “${command}” in the isolated reader lane.`,
+        label:
+          scenario.profile === "playwright-test"
+            ? `Run the virtual screen-reader command “${command}” on the test's own page.`
+            : `Run the user-selected virtual screen-reader command “${command}” in the isolated reader lane.`,
         source: "user-command" as const
       })),
       ...(journey.interactionComparisons ?? []).flatMap((comparison) => [

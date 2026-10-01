@@ -19,7 +19,7 @@
     "schemaVersion": { "const": "0.1.0" },
     "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
     "driver": { "const": "portable-virtual-screen-reader" },
-    "isolation": { "const": "dedicated-browser-context" },
+    "isolation": { "enum": ["dedicated-browser-context", "test-page"] },
     "status": { "enum": ["completed", "blocked", "failed"] },
     "targetUrl": { "type": "string", "format": "uri" },
     "allowedOrigins": {
@@ -118,15 +118,18 @@
     {
       "if": { "properties": { "status": { "const": "completed" } } },
       "then": {
-        "required": [
-          "transcript",
-          "transcriptJsonFile",
-          "transcriptTextFile",
-          "manifestFile",
-          "video"
-        ],
+        "required": ["transcript", "transcriptJsonFile", "transcriptTextFile", "manifestFile"],
         "properties": { "steps": { "minItems": 1 } }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "completed" },
+          "isolation": { "const": "dedicated-browser-context" }
+        }
+      },
+      "then": { "required": ["video"] }
     },
     {
       "if": { "properties": { "status": { "enum": ["blocked", "failed"] } } },

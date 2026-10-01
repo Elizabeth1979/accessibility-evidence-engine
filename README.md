@@ -185,7 +185,7 @@ test("collect keyboard evidence", async ({ page }) => {
 });
 ```
 
-An existing spec gets the same checks by changing one import, `@playwright/test` to `@aee/cli/test`: every page load it starts is checkpointed and the test gets the full report and PR comment. See [the drop-in test fixture](docs/playwright-integration.md#drop-in-test-fixture).
+An existing spec gets the same checks by changing one import, `@playwright/test` to `@aee/cli/test`: every page load it starts is checkpointed, each web page a passing test ends on is also swept by keyboard and mouse and read with the virtual screen reader, once per run and on the test's own page so it keeps the test's sign-in and mocks, and the test gets the full report and PR comment. See [the drop-in test fixture](docs/playwright-integration.md#drop-in-test-fixture).
 
 The `@aee/*` packages are not on a package registry yet; [install them from GitHub](#install-from-github). See [Playwright integration](docs/playwright-integration.md) for focus, composite-widget, screenshot, network, and capture-policy examples.
 

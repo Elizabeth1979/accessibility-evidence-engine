@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- The Playwright fixture checks pages by keyboard and with the virtual screen reader, not only with axe. Where a passing test ends on a web page that no other test of the run has ended on, the fixture sweeps that page by keyboard and mouse and reads it with the virtual screen reader. Both run on the test's own page, so they keep the test's sign-in, storage and mocked routes. Each page is checked once per run, and `test.use({ aee: { keyboardAndReader: false } })` turns the checks off. The sweep and reader lanes take a test's `page` as well as a `browser`, and their records say which (`isolation: "test-page"`).
 - The Playwright fixture prints one line per test with its accessibility verdict and where the report is, such as `AEE: release blocked, 2 fixes needed. Report: test-results/…/aee/aee-report.html`. The test still passes or fails on its own assertions, so before this nothing in the terminal said a report existed.
 - A scenario can have a `name`, and its report is called by it: the page title, the heading and the Markdown heading. Without one, all three use the id in words, as the heading already did.
 
@@ -19,6 +20,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Changed
 
+- The keyboard sweep's navigation guard passes every other request on with `route.fallback()`, so a test's own routes still answer them.
+- The virtual reader's status row says "No confirmed issue" when every command passed, like the other rows, with the count in its detail ("All 6 commands passed: …"). A pull-request comment for a suite now groups those passes instead of listing one per count.
 - The homepage tells one story, from finding a problem to shipping its fix, in four chapters of feature cards (Find, Show, Fix and Ship), with a real app's results and three steps to get started. Every claim on it links to a shot or a live page. The evidence flow, remediation registry, before-and-after examples and accessibility experiments moved to a new How it works page.
 
 ## [0.3.0] - 2026-09-30

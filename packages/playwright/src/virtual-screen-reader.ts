@@ -92,6 +92,8 @@ export function renderPortableVirtualScreenReaderTranscript(
 
 export interface PortableVirtualScreenReader {
   command(command: VirtualScreenReaderCommand): Promise<VirtualScreenReaderEntry>;
+  /** The item a command would move to, without moving; undefined at the end of the page. */
+  peek(command: VirtualScreenReaderCommand): Promise<VirtualScreenReaderItem | undefined>;
   snapshot(): Promise<VirtualScreenReaderTranscript>;
 }
 
@@ -232,6 +234,10 @@ export function createPortableVirtualScreenReader(
 
       entries.push(entry);
       return cloneEntry(entry);
+    },
+    async peek(command) {
+      const item = selectItem(command, (await captureSemanticState(page)).items, currentKey);
+      return item && cloneItem(item);
     },
     async snapshot() {
       return {

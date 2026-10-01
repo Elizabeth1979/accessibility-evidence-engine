@@ -173,6 +173,50 @@ test("compileScenarioPlan produces a stable plan digest that can be explicitly a
   assert.equal(approvedPlan.approval.status, "approved");
 });
 
+test("a test's plan lists the keyboard sweep and the reader only for a page the fixture checked", () => {
+  const journey = {
+    id: "test",
+    name: "the shop sells one plant",
+    goal: "the shop sells one plant",
+    startPath: "https://shop.test/",
+    allowedActions: [],
+    forbiddenActions: []
+  };
+  const scenario: Parameters<typeof compileScenarioPlan>[0] = {
+    schemaVersion: "0.1.0",
+    id: "the-shop-sells-one-plant",
+    target: { url: "https://shop.test/" },
+    standard: { name: "WCAG", version: "2.2", levels: ["A", "AA"] },
+    profile: "playwright-test",
+    goal: "the shop sells one plant",
+    journeys: [journey],
+    approval: { required: true }
+  };
+  const steps = (plan: ReturnType<typeof compileScenarioPlan>) =>
+    plan.journeys[0]!.steps.map(({ id }) => id);
+
+  assert.deepEqual(steps(compileScenarioPlan(scenario)), [
+    "capture-on-load",
+    "capture-at-checkpoints",
+    "correlate-evidence",
+    "publish-report"
+  ]);
+  const checked = compileScenarioPlan({
+    ...scenario,
+    journeys: [{ ...journey, virtualScreenReaderCommands: ["start", "next-control"] }]
+  });
+  assert.deepEqual(steps(checked), [
+    "capture-on-load",
+    "capture-at-checkpoints",
+    "inventory-interactions",
+    "correlate-evidence",
+    "publish-report",
+    "reader-command-1-start",
+    "reader-command-2-next-control"
+  ]);
+  assert.match(checked.journeys[0]!.steps.at(-1)!.label, /on the test's own page\.$/);
+});
+
 test("the Accessibility workflow's test-lab scenario is approved as written", async () => {
   // A change to the scenario, or to how plans compile, must be re-approved on purpose.
   const scenario = await loadScenario(
