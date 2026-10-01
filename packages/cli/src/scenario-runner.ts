@@ -84,6 +84,7 @@ export interface ScenarioIntegratedReport {
   schemaVersion: "0.1.0";
   assessmentId: string;
   scenarioId: string;
+  name?: string;
   scenarioDigest: string;
   planDigest: string;
   profile: ScenarioProfile;
@@ -153,6 +154,8 @@ export interface ExecuteScenarioResult {
   outputDir: string;
   verdict: ScenarioIntegratedReport["verdict"];
   completeness: ScenarioIntegratedReport["completeness"]["status"];
+  /** The verdict in words, as the pull-request comment's heading says it. */
+  headline: string;
   reportFiles: ReportFiles;
   manifestFile: string;
   planFile: string;
@@ -679,6 +682,7 @@ export async function finishAssessment(input: {
     outputDir: assessmentDir,
     verdict: report.verdict,
     completeness: report.completeness.status,
+    headline: verdictHeadline(report),
     reportFiles,
     manifestFile: aggregate.manifestFile,
     planFile
@@ -931,6 +935,7 @@ function createIntegratedReport(input: {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     assessmentId: input.assessmentId,
     scenarioId: input.scenario.id,
+    ...(input.scenario.name ? { name: input.scenario.name } : {}),
     scenarioDigest: input.plan.scenarioDigest,
     planDigest: input.plan.planDigest,
     profile: input.scenario.profile,
@@ -2115,7 +2120,7 @@ function findingInstances(
     const selector = node.target || `Affected element ${index + 1}`;
     if (seen.has(selector)) return [];
     seen.add(selector);
-    const tagName = /^<\s*([a-z][a-z0-9-]*)/i.exec(node.html ?? "")?.[1]?.toLowerCase();
+    const tagName = htmlTagName(node.html);
     return [
       {
         component: affectedComponentName(selector, node.html),
@@ -2150,6 +2155,23 @@ function affectedComponentName(selector: string, html?: string): string {
   return className ? humanActionName(className.replaceAll("_", "-")) : "Page component";
 }
 
+/** What a person looks for on the page when an element has no text or id to go by. */
+const ELEMENT_KINDS = new Map([
+  ["a", "Link"],
+  ["button", "Button"],
+  ["iframe", "Frame"],
+  ["img", "Image"],
+  ["input", "Field"],
+  ["select", "Field"],
+  ["svg", "Graphic"],
+  ["textarea", "Field"],
+  ["video", "Video"]
+]);
+
+function htmlTagName(html: string | undefined): string | undefined {
+  return /^<\s*([a-z][a-z0-9-]*)/i.exec(html ?? "")?.[1]?.toLowerCase();
+}
+
 function elementLabel(html: string | undefined, selector: string, index: number): string {
   const text = html
     ?.replace(/<[^>]+>/g, " ")
@@ -2161,7 +2183,10 @@ function elementLabel(html: string | undefined, selector: string, index: number)
     .trim();
   if (text) return text;
   const id = /#([a-z0-9_-]+)/i.exec(selector)?.[1];
-  return id ? humanActionName(id.replaceAll("_", "-")) : `Affected element ${index + 1}`;
+  if (id) return humanActionName(id.replaceAll("_", "-"));
+  const source = /\ssrc\s*=\s*["']?([^"'\s>]+)/i.exec(html ?? "")?.[1];
+  const file = source?.startsWith("data:") ? undefined : source?.split(/[?#]/)[0]?.split("/").pop();
+  return `${ELEMENT_KINDS.get(htmlTagName(html) ?? "") ?? "Element"} ${file || index + 1}`;
 }
 
 function findingRemediation(
@@ -2460,7 +2485,7 @@ function resolveReportPath(rootDir: string, reportPath: string): string {
 
 function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   const lines = [
-    `# Accessibility evidence report: ${report.scenarioId}`,
+    `# Accessibility evidence report: ${reportName(report)}`,
     "",
     `**Overall verdict:** ${report.verdict.toUpperCase()}`,
     `**Evidence completeness:** ${report.completeness.status.toUpperCase()}`,
@@ -2561,7 +2586,7 @@ const COMMENT_ELEMENTS_PER_FINDING = 5;
  */
 export function renderPullRequestComment(report: ScenarioIntegratedReport): string {
   return [
-    `## Accessibility: ${commentHeadline(report)}`,
+    `## Accessibility: ${verdictHeadline(report)}`,
     "",
     ...commentBody(report, "###"),
     "<sub>The full report, with screenshots and evidence for every finding, is aee-report.html in the run's output. Evidence may contain sensitive page content.</sub>",
@@ -2609,7 +2634,7 @@ export function renderPullRequestSummary(
     const [report] = reports as [ScenarioIntegratedReport];
     return [
       PR_COMMENT_MARKER,
-      `## Accessibility: ${commentHeadline(report)}`,
+      `## Accessibility: ${verdictHeadline(report)}`,
       "",
       ...commentBody(report, "###"),
       footer,
@@ -2859,7 +2884,7 @@ function suiteUndecidedContrast(
   return [...texts.values()];
 }
 
-function commentHeadline(report: ScenarioIntegratedReport): string {
+function verdictHeadline(report: ScenarioIntegratedReport): string {
   const blocking = report.synthesis.findings.filter(({ advisory }) => !advisory).length;
   return report.verdict === "fail"
     ? `release blocked${blocking ? `, ${blocking} ${blocking === 1 ? "fix" : "fixes"} needed` : ""}`
@@ -3143,7 +3168,7 @@ function renderIntegratedHtml(
   });
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Accessibility evidence report: ${escapeHtml(report.scenarioId)}</title>
+<title>Accessibility evidence report: ${escapeHtml(reportName(report))}</title>
 <style>
 @font-face{font-family:"AEE Display";src:url("aee-report-display.woff2") format("woff2");font-style:normal;font-weight:100 900;font-display:swap}
 :root{color-scheme:light;--ink:#17221e;--muted:#5b6963;--paper:#fbfaf6;--surface:#fff;--wash:#edf2ee;--line:#c8d1cc;--line-strong:#87978f;--forest:#123d31;--forest-deep:#092a22;--mint:#a8e6ce;--pass:#087443;--fail:#a51d32;--fail-wash:#fff1f3;--unknown:#745900;--unknown-wash:#fff8df;--ai:#3a3f9e;--ai-wash:#f0f1ff;--focus:#b86e00;--marker:#f6b73c;--serif:"AEE Display",Georgia,serif;--sans:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;--mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
@@ -3159,6 +3184,7 @@ a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var
 .report-header{color:var(--forest-deep);background:#e1eee8;border-bottom:1px solid var(--line-strong)}
 .header-inner{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(18rem,.8fr);gap:clamp(2rem,7vw,7rem);max-width:1220px;margin:auto;padding:clamp(2.5rem,6vw,5.5rem) 1.5rem clamp(2rem,5vw,4rem)}
 .report-header h1{max-width:12ch;margin:0;font:700 clamp(3rem,7vw,6rem)/.94 var(--serif);letter-spacing:-.035em;text-wrap:balance}
+.report-header h1::first-letter{text-transform:uppercase}
 .lede{max-width:58ch;margin:1.5rem 0 0;font-size:clamp(1.05rem,2vw,1.25rem);color:#29493f}
 .header-meta{align-self:end;border-top:1px solid var(--line-strong);padding-top:1rem}
 .header-meta dt{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:#496159}
@@ -3284,7 +3310,7 @@ ${PAGE_LAYERS.map(({ id }) => `#panel-page:has([data-layer-toggle=${id}]:not(:ch
 @media(max-width:560px){.header-inner{padding:2.5rem 1rem 2rem}.report-header h1{font-size:clamp(2.7rem,14vw,4rem)}.header-links{padding-inline:1rem}.page-shell{padding:1.5rem 1rem 4rem}.score-facts{grid-template-columns:1fr;padding:0 1.5rem 1.5rem}.score-facts div,.score-facts div:first-child,.score-facts div:nth-child(odd){padding:1rem 0;border-left:0;border-right:0;border-top:1px solid rgb(255 255 255/.2)}dl.meta{grid-template-columns:1fr;gap:.1rem}dl.meta dd{margin-bottom:.7rem}.report-tabs{gap:1.2rem}}
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
-<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(humanActionName(report.scenarioId))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
+<body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(reportName(report))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
 <main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div>${readerStatus ? `<div><strong>${escapeHtml(readerStatus.result)}</strong><span>virtual reader</span></div>` : ""}</div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
@@ -4683,6 +4709,11 @@ function humanFileName(filePath: string): string {
     .basename(filePath)
     .replaceAll("-", " ")
     .replace(/\.[^.]+$/, "");
+}
+
+/** What the report is called: the scenario's own name, or its id in words. */
+function reportName(report: ScenarioIntegratedReport): string {
+  return report.name ?? humanActionName(report.scenarioId);
 }
 
 function humanActionName(actionId: string): string {

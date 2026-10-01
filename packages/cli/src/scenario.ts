@@ -21,6 +21,8 @@ export interface AeeScenario {
   $schema?: string;
   schemaVersion: string;
   id: string;
+  /** What the report is called; without one, it is called after the id. */
+  name?: string;
   target: {
     url: string;
     allowedOrigins?: string[];

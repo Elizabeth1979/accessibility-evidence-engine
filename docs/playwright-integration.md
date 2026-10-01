@@ -413,7 +413,9 @@ test("the help dialog opens", async ({ page, checkpoint }) => {
 
 Each test gets one assessment in its output folder (`test-results/<test>/aee/`) with the same
 `aee-report.html`, `aee-report.json`, `aee-report.md`, `aee-pr-comment.md` and `manifest.json`
-as `aee run`, and the HTML report and PR comment are attached to the test's results. Its plan
+as `aee run`, and the HTML report and PR comment are attached to the test's results. The report is
+called what the test is called, and the test prints one line with the verdict and the report's path,
+such as `AEE: release blocked, 2 fixes needed. Report: test-results/…/aee/aee-report.html`. Its plan
 profile is `playwright-test`: the fixture only observes what the test does, so the keyboard and
 pointer sweep and the virtual reader do not run, and those status rows read "Not in this run". The
 fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
