@@ -89,6 +89,7 @@ test("an existing spec with only its import swapped produces findings", async ()
   expect(dialog.synthesis.findings[0]?.instances.map(({ label }) => label)).toEqual(["Image 1"]);
 
   // A file: page is not on the web, so it is checked with axe alone, and its rows say so.
+  expect(existing.completeness.plannedChecks.skipped).toBe("no-web-page");
   expect(existing.synthesis.status.map(({ id, result }) => [id, result]).slice(0, 2)).toEqual([
     ["keyboard", "Not in this run"],
     ["reader", "Not in this run"]
@@ -130,12 +131,16 @@ test("an existing spec with only its import swapped produces findings", async ()
       .map(({ actionId }) => actionId)
   ).toEqual(["checkpoint-1-after-goto", "checkpoint-2-test-end"]);
   // Once per page in a run: another test ending there, with only a query added, is not checked
-  // again, and a test can turn the checks off.
-  for (const title of ["the shop sells one plant, seen again", "the basket, with the checks off"]) {
+  // again and says where it was, and a test can turn the checks off.
+  for (const [title, skipped, result] of [
+    ["the shop sells one plant, seen again", "checked-in-another-test", "Checked in another test"],
+    ["the basket, with the checks off", "turned-off", "Not in this run"]
+  ] as const) {
     const other = await readAssessment(suiteDir, "shop", title);
+    expect(other.completeness.plannedChecks.skipped).toBe(skipped);
     expect(other.synthesis.status.map(({ id, result }) => [id, result]).slice(0, 2)).toEqual([
-      ["keyboard", "Not in this run"],
-      ["reader", "Not in this run"]
+      ["keyboard", result],
+      ["reader", result]
     ]);
   }
 
@@ -275,6 +280,7 @@ async function readAssessment(suiteDir: string, spec: string, title?: string) {
     name?: string;
     profile: string;
     verdict: string;
+    completeness: { plannedChecks: { skipped?: string } };
     actions: Array<{ driver: string; actionId: string }>;
     artifacts: Array<{ path: string }>;
     synthesis: {

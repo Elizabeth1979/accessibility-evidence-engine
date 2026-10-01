@@ -5,7 +5,8 @@ import { failsOn } from "./pr-comment";
 import {
   PR_COMMENT_MARKER,
   renderPullRequestSummary,
-  type ScenarioIntegratedReport
+  type ScenarioIntegratedReport,
+  type StatusArea
 } from "./scenario-runner";
 
 /** The parts of an assessment a PR comment reads, with one blocking finding when it fails. */
@@ -78,6 +79,27 @@ test("several tests make one comment: rows counted, failing tests first", () => 
   assert.match(body, /### Blocking fixes \(1\)/);
   assert.match(body, /\*\*Release blocked \(1\):\*\* Checkout opens/);
   assert.ok(body.indexOf("Checkout opens") < body.indexOf("Home page loads"));
+});
+
+test("a suite row counts each result apart, most common first within a verdict", () => {
+  const withKeyboard = (goal: string, result: string, verdict: StatusArea["verdict"]) => {
+    const report = assessment(goal, "pass");
+    report.synthesis.status = [
+      { id: "keyboard", label: "Keyboard access", verdict, result, detail: "." }
+    ];
+    return report;
+  };
+  const body = renderPullRequestSummary([
+    withKeyboard("Shop opens", "No confirmed issue", "pass"),
+    withKeyboard("Checks off", "Not in this run", "not-run"),
+    withKeyboard("Shop again", "Checked in another test", "not-run"),
+    withKeyboard("Shop from search", "Checked in another test", "not-run")
+  ]);
+
+  assert.match(
+    body,
+    /\| Keyboard access \| No confirmed issue \\\(1\\\) · Checked in another test \\\(2\\\) · Not in this run \\\(1\\\) \|/
+  );
 });
 
 test("a problem three tests see is listed once, with the tests that saw it", () => {

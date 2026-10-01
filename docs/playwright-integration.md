@@ -425,8 +425,11 @@ controls. The reader starts at the top of the page and reads on, item by item, u
 the end of the page. Both run on the test's own page, from a fresh load of its address, so they keep
 the test's session, cookies, storage and routes, such as a mocked sign-in or mocked data, and they
 record no video. A page is its address without query or fragment, and each is checked once per run,
-so a suite pays once per page; other tests' keyboard and reader rows read "Not in this run". A page
-that is not on the web (about:blank, a data: or a file: URL) is checked with axe only. The checks get
+so a suite pays once per page; another test ending on a checked page reads "Checked in another
+test" in its keyboard and reader rows. A page that is not on the web (about:blank, a data: or a
+file: URL) is checked with axe only. A test that did not pass, did not end on a web page, or has the
+checks off reads "Not in this run", and the row's detail says which. The report records why
+(`completeness.plannedChecks.skipped`), and the PR comment counts each result apart. The checks get
 three minutes of their own on top of the test's timeout. To turn them off for a project, a file or a
 test:
 
