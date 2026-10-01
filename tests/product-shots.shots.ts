@@ -1,15 +1,14 @@
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { copyFile, cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 
 import { chromium, expect, test, type Page } from "@playwright/test";
 import { marked } from "marked";
 
 import { aeeRunModelProvider } from "@aee/cli";
 
+import { screenReaderCli } from "../scripts/screen-reader-cli.mjs";
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
 
@@ -234,14 +233,9 @@ async function captureShot(
 /** screen-reader-cli reads the demo page aloud, step by step, and records it; what it says is the
  * video's text version. */
 async function recordScreenReader(videoFile: string, textFile: string) {
-  const packageFile = require.resolve("screen-reader-cli/package.json");
-  const { bin } = JSON.parse(readFileSync(packageFile, "utf8")) as {
-    bin: { screenreader: string };
-  };
   const server = await startHtmlServer(serveDirectory("site"));
   try {
-    const { stdout } = await promisify(execFile)(process.execPath, [
-      path.join(path.dirname(packageFile), bin.screenreader),
+    const { stdout } = await screenReaderCli([
       "audit",
       `${server.origin}/${contract.pages.issues.url}`,
       "--record",
