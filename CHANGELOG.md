@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### Added
 
 - The Playwright fixture checks pages by keyboard and with the virtual screen reader, not only with axe. Where a passing test ends on a web page that no other test of the run has ended on, the fixture sweeps that page by keyboard and mouse and reads it with the virtual screen reader. Both run on the test's own page, so they keep the test's sign-in, storage and mocked routes. Each page is checked once per run, and `test.use({ aee: { keyboardAndReader: false } })` turns the checks off. The sweep and reader lanes take a test's `page` as well as a `browser`, and their records say which (`isolation: "test-page"`).
@@ -123,7 +125,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.4.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.4.0...HEAD

@@ -121,21 +121,21 @@ The packages are not on npm yet. Each [release](https://github.com/Elizabeth1979
 
 ```bash
 npm install --save-dev \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-ai-fixes-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-cli-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-core-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-judges-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-observers-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-playwright-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-reporter-0.3.0.tgz \
-  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-schemas-0.3.0.tgz
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-ai-fixes-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-cli-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-core-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-judges-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-observers-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-playwright-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-reporter-0.4.0.tgz \
+  https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-schemas-0.4.0.tgz
 ```
 
 AEE uses your project's Playwright, 1.50 or later, so installing it leaves your `@playwright/test` as it is.
 
-For the coding-agent server below, add `https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.3.0/aee-mcp-0.3.0.tgz` to the same command.
+For the coding-agent server below, add `https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.4.0/aee-mcp-0.4.0.tgz` to the same command.
 
-Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.3.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
+Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-engine@v0.4.0`. A maintainer cuts a release by running the Release workflow, which checks the tarballs install into a fresh project first; the version is the one in the packages' `package.json` files, and a version that is already tagged is never reused.
 
 ## Coding agents (MCP)
 
@@ -203,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Elizabeth1979/accessibility-evidence-engine@v0.3.0
+      - uses: Elizabeth1979/accessibility-evidence-engine@v0.4.0
         with:
           run: accessibility/scenario.yml # your approved scenario, or a test command such as npx playwright test
           fail-on: blocking # or incomplete, or never

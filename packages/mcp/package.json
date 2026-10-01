@@ -1,6 +1,6 @@
 {
   "name": "@aee/mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "MCP server that lets a coding agent run Accessibility Evidence Engine and explain a finding with its a11y-skills pattern.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -50,9 +50,9 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/cli": "0.3.0",
-    "@aee/playwright": "0.3.0",
-    "@aee/schemas": "0.3.0",
+    "@aee/cli": "0.4.0",
+    "@aee/playwright": "0.4.0",
+    "@aee/schemas": "0.4.0",
     "@modelcontextprotocol/sdk": "^1.30.1",
     "a11y-skills": "github:Elizabeth1979/a11y-skills#e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
     "zod": "^4.6.5"
