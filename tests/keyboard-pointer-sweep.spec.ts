@@ -703,3 +703,71 @@ test("the sweep reports a request a press sends that fails when the page shows a
     await server.close();
   }
 });
+
+test("the sweep reports an item that stands out from its like neighbours by colour alone", async ({
+  page
+}) => {
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Colours</title>
+    <style>
+      a { color: #1f2937; border-bottom: 2px solid transparent; }
+      .current { color: #1d4ed8; }
+      #bold .current { font-weight: 700; }
+      #bar .current { border-bottom-color: #1d4ed8; }
+      #icon .current::before { content: "› "; }
+      #light .current { color: #93c5fd; }
+      #filled .current { background-color: #dbeafe; }
+      .off { color: #b91c1c; }
+      button[disabled] { opacity: 0.5; }
+      #swatches li:nth-child(1) { color: #b91c1c; }
+      #swatches li:nth-child(2) { color: #15803d; }
+      #swatches li:nth-child(3) { color: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Colours</h1>
+      <nav id="colour" aria-label="Colour only">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <nav id="bold" aria-label="Also bold">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <nav id="bar" aria-label="Also a bar">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <nav id="icon" aria-label="Also an icon">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <nav id="light" aria-label="Much lighter">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <nav id="filled" aria-label="Filled">
+        <a href="#a">Home</a><a href="#b" class="current" aria-current="page">Reports</a><a href="#c">Help</a>
+      </nav>
+      <ul id="pills"><li>Active</li><li>Active</li><li class="off">Inactive</li></ul>
+      <ul id="pair"><li>Yes</li><li class="off">No</li></ul>
+      <ul id="swatches"><li>Red</li><li>Green</li><li>Blue</li></ul>
+      <div id="tools"><button>Cut</button><button>Copy</button><button disabled>Paste</button></div>
+    </main>
+  </body>
+</html>`;
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(html)}`,
+    activateControls: false
+  });
+
+  // Not reported: the same item also bold, with a bar, with an icon, 3:1 lighter or filled; pills
+  // whose words differ; a pair, too few to say what is usual; a row where every item differs; a
+  // disabled button.
+  const colourOnly = result.findings.filter(({ kind }) => kind === "colour-only");
+  expect(colourOnly.map(({ selector, label }) => ({ selector, label }))).toEqual([
+    { selector: "#colour > a:nth-of-type(2)", label: "Reports" }
+  ]);
+  expect(colourOnly[0]?.summary).toContain("Stands out from its 2 neighbours by colour alone");
+  expect(colourOnly[0]?.summary).toContain("color: rgb(29, 78, 216) instead of rgb(31, 41, 55)");
+  expect(colourOnly[0]?.summary).toContain('It is marked aria-current="page"');
+});

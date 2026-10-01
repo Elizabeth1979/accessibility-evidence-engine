@@ -138,7 +138,7 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
       .filter(({ advisory }) => advisory)
       .map(({ ruleId }) => ruleId)
       .sort()
-  ).toEqual(["empty-heading", "failure-not-announced", "status-not-announced"]);
+  ).toEqual(["colour-only", "empty-heading", "failure-not-announced", "status-not-announced"]);
   for (const finding of sweepFindings) {
     expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
     expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();

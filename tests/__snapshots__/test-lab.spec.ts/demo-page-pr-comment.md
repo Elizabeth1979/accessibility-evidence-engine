@@ -131,7 +131,22 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 
 </details>
 
-### Advisory: reported, never blocks release (3)
+### Advisory: reported, never blocks release (4)
+
+<details>
+<summary><strong>Told apart by colour alone</strong> · WCAG 1.4.1 · 1 element</summary>
+
+**Problem:** People who cannot tell these colours apart, and anyone on a monochrome or washed-out screen, miss what the colour means.
+
+**Elements:**
+
+- `Storage: 12 of 10 GB` at `#storage-limit`
+
+**Fix:** Add a cue that is not colour, such as bold text, an underline or border, an icon, or words like “Over limit” or “Current page”. Keep the colour if you like.
+
+**Pattern:** [color-contrast](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/color-contrast.instructions.md) (a11y-skills)
+
+</details>
 
 <details>
 <summary><strong>A message appears, but is not announced</strong> · WCAG 4.1.3 · 1 element</summary>

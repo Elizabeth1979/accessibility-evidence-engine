@@ -494,6 +494,16 @@ const SWEEP_FINDING_TEXT: Record<
     fix: 'Show what failed and what to do next, inside a live region that is on the page before the failure: role="alert" for an error that needs attention now.',
     area: "semantics",
     advisory: true
+  },
+  "colour-only": {
+    title: "Told apart by colour alone",
+    expected:
+      "What makes this item different also shows without colour: in weight, an underline, a border, an icon or words.",
+    impact:
+      "People who cannot tell these colours apart, and anyone on a monochrome or washed-out screen, miss what the colour means.",
+    fix: "Add a cue that is not colour, such as bold text, an underline or border, an icon, or words like “Over limit” or “Current page”. Keep the colour if you like.",
+    area: "contrast",
+    advisory: true
   }
 };
 
