@@ -23,16 +23,13 @@ import {
 const PAGE_LOADS = ["goto", "reload", "setContent", "goBack", "goForward"] as const;
 
 /**
- * The virtual screen reader's moves on a page the fixture checks in full: land on the page, then
- * get around it the way a screen-reader user starts to, by landmark, heading and control.
+ * The virtual screen reader's moves on a page the fixture checks in full: start at the top and read
+ * on, item by item, as a screen-reader user starts a page, up to twelve items or the end of the
+ * page, whichever comes first.
  */
 const TEST_READER_COMMANDS: VirtualScreenReaderCommand[] = [
   "start",
-  "next-landmark",
-  "next-heading",
-  "next-control",
-  "next-control",
-  "next-control"
+  ...Array<VirtualScreenReaderCommand>(11).fill("next-item")
 ];
 
 /**
@@ -142,6 +139,40 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     const endUrl = page.url();
     const checkInFull =
       passed && aee.keyboardAndReader && (await claimPageForRun(testInfo, endUrl));
+    const assessment: AssessmentInProgress = {
+      assessmentDir,
+      childManifestFiles: [manifestFile],
+      actions: [],
+      findings: [],
+      diagnostics
+    };
+    await collectPageCheckpointActions(
+      assessmentDir,
+      "test",
+      { laneId, steps },
+      assessment.actions,
+      assessment.findings
+    );
+    let readerCommands: VirtualScreenReaderCommand[] = [];
+    if (checkInFull) {
+      // A timeout of 0 is no timeout.
+      if (testInfo.timeout > 0) testInfo.setTimeout(testInfo.timeout + PAGE_CHECK_TIME_MS);
+      ({ readerCommands } = await base.step(
+        "AEE: keyboard and screen reader",
+        () =>
+          runPageLanes(assessment, {
+            target: { page },
+            journeyId: "test",
+            startUrl: endUrl,
+            allowedOrigins: [endUrl],
+            activateControls: false,
+            commands: TEST_READER_COMMANDS,
+            stopAtEnd: true
+          }),
+        { box: true }
+      ));
+    }
+
     const slug = toSafeId(testInfo.title, "test");
     const scenario: AeeScenario = {
       schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -160,42 +191,12 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
           startPath: firstUrl,
           allowedActions: [],
           forbiddenActions: [],
-          ...(checkInFull ? { virtualScreenReaderCommands: TEST_READER_COMMANDS } : {})
+          // The plan lists the reader's moves that ran, so a page read to its end is complete.
+          ...(checkInFull ? { virtualScreenReaderCommands: readerCommands } : {})
         }
       ],
       approval: { required: true }
     };
-    const assessment: AssessmentInProgress = {
-      assessmentDir,
-      childManifestFiles: [manifestFile],
-      actions: [],
-      findings: [],
-      diagnostics
-    };
-    await collectPageCheckpointActions(
-      assessmentDir,
-      "test",
-      { laneId, steps },
-      assessment.actions,
-      assessment.findings
-    );
-    if (checkInFull) {
-      // A timeout of 0 is no timeout.
-      if (testInfo.timeout > 0) testInfo.setTimeout(testInfo.timeout + PAGE_CHECK_TIME_MS);
-      await base.step(
-        "AEE: keyboard and screen reader",
-        () =>
-          runPageLanes(assessment, {
-            target: { page },
-            journeyId: "test",
-            startUrl: endUrl,
-            allowedOrigins: [endUrl],
-            activateControls: false,
-            commands: TEST_READER_COMMANDS
-          }),
-        { box: true }
-      );
-    }
     const { headline, reportFiles } = await finishAssessment({
       assessmentId: `${scenario.id}-${Date.now()}`,
       scenario,

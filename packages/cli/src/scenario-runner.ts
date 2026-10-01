@@ -577,7 +577,9 @@ function laneRunner({ assessmentDir, childManifestFiles, diagnostics }: Assessme
 /**
  * Sweeps a journey's start page by keyboard and mouse, then runs its virtual screen-reader
  * commands, each as a lane of the assessment: in browser contexts of their own for a scenario, or
- * on the page a test drives, which keeps the test's session, routes and storage.
+ * on the page a test drives, which keeps the test's session, routes and storage. Returns the
+ * reader commands that ran: with `stopAtEnd`, those before the end of the page; all of them when
+ * the reader lane failed, so a plan made from them shows what is missing.
  */
 export async function runPageLanes(
   assessment: AssessmentInProgress,
@@ -588,8 +590,9 @@ export async function runPageLanes(
     allowedOrigins: string[];
     activateControls: boolean;
     commands: VirtualScreenReaderCommand[];
+    stopAtEnd?: boolean;
   }
-): Promise<void> {
+): Promise<{ readerCommands: VirtualScreenReaderCommand[] }> {
   const { assessmentDir, actions, findings, diagnostics } = assessment;
   const { journeyId, startUrl, allowedOrigins, commands } = input;
   const runLane = laneRunner(assessment);
@@ -616,7 +619,8 @@ export async function runPageLanes(
     return sweep.manifestFile;
   });
 
-  if (commands.length === 0) return;
+  let readerCommands = commands;
+  if (commands.length === 0) return { readerCommands };
   const readerLaneId = `${journeyId}-virtual-reader`;
   await runLane(readerLaneId, async () => {
     const reader = await runVirtualScreenReaderLane({
@@ -625,11 +629,14 @@ export async function runPageLanes(
         : { page: input.target.page }),
       ...lane,
       laneId: readerLaneId,
-      commands
+      commands,
+      stopAtEnd: input.stopAtEnd
     });
+    readerCommands = reader.steps.map(({ command }) => command);
     await collectVirtualReaderActions(assessmentDir, journeyId, reader, actions, findings);
     return reader.manifestFile!;
   });
+  return { readerCommands };
 }
 
 /** Where an assessment's plan, manifest and reports live. */
@@ -1810,13 +1817,13 @@ function buildStatusAreas(
             : "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
         )
       : reader.commands > 0 && reader.failed === 0
-        ? {
-            id: "reader" as const,
-            label: "Virtual reader",
-            verdict: "pass" as const,
-            result: `${reader.passed}/${reader.commands} commands passed`,
-            detail: "Each announcement matched the accessibility tree, visuals and focus state."
-          }
+        ? noIssue(
+            "reader",
+            "Virtual reader",
+            reader.passed === reader.commands
+              ? `All ${reader.commands} commands passed: each announcement matched the accessibility tree, visuals and focus state.`
+              : `${reader.passed} of ${reader.commands} commands passed and none failed; ${reader.commands - reader.passed} could not be decided.`
+          )
         : needsReview(
             "reader",
             "Virtual reader",

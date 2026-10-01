@@ -21,6 +21,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 ### Changed
 
 - The keyboard sweep's navigation guard passes every other request on with `route.fallback()`, so a test's own routes still answer them.
+- The virtual reader's status row says "No confirmed issue" when every command passed, like the other rows, with the count in its detail ("All 6 commands passed: …"). A pull-request comment for a suite now groups those passes instead of listing one per count.
 - The homepage tells one story, from finding a problem to shipping its fix, in four chapters of feature cards (Find, Show, Fix and Ship), with a real app's results and three steps to get started. Every claim on it links to a shot or a live page. The evidence flow, remediation registry, before-and-after examples and accessibility experiments moved to a new How it works page.
 
 ## [0.3.0] - 2026-09-30

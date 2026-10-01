@@ -167,6 +167,11 @@ export type RunVirtualScreenReaderLaneOptions<TPage extends VirtualScreenReaderL
     targetUrl: string;
     allowedOrigins: string[];
     commands: VirtualScreenReaderCommand[];
+    /**
+     * Stop at the end of the page: after the first command, one that would find nothing to move to
+     * ends the lane instead of running.
+     */
+    stopAtEnd?: boolean;
     outputDir?: string;
     laneId?: string;
     policy?: AeePolicyOverrides;
@@ -1267,6 +1272,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
     const reader = createPortableVirtualScreenReader(page);
 
     for (const [index, command] of options.commands.entries()) {
+      if (options.stopAtEnd && index > 0 && !(await reader.peek(command))) break;
       const sequence = index + 1;
       const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
       const actionStartedAt = new Date().toISOString();

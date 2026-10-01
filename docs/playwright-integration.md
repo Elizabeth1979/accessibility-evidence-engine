@@ -421,8 +421,8 @@ profile is `playwright-test`.
 Where a passing test ends on a web page that no other test of the run has ended on, the fixture also
 checks that page by keyboard and with the virtual screen reader. The keyboard and mouse sweep Tabs to
 every stop, finds mouse targets Tab never reaches and content only hover shows; it does not press
-controls. The reader starts on the page, then moves to the next landmark, the next heading and the
-next three controls. Both run on the test's own page, from a fresh load of its address, so they keep
+controls. The reader starts at the top of the page and reads on, item by item, up to twelve items or
+the end of the page. Both run on the test's own page, from a fresh load of its address, so they keep
 the test's session, cookies, storage and routes, such as a mocked sign-in or mocked data, and they
 record no video. A page is its address without query or fragment, and each is checked once per run,
 so a suite pays once per page; other tests' keyboard and reader rows read "Not in this run". A page
