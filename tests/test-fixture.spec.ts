@@ -118,6 +118,11 @@ test("an existing spec with only its import swapped produces findings", async ()
   ) as { isolation: string; tabStops: unknown[] };
   expect(sweep.isolation).toBe("test-page");
   expect(sweep.tabStops.length).toBeGreaterThan(0);
+  // The reader reads from the top to the end of the page, so every move lands on something.
+  expect(shop.synthesis.reader).toEqual({ commands: 6, passed: 6, failed: 0, unknown: 0 });
+  await expect(
+    readFile(path.join(path.dirname(shopComment!), "aee-report.html"), "utf8")
+  ).resolves.toContain("Read from the top, item by item: 12 items or the end of the page");
   // Its loads are not the test's: only the test's own load and its end are checkpoints.
   expect(
     shop.actions
@@ -274,6 +279,7 @@ async function readAssessment(suiteDir: string, spec: string, title?: string) {
     artifacts: Array<{ path: string }>;
     synthesis: {
       status: Array<{ id: string; result: string }>;
+      reader: { commands: number; passed: number; failed: number; unknown: number };
       findings: Array<{
         ruleId: string;
         checkpoints: Array<{ actionId: string }>;

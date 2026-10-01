@@ -549,6 +549,15 @@ export async function executeScenario(
   });
 }
 
+/**
+ * The virtual screen reader's moves on a page the test fixture checks in full: start at the top and
+ * read on, item by item, as a screen-reader user starts a page, stopping at the end of the page.
+ */
+export const TEST_READER_COMMANDS: VirtualScreenReaderCommand[] = [
+  "start",
+  ...Array<VirtualScreenReaderCommand>(11).fill("next-item")
+];
+
 /** What an assessment's lanes add to as they run, before `finishAssessment` integrates it. */
 export interface AssessmentInProgress {
   assessmentDir: string;
@@ -4606,7 +4615,12 @@ function renderPageView(report: ScenarioIntegratedReport, views: IntegratedHtmlV
     .map((state) => {
       const drawable = Boolean(state.screenshot && state.width && state.height);
       const lists = PAGE_LAYERS.filter(({ id }) => state.layers[id].length)
-        .map(({ id, heading, scope, apartHeading }) => {
+        .map(({ id, heading, scope: layerScope, apartHeading }) => {
+          // The test fixture's reader is not authored: it reads from the top, as far as it goes.
+          const scope =
+            id === "reader" && report.profile === "playwright-test"
+              ? `Read from the top, item by item: ${TEST_READER_COMMANDS.length} items or the end of the page, whichever comes first.`
+              : layerScope;
           const markers = state.layers[id];
           const numbered = markers.filter(({ apart }) => !apart);
           const apart = markers.filter(({ apart }) => apart);

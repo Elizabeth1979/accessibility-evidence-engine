@@ -16,21 +16,12 @@ import {
   collectPageCheckpointActions,
   finishAssessment,
   runPageLanes,
+  TEST_READER_COMMANDS,
   type AssessmentInProgress
 } from "./scenario-runner";
 
 /** The page loads a test starts; the page is checkpointed as soon as each one returns. */
 const PAGE_LOADS = ["goto", "reload", "setContent", "goBack", "goForward"] as const;
-
-/**
- * The virtual screen reader's moves on a page the fixture checks in full: start at the top and read
- * on, item by item, as a screen-reader user starts a page, up to twelve items or the end of the
- * page, whichever comes first.
- */
-const TEST_READER_COMMANDS: VirtualScreenReaderCommand[] = [
-  "start",
-  ...Array<VirtualScreenReaderCommand>(11).fill("next-item")
-];
 
 /**
  * The time the keyboard and reader checks get, on top of the test's own: they run once the test has
