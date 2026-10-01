@@ -1,6 +1,6 @@
 {
   "name": "@aee/judges",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Evidence-based accessibility judges and release gating for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -41,6 +41,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/core": "0.4.0"
+    "@aee/core": "0.4.1"
   }
 }
