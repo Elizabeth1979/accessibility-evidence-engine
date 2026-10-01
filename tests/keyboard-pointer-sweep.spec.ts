@@ -771,3 +771,42 @@ test("the sweep reports an item that stands out from its like neighbours by colo
   expect(colourOnly[0]?.summary).toContain("color: rgb(29, 78, 216) instead of rgb(31, 41, 55)");
   expect(colourOnly[0]?.summary).toContain('It is marked aria-current="page"');
 });
+
+test("the sweep reports an image that may be words drawn as pixels", async ({ page }) => {
+  const svg = (body: string, width = 480, height = 96) =>
+    `data:image/svg+xml,${encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${body}</svg>`
+    )}`;
+  const words = `<rect width="100%" height="100%" fill="#142824"/><text x="20" y="60" fill="#f1f8f5" font-size="28" font-family="sans-serif">Spring sale: 40% off</text>`;
+  const photo = `<defs><linearGradient id="g"><stop offset="0" stop-color="#f97316"/><stop offset="0.5" stop-color="#7c3aed"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient></defs><rect width="100%" height="100%" fill="url(#g)"/>`;
+  const html = `<!doctype html>
+<html lang="en">
+  <head><title>Images</title></head>
+  <body>
+    <main>
+      <h1>Images</h1>
+      <img id="banner" src="${svg(words)}" alt="Spring sale: 40% off" width="480" height="96" />
+      <img id="logo" src="${svg(words)}" alt="Spring Shop logo" width="480" height="96" />
+      <img id="photo" src="${svg(photo)}" alt="Sunset over the harbour" width="480" height="96" />
+      <img id="chart" src="${svg(words)}" alt="Chart of sales by month" width="480" height="96" />
+      <img id="icon" src="${svg(words, 48, 48)}" alt="Open settings" width="48" height="48" />
+      <img id="word" src="${svg(words)}" alt="Sale" width="480" height="96" />
+      <img id="screenshot" src="${svg(words)}" alt="The report's summary row, with its result and a link to the full report" width="480" height="96" />
+      <img id="blank" src="${svg('<rect width="100%" height="100%" fill="#142824"/>')}" alt="Spring sale soon" width="480" height="96" />
+    </main>
+  </body>
+</html>`;
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(html)}`,
+    activateControls: false
+  });
+
+  // Not reported: a logo, a photograph-like gradient, a chart, a square icon, a one-word name, a
+  // long name that describes a picture, and an image of one colour.
+  expect(
+    result.findings
+      .filter(({ kind }) => kind === "text-in-image")
+      .map(({ selector, label }) => ({ selector, label }))
+  ).toEqual([{ selector: "#banner", label: "Spring sale: 40% off" }]);
+});

@@ -131,7 +131,7 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 
 </details>
 
-### Advisory: reported, never blocks release (4)
+### Advisory: reported, never blocks release (5)
 
 <details>
 <summary><strong>Told apart by colour alone</strong> · WCAG 1.4.1 · 1 element</summary>
@@ -145,6 +145,21 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 **Fix:** Add a cue that is not colour, such as bold text, an underline or border, an icon, or words like “Over limit” or “Current page”. Keep the colour if you like.
 
 **Pattern:** [color-contrast](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/color-contrast.instructions.md) (a11y-skills)
+
+</details>
+
+<details>
+<summary><strong>Words that may be an image of text</strong> · WCAG 1.4.5 · 1 element</summary>
+
+**Problem:** People who enlarge text, change its colours or spacing, or translate the page cannot do it to words drawn as pixels, and the words blur when zoomed.
+
+**Elements:**
+
+- `Upgrade to Team for unlimited projects` at `#upgrade-banner`
+
+**Fix:** Set the words as real text and style them with CSS; keep the image only for a logo or a picture. If the image must stay, keep its words in the alt text.
+
+**Pattern:** [image-labeling](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/image-labeling.instructions.md) (a11y-skills)
 
 </details>
 

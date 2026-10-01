@@ -504,6 +504,16 @@ const SWEEP_FINDING_TEXT: Record<
     fix: "Add a cue that is not colour, such as bold text, an underline or border, an icon, or words like “Over limit” or “Current page”. Keep the colour if you like.",
     area: "contrast",
     advisory: true
+  },
+  "text-in-image": {
+    title: "Words that may be an image of text",
+    expected:
+      "Words on the page are real text, styled with CSS; only a logo is an image of its words.",
+    impact:
+      "People who enlarge text, change its colours or spacing, or translate the page cannot do it to words drawn as pixels, and the words blur when zoomed.",
+    fix: "Set the words as real text and style them with CSS; keep the image only for a logo or a picture. If the image must stay, keep its words in the alt text.",
+    area: "contrast",
+    advisory: true
   }
 };
 
