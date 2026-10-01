@@ -32,9 +32,11 @@ import {
 import { runVerifiedFix, type AcceptedFix } from "./fix-command";
 import {
   buildPullRequestComment,
+  commentImageUrl,
   FAIL_ON_VALUES,
   failsOn,
   postStickyComment,
+  uploadCommentImages,
   type FailOn
 } from "./pr-comment";
 import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
@@ -375,9 +377,11 @@ async function runCommentCommand(argv: string[]): Promise<void> {
   const folders: string[] = [];
   let failOn: FailOn = "blocking";
   let post = false;
+  let images = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]!;
     if (argument === "--post") post = true;
+    else if (argument === "--images") images = true;
     else if (argument === "--fail-on") {
       const value = argv[index + 1] as FailOn;
       if (!FAIL_ON_VALUES.includes(value)) {
@@ -390,7 +394,12 @@ async function runCommentCommand(argv: string[]): Promise<void> {
   }
   if (folders.length === 0) {
     throw new Error(
-      "Usage: aee comment <folder>... [--fail-on blocking|incomplete|never] [--post]"
+      "Usage: aee comment <folder>... [--fail-on blocking|incomplete|never] [--post [--images]]"
+    );
+  }
+  if (images && !post) {
+    throw new Error(
+      "--images needs --post: the pictures are uploaded to the repository the comment is posted on."
     );
   }
 
@@ -399,34 +408,54 @@ async function runCommentCommand(argv: string[]): Promise<void> {
     env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY && env.GITHUB_RUN_ID
       ? `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}`
       : undefined;
-  const comment = await buildPullRequestComment(
-    folders.map((folder) => path.resolve(folder)),
-    runUrl
+  const event =
+    post && env.GITHUB_EVENT_PATH
+      ? (JSON.parse(await readFile(env.GITHUB_EVENT_PATH, "utf8")) as {
+          pull_request?: { number?: number };
+        })
+      : {};
+  const pullNumber = event.pull_request?.number;
+  const target =
+    pullNumber && env.GITHUB_REPOSITORY && env.GITHUB_TOKEN
+      ? {
+          repository: env.GITHUB_REPOSITORY,
+          pullNumber,
+          token: env.GITHUB_TOKEN,
+          apiUrl: env.GITHUB_API_URL
+        }
+      : undefined;
+  const reportFolders = folders.map((folder) => path.resolve(folder));
+  const repository = target?.repository;
+  let comment = await buildPullRequestComment(
+    reportFolders,
+    runUrl,
+    images && repository
+      ? (name) => commentImageUrl(env.GITHUB_SERVER_URL ?? "https://github.com", repository, name)
+      : undefined
   );
+  if (target && comment.images.size) {
+    // Pictures that cannot be uploaded, such as from a fork's read-only token, leave a comment
+    // without them rather than one with broken images.
+    await uploadCommentImages(comment.images, target).catch(async (error: unknown) => {
+      process.stderr.write(
+        `::warning::The comment's pictures were not uploaded, so it has none: ${error instanceof Error ? error.message : String(error)}\n`
+      );
+      comment = await buildPullRequestComment(reportFolders, runUrl);
+    });
+  }
   process.stdout.write(`${comment.body}\n`);
   if (env.GITHUB_STEP_SUMMARY)
     await writeFile(env.GITHUB_STEP_SUMMARY, `${comment.body}\n`, { flag: "a" });
 
   if (post) {
-    const event = env.GITHUB_EVENT_PATH
-      ? (JSON.parse(await readFile(env.GITHUB_EVENT_PATH, "utf8")) as {
-          pull_request?: { number?: number };
-        })
-      : {};
-    const pullNumber = event.pull_request?.number;
-    if (!pullNumber || !env.GITHUB_REPOSITORY || !env.GITHUB_TOKEN) {
+    if (!target) {
       process.stderr.write(
         "Not posted: posting needs a pull_request event, GITHUB_REPOSITORY and GITHUB_TOKEN.\n"
       );
     } else {
       // A comment that cannot be posted, such as from a fork's read-only token, does not decide
       // the job: the verdict does, and the comment is still in the log and the job summary.
-      await postStickyComment(comment.body, {
-        repository: env.GITHUB_REPOSITORY,
-        pullNumber,
-        token: env.GITHUB_TOKEN,
-        apiUrl: env.GITHUB_API_URL
-      }).then(
+      await postStickyComment(comment.body, target).then(
         ({ action, url }) => process.stderr.write(`PR comment ${action}: ${url}\n`),
         (error: unknown) =>
           process.stderr.write(

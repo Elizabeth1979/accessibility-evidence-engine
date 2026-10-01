@@ -25,8 +25,17 @@ inputs:
   reports:
     description: The folder a test command writes its results to; every assessment under it is read.
     default: test-results
+  images:
+    description: >-
+      `true` shows a picture of each problem in the comment: the page around the element, outlined.
+      The pictures are committed to an `aee-images` branch of this repository, so anyone who can
+      read the repository can see them, and the token needs the contents write permission. Off by
+      default, since a picture can show page content.
+    default: "false"
   github-token:
-    description: Posts the comment; it needs the pull-requests write permission.
+    description: >-
+      Posts the comment; it needs the pull-requests write permission, and contents write for
+      `images`.
     default: ${{ github.token }}
 
 runs:
@@ -89,11 +98,14 @@ runs:
         AEE_FAIL_ON: ${{ inputs.fail-on }}
         AEE_OUTPUT: ${{ runner.temp }}/aee-output
         AEE_REPORTS: ${{ inputs.reports }}
+        AEE_IMAGES: ${{ inputs.images }}
         RUN_STATUS: ${{ steps.run.outputs.status }}
       run: |
         status=0
+        images=()
+        if [ "$AEE_IMAGES" = "true" ]; then images=(--images); fi
         node "$GITHUB_ACTION_PATH/packages/cli/dist/index.js" comment "$AEE_OUTPUT" "$AEE_REPORTS" \
-          --post --fail-on "$AEE_FAIL_ON" || status=$?
+          --post "${images[@]}" --fail-on "$AEE_FAIL_ON" || status=$?
         # A test command that failed fails the job too, whatever the accessibility verdict.
         if [ "${RUN_STATUS:-1}" != "0" ]; then exit "${RUN_STATUS:-1}"; fi
         exit "$status"

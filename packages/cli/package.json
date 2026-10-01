@@ -23,6 +23,9 @@
     "aee": "dist/index.js"
   },
   "files": [
+    "dist/comment-images.js",
+    "dist/comment-images.js.map",
+    "dist/comment-images.d.ts",
     "dist/fix.js",
     "dist/fix.js.map",
     "dist/fix.d.ts",
@@ -79,6 +82,7 @@
     "@aee/schemas": "0.4.1",
     "@babel/parser": "^7.29.9",
     "parse5": "^7.3.0",
+    "pngjs": "7.0.0",
     "yaml": "^2.9.1"
   },
   "peerDependencies": {
