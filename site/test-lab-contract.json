@@ -100,6 +100,14 @@
       "concept": "focus-management",
       "check": "Keyboard (Playwright): press Archive, check where focus lands",
       "sweepFinding": "focus-lost"
+    },
+    {
+      "id": "silent-status-message",
+      "title": "The message after archiving is never announced",
+      "whoItHurts": "Screen reader users press Archive and hear nothing about what happened.",
+      "concept": "status-messages",
+      "check": "Keyboard (Playwright): press each control, check new text is announced",
+      "sweepFinding": "status-not-announced"
     }
   ]
 }

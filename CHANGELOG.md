@@ -4,6 +4,14 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- A message nobody hears (WCAG 4.1.3): where the keyboard sweep presses controls, it reports text a press shows that a screen reader does not say, such as "Link copied." in a plain paragraph. Text counts as said when it is inside a live region that was on the page before the press, in an alert, or where focus moved. A press that loads a page or changes the control's own expanded, pressed or checked state is left alone. It is advisory, listed under a new `status-messages` registry concept with the live-regions pattern, and never blocks release.
+
+### Changed
+
+- The keyboard sweep reads each press once the page has settled, so a result that comes a moment later counts the same by keyboard and by mouse.
+
 ## [0.5.0] - 2026-10-01
 
 ### Added

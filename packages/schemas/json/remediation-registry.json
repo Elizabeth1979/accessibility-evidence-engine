@@ -394,15 +394,6 @@
           "level": "A",
           "relationship": "primary",
           "url": "https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html"
-        },
-        {
-          "standard": "WCAG",
-          "version": "2.2",
-          "requirementId": "4.1.3",
-          "title": "Status Messages",
-          "level": "AA",
-          "relationship": "secondary",
-          "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
         }
       ],
       "patterns": ["focus-management", "dialog-modal"],
@@ -418,8 +409,7 @@
       ],
       "deterministicDetection": [
         "Record focus and aria-activedescendant before and after every meaningful action.",
-        "Detect loss of focus, hidden focused elements, and focus outside an opened modal.",
-        "Record live-region and screen-reader output separately from focus movement."
+        "Detect loss of focus, hidden focused elements, and focus outside an opened modal."
       ],
       "ai": {
         "allowed": false,
@@ -431,6 +421,40 @@
         "Confirm only the active input driver moves focus.",
         "Do not both move focus and announce the same update unless the interaction pattern requires both.",
         "Match focus, visible context, DOM, accessibility tree, and spoken output after the action."
+      ]
+    },
+    {
+      "id": "status-messages",
+      "title": "Status messages are announced",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "4.1.3",
+          "title": "Status Messages",
+          "level": "AA",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html"
+        }
+      ],
+      "patterns": ["live-regions"],
+      "applicability": "Text an action shows without loading a page or moving focus: a confirmation, an error, progress, a count or a result.",
+      "requiredEvidence": ["interaction-trace", "focus-state", "dom-snapshot"],
+      "deterministicDetection": [
+        "Press each in-page control by keyboard and record the text the press shows, once the page has settled.",
+        "Flag, as advisory, new text that is in no live region present before the press (an alert is said as it is added), that focus did not move to, and that no page load or change in the control's own state (expanded, pressed, checked) explains."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Whether text was announced is observable. Whether it is a status message is for a person until a specialist is allowlisted for it.",
+        "outputs": []
+      },
+      "verification": [
+        "Press the control again and confirm the text is inside a live region that was on the page before the press, or that focus moves to it.",
+        "With a screen reader, confirm the message is said once, and focus stays where it was."
       ]
     }
   ]

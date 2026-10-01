@@ -65,7 +65,8 @@
             "hover-only",
             "activation-differs",
             "focus-lost",
-            "looks-like-heading"
+            "looks-like-heading",
+            "status-not-announced"
           ]
         },
         "concept": {
@@ -73,7 +74,8 @@
             "keyboard-operation",
             "hover-focus-equivalence",
             "focus-management",
-            "heading-structure"
+            "heading-structure",
+            "status-messages"
           ]
         },
         "selector": { "type": "string", "minLength": 1 },

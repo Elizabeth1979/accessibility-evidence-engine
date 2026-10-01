@@ -59,7 +59,7 @@
       "id": "keyboard",
       "chapter": "find",
       "title": "Uses the page with a keyboard alone",
-      "caption": "Using only the keyboard, it tabs to every control, then presses each one to check it does what a click does.",
+      "caption": "Using only the keyboard, it tabs to every control, then presses each one to check it does what a click does, and that a screen reader hears any message it shows.",
       "try": "lab",
       "video": {
         "file": "keyboard.webm",
