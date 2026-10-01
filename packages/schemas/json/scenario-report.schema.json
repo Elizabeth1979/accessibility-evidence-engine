@@ -69,7 +69,11 @@
           "required": ["keyboard", "reader"],
           "properties": {
             "keyboard": { "type": "boolean" },
-            "reader": { "type": "boolean" }
+            "reader": { "type": "boolean" },
+            "skipped": {
+              "description": "Why the Playwright test fixture did not check this test's page by keyboard and with the reader. Only checked-in-another-test means the page was checked, in another test.",
+              "enum": ["checked-in-another-test", "test-did-not-pass", "no-web-page", "turned-off"]
+            }
           }
         }
       }

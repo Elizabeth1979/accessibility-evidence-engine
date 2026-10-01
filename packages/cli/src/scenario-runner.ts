@@ -81,6 +81,14 @@ export interface ScenarioActionReport {
   artifactPaths: string[];
 }
 
+/**
+ * Why the test fixture did not check a test's page by keyboard and with the reader. Only the first
+ * means the page was checked: the fixture checks each page once per run, in the first passing test
+ * that ends on it.
+ */
+export type PageChecksSkipped =
+  "checked-in-another-test" | "test-did-not-pass" | "no-web-page" | "turned-off";
+
 export interface ScenarioIntegratedReport {
   schemaVersion: "0.1.0";
   assessmentId: string;
@@ -103,7 +111,7 @@ export interface ScenarioIntegratedReport {
     missingArtifacts: number;
     failedArtifacts: number;
     /** Whether the plan runs the keyboard and mouse sweep and the virtual screen reader at all. */
-    plannedChecks: { keyboard: boolean; reader: boolean };
+    plannedChecks: { keyboard: boolean; reader: boolean; skipped?: PageChecksSkipped };
   };
   summary: {
     actions: number;
@@ -679,6 +687,7 @@ export async function finishAssessment(input: {
   findings: Array<Record<string, unknown>>;
   childManifestFiles: string[];
   diagnostics: string[];
+  pageChecksSkipped?: PageChecksSkipped;
   aiProvider?: ModelProvider;
 }): Promise<ExecuteScenarioResult> {
   const { assessmentId, assessmentDir, scenario, plan, childManifestFiles } = input;
@@ -702,6 +711,7 @@ export async function finishAssessment(input: {
     missingArtifacts: childEvidence.missingArtifacts,
     failedArtifacts: childEvidence.failedArtifacts,
     diagnostics: input.diagnostics,
+    pageChecksSkipped: input.pageChecksSkipped,
     assessmentDir,
     reportFiles,
     manifestFile,
@@ -974,6 +984,7 @@ function createIntegratedReport(input: {
   missingArtifacts: number;
   failedArtifacts: number;
   diagnostics: string[];
+  pageChecksSkipped: PageChecksSkipped | undefined;
   assessmentDir: string;
   reportFiles: ReportFiles;
   manifestFile: string;
@@ -1014,7 +1025,10 @@ function createIntegratedReport(input: {
       completedLanes: input.completedLanes,
       missingArtifacts: input.missingArtifacts,
       failedArtifacts: input.failedArtifacts,
-      plannedChecks: plannedChecks(input.plan)
+      plannedChecks: {
+        ...plannedChecks(input.plan),
+        ...(input.pageChecksSkipped ? { skipped: input.pageChecksSkipped } : {})
+      }
     },
     summary: {
       actions: input.actions.length,
@@ -1717,6 +1731,18 @@ function buildScenarioSynthesis(
   };
 }
 
+/** What a test's keyboard and reader rows say when the test fixture did not check its page. */
+const PAGE_CHECKS_SKIPPED: Record<PageChecksSkipped, string> = {
+  "checked-in-another-test":
+    "Another test of this run ended on this page and was checked there: the test fixture checks each page once per run. That test's report has the result.",
+  "test-did-not-pass":
+    "Not for this test: it did not pass, and the test fixture checks only a page a passing test ends on.",
+  "no-web-page":
+    "Not for this test: it did not end on a web page. It closed its page, or the page is about:blank, a data: or a file: URL.",
+  "turned-off":
+    "Not for this test: its keyboard and reader checks are off (aee: { keyboardAndReader: false })."
+};
+
 /**
  * The report's status rows. A row fails when a blocking finding in its area does, so a row can
  * never say "no confirmed issue" while the fix list holds one; advisory results are named but
@@ -1765,10 +1791,22 @@ function buildStatusAreas(
     detail
   });
   const { plannedChecks } = report.completeness;
-  // The test fixture checks each page with axe alone; a scenario run adds the other checks.
   // The test fixture checks a page by keyboard and with the reader once per run, where a passing
-  // test ends on it; a scenario run checks every journey's start page.
-  const fixture = report.profile === "playwright-test";
+  // test ends on it, and says why it did not for every other test; a scenario's plan says itself.
+  const notPlanned = (id: StatusArea["id"], label: string, planDetail: string): StatusArea =>
+    plannedChecks.skipped === "checked-in-another-test"
+      ? {
+          id,
+          label,
+          verdict: "not-run",
+          result: "Checked in another test",
+          detail: PAGE_CHECKS_SKIPPED[plannedChecks.skipped]
+        }
+      : notRun(
+          id,
+          label,
+          plannedChecks.skipped ? PAGE_CHECKS_SKIPPED[plannedChecks.skipped] : planDetail
+        );
   const titles = (list: FindingSynthesis[]) => `${list.map(({ title }) => title).join("; ")}.`;
   const rulesRan = views.axeReports.length > 0;
 
@@ -1784,12 +1822,10 @@ function buildStatusAreas(
   const keyboard = keyboardFindings.length
     ? fixRequired("keyboard", "Keyboard access", titles(keyboardFindings))
     : !plannedChecks.keyboard
-      ? notRun(
+      ? notPlanned(
           "keyboard",
           "Keyboard access",
-          fixture
-            ? "Not for this test: the test fixture sweeps each page once per run, where the first passing test ends on it, and this test's page was swept in another test, is not a web page, or the check is off."
-            : "This scenario's plan has no keyboard and mouse sweep."
+          "This scenario's plan has no keyboard and mouse sweep."
         )
       : swept && comparisonsPassed
         ? noIssue(
@@ -1818,12 +1854,10 @@ function buildStatusAreas(
         `Announced without a name: ${[...unnamed.values()].join(", ")}.`
       )
     : !plannedChecks.reader
-      ? notRun(
+      ? notPlanned(
           "reader",
           "Virtual reader",
-          fixture
-            ? "Not for this test: the test fixture reads each page once per run, where the first passing test ends on it, and this test's page was read in another test, is not a web page, or the check is off."
-            : "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
+          "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
         )
       : reader.commands > 0 && reader.failed === 0
         ? noIssue(
@@ -2867,8 +2901,12 @@ function suiteStatusRows(reports: ScenarioIntegratedReport[]): string[] {
       entry.count += 1;
       results.set(row.result, entry);
     }
+    // What needs work first; results with the same verdict, the most common first.
     const cells = [...results]
-      .sort(([, left], [, right]) => STATUS_ORDER[left.verdict] - STATUS_ORDER[right.verdict])
+      .sort(
+        ([, left], [, right]) =>
+          STATUS_ORDER[left.verdict] - STATUS_ORDER[right.verdict] || right.count - left.count
+      )
       .map(([result, { count }]) => (results.size === 1 ? result : `${result} (${count})`));
     return `| ${commentText(label)} | ${commentText(cells.join(" · "))} |`;
   });

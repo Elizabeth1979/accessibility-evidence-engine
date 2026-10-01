@@ -17,7 +17,8 @@ import {
   finishAssessment,
   runPageLanes,
   TEST_READER_COMMANDS,
-  type AssessmentInProgress
+  type AssessmentInProgress,
+  type PageChecksSkipped
 } from "./scenario-runner";
 
 /** The page loads a test starts; the page is checkpointed as soon as each one returns. */
@@ -52,15 +53,22 @@ export interface AeeTestFixtures {
 const checkpoints = new WeakMap<Page, (name: string) => Promise<void>>();
 
 /**
- * Claims a page for its once-per-run keyboard and reader checks: false when another test of the run
- * already has, or when the page is not on the web (about:blank, a data: or a file: URL), since the
- * checks keep their navigations to its origin. A page is its address without query or fragment.
- * Claims live in the run's output folder, which Playwright empties when a run starts, so every
- * worker sees them and the next run starts afresh.
+ * Whether a page is on the web, unlike about:blank, a data: or a file: URL: the keyboard and reader
+ * checks keep their navigations to the page's origin.
+ */
+function onTheWeb(address: string): boolean {
+  const { protocol } = new URL(address);
+  return protocol === "http:" || protocol === "https:";
+}
+
+/**
+ * Claims a web page for its once-per-run keyboard and reader checks: false when another test of the
+ * run already has. A page is its address without query or fragment. Claims live in the run's
+ * output folder, which Playwright empties when a run starts, so every worker sees them and the next
+ * run starts afresh.
  */
 async function claimPageForRun(testInfo: TestInfo, address: string): Promise<boolean> {
   const url = new URL(address);
-  if (url.protocol !== "http:" && url.protocol !== "https:") return false;
   const page = `${url.protocol}//${url.host}${url.pathname}`;
   const claims = path.join(testInfo.project.outputDir, ".aee-checked-pages");
   await mkdir(claims, { recursive: true });
@@ -128,8 +136,17 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
 
     const firstUrl = steps[0]?.pageUrl ?? page.url();
     const endUrl = page.url();
-    const checkInFull =
-      passed && aee.keyboardAndReader && (await claimPageForRun(testInfo, endUrl));
+    // Why this test's page is not checked by keyboard and with the reader, if it is not.
+    const skipped: PageChecksSkipped | undefined = !aee.keyboardAndReader
+      ? "turned-off"
+      : testInfo.status !== testInfo.expectedStatus
+        ? "test-did-not-pass"
+        : page.isClosed() || !onTheWeb(endUrl)
+          ? "no-web-page"
+          : (await claimPageForRun(testInfo, endUrl))
+            ? undefined
+            : "checked-in-another-test";
+    const checkInFull = skipped === undefined;
     const assessment: AssessmentInProgress = {
       assessmentDir,
       childManifestFiles: [manifestFile],
@@ -194,6 +211,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
       plan: compileScenarioPlan(scenario),
       startedAt,
       plannedLanes: checkInFull ? 3 : 1,
+      pageChecksSkipped: skipped,
       ...assessment
     });
     await testInfo.attach("aee-report.html", { path: reportFiles.html, contentType: "text/html" });

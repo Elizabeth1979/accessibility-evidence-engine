@@ -7,6 +7,7 @@ import {
   renderFixesCsvForTest,
   renderIntegratedHtmlForTest,
   renderPullRequestComment,
+  type PageChecksSkipped,
   type ScenarioActionReport,
   type ScenarioIntegratedReport
 } from "./scenario-runner";
@@ -529,6 +530,56 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
       ["contrast", "unknown", "Needs review"]
     ]
   );
+});
+
+test("a test whose page the fixture did not check says why, and only a page checked elsewhere says so", () => {
+  const rows = (skipped: PageChecksSkipped) =>
+    buildScenarioSynthesisForTest(
+      {
+        profile: "playwright-test",
+        completeness: { plannedChecks: { keyboard: false, reader: false, skipped } },
+        actions: [],
+        artifacts: [],
+        findings: [],
+        summary: { passed: 0, failed: 0, unknown: 0 }
+      } as unknown as ScenarioIntegratedReport,
+      {
+        transcripts: [],
+        actionReports: [],
+        axeReports: [],
+        comparisons: [],
+        sweeps: [],
+        screens: [],
+        elementMaps: []
+      }
+    ).status.slice(0, 2);
+
+  // Never a pass: the result for this test is in another test's report.
+  assert.deepEqual(
+    rows("checked-in-another-test").map(({ id, verdict, result, detail }) => [
+      id,
+      verdict,
+      result,
+      detail
+    ]),
+    ["keyboard", "reader"].map((id) => [
+      id,
+      "not-run",
+      "Checked in another test",
+      "Another test of this run ended on this page and was checked there: the test fixture checks each page once per run. That test's report has the result."
+    ])
+  );
+  for (const [skipped, detail] of [
+    ["test-did-not-pass", /^Not for this test: it did not pass/],
+    ["no-web-page", /^Not for this test: it did not end on a web page\./],
+    ["turned-off", /^Not for this test: its keyboard and reader checks are off/]
+  ] as const) {
+    for (const row of rows(skipped)) {
+      assert.equal(row.verdict, "not-run");
+      assert.equal(row.result, "Not in this run");
+      assert.match(row.detail, detail);
+    }
+  }
 });
 
 test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a key is set", () => {

@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Changed
+
+- A Playwright test whose page another test already checked by keyboard and with the reader says "Checked in another test" in those rows, instead of "Not in this run". The fixture checks each page once per run, so on a real suite of 118 tests the PR comment read "Not in this run (111)", which looked like a gap though every page was checked. A test that did not pass, did not end on a web page, or has the checks off still reads "Not in this run", and its detail now says which. The report records why (`completeness.plannedChecks.skipped`), and a PR comment row lists results with the same verdict most common first.
+
 ## [0.4.0] - 2026-10-01
 
 ### Added
