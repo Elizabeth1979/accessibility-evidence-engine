@@ -91,6 +91,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
       }
     };
 
+    await observer.setup!(context);
     const [before] = await observer.captureBefore!(context);
     transcript.entries.push({
       sequence: 2,
@@ -122,6 +123,38 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }
+});
+
+test("a reader command captured only after it still counts only its own entries", async () => {
+  const entry = (sequence: number, focusMoved: boolean) => ({
+    sequence,
+    timestamp: "2026-09-13T00:00:00.000Z",
+    command: "next-item",
+    announcement: `Item ${sequence}`,
+    focusMoved
+  });
+  // An earlier command moved focus; this run's command must not be blamed for it.
+  const transcript = { entries: [entry(1, true)] };
+  const observer = createVirtualScreenReaderObserver();
+  const context: RuntimeObserverContext = {
+    runId: "run-reader-once",
+    page: {
+      async content() {
+        return "<main></main>";
+      },
+      async snapshotVirtualScreenReaderTranscript() {
+        return transcript;
+      }
+    }
+  };
+
+  await observer.setup!(context);
+  transcript.entries.push(entry(2, false));
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(after.meta?.newEntryCount, 1);
+  assert.equal(after.meta?.focusMovedCount, 0);
+  assert.equal(after.meta?.lastAnnouncement, "Item 2");
 });
 
 test("createVisualObserver captures separate viewport and full-page artifacts", async () => {

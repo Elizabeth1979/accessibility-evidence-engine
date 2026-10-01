@@ -8,11 +8,13 @@ The caller resolves configuration, selected plugins, capture policy, release pol
 
 ### 2. Observer setup
 
-Each selected observer receives the shared context. Network tracking, for example, attaches request and response listeners during setup. Setup runs concurrently across observers.
+Each selected observer receives the shared context. Network tracking, for example, attaches request and response listeners during setup, and the virtual-reader observer notes how many transcript entries already exist, so it knows which entries a command adds even when nothing is captured before it. Setup runs concurrently across observers.
 
 ### 3. Before capture
 
 Observers capture the baseline state for the interaction. Depending on the selected observers, this can include DOM, accessibility tree, focus, screenshot, or network evidence. Captures run concurrently within the phase.
+
+A run with no interaction, such as a test fixture's checkpoint, skips this phase, and so does a run whose interaction only reads the page (`interactionReadsOnly`), such as a portable virtual-reader command, which never focuses, clicks, types or dispatches events. With nothing to compare, the page is captured once, after.
 
 ### 4. Interaction execution
 
@@ -22,7 +24,7 @@ The Playwright adapter calls `performInteraction(...)`. Observers collect eviden
 
 After the interaction resolves, `runAeeOnPage(...)` waits for `policy.capture.stabilizeAfterInteractionMs`. The current strategy is a fixed delay. It does not yet detect network idle, animation completion, or mutation silence.
 
-The fixture CLI does not perform a live interaction and therefore does not add a stabilization wait.
+The fixture CLI does not perform a live interaction and therefore does not add a stabilization wait, and an interaction that only reads the page is not waited on either, since nothing on it changed.
 
 ### 6. After capture
 

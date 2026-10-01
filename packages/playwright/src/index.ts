@@ -120,6 +120,11 @@ export interface RunAeeOnPageOptions<TPage extends PlaywrightPageLike = Playwrig
   writeReports?: boolean;
   virtualScreenReader?: PortableVirtualScreenReader;
   performInteraction?: (context: PlaywrightInteractionContext<TPage>) => Promise<void>;
+  /**
+   * The interaction only reads the page, as a portable virtual-reader command does: the page is
+   * captured once, after it, and not waited on to settle, since nothing on it changed.
+   */
+  interactionReadsOnly?: boolean;
 }
 
 export interface RunAeeOnPageResult {
@@ -655,7 +660,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     executeInteraction: performInteraction
       ? async () =>
           runInteractionWithStabilization(
-            resolvedPolicy.capture.stabilizeAfterInteractionMs,
+            options.interactionReadsOnly ? 0 : resolvedPolicy.capture.stabilizeAfterInteractionMs,
             performInteraction,
             {
               page: options.page,
@@ -665,6 +670,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
             }
           )
       : undefined,
+    interactionReadsOnly: options.interactionReadsOnly,
     environment: {
       mode: "playwright-page"
     },
@@ -750,11 +756,10 @@ const CHECKPOINT_REQUIRED_ARTIFACTS = INPUT_LANE_REQUIRED_ARTIFACTS.filter(
   (basename) => !basename.includes("-before.")
 );
 
+/** A reader command only reads the page, so it is captured once, after it, like a checkpoint. */
 const VIRTUAL_READER_REQUIRED_ARTIFACTS = [
-  ...INPUT_LANE_REQUIRED_ARTIFACTS,
-  "virtual-screen-reader-transcript-json-before.json",
+  ...CHECKPOINT_REQUIRED_ARTIFACTS,
   "virtual-screen-reader-transcript-json-after.json",
-  "virtual-screen-reader-transcript-text-before.txt",
   "virtual-screen-reader-transcript-text-after.txt"
 ];
 
@@ -1298,6 +1303,8 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
         observers: observerIds,
         judges: judgeIds,
         checkpointName: `${laneId}:${sequence}:${command}`,
+        // The portable reader never focuses, clicks, types or dispatches events.
+        interactionReadsOnly: true,
         interaction: {
           kind: "screen-reader-command",
           input: command,

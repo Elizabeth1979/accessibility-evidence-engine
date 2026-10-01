@@ -663,6 +663,8 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
         )
       ).toBe(true);
       expect(step.artifactFiles.some((filePath) => filePath.endsWith("axe-after.json"))).toBe(true);
+      // A reader command only reads the page, so the page is captured once, after it.
+      expect(step.artifactFiles.filter((filePath) => /-before\./.test(filePath))).toEqual([]);
       const reportPath = step.reporterFiles.find((filePath) =>
         filePath.endsWith("aee-report.json")
       );
