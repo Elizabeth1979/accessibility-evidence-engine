@@ -1,0 +1,54 @@
+name: AI score
+
+# Scores the AI's names for the test lab's nameless controls against the fixed page's names,
+# with the free local model, and with Claude once an ANTHROPIC_API_KEY secret exists. Runs when
+# the specialists, their prompts or the lab change, and by hand from the Actions tab.
+"on":
+  pull_request:
+    paths:
+      - packages/ai-fixes/**
+      - site/test-case*
+      - tests/ai-score*
+      - playwright.score.config.ts
+      - scripts/start-local-model.sh
+      - .github/workflows/ai-score.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  score:
+    name: Score the AI's names
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start the local model
+        run: |
+          npm run build
+          bash scripts/start-local-model.sh
+
+      - name: Score each model
+        run: |
+          set -o pipefail
+          npm run score:ai | tee score.txt
+          { echo '```'; grep -E '^\S+: [0-9]+% |^ +([0-9]+%|note:)' score.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

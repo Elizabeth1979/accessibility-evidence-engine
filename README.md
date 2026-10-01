@@ -78,9 +78,10 @@ without uploading captured data. Detailed DOM, accessibility-tree, focus, Axe, a
 in the technical annex. Deterministic remediation leads. When you name a model with
 `AEE_LLM_PROVIDER` (`local` for one on your machine, or `claude`), the registry's allowlisted
 specialists suggest a name for each icon-only control and a text alternative for each image
-without one, from the page context captured with the axe result. Each suggestion is labelled AI,
-needs review, and never passes or fails anything. With no model named, nothing is sent and the
-report says how to turn it on.
+without one, say what a colour-only difference seems to mean, and read the words in an image of
+text. Each gets the page context captured with the finding and the element as the screenshot
+shows it. Each suggestion is labelled AI, needs review, and never passes or fails anything. With
+no model named, nothing is sent and the report says how to turn it on.
 
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
