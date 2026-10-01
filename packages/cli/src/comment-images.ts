@@ -76,6 +76,19 @@ export function outlinedCrop(page: PNG, box: AxeTargetBox): Buffer | undefined {
   return PNG.sync.write(crop);
 }
 
+/** Cuts elements from the screenshots they were measured on, reading each screenshot once. */
+export function createElementCropper(): (
+  screenshot: string,
+  box: AxeTargetBox
+) => Buffer | undefined {
+  const pages = new Map<string, PNG>();
+  return (screenshot, box) => {
+    const page = pages.get(screenshot) ?? PNG.sync.read(readFileSync(screenshot));
+    pages.set(screenshot, page);
+    return outlinedCrop(page, box);
+  };
+}
+
 /**
  * Pictures for a comment's problems, named by their content so a picture already uploaded is the
  * same file. `imageFor` is called as the comment is rendered, so only the problems it shows get a
@@ -100,19 +113,17 @@ export function commentImages(
       }
     }
   }
-  const pages = new Map<string, PNG>();
+  const crop = createElementCropper();
   const files = new Map<string, Buffer>();
   const imageFor = (finding: FindingSynthesis): CommentImage | undefined => {
     if (files.size >= COMMENT_IMAGE_LIMIT) return undefined;
     for (const instance of finding.instances) {
       const file = screenshots.get(instance);
       if (!file || !instance.targetBox) continue;
-      const page = pages.get(file) ?? PNG.sync.read(readFileSync(file));
-      pages.set(file, page);
-      const crop = outlinedCrop(page, instance.targetBox);
-      if (!crop) continue;
-      const name = `${createHash("sha256").update(crop).digest("hex").slice(0, 32)}.png`;
-      files.set(name, crop);
+      const picture = crop(file, instance.targetBox);
+      if (!picture) continue;
+      const name = `${createHash("sha256").update(picture).digest("hex").slice(0, 32)}.png`;
+      files.set(name, picture);
       return {
         url: urlFor(name),
         alt: `Screenshot: “${instance.label}” in ${instance.component}, outlined in pink`

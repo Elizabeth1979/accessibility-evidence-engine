@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import type { AnswerSchema, ModelProvider } from "./model-providers";
+import {
+  ImageInputUnsupportedError,
+  type AnswerSchema,
+  type ModelImage,
+  type ModelProvider
+} from "./model-providers";
 
 /**
  * The accessibility-engineer prompt: the method every specialist works by. It ships in the
@@ -25,21 +30,43 @@ export interface Specialist<Input extends object, Answer> {
 }
 
 /**
+ * The evidence that stands for an attached screenshot, so an answer can cite it. It is the crop the
+ * pull-request comment shows: the element outlined, with the page around it.
+ */
+export const ATTACHED_SCREENSHOT =
+  "The attached image: the element, outlined in magenta, as the page showed it, with the page around it.";
+
+/** Providers whose model said it cannot see images: each is asked without them from then on. */
+const blindProviders = new WeakSet<ModelProvider>();
+
+/**
  * Asks the provider on the specialist's behalf and returns the checked answer. The request's
- * instructions are the accessibility-engineer prompt, then the specialist's own task.
+ * instructions are the accessibility-engineer prompt, then the specialist's own task. A
+ * screenshot, when given, goes with the evidence as an image; a model that cannot see images is
+ * asked again without it, and its answer then rests on the page context alone.
  */
 export async function askSpecialist<Input extends object, Answer>(
   specialist: Specialist<Input, Answer>,
   input: Input,
-  provider: ModelProvider
+  provider: ModelProvider,
+  screenshot?: ModelImage
 ): Promise<Answer> {
-  const value = await provider.ask({
-    name: specialist.id.replaceAll("-", "_"),
-    instructions: `${ACCESSIBILITY_ENGINEER_PROMPT}\n\n## This request\n\nThis request is one narrow step of the method above. Answer only with the JSON object its schema asks for; the finding card and coverage format do not apply to it.\n\n${specialist.instructions}`,
-    input,
-    schema: citingOnly(specialist.schema, evidenceFields(input))
-  });
-  return specialist.parse(value, input);
+  const seen = screenshot && !blindProviders.has(provider) ? screenshot : undefined;
+  const evidence = seen ? { ...input, screenshot: ATTACHED_SCREENSHOT } : input;
+  try {
+    const value = await provider.ask({
+      name: specialist.id.replaceAll("-", "_"),
+      instructions: `${ACCESSIBILITY_ENGINEER_PROMPT}\n\n## This request\n\nThis request is one narrow step of the method above. Answer only with the JSON object its schema asks for; the finding card and coverage format do not apply to it.\n\n${specialist.instructions}`,
+      input: evidence,
+      schema: citingOnly(specialist.schema, evidenceFields(evidence)),
+      ...(seen ? { image: seen } : {})
+    });
+    return specialist.parse(value, evidence);
+  } catch (error) {
+    if (!(seen && error instanceof ImageInputUnsupportedError)) throw error;
+    blindProviders.add(provider);
+    return askSpecialist(specialist, input, provider);
+  }
 }
 
 /** The input fields that hold evidence: the only names an answer may cite. */
@@ -68,7 +95,8 @@ function citingOnly(schema: AnswerSchema, fields: string[]): AnswerSchema {
 const GROUNDING = [
   "Judge quality in context, not mere presence: a name or text alternative can exist and still be wrong, generic ('image', 'button'), redundant ('image of…') or meaningless for what the element does.",
   "Ground every answer only in the evidence provided. Do not invent details about the image, page or element that the evidence does not state.",
-  "citedEvidenceIds lists the names of the input fields your answer relies on. When the evidence is not enough, say so in the rationale and give a low confidence; never guess."
+  "citedEvidenceIds lists the names of the input fields your answer relies on. When the evidence is not enough, say so in the rationale and give a low confidence; never guess.",
+  "When the input has a screenshot field, an image is attached: the element, outlined in magenta, with the page around it. Use what it shows and cite screenshot. Without one, you have the page's text only: say so in the rationale."
 ].join("\n");
 
 export interface AccessibleLabelContext {
