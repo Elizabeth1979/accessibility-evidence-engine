@@ -139,7 +139,7 @@ type ProbeRequest =
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
   | { mode: "watch-changes"; selector: string }
-  | { mode: "unannounced"; selector: string }
+  | { mode: "unsaid"; selector: string }
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string }
@@ -541,10 +541,7 @@ async function pressControl(
       await target.press(control.key);
       await settle();
       focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
-      unannounced = await probe<ProbedElement[]>({
-        mode: "unannounced",
-        selector: control.selector
-      });
+      unannounced = await probe<ProbedElement[]>({ mode: "unsaid", selector: control.selector });
     },
     captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
@@ -635,7 +632,10 @@ function runSweepProbe(request: ProbeRequest): unknown {
         element?.getAttribute(name) ?? null
       ])
     );
-  // What a press changed, recorded from just before it; "unannounced" reads and ends it.
+  // Text compared across a press, as the page shows it or as its nodes hold it, which differ in
+  // spacing and in case a style transforms.
+  const normalized = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+  // What a press changed, recorded from just before it; "unsaid" reads and ends it.
   const watchKey = Symbol.for("aee.sweep.watch-changes");
   interface ChangeWatch {
     url: string;
@@ -799,7 +799,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       });
       store[watchKey] = {
         url: location.href,
-        text: document.body.innerText,
+        text: normalized(document.body.innerText),
         states: statesOf(document.querySelector(request.selector)),
         // A screen reader says a change inside a live region only if the region was on the page
         // before the change; a region added with its text is said by some and not by others.
@@ -813,17 +813,20 @@ function runSweepProbe(request: ProbeRequest): unknown {
       };
       return null;
     }
-    // New text a screen reader does not say: a press loaded no page and changed no state of the
-    // control's own, and the text is not a control, is not in a dialog (whose focus is a check of
-    // its own), is in no live region that was there before (or alert, which is said as it is
-    // added), and focus did not move to it.
-    case "unannounced": {
+    // New text a press showed that a screen reader does not say. Nothing is judged when the press
+    // loaded a page or changed the control's own state, both of which a screen reader says. Text is
+    // said when it is in a live region that was there before (or an alert, which is said as it is
+    // added) or focus moved to it. Controls are left out, as their text is their name, and so are
+    // dialogs, whose focus is a check of its own.
+    case "unsaid": {
       const watch = store[watchKey];
       delete store[watchKey];
       // No watch: the press loaded another document.
       if (!watch) return [];
       watch.observer.disconnect();
       const control = document.querySelector(request.selector);
+      const skipped =
+        'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]';
       if (
         location.href !== watch.url ||
         JSON.stringify(statesOf(control)) !== JSON.stringify(watch.states)
@@ -831,28 +834,39 @@ function runSweepProbe(request: ProbeRequest): unknown {
         return [];
       }
       const active = document.activeElement;
-      const focused = (element: Element) =>
-        active !== null &&
-        active !== document.body &&
-        (element.contains(active) || active.contains(element));
-      const said = (element: Element) =>
+      const saidAt = (element: Element) =>
         element.closest('[role="alert"]') !== null ||
         watch.liveRegions.some((region) => region.isConnected && region.contains(element)) ||
-        focused(element);
+        (active !== null &&
+          active !== document.body &&
+          (element.contains(active) || active.contains(element)));
+      // The visible text of an element outside any control, piece by piece.
+      const textParts = (element: Element) => {
+        const parts: Array<{ text: string; parent: Element }> = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent?.trim() ?? "";
+          const parent = node.parentElement;
+          if (!text || !parent || parent.closest(skipped) || !isVisible(parent)) continue;
+          parts.push({ text, parent });
+        }
+        return parts;
+      };
       const fresh = [...watch.changed].filter((element) => {
-        if (!element.isConnected || control?.contains(element)) return false;
-        if (
-          element.closest(
-            'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]'
-          )
-        ) {
+        if (!element.isConnected || control?.contains(element) || element.closest(skipped)) {
           return false;
         }
-        const text = (element as HTMLElement).innerText?.trim() ?? "";
-        return text !== "" && !watch.text.includes(text) && isVisible(element) && !said(element);
+        return textParts(element).some(({ text }) => !watch.text.includes(normalized(text)));
       });
-      return fresh
-        .filter((element) => !fresh.some((other) => other !== element && other.contains(element)))
+      const shown = fresh.filter(
+        (element) => !fresh.some((other) => other !== element && other.contains(element))
+      );
+      // Said when the element is, or when every piece of its text is, such as an alert inside a
+      // toast that also holds an Undo button.
+      const said = (element: Element) =>
+        saidAt(element) || textParts(element).every(({ parent }) => saidAt(parent));
+      return shown
+        .filter((element) => !said(element))
         .slice(0, 5)
         .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }));
     }

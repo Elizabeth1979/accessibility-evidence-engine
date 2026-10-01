@@ -588,6 +588,9 @@ test("the sweep reports a message a press shows only when a screen reader does n
       <p id="result" tabindex="-1"></p>
       <button id="show-hidden" type="button">Load</button>
       <p id="hidden-note" hidden>Three items loaded.</p>
+      <button id="toast" type="button">Archive</button>
+      <button id="redraw" type="button">Refresh</button>
+      <ul id="list"><li>First</li><li>Second</li></ul>
     </main>
     <script>
       const on = (id, handler) => document.getElementById(id).addEventListener("click", handler);
@@ -609,15 +612,23 @@ test("the sweep reports a message a press shows only when a screen reader does n
         result.focus();
       });
       on("show-hidden", () => (document.getElementById("hidden-note").hidden = false));
+      on("toast", () =>
+        added('<div class="toast"><p role="alert">Archived.</p><button type="button">Undo</button></div>')
+      );
+      // Drawn again with the same text, as a framework re-render does: nothing new to say.
+      on("redraw", () => {
+        document.getElementById("list").innerHTML = "<li>First</li><li>Second</li>";
+      });
     </script>
   </body>
 </html>`;
   const url = `data:text/html,${encodeURIComponent(html)}`;
   const result = await sweepKeyboardAndPointer({ page, url, activateControls: true });
 
-  // Said: a live region that was there before, an alert, a disclosure that says it expanded, and a
-  // message focus moved to. Not said: a plain paragraph, even a moment later, a region added with
-  // its text, and a paragraph that was hidden.
+  // Said: a live region that was there before, an alert (also inside a toast with a button), a
+  // disclosure that says it expanded, and a message focus moved to. Nothing new: a list drawn again
+  // with the same text. Not said: a plain paragraph, even a moment later, a region added with its
+  // text, and a paragraph that was hidden.
   expect(result.findings.map(({ kind, selector, label }) => ({ kind, selector, label }))).toEqual([
     { kind: "status-not-announced", selector: "#plain", label: "Link copied." },
     { kind: "status-not-announced", selector: "#later-note", label: "Synced." },
