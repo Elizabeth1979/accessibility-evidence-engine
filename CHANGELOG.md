@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-01
+
 ### Fixed
 
 - The keyboard and mouse sweep could report every control of a single-page app as "Works with a mouse only" ([#85](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/85)). It pressed Tab as soon as the page loaded, before the app had drawn it, so Tab reached nothing; it then listed the controls the app had drawn by then as never reached. On a real suite of 130 tests it happened on one page in a full run on a busy machine, and never when that test ran alone. The sweep now waits after each load, as a checkpoint does, for the DOM to be quiet (the capture policy's 250 ms pause, 3 seconds at most), and the wait is shared with the checkpoint rather than copied. If Tab still reaches nothing on a page with controls the keyboard reaches without a script, the sweep decides nothing instead of failing them all: the keyboard row reads "Needs review", with the reason.
@@ -133,8 +135,9 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.4.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.4.1...HEAD
