@@ -68,7 +68,8 @@
             "looks-like-heading",
             "status-not-announced",
             "failure-not-announced",
-            "colour-only"
+            "colour-only",
+            "text-in-image"
           ]
         },
         "concept": {
@@ -78,7 +79,8 @@
             "focus-management",
             "heading-structure",
             "status-messages",
-            "use-of-color"
+            "use-of-color",
+            "images-of-text"
           ]
         },
         "selector": { "type": "string", "minLength": 1 },

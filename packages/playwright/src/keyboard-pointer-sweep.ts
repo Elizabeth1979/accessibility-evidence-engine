@@ -17,7 +17,9 @@ import { waitForQuietPage } from "./quiet-page";
  *   in no live region and focus did not move to it;
  * - failure-not-announced: a request a press sends fails, and the page shows and says nothing;
  * - colour-only: one of a row of like items, such as links in a menu, stands out from the others
- *   by colour alone.
+ *   by colour alone;
+ * - text-in-image: an image shaped like a line of text, named in words and drawn in two flat
+ *   colours, as words drawn as pixels are.
  */
 export type SweepFindingKind =
   | "pointer-only"
@@ -27,7 +29,8 @@ export type SweepFindingKind =
   | "looks-like-heading"
   | "status-not-announced"
   | "failure-not-announced"
-  | "colour-only";
+  | "colour-only"
+  | "text-in-image";
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
@@ -38,7 +41,8 @@ export const SWEEP_FINDING_CONCEPTS = {
   "looks-like-heading": "heading-structure",
   "status-not-announced": "status-messages",
   "failure-not-announced": "status-messages",
-  "colour-only": "use-of-color"
+  "colour-only": "use-of-color",
+  "text-in-image": "images-of-text"
 } as const satisfies Record<SweepFindingKind, string>;
 
 export interface SweepFinding {
@@ -165,11 +169,12 @@ type ProbeRequest =
   | { mode: "new-text"; selector: string }
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
-  | { mode: "frame"; selector: string }
+  | { mode: "frame"; selector: string; margin?: number }
   | { mode: "blur" }
   | { mode: "start-at-top" }
   | { mode: "focusable" }
   | { mode: "colour-only" }
+  | { mode: "text-images" }
   | { mode: "scroll-to"; x: number; y: number };
 
 /** A region of the viewport around a Tab stop, and the scroll position it was taken at. */
@@ -259,6 +264,7 @@ export async function sweepKeyboardAndPointer(
       )
     );
   }
+  findings.push(...(await textImages(page, probe)));
   const tabStops = await withCdpSession(page.context(), page, (session) =>
     collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep)
   );
@@ -533,6 +539,55 @@ async function captureFrame(
   });
   PNG.bitblt(source, frame, x, y, frame.width, frame.height, 0, 0);
   return PNG.sync.write(frame);
+}
+
+/**
+ * Words drawn as pixels sit on a plain background: in an image of text, two colours, the
+ * background and the letters, cover most of it, where a photograph or a gradient spreads over
+ * many. Colours are counted at 4 bits a channel, so the letters' smoothed edges do not count as
+ * colours of their own, and an image of one colour shows nothing.
+ */
+const FLAT_TWO_COLOURS = 0.6;
+const MOSTLY_ONE_COLOUR = 0.97;
+
+/** Images that may be words drawn as pixels: candidates by shape and name, then by their pixels. */
+async function textImages(
+  page: KeyboardPointerSweepPage,
+  probe: <T>(request: ProbeRequest) => Promise<T>
+): Promise<SweepFinding[]> {
+  const findings: SweepFinding[] = [];
+  for (const image of await probe<ProbedElement[]>({ mode: "text-images" })) {
+    const frame = await probe<FocusFrame | null>({
+      mode: "frame",
+      selector: image.selector,
+      margin: 0
+    });
+    const crop = frame ? await captureFrame(page, frame) : undefined;
+    if (!crop || !drawnInTwoFlatColours(PNG.sync.read(Buffer.from(crop)))) continue;
+    findings.push(
+      sweepFinding(
+        "text-in-image",
+        image,
+        "An image shaped like a line of text, named in words and drawn in two flat colours, as words drawn as pixels are. If its words are pixels, they cannot be resized, recoloured or translated, and they blur when zoomed; a logo is exempt."
+      )
+    );
+  }
+  await probe({ mode: "scroll-to", x: 0, y: 0 });
+  return findings;
+}
+
+function drawnInTwoFlatColours(image: PNG): boolean {
+  const counts = new Map<number, number>();
+  for (let at = 0; at < image.data.length; at += 4) {
+    const colour =
+      ((image.data[at]! >> 4) << 8) |
+      ((image.data[at + 1]! >> 4) << 4) |
+      (image.data[at + 2]! >> 4);
+    counts.set(colour, (counts.get(colour) ?? 0) + 1);
+  }
+  const pixels = image.width * image.height;
+  const [first = 0, second = 0] = [...counts.values()].sort((a, b) => b - a);
+  return first / pixels < MOSTLY_ONE_COLOUR && (first + second) / pixels >= FLAT_TWO_COLOURS;
 }
 
 /** The text of the content that hovering the rule's element makes visible. */
@@ -994,7 +1049,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       element.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
       const box = element.getBoundingClientRect();
       // Whole pixels, so both captures sample the page on the same pixel grid.
-      const margin = 12;
+      const margin = request.margin ?? 12;
       const left = Math.max(0, Math.floor(box.left - margin));
       const top = Math.max(0, Math.floor(box.top - margin));
       const right = Math.min(innerWidth, Math.ceil(box.right + margin));
@@ -1208,6 +1263,35 @@ function runSweepProbe(request: ProbeRequest): unknown {
       }
       return found.slice(0, 10);
     }
+    // Images that may be words drawn as pixels: an image or image button shaped like a line of
+    // text (at least 2.5 times as wide as it is tall, and 16 pixels tall), whose name is 2 to 8
+    // words, as a heading, a button or a slogan is; a longer name describes a picture, such as a
+    // screenshot. Not a logo, which WCAG exempts, nor a chart, diagram, map or photograph, whose
+    // labels belong to the picture. Its pixels decide the rest.
+    case "text-images":
+      return [...document.querySelectorAll("img[alt], input[type=image][alt]")]
+        .filter((image) => {
+          const name = image.getAttribute("alt")!.trim();
+          const words = name.split(/\s+/).filter(Boolean).length;
+          const box = image.getBoundingClientRect();
+          return (
+            isVisible(image) &&
+            !image.closest('[aria-hidden="true"]') &&
+            words >= 2 &&
+            words <= 8 &&
+            !/\b(logo|logotype|wordmark)\b/i.test(name) &&
+            !/^(a |an |the )?(photo|photograph|picture|image|illustration|chart|graph|diagram|map|screenshot|icon)\b/i.test(
+              name
+            ) &&
+            box.height >= 16 &&
+            box.width >= box.height * 2.5
+          );
+        })
+        .slice(0, 10)
+        .map((image) => ({
+          selector: selectorFor(image),
+          label: image.getAttribute("alt")!.trim()
+        }));
     // Elements Tab reaches without a script, and a person could see and point at.
     case "focusable":
       return [

@@ -138,7 +138,13 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
       .filter(({ advisory }) => advisory)
       .map(({ ruleId }) => ruleId)
       .sort()
-  ).toEqual(["colour-only", "empty-heading", "failure-not-announced", "status-not-announced"]);
+  ).toEqual([
+    "colour-only",
+    "empty-heading",
+    "failure-not-announced",
+    "status-not-announced",
+    "text-in-image"
+  ]);
   for (const finding of sweepFindings) {
     expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
     expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();
@@ -280,8 +286,11 @@ test("the portable reader announces the demo page's markup as HTML-AAM maps it",
 
     // Only the page's own header is a banner; the project card's <header> is inside an <article>.
     expect(paths("banner"), labPage.url).toEqual(["html > body > header"]);
-    // The logo in the heading has alt="", so only the chart is an image.
-    expect(paths("image"), labPage.url).toEqual(["#usage-chart"]);
+    // The logo in the heading has alt="", so only the chart is an image, and on the demo page the
+    // banner drawn as an image of its words.
+    expect(paths("image"), labPage.url).toEqual(
+      labPage === contract.pages.fixed ? ["#usage-chart"] : ["#upgrade-banner", "#usage-chart"]
+    );
     // The breadcrumb's current page is an <a> without href: read as text, not as a link.
     expect(paths("link"), labPage.url).not.toContain(
       "html > body > main > nav > ol > li:nth-of-type(2) > a"

@@ -124,6 +124,14 @@
       "concept": "use-of-color",
       "check": "Visual (Playwright): compare each item with its like neighbours",
       "sweepFinding": "colour-only"
+    },
+    {
+      "id": "text-image-banner",
+      "title": "The upgrade banner is an image of its words",
+      "whoItHurts": "People who enlarge text, change its colours or translate the page cannot do it to these words.",
+      "concept": "images-of-text",
+      "check": "Visual (Playwright): an image shaped like a line of text, drawn in two flat colours",
+      "sweepFinding": "text-in-image"
     }
   ]
 }

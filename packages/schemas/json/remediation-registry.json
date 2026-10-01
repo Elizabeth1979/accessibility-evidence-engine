@@ -181,6 +181,40 @@
       ]
     },
     {
+      "id": "images-of-text",
+      "title": "Text shown as text, not as an image of it",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.4.5",
+          "title": "Images of Text",
+          "level": "AA",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/images-of-text.html"
+        }
+      ],
+      "patterns": ["image-labeling"],
+      "applicability": "Images that show words a page could set as text: banners, headings, buttons and promotions. Logos are exempt.",
+      "requiredEvidence": ["full-page-screenshot", "dom-snapshot"],
+      "deterministicDetection": [
+        "Select images shaped like a line of text (at least 2.5 times as wide as tall, 16 pixels tall) whose name is 2 to 8 words, as a heading, button or slogan is, leaving out logos and images named as a photograph, chart, diagram, map, screenshot or icon.",
+        "Flag, as advisory, a selected image whose screenshot is drawn mostly in two flat colours, as words on a plain background are."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Whether the image's words are pixels is for a person until a specialist that reads the image is allowlisted for it.",
+        "outputs": []
+      },
+      "verification": [
+        "Replace the image with real text styled with CSS, and confirm it resizes to 200% and keeps its look.",
+        "If the image must stay (a logo, or text whose exact look is essential), keep its words in the alt text."
+      ]
+    },
+    {
       "id": "heading-structure",
       "title": "Visual and semantic heading structure",
       "implementationStatus": "partial",

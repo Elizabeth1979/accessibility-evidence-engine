@@ -55,6 +55,18 @@ const defects = {
   },
   // Checked by the archive handler below: focus is left on the hidden button.
   "focus-lost-after-archive": () => {},
+  // The same words, drawn as pixels in an image.
+  "text-image-banner": () => {
+    const banner = document.querySelector("#upgrade-banner");
+    const image = document.createElement("img");
+    image.id = banner.id;
+    image.className = banner.className;
+    image.src = "test-case-banner.svg";
+    image.alt = banner.textContent;
+    image.width = 480;
+    image.height = 96;
+    banner.replaceWith(image);
+  },
   // Only its colour says storage is over the limit.
   "colour-only-over-limit": () => {
     document.querySelector("#storage-limit strong").remove();
