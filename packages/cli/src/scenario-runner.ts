@@ -485,6 +485,15 @@ const SWEEP_FINDING_TEXT: Record<
     fix: 'Show the message inside a live region that is on the page before the message appears: role="status" for a confirmation or progress, role="alert" for an error that needs attention now.',
     area: "semantics",
     advisory: true
+  },
+  "failure-not-announced": {
+    title: "A request fails, and nobody is told",
+    expected: "When the action fails, the page says so, and a screen reader says it too.",
+    impact:
+      "Everyone believes the action worked, and screen-reader users have nothing on the page that could tell them otherwise.",
+    fix: 'Show what failed and what to do next, inside a live region that is on the page before the failure: role="alert" for an error that needs attention now.',
+    area: "semantics",
+    advisory: true
   }
 };
 

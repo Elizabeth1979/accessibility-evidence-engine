@@ -131,7 +131,7 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 
 </details>
 
-### Advisory: reported, never blocks release (2)
+### Advisory: reported, never blocks release (3)
 
 <details>
 <summary><strong>A message appears, but is not announced</strong> · WCAG 4.1.3 · 1 element</summary>
@@ -143,6 +143,21 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 - `Project Alpha archived. You can restore it.` at `#action-status`
 
 **Fix:** Show the message inside a live region that is on the page before the message appears: role=&quot;status&quot; for a confirmation or progress, role=&quot;alert&quot; for an error that needs attention now.
+
+**Pattern:** [live-regions](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/live-regions.instructions.md) (a11y-skills)
+
+</details>
+
+<details>
+<summary><strong>A request fails, and nobody is told</strong> · WCAG 4.1.3 · 1 element</summary>
+
+**Problem:** Everyone believes the action worked, and screen-reader users have nothing on the page that could tell them otherwise.
+
+**Elements:**
+
+- `Sync settings` at `#sync-settings`
+
+**Fix:** Show what failed and what to do next, inside a live region that is on the page before the failure: role=&quot;alert&quot; for an error that needs attention now.
 
 **Pattern:** [live-regions](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/live-regions.instructions.md) (a11y-skills)
 

@@ -14,7 +14,8 @@ import { waitForQuietPage } from "./quiet-page";
  * - looks-like-heading: text styled like a heading that the accessibility tree does not expose as
  *   one, so the screen reader's heading key skips it;
  * - status-not-announced: text a press makes appear that a screen reader does not say, as it is
- *   in no live region and focus did not move to it.
+ *   in no live region and focus did not move to it;
+ * - failure-not-announced: a request a press sends fails, and the page shows and says nothing.
  */
 export type SweepFindingKind =
   | "pointer-only"
@@ -22,7 +23,8 @@ export type SweepFindingKind =
   | "activation-differs"
   | "focus-lost"
   | "looks-like-heading"
-  | "status-not-announced";
+  | "status-not-announced"
+  | "failure-not-announced";
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
@@ -31,7 +33,8 @@ export const SWEEP_FINDING_CONCEPTS = {
   "activation-differs": "keyboard-operation",
   "focus-lost": "focus-management",
   "looks-like-heading": "heading-structure",
-  "status-not-announced": "status-messages"
+  "status-not-announced": "status-messages",
+  "failure-not-announced": "status-messages"
 } as const satisfies Record<SweepFindingKind, string>;
 
 export interface SweepFinding {
@@ -92,6 +95,17 @@ export interface KeyboardPointerSweepCdpSession {
   detach(): Promise<void>;
 }
 
+export interface KeyboardPointerSweepRequest {
+  method(): string;
+  resourceType(): string;
+  failure(): { errorText: string } | null;
+}
+
+export interface KeyboardPointerSweepResponse {
+  status(): number;
+  request(): KeyboardPointerSweepRequest;
+}
+
 export interface KeyboardPointerSweepPage {
   context(): { newCDPSession(page: unknown): Promise<KeyboardPointerSweepCdpSession> };
   /** Playwright's page screenshot: the sweep cuts each Tab stop's frame from a viewport capture. */
@@ -111,6 +125,11 @@ export interface KeyboardPointerSweepPage {
     arg: Arg
   ): Promise<Result>;
   locator(selector: string): KeyboardPointerSweepLocator;
+  /** The requests a press sends are watched for one that fails. */
+  on(event: "response", listener: (response: KeyboardPointerSweepResponse) => void): unknown;
+  on(event: "requestfailed", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
+  off(event: "response", listener: (response: KeyboardPointerSweepResponse) => void): unknown;
+  off(event: "requestfailed", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
   keyboard: { press(key: string): Promise<void> };
   mouse: { move(x: number, y: number): Promise<void> };
 }
@@ -139,7 +158,7 @@ type ProbeRequest =
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
   | { mode: "watch-changes"; selector: string }
-  | { mode: "unsaid"; selector: string }
+  | { mode: "new-text"; selector: string }
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string }
@@ -171,6 +190,13 @@ interface HoverRule {
 interface PressableControl extends ProbedElement {
   key: "Enter" | "Space";
 }
+
+/**
+ * The text a press showed: how many of its new elements a screen reader says, and those it does
+ * not. Null when the press loaded a page or changed the control's own state, which a screen
+ * reader says itself.
+ */
+type NewText = { said: number; unsaid: ProbedElement[] } | null;
 
 interface ActivationOutcome {
   url: string;
@@ -523,8 +549,12 @@ async function pressControl(
   const findings: SweepFinding[] = [];
   const target = page.locator(control.selector);
   let loadedDocument = 0;
-  let focusLost = false;
-  let unannounced: ProbedElement[] = [];
+  // What the keyboard press did, read as it happens.
+  const pressed: { focusLost: boolean; newText: NewText; failedRequests: string[] } = {
+    focusLost: false,
+    newText: null,
+    failedRequests: []
+  };
   // Each press is read once the page has settled, so a result that comes a moment later, such as
   // a message after a request, counts the same for keyboard and mouse.
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
@@ -538,10 +568,12 @@ async function pressControl(
     },
     performKeyboardInteraction: async () => {
       await probe({ mode: "watch-changes", selector: control.selector });
-      await target.press(control.key);
-      await settle();
-      focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
-      unannounced = await probe<ProbedElement[]>({ mode: "unsaid", selector: control.selector });
+      pressed.failedRequests = await failedRequestsDuring(page, async () => {
+        await target.press(control.key);
+        await settle();
+      });
+      pressed.focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
+      pressed.newText = await probe<NewText>({ mode: "new-text", selector: control.selector });
     },
     captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
@@ -554,7 +586,7 @@ async function pressControl(
       )
     );
   }
-  if (focusLost) {
+  if (pressed.focusLost) {
     findings.push(
       sweepFinding(
         "focus-lost",
@@ -563,7 +595,8 @@ async function pressControl(
       )
     );
   }
-  for (const message of unannounced) {
+  const { newText, failedRequests } = pressed;
+  for (const message of newText?.unsaid ?? []) {
     findings.push(
       sweepFinding(
         "status-not-announced",
@@ -572,7 +605,52 @@ async function pressControl(
       )
     );
   }
+  // A message the page shows but does not say is reported above; here the page shows nothing.
+  if (failedRequests.length > 0 && newText?.said === 0 && newText.unsaid.length === 0) {
+    findings.push(
+      sweepFinding(
+        "failure-not-announced",
+        control,
+        `Pressing ${describeElement(control)} with ${control.key} sends a request that fails (${failedRequests.join("; ")}), and the page shows and says nothing about it.`
+      )
+    );
+  }
   return findings;
+}
+
+/**
+ * The requests that fail while `run` runs: an error status, or no response at all. Only requests a
+ * script sends count, as a save or a load does; a missing image is no action's result. A request
+ * the page cancelled, as a page load does to the requests still open, did not fail. Each is named
+ * by its method and outcome, never its address, which can carry personal data.
+ */
+async function failedRequestsDuring(
+  page: KeyboardPointerSweepPage,
+  run: () => Promise<void>
+): Promise<string[]> {
+  const failed: string[] = [];
+  const sentByScript = (request: KeyboardPointerSweepRequest) =>
+    request.resourceType() === "fetch" || request.resourceType() === "xhr";
+  const onResponse = (response: KeyboardPointerSweepResponse) => {
+    if (response.status() >= 400 && sentByScript(response.request())) {
+      failed.push(`${response.request().method()}, status ${response.status()}`);
+    }
+  };
+  const onFailed = (request: KeyboardPointerSweepRequest) => {
+    const cancelled = /ERR_ABORTED|NS_BINDING_ABORTED|cancelled/i.test(
+      request.failure()?.errorText ?? ""
+    );
+    if (sentByScript(request) && !cancelled) failed.push(`${request.method()}, no response`);
+  };
+  page.on("response", onResponse);
+  page.on("requestfailed", onFailed);
+  try {
+    await run();
+  } finally {
+    page.off("response", onResponse);
+    page.off("requestfailed", onFailed);
+  }
+  return failed;
 }
 
 function sweepFinding(
@@ -635,7 +713,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
   // Text compared across a press, as the page shows it or as its nodes hold it, which differ in
   // spacing and in case a style transforms.
   const normalized = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
-  // What a press changed, recorded from just before it; "unsaid" reads and ends it.
+  // What a press changed, recorded from just before it; "new-text" reads and ends it.
   const watchKey = Symbol.for("aee.sweep.watch-changes");
   interface ChangeWatch {
     url: string;
@@ -813,16 +891,14 @@ function runSweepProbe(request: ProbeRequest): unknown {
       };
       return null;
     }
-    // New text a press showed that a screen reader does not say. Nothing is judged when the press
-    // loaded a page or changed the control's own state, both of which a screen reader says. Text is
-    // said when it is in a live region that was there before (or an alert, which is said as it is
-    // added) or focus moved to it. Controls are left out, as their text is their name, and so are
-    // dialogs, whose focus is a check of its own.
-    case "unsaid": {
+    // The text a press showed (see NewText). Text is said when it is in a live region that was
+    // there before (or an alert, which is said as it is added) or focus moved to it. Controls are
+    // left out, as their text is their name, and so are dialogs, whose focus is a check of its own.
+    case "new-text": {
       const watch = store[watchKey];
       delete store[watchKey];
       // No watch: the press loaded another document.
-      if (!watch) return [];
+      if (!watch) return null;
       watch.observer.disconnect();
       const control = document.querySelector(request.selector);
       const skipped =
@@ -831,7 +907,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
         location.href !== watch.url ||
         JSON.stringify(statesOf(control)) !== JSON.stringify(watch.states)
       ) {
-        return [];
+        return null;
       }
       const active = document.activeElement;
       const saidAt = (element: Element) =>
@@ -865,10 +941,13 @@ function runSweepProbe(request: ProbeRequest): unknown {
       // toast that also holds an Undo button.
       const said = (element: Element) =>
         saidAt(element) || textParts(element).every(({ parent }) => saidAt(parent));
-      return shown
-        .filter((element) => !said(element))
-        .slice(0, 5)
-        .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }));
+      return {
+        said: shown.filter(said).length,
+        unsaid: shown
+          .filter((element) => !said(element))
+          .slice(0, 5)
+          .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }))
+      };
     }
     // Identifies the loaded document, so a check can tell whether a press loaded another one.
     case "document":

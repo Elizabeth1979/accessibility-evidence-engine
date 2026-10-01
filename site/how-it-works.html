@@ -543,6 +543,12 @@
                         that no page load or change in the control&#39;s own state (expanded,
                         pressed, checked) explains.
                       </li>
+                      <li>
+                        Record the requests a script sends during each press, and flag, as advisory,
+                        a press whose request fails (an error status, or no response; a request the
+                        page cancels does not count) while the page shows and says nothing new.
+                        Requests are named by method and outcome, never by address.
+                      </li>
                     </ul>
                   </td>
                   <td class="registry-ai">
@@ -561,6 +567,10 @@
                       <li>
                         With a screen reader, confirm the message is said once, and focus stays
                         where it was.
+                      </li>
+                      <li>
+                        Make the request fail again and confirm the page says what failed and what
+                        to do next.
                       </li>
                     </ul>
                   </td>

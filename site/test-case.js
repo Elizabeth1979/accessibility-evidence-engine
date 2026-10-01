@@ -55,6 +55,8 @@ const defects = {
   },
   // Checked by the archive handler below: focus is left on the hidden button.
   "focus-lost-after-archive": () => {},
+  // Checked by the sync handler below: a failed sync shows and says nothing.
+  "silent-sync-failure": () => {},
   // The messages still show, but in a plain paragraph a screen reader does not say.
   "silent-status-message": () => {
     document.querySelector("#action-status").removeAttribute("role");
@@ -98,4 +100,10 @@ document.querySelector("#toggle-digest").addEventListener("click", (event) => {
   button.setAttribute("aria-pressed", String(enabled));
   document.querySelector("#digest-state").textContent = enabled ? "Enabled" : "Disabled";
   status.textContent = `Weekly digest ${enabled ? "enabled" : "disabled"}.`;
+});
+// The lab has no server, so a sync always fails, as a save does when the network drops.
+document.querySelector("#sync-settings").addEventListener("click", async () => {
+  const response = await fetch("api/sync-settings").catch(() => undefined);
+  if (response?.ok || applied.has("silent-sync-failure")) return;
+  status.textContent = "Settings could not be synced. Check your connection and try again.";
 });

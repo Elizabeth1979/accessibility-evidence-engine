@@ -637,3 +637,69 @@ test("the sweep reports a message a press shows only when a screen reader does n
   ]);
   expect(result.findings[0]?.summary).toContain("Pressing “Copy link” with Enter shows this text");
 });
+
+test("the sweep reports a request a press sends that fails when the page shows and says nothing", async ({
+  page
+}) => {
+  const html = `<!doctype html>
+<html lang="en">
+  <head><title>Failures</title></head>
+  <body>
+    <main>
+      <h1>Failures</h1>
+      <button id="silent" type="button">Save</button>
+      <button id="offline" type="button">Upload</button>
+      <button id="alerted" type="button">Send</button>
+      <button id="shown" type="button">Publish</button>
+      <p id="plain"></p>
+      <button id="image" type="button">Preview</button>
+      <button id="succeeds" type="button">Refresh</button>
+    </main>
+    <script>
+      const on = (id, handler) => document.getElementById(id).addEventListener("click", handler);
+      const send = (path) => fetch(path).then((response) => response.ok, () => false);
+      on("silent", () => send("/api/broken"));
+      // Nothing listens on port 9, so the request gets no response at all.
+      on("offline", () => send("http://127.0.0.1:9/api/upload"));
+      on("alerted", async () => {
+        if (await send("/api/broken")) return;
+        document.querySelector("main").insertAdjacentHTML("beforeend", '<p role="alert">Could not send.</p>');
+      });
+      on("shown", async () => {
+        if (!(await send("/api/broken"))) document.getElementById("plain").textContent = "Could not publish.";
+      });
+      // A missing image is no action's result.
+      on("image", () => {
+        const image = new Image();
+        image.alt = "";
+        image.src = "/missing.png";
+        document.querySelector("main").append(image);
+      });
+      on("succeeds", () => send("/api/fine"));
+    </script>
+  </body>
+</html>`;
+  const server = await startHtmlServer((request, response) => {
+    if (request.url === "/") response.writeHead(200, { "content-type": "text/html" }).end(html);
+    else if (request.url === "/api/fine") response.writeHead(204).end();
+    else response.writeHead(request.url === "/api/broken" ? 500 : 404).end();
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: `${server.origin}/`,
+      activateControls: true
+    });
+
+    // An alert says the failure; a message the page shows but does not say is its own finding.
+    expect(result.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
+      { kind: "failure-not-announced", selector: "#silent" },
+      { kind: "failure-not-announced", selector: "#offline" },
+      { kind: "status-not-announced", selector: "#plain" }
+    ]);
+    expect(result.findings[0]?.summary).toContain("(GET, status 500)");
+    expect(result.findings[1]?.summary).toContain("(GET, no response)");
+  } finally {
+    await server.close();
+  }
+});
