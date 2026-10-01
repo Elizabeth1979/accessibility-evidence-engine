@@ -564,3 +564,76 @@ test("a sweep whose Tab reaches nothing on a page with links and buttons decides
     await site.close();
   }
 });
+
+test("the sweep reports a message a press shows only when a screen reader does not say it", async ({
+  page
+}) => {
+  const html = `<!doctype html>
+<html lang="en">
+  <head><title>Messages</title></head>
+  <body>
+    <main>
+      <h1>Messages</h1>
+      <button id="into-status" type="button">Save draft</button>
+      <p id="status" role="status"></p>
+      <button id="into-paragraph" type="button">Copy link</button>
+      <p id="plain"></p>
+      <button id="later" type="button">Sync</button>
+      <p id="later-note"></p>
+      <button id="new-region" type="button">Share</button>
+      <button id="new-alert" type="button">Delete</button>
+      <button id="disclosure" type="button" aria-expanded="false">More</button>
+      <p id="more" hidden>Extra settings live here.</p>
+      <button id="to-message" type="button">Check</button>
+      <p id="result" tabindex="-1"></p>
+      <button id="show-hidden" type="button">Load</button>
+      <p id="hidden-note" hidden>Three items loaded.</p>
+      <button id="toast" type="button">Archive</button>
+      <button id="redraw" type="button">Refresh</button>
+      <ul id="list"><li>First</li><li>Second</li></ul>
+    </main>
+    <script>
+      const on = (id, handler) => document.getElementById(id).addEventListener("click", handler);
+      const added = (html) => document.querySelector("main").insertAdjacentHTML("beforeend", html);
+      on("into-status", () => (document.getElementById("status").textContent = "Draft saved."));
+      on("into-paragraph", () => (document.getElementById("plain").textContent = "Link copied."));
+      on("later", () =>
+        setTimeout(() => (document.getElementById("later-note").textContent = "Synced."), 100)
+      );
+      on("new-region", () => added('<p id="shared" role="status">Shared with the team.</p>'));
+      on("new-alert", () => added('<p role="alert">Could not delete.</p>'));
+      on("disclosure", (event) => {
+        event.currentTarget.setAttribute("aria-expanded", "true");
+        document.getElementById("more").hidden = false;
+      });
+      on("to-message", () => {
+        const result = document.getElementById("result");
+        result.textContent = "All checks passed.";
+        result.focus();
+      });
+      on("show-hidden", () => (document.getElementById("hidden-note").hidden = false));
+      on("toast", () =>
+        added('<div class="toast"><p role="alert">Archived.</p><button type="button">Undo</button></div>')
+      );
+      // Drawn again with the same text, as a framework re-render does: nothing new to say.
+      on("redraw", () => {
+        document.getElementById("list").innerHTML = "<li>First</li><li>Second</li>";
+      });
+    </script>
+  </body>
+</html>`;
+  const url = `data:text/html,${encodeURIComponent(html)}`;
+  const result = await sweepKeyboardAndPointer({ page, url, activateControls: true });
+
+  // Said: a live region that was there before, an alert (also inside a toast with a button), a
+  // disclosure that says it expanded, and a message focus moved to. Nothing new: a list drawn again
+  // with the same text. Not said: a plain paragraph, even a moment later, a region added with its
+  // text, and a paragraph that was hidden.
+  expect(result.findings.map(({ kind, selector, label }) => ({ kind, selector, label }))).toEqual([
+    { kind: "status-not-announced", selector: "#plain", label: "Link copied." },
+    { kind: "status-not-announced", selector: "#later-note", label: "Synced." },
+    { kind: "status-not-announced", selector: "#shared", label: "Shared with the team." },
+    { kind: "status-not-announced", selector: "#hidden-note", label: "Three items loaded." }
+  ]);
+  expect(result.findings[0]?.summary).toContain("Pressing “Copy link” with Enter shows this text");
+});

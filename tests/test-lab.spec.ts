@@ -126,9 +126,12 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
   expect(findings.map(({ ruleId }) => ruleId).sort()).toEqual(
     [...expectedAxeRules, ...expectedSweepKinds].sort()
   );
-  expect(findings.filter(({ advisory }) => advisory).map(({ ruleId }) => ruleId)).toEqual([
-    "empty-heading"
-  ]);
+  expect(
+    findings
+      .filter(({ advisory }) => advisory)
+      .map(({ ruleId }) => ruleId)
+      .sort()
+  ).toEqual(["empty-heading", "status-not-announced"]);
   for (const finding of sweepFindings) {
     expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
     expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();
@@ -246,8 +249,11 @@ test("aee run presses no control unless the journey allows activate-page-control
     ["focus", "hover"],
     testInfo
   );
-  // Lost focus is found by pressing Archive, so without the permission it cannot be found.
-  const withoutPressing = expectedSweepKinds.filter((kind) => kind !== "focus-lost");
+  // Lost focus and the silent message are found by pressing Archive, so without the permission
+  // neither can be found.
+  const withoutPressing = expectedSweepKinds.filter(
+    (kind) => kind !== "focus-lost" && kind !== "status-not-announced"
+  );
   expect(activated).toEqual([]);
   expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual(withoutPressing.sort());
 });

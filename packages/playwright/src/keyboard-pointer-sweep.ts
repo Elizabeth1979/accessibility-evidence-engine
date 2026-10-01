@@ -12,10 +12,17 @@ import { waitForQuietPage } from "./quiet-page";
  * - activation-differs: pressing a control by keyboard does not do what clicking it does;
  * - focus-lost: after pressing a control by keyboard, focus is on nothing visible;
  * - looks-like-heading: text styled like a heading that the accessibility tree does not expose as
- *   one, so the screen reader's heading key skips it.
+ *   one, so the screen reader's heading key skips it;
+ * - status-not-announced: text a press makes appear that a screen reader does not say, as it is
+ *   in no live region and focus did not move to it.
  */
 export type SweepFindingKind =
-  "pointer-only" | "hover-only" | "activation-differs" | "focus-lost" | "looks-like-heading";
+  | "pointer-only"
+  | "hover-only"
+  | "activation-differs"
+  | "focus-lost"
+  | "looks-like-heading"
+  | "status-not-announced";
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
@@ -23,7 +30,8 @@ export const SWEEP_FINDING_CONCEPTS = {
   "hover-only": "hover-focus-equivalence",
   "activation-differs": "keyboard-operation",
   "focus-lost": "focus-management",
-  "looks-like-heading": "heading-structure"
+  "looks-like-heading": "heading-structure",
+  "status-not-announced": "status-messages"
 } as const satisfies Record<SweepFindingKind, string>;
 
 export interface SweepFinding {
@@ -130,6 +138,8 @@ type ProbeRequest =
   | { mode: "visible"; selector: string }
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
+  | { mode: "watch-changes"; selector: string }
+  | { mode: "unsaid"; selector: string }
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string }
@@ -173,16 +183,19 @@ export async function sweepKeyboardAndPointer(
   options: KeyboardPointerSweepOptions
 ): Promise<KeyboardPointerSweepResult> {
   const { page, url, onStep } = options;
-  const probe = async <T>(request: ProbeRequest): Promise<T> => {
+  // A press can load another page while the page is being read: read the page it loaded.
+  const onLoadedPage = async <T>(read: () => Promise<T>): Promise<T> => {
     try {
-      return (await page.evaluate(runSweepProbe, request)) as T;
+      return await read();
     } catch (error) {
-      // A press can load another page while the page is being read: read the page it loaded.
       if (page.isClosed() || !/Execution context was destroyed/.test(String(error))) throw error;
       await page.waitForLoadState();
-      return (await page.evaluate(runSweepProbe, request)) as T;
+      return read();
     }
   };
+  const probe = <T>(request: ProbeRequest): Promise<T> =>
+    onLoadedPage(async () => (await page.evaluate(runSweepProbe, request)) as T);
+  const settle = () => onLoadedPage(() => waitForQuietPage(page));
 
   await loadAfresh(page, url);
   const findings: SweepFinding[] = (
@@ -251,7 +264,7 @@ export async function sweepKeyboardAndPointer(
         ...(await timed(
           onStep,
           () => `Press ${describeElement(control)} with ${control.key}, then click it`,
-          () => pressControl(page, probe, url, control)
+          () => pressControl(page, probe, settle, url, control)
         ))
       );
     }
@@ -503,6 +516,7 @@ async function revealedOnFocus(
 async function pressControl(
   page: KeyboardPointerSweepPage,
   probe: <T>(request: ProbeRequest) => Promise<T>,
+  settle: () => Promise<void>,
   url: string,
   control: PressableControl
 ): Promise<SweepFinding[]> {
@@ -510,15 +524,24 @@ async function pressControl(
   const target = page.locator(control.selector);
   let loadedDocument = 0;
   let focusLost = false;
+  let unannounced: ProbedElement[] = [];
+  // Each press is read once the page has settled, so a result that comes a moment later, such as
+  // a message after a request, counts the same for keyboard and mouse.
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
       await loadAfresh(page, url);
       loadedDocument = await probe<number>({ mode: "document" });
     },
-    performPointerInteraction: () => target.click(),
+    performPointerInteraction: async () => {
+      await target.click();
+      await settle();
+    },
     performKeyboardInteraction: async () => {
+      await probe({ mode: "watch-changes", selector: control.selector });
       await target.press(control.key);
+      await settle();
       focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
+      unannounced = await probe<ProbedElement[]>({ mode: "unsaid", selector: control.selector });
     },
     captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
@@ -537,6 +560,15 @@ async function pressControl(
         "focus-lost",
         control,
         `After pressing ${control.key}, focus is left on nothing visible.`
+      )
+    );
+  }
+  for (const message of unannounced) {
+    findings.push(
+      sweepFinding(
+        "status-not-announced",
+        message,
+        `Pressing ${describeElement(control)} with ${control.key} shows this text, but a screen reader does not say it: it is in no live region that was on the page before, and focus did not move to it.`
       )
     );
   }
@@ -592,6 +624,28 @@ function runSweepProbe(request: ProbeRequest): unknown {
     selectors
       .map((selector) => document.querySelector(selector))
       .filter((element): element is Element => element !== null);
+  // A control's own state, which a screen reader says as it changes: expanded, pressed, checked.
+  const statesOf = (element: Element | null): Record<string, string | null> =>
+    Object.fromEntries(
+      ["aria-expanded", "aria-pressed", "aria-checked", "open"].map((name) => [
+        name,
+        element?.getAttribute(name) ?? null
+      ])
+    );
+  // Text compared across a press, as the page shows it or as its nodes hold it, which differ in
+  // spacing and in case a style transforms.
+  const normalized = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+  // What a press changed, recorded from just before it; "unsaid" reads and ends it.
+  const watchKey = Symbol.for("aee.sweep.watch-changes");
+  interface ChangeWatch {
+    url: string;
+    text: string;
+    states: Record<string, string | null>;
+    liveRegions: Element[];
+    changed: Set<Element>;
+    observer: MutationObserver;
+  }
+  const store = globalThis as unknown as Record<symbol, ChangeWatch | undefined>;
 
   switch (request.mode) {
     case "active": {
@@ -711,13 +765,110 @@ function runSweepProbe(request: ProbeRequest): unknown {
             : "Enter"
         }));
     }
-    case "outcome": {
-      const target = document.querySelector(request.selector);
-      const states: Record<string, string | null> = {};
-      for (const name of ["aria-expanded", "aria-pressed", "aria-checked", "open"]) {
-        states[name] = target?.getAttribute(name) ?? null;
+    case "outcome":
+      return {
+        url: location.href,
+        text: document.body.innerText,
+        states: statesOf(document.querySelector(request.selector))
+      };
+    case "watch-changes": {
+      const changed = new Set<Element>();
+      // An attribute change shows new text only by showing an element that was hidden; on one
+      // already shown, such as the body getting a class, it changes no text.
+      const shown = new WeakSet([...document.body.querySelectorAll("*")].filter(isVisible));
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.type === "attributes") {
+            if (record.target instanceof Element && !shown.has(record.target)) {
+              changed.add(record.target);
+            }
+            continue;
+          }
+          const nodes = record.type === "childList" ? [...record.addedNodes] : [record.target];
+          for (const node of nodes) {
+            const element = node instanceof Element ? node : node.parentElement;
+            if (element) changed.add(element);
+          }
+        }
+      });
+      observer.observe(document.body, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+        attributes: true
+      });
+      store[watchKey] = {
+        url: location.href,
+        text: normalized(document.body.innerText),
+        states: statesOf(document.querySelector(request.selector)),
+        // A screen reader says a change inside a live region only if the region was on the page
+        // before the change; a region added with its text is said by some and not by others.
+        liveRegions: [
+          ...document.querySelectorAll(
+            '[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], output'
+          )
+        ],
+        changed,
+        observer
+      };
+      return null;
+    }
+    // New text a press showed that a screen reader does not say. Nothing is judged when the press
+    // loaded a page or changed the control's own state, both of which a screen reader says. Text is
+    // said when it is in a live region that was there before (or an alert, which is said as it is
+    // added) or focus moved to it. Controls are left out, as their text is their name, and so are
+    // dialogs, whose focus is a check of its own.
+    case "unsaid": {
+      const watch = store[watchKey];
+      delete store[watchKey];
+      // No watch: the press loaded another document.
+      if (!watch) return [];
+      watch.observer.disconnect();
+      const control = document.querySelector(request.selector);
+      const skipped =
+        'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]';
+      if (
+        location.href !== watch.url ||
+        JSON.stringify(statesOf(control)) !== JSON.stringify(watch.states)
+      ) {
+        return [];
       }
-      return { url: location.href, text: document.body.innerText, states };
+      const active = document.activeElement;
+      const saidAt = (element: Element) =>
+        element.closest('[role="alert"]') !== null ||
+        watch.liveRegions.some((region) => region.isConnected && region.contains(element)) ||
+        (active !== null &&
+          active !== document.body &&
+          (element.contains(active) || active.contains(element)));
+      // The visible text of an element outside any control, piece by piece.
+      const textParts = (element: Element) => {
+        const parts: Array<{ text: string; parent: Element }> = [];
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          const text = node.textContent?.trim() ?? "";
+          const parent = node.parentElement;
+          if (!text || !parent || parent.closest(skipped) || !isVisible(parent)) continue;
+          parts.push({ text, parent });
+        }
+        return parts;
+      };
+      const fresh = [...watch.changed].filter((element) => {
+        if (!element.isConnected || control?.contains(element) || element.closest(skipped)) {
+          return false;
+        }
+        return textParts(element).some(({ text }) => !watch.text.includes(normalized(text)));
+      });
+      const shown = fresh.filter(
+        (element) => !fresh.some((other) => other !== element && other.contains(element))
+      );
+      // Said when the element is, or when every piece of its text is, such as an alert inside a
+      // toast that also holds an Undo button.
+      const said = (element: Element) =>
+        saidAt(element) || textParts(element).every(({ parent }) => saidAt(parent));
+      return shown
+        .filter((element) => !said(element))
+        .slice(0, 5)
+        .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }));
     }
     // Identifies the loaded document, so a check can tell whether a press loaded another one.
     case "document":

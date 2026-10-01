@@ -54,7 +54,11 @@ const defects = {
     previous.replaceWith(card);
   },
   // Checked by the archive handler below: focus is left on the hidden button.
-  "focus-lost-after-archive": () => {}
+  "focus-lost-after-archive": () => {},
+  // The messages still show, but in a plain paragraph a screen reader does not say.
+  "silent-status-message": () => {
+    document.querySelector("#action-status").removeAttribute("role");
+  }
 };
 
 const fixed = new URLSearchParams(location.search).get("case") === "fixed";

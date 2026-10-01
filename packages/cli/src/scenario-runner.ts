@@ -476,6 +476,15 @@ const SWEEP_FINDING_TEXT: Record<
     fix: "Make it a real heading (h2 to h6) at the level the design shows. A summary is a button, so a heading inside it is lost: put the heading before the details element, or around the whole disclosure.",
     area: "semantics",
     advisory: true
+  },
+  "status-not-announced": {
+    title: "A message appears, but is not announced",
+    expected: "A screen reader says the message as it appears, and focus stays where it was.",
+    impact:
+      "Screen-reader users press the control and hear nothing, so they do not know whether it worked.",
+    fix: 'Show the message inside a live region that is on the page before the message appears: role="status" for a confirmation or progress, role="alert" for an error that needs attention now.',
+    area: "semantics",
+    advisory: true
   }
 };
 
