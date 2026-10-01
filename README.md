@@ -86,12 +86,14 @@ no model named, nothing is sent and the report says how to turn it on.
 Which model is worth it: `npm run score:ai` scores each model's names for the test lab's nameless
 elements against the names the fixed page gives them (the share of words in common), and the
 AI score workflow runs it on a GitHub runner. The free local model (`gemma4:e4b`, no key, nothing
-leaves the machine) scored 48% at about a minute per answer. It is worth it for icon buttons and
-links: "Archive project" and "Get help" name the right action, though not which project or topic.
-It is not worth it for image alt text: one run described the chart well, the next pasted the text
-beside it. Claude has not been scored yet; add an `ANTHROPIC_API_KEY` secret and run the AI score
-workflow, and its score prints beside the free model's. Three names make a sanity check, not a
-benchmark.
+leaves the machine) scored 48% and 50% in two runs, at about a minute per answer. It is worth it
+for icon buttons and links: "Archive project" and "Get help" name the right action, though not
+which project or topic. It is not worth it for image alt text: one run described the chart well,
+the other pasted the text beside it. Read the answers, not only the number: word match cannot tell
+an alt text that is right in other words from a wrong one, so the good chart description scored
+21% and the pasted text 15%. Claude has not been scored yet; add an `ANTHROPIC_API_KEY` secret and
+run the AI score workflow, and its score prints beside the free model's. Three names make a sanity
+check, not a benchmark.
 
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
