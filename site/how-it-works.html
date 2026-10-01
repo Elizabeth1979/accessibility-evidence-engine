@@ -390,6 +390,52 @@
                 </tr>
                 <tr>
                   <th scope="row">
+                    <strong>Information not conveyed by colour alone</strong>
+                    <span class="registry-status partial">Partial</span>
+                    <span
+                      ><a href="https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html"
+                        >WCAG 1.4.1</a
+                      >,
+                      <a href="https://dequeuniversity.com/rules/axe/4.13/link-in-text-block"
+                        >axe-core link-in-text-block</a
+                      ></span
+                    >
+                  </th>
+                  <td>
+                    <ul>
+                      <li>Use axe-core&#39;s link-in-text-block for links in running text.</li>
+                      <li>
+                        Flag, as advisory, one of a row of like items (list items, links, buttons,
+                        tabs, options, menu items) that differs from its matching neighbours in
+                        colour only: no difference in weight, size, underline, border, shape, an
+                        icon or text added by a style, no fill or line that appears, and no change
+                        in lightness of 3:1 (technique G183). Skip a row whose other items share one
+                        text the item lacks, and a disabled item.
+                      </li>
+                    </ul>
+                  </td>
+                  <td class="registry-ai">
+                    <strong>Deterministic only</strong
+                    ><span
+                      >Whether the colour carries meaning is for a person until a specialist that
+                      sees the screenshot is allowlisted for it.</span
+                    >
+                  </td>
+                  <td>
+                    <ul>
+                      <li>
+                        Compare the item with its neighbours in greyscale: it still stands out by
+                        its weight, underline, border, icon or text.
+                      </li>
+                      <li>
+                        Confirm a state such as the current page is also exposed to assistive
+                        technology, for example with aria-current.
+                      </li>
+                    </ul>
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">
                     <strong>Keyboard operation and activation</strong>
                     <span class="registry-status partial">Partial</span>
                     <span

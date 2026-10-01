@@ -293,6 +293,48 @@
       ]
     },
     {
+      "id": "use-of-color",
+      "title": "Information not conveyed by colour alone",
+      "implementationStatus": "partial",
+      "ruleKind": "aee-act-compatible",
+      "requirements": [
+        {
+          "standard": "WCAG",
+          "version": "2.2",
+          "requirementId": "1.4.1",
+          "title": "Use of Color",
+          "level": "A",
+          "relationship": "primary",
+          "url": "https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html"
+        },
+        {
+          "standard": "axe-core",
+          "version": "4.13",
+          "requirementId": "link-in-text-block",
+          "title": "Links must be distinguishable without relying on color",
+          "relationship": "detection",
+          "url": "https://dequeuniversity.com/rules/axe/4.13/link-in-text-block"
+        }
+      ],
+      "patterns": ["color-contrast"],
+      "applicability": "A state or meaning shown by colour: the current page or tab, a selected item, an error, a required field, a status, or a link in running text.",
+      "requiredEvidence": ["full-page-screenshot", "dom-snapshot", "accessibility-tree"],
+      "deterministicDetection": [
+        "Use axe-core's link-in-text-block for links in running text.",
+        "Flag, as advisory, one of a row of like items (list items, links, buttons, tabs, options, menu items) that differs from its matching neighbours in colour only: no difference in weight, size, underline, border, shape, an icon or text added by a style, no fill or line that appears, and no change in lightness of 3:1 (technique G183). Skip a row whose other items share one text the item lacks, and a disabled item."
+      ],
+      "ai": {
+        "allowed": false,
+        "required": false,
+        "purpose": "Whether the colour carries meaning is for a person until a specialist that sees the screenshot is allowlisted for it.",
+        "outputs": []
+      },
+      "verification": [
+        "Compare the item with its neighbours in greyscale: it still stands out by its weight, underline, border, icon or text.",
+        "Confirm a state such as the current page is also exposed to assistive technology, for example with aria-current."
+      ]
+    },
+    {
       "id": "keyboard-operation",
       "title": "Keyboard operation and activation",
       "implementationStatus": "partial",

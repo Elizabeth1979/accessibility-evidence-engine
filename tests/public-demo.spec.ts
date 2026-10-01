@@ -217,9 +217,10 @@ test("generated remediation table stays readable and identifies AI boundaries", 
 
   const registry = page.getByRole("region", { name: "Remediation registry table" });
   await expect(registry.getByRole("table")).toBeVisible();
-  await expect(registry.getByRole("row")).toHaveCount(9);
+  await expect(registry.getByRole("row")).toHaveCount(10);
   await expect(registry.getByText("Missing or unsuitable accessible name")).toBeVisible();
   await expect(registry.getByText("Status messages are announced")).toBeVisible();
+  await expect(registry.getByText("Information not conveyed by colour alone")).toBeVisible();
   await expect(registry.getByText("Text and component color contrast")).toBeVisible();
   await expect(registry.getByText("AI-assisted", { exact: true })).toHaveCount(4);
   await expect(page.getByRole("link", { name: "JSON registry" })).toHaveAttribute(

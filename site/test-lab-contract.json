@@ -116,6 +116,14 @@
       "concept": "status-messages",
       "check": "Keyboard (Playwright): press each control, check a failed request is announced",
       "sweepFinding": "failure-not-announced"
+    },
+    {
+      "id": "colour-only-over-limit",
+      "title": "Storage over its limit is shown by colour alone",
+      "whoItHurts": "People who cannot tell red from the other text miss that storage is over the limit.",
+      "concept": "use-of-color",
+      "check": "Visual (Playwright): compare each item with its like neighbours",
+      "sweepFinding": "colour-only"
     }
   ]
 }

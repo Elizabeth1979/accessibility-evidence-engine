@@ -15,7 +15,9 @@ import { waitForQuietPage } from "./quiet-page";
  *   one, so the screen reader's heading key skips it;
  * - status-not-announced: text a press makes appear that a screen reader does not say, as it is
  *   in no live region and focus did not move to it;
- * - failure-not-announced: a request a press sends fails, and the page shows and says nothing.
+ * - failure-not-announced: a request a press sends fails, and the page shows and says nothing;
+ * - colour-only: one of a row of like items, such as links in a menu, stands out from the others
+ *   by colour alone.
  */
 export type SweepFindingKind =
   | "pointer-only"
@@ -24,7 +26,8 @@ export type SweepFindingKind =
   | "focus-lost"
   | "looks-like-heading"
   | "status-not-announced"
-  | "failure-not-announced";
+  | "failure-not-announced"
+  | "colour-only";
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
@@ -34,7 +37,8 @@ export const SWEEP_FINDING_CONCEPTS = {
   "focus-lost": "focus-management",
   "looks-like-heading": "heading-structure",
   "status-not-announced": "status-messages",
-  "failure-not-announced": "status-messages"
+  "failure-not-announced": "status-messages",
+  "colour-only": "use-of-color"
 } as const satisfies Record<SweepFindingKind, string>;
 
 export interface SweepFinding {
@@ -165,6 +169,7 @@ type ProbeRequest =
   | { mode: "blur" }
   | { mode: "start-at-top" }
   | { mode: "focusable" }
+  | { mode: "colour-only" }
   | { mode: "scroll-to"; x: number; y: number };
 
 /** A region of the viewport around a Tab stop, and the scroll position it was taken at. */
@@ -197,6 +202,15 @@ interface PressableControl extends ProbedElement {
  * reader says itself.
  */
 type NewText = { said: number; unsaid: ProbedElement[] } | null;
+
+/** An item that stands out from its like neighbours by colour alone. */
+interface ColourOnlyItem extends ProbedElement {
+  neighbours: number;
+  /** The colours that differ, as "property: its value instead of theirs". */
+  differences: string[];
+  /** The state the item is marked with, such as aria-current="page", when it has one. */
+  state?: string;
+}
 
 interface ActivationOutcome {
   url: string;
@@ -233,6 +247,18 @@ export async function sweepKeyboardAndPointer(
       `Styled like a heading (${fontSize}px, weight ${fontWeight}, against body text at ${bodyFontSize}px, weight ${bodyFontWeight}), but the accessibility tree does not expose it as a heading.`
     )
   );
+  for (const item of await probe<ColourOnlyItem[]>({ mode: "colour-only" })) {
+    const marked = item.state
+      ? ` It is marked ${item.state}, so a screen reader says it, but a person who cannot tell these colours apart does not see it.`
+      : "";
+    findings.push(
+      sweepFinding(
+        "colour-only",
+        item,
+        `Stands out from its ${item.neighbours} neighbours by colour alone (${item.differences.join("; ")}); no weight, underline, border, icon or other cue tells it apart.${marked}`
+      )
+    );
+  }
   const tabStops = await withCdpSession(page.context(), page, (session) =>
     collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep)
   );
@@ -998,6 +1024,190 @@ function runSweepProbe(request: ProbeRequest): unknown {
     case "scroll-to":
       scrollTo({ left: request.x, top: request.y, behavior: "instant" });
       return null;
+    // One of a row of like items (list items, links, buttons, tabs, options, menu items) that
+    // differs from all its neighbours, which match each other, in colour and in nothing else a
+    // person could see: weight, size, underline, border, shape, an icon or text added by a style,
+    // a fill or line that appears, or a change in lightness of 3:1.
+    // Two exceptions: a neighbourhood whose items share one text the item lacks, as "Active,
+    // Active, Inactive" pills do, says its difference in words; and a disabled item, dimmed, says
+    // its state to a screen reader and is a widely accepted convention.
+    case "colour-only": {
+      const items =
+        'li, a, button, [role="tab"], [role="option"], [role="menuitem"], [role="menuitemradio"], [role="radio"], [role="button"], [role="link"], [role="listitem"], [role="treeitem"]';
+      const colours = [
+        "color",
+        "background-color",
+        "border-top-color",
+        "border-right-color",
+        "border-bottom-color",
+        "border-left-color",
+        "outline-color",
+        "text-decoration-color",
+        "fill",
+        "stroke"
+      ];
+      const cues = [
+        "display",
+        "visibility",
+        "content",
+        "font-family",
+        "font-size",
+        "font-style",
+        "font-weight",
+        "letter-spacing",
+        "text-transform",
+        "text-decoration-line",
+        "text-decoration-style",
+        "border-top-style",
+        "border-right-style",
+        "border-bottom-style",
+        "border-left-style",
+        "border-top-width",
+        "border-right-width",
+        "border-bottom-width",
+        "border-left-width",
+        "border-top-left-radius",
+        "border-top-right-radius",
+        "border-bottom-left-radius",
+        "border-bottom-right-radius",
+        "outline-style",
+        "outline-width",
+        "background-image",
+        "list-style-type"
+      ];
+      // Any CSS colour, as the page paints it: a canvas resolves every syntax to red, green, blue
+      // and alpha.
+      const paint = document.createElement("canvas").getContext("2d", {
+        willReadFrequently: true
+      })!;
+      const rgba = (colour: string) => {
+        paint.clearRect(0, 0, 1, 1);
+        if (colour === "none") return [0, 0, 0, 0];
+        paint.fillStyle = colour;
+        paint.fillRect(0, 0, 1, 1);
+        return [...paint.getImageData(0, 0, 1, 1).data];
+      };
+      const luminance = ([red, green, blue]: number[]) => {
+        const [r, g, b] = [red!, green!, blue!].map((channel) => {
+          const value = channel / 255;
+          return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+      };
+      // A change a person sees without telling hues apart: 3:1 in lightness, the contrast WCAG's
+      // technique G183 asks of a link told apart from its text by colour.
+      const seenWithoutHue = (one: number[], other: number[]) => {
+        const [lighter, darker] = [luminance(one), luminance(other)].sort((a, b) => b - a);
+        return (lighter! + 0.05) / (darker! + 0.05) >= 3;
+      };
+      const withoutColours = (shadow: string) => shadow.replace(/rgba?\([^)]*\)/g, "");
+      const look = (item: Element) => {
+        const cue: unknown[] = [];
+        const colour: Array<{ name: string; value: string; paint: number[] }> = [];
+        for (const element of [item, ...item.querySelectorAll("*")]) {
+          cue.push(element.tagName);
+          for (const pseudo of [null, "::before", "::after"]) {
+            const style = getComputedStyle(element, pseudo);
+            if (pseudo && (style.content === "none" || style.content === "normal")) continue;
+            const painted = colours.map((name) => ({
+              name,
+              value: style.getPropertyValue(name),
+              paint: rgba(style.getPropertyValue(name))
+            }));
+            // A fill or a line that appears or goes, such as a border turning from transparent
+            // to blue, is a shape, not a colour.
+            cue.push(
+              pseudo,
+              cues.map((name) => style.getPropertyValue(name)),
+              painted.map(({ paint: [, , , alpha] }) => alpha! > 0),
+              withoutColours(style.boxShadow),
+              withoutColours(style.textShadow)
+            );
+            colour.push(
+              ...painted,
+              { name: "opacity", value: style.opacity, paint: [] },
+              { name: "box-shadow", value: style.boxShadow, paint: [] },
+              { name: "text-shadow", value: style.textShadow, paint: [] }
+            );
+          }
+        }
+        return {
+          cue: JSON.stringify(cue),
+          colour,
+          colourKey: JSON.stringify(colour.map(({ value }) => value))
+        };
+      };
+      const textOf = (element: Element) => (element as HTMLElement).innerText.trim();
+      const found: Array<{
+        selector: string;
+        label: string;
+        neighbours: number;
+        differences: string[];
+        state?: string;
+      }> = [];
+      for (const parent of document.querySelectorAll("body, body *")) {
+        const groups = new Map<string, Element[]>();
+        for (const child of parent.children) {
+          if (!child.matches(items) || !isVisible(child)) continue;
+          const key = `${child.tagName} ${child.getAttribute("role") ?? ""}`;
+          groups.set(key, [...(groups.get(key) ?? []), child]);
+        }
+        for (const group of groups.values()) {
+          if (group.length < 3) continue;
+          const looks = group.map(look);
+          group.forEach((item, index) => {
+            const others = looks.filter((_, other) => other !== index);
+            const usual = others[0]!;
+            if (
+              others.some(
+                ({ cue, colourKey }) => cue !== usual.cue || colourKey !== usual.colourKey
+              ) ||
+              looks[index]!.cue !== usual.cue ||
+              looks[index]!.colourKey === usual.colourKey
+            ) {
+              return;
+            }
+            const otherTexts = new Set(group.filter((other) => other !== item).map(textOf));
+            if (otherTexts.size === 1 && !otherTexts.has(textOf(item))) return;
+            if (item.matches(':disabled, [aria-disabled="true"]')) return;
+            if (item.querySelector(':disabled, [aria-disabled="true"]')) return;
+            const changed = looks[index]!.colour.flatMap((mine, at) => {
+              const theirs = usual.colour[at]!;
+              return mine.value === theirs.value ? [] : [{ mine, theirs }];
+            });
+            if (
+              changed.some(
+                ({ mine, theirs }) =>
+                  mine.paint.length > 0 &&
+                  mine.paint[3]! > 0 &&
+                  seenWithoutHue(mine.paint, theirs.paint)
+              )
+            ) {
+              return;
+            }
+            const differences = changed.map(
+              ({ mine, theirs }) => `${mine.name}: ${mine.value} instead of ${theirs.value}`
+            );
+            const marked = [item, ...item.querySelectorAll("*")]
+              .flatMap((element) =>
+                ["aria-current", "aria-selected", "aria-pressed", "aria-checked"].map((name) => {
+                  const value = element.getAttribute(name);
+                  return value && value !== "false" ? `${name}="${value}"` : "";
+                })
+              )
+              .find(Boolean);
+            found.push({
+              selector: selectorFor(item),
+              label: labelFor(item),
+              neighbours: group.length - 1,
+              differences: [...new Set(differences)].slice(0, 3),
+              ...(marked ? { state: marked } : {})
+            });
+          });
+        }
+      }
+      return found.slice(0, 10);
+    }
     // Elements Tab reaches without a script, and a person could see and point at.
     case "focusable":
       return [

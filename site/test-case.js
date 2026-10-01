@@ -55,6 +55,10 @@ const defects = {
   },
   // Checked by the archive handler below: focus is left on the hidden button.
   "focus-lost-after-archive": () => {},
+  // Only its colour says storage is over the limit.
+  "colour-only-over-limit": () => {
+    document.querySelector("#storage-limit strong").remove();
+  },
   // Checked by the sync handler below: a failed sync shows and says nothing.
   "silent-sync-failure": () => {},
   // The messages still show, but in a plain paragraph a screen reader does not say.
