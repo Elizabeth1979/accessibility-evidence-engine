@@ -3,6 +3,7 @@ import { PNG } from "pngjs";
 import { describeFocusedElement, withCdpSession, type CdpSession } from "./accessibility-tree";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
+import { waitForQuietPage } from "./quiet-page";
 
 /**
  * A sweep finds keyboard and pointer problems on a page without any authored steps:
@@ -134,6 +135,7 @@ type ProbeRequest =
   | { mode: "frame"; selector: string }
   | { mode: "blur" }
   | { mode: "start-at-top" }
+  | { mode: "focusable" }
   | { mode: "scroll-to"; x: number; y: number };
 
 /** A region of the viewport around a Tab stop, and the scroll position it was taken at. */
@@ -182,7 +184,7 @@ export async function sweepKeyboardAndPointer(
     }
   };
 
-  await page.goto(url);
+  await loadAfresh(page, url);
   const findings: SweepFinding[] = (
     await withCdpSession(page.context(), page, findHeadingLookalikes)
   ).map(({ selector, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) =>
@@ -195,6 +197,14 @@ export async function sweepKeyboardAndPointer(
   const tabStops = await withCdpSession(page.context(), page, (session) =>
     collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep)
   );
+  // Tab reaching nothing on a page with controls it reaches natively says the walk did not happen,
+  // not that every control is mouse-only, so the sweep decides nothing.
+  const focusable = tabStops.length ? 0 : await probe<number>({ mode: "focusable" });
+  if (focusable > 0) {
+    throw new Error(
+      `Tab reached nothing, though the page has ${focusable} ${focusable === 1 ? "control" : "controls"} the keyboard reaches without a script, such as links and buttons. Either the page was not ready or a script stops Tab, so which controls work with a mouse only is not decided; try the page by keyboard.`
+    );
+  }
   const stopSelectors = tabStops.map(({ selector }) => selector);
 
   for (const target of await pointerOnlyTargets(page, probe, url, stopSelectors, onStep)) {
@@ -312,13 +322,15 @@ async function walkComposite(
 }
 
 /**
- * Loads the page at its address again, as it first loaded. Going to an address with a #fragment
- * only scrolls to the fragment when the page is already there, keeping whatever a check changed,
- * so such an address is reloaded.
+ * Loads the page at its address again, as it first loaded, and waits for the app to draw it: a
+ * check that reads it before then sees an empty page. Going to an address with a #fragment only
+ * scrolls to the fragment when the page is already there, keeping whatever a check changed, so
+ * such an address is reloaded.
  */
 async function loadAfresh(page: KeyboardPointerSweepPage, url: string): Promise<void> {
   await page.goto(url);
   if (new URL(url).hash) await page.reload();
+  await waitForQuietPage(page);
 }
 
 async function readStyleSheetTexts(page: KeyboardPointerSweepPage): Promise<string[]> {
@@ -756,5 +768,20 @@ function runSweepProbe(request: ProbeRequest): unknown {
     case "scroll-to":
       scrollTo({ left: request.x, top: request.y, behavior: "instant" });
       return null;
+    // Elements Tab reaches without a script, and a person could see and point at.
+    case "focusable":
+      return [
+        ...document.querySelectorAll(
+          'a[href], area[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]'
+        )
+      ].filter(
+        (element) =>
+          element instanceof HTMLElement &&
+          element.tabIndex >= 0 &&
+          !element.matches(":disabled") &&
+          !element.closest("[inert]") &&
+          isVisible(element) &&
+          onPage(element)
+      ).length;
   }
 }

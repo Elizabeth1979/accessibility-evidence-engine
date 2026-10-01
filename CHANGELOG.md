@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Fixed
+
+- The keyboard and mouse sweep could report every control of a single-page app as "Works with a mouse only" ([#85](https://github.com/Elizabeth1979/accessibility-evidence-engine/issues/85)). It pressed Tab as soon as the page loaded, before the app had drawn it, so Tab reached nothing; it then listed the controls the app had drawn by then as never reached. On a real suite of 130 tests it happened on one page in a full run on a busy machine, and never when that test ran alone. The sweep now waits after each load, as a checkpoint does, for the DOM to be quiet (the capture policy's 250 ms pause, 3 seconds at most), and the wait is shared with the checkpoint rather than copied. If Tab still reaches nothing on a page with controls the keyboard reaches without a script, the sweep decides nothing instead of failing them all: the keyboard row reads "Needs review", with the reason.
+
 ### Changed
 
 - A Playwright test whose page another test already checked by keyboard and with the reader says "Checked in another test" in those rows, instead of "Not in this run". The fixture checks each page once per run, so on a real suite of 118 tests the PR comment read "Not in this run (111)", which looked like a gap though every page was checked. A test that did not pass, did not end on a web page, or has the checks off still reads "Not in this run", and its detail now says which. The report records why (`completeness.plannedChecks.skipped`), and a PR comment row lists results with the same verdict most common first.
