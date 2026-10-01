@@ -196,12 +196,23 @@ test("an allowlisted AI specialist names the icon-only controls, labelled AI, wi
   expect(ai("image-alt")?.suggestions).toMatchObject([
     { selector: "#usage-chart", classification: "informative" }
   ]);
+  // The sweep's colour-only and image-of-text findings get a reading of how they look, labelled.
+  expect(ai("colour-only")?.suggestions).toMatchObject([
+    { selector: "#storage-limit", label: "What the colour means", text: "Over the storage limit" }
+  ]);
+  expect(ai("text-in-image")?.suggestions).toMatchObject([
+    {
+      selector: "#upgrade-banner",
+      label: "Words in the image",
+      text: "Upgrade to Team for unlimited projects"
+    }
+  ]);
   // The search field is not icon-only, so the allowlist keeps it deterministic: no model call.
   expect(ai("label")).toMatchObject({ used: false, status: "available-if-needed" });
   expect(ai("label")?.notes?.join(" ")).toContain("not icon-only");
   const asked = (selector: string) =>
     model.requests.find(({ input }) => (input as { selector: string }).selector === selector);
-  expect(model.requests).toHaveLength(3);
+  expect(model.requests).toHaveLength(5);
   expect(asked("#project-search")).toBeUndefined();
   // The model saw captured evidence only: the row the archive button sits in, and the element as
   // the page's screenshot shows it, cut close to its edges.
@@ -210,22 +221,33 @@ test("an allowlisted AI specialist names the icon-only controls, labelled AI, wi
     nearbyText: "Project Alpha Website accessibility review",
     screenshot: ATTACHED_SCREENSHOT
   });
-  for (const selector of ["#archive-project", "#help-link", "#usage-chart"]) {
-    const image = asked(selector)?.image;
-    expect(image?.mediaType, selector).toBe("image/png");
-    const crop = PNG.sync.read(Buffer.from(image?.base64 ?? "", "base64"));
-    expect(crop.width * crop.height, selector).toBeGreaterThan(0);
+  const crops = [
+    "#archive-project",
+    "#help-link",
+    "#usage-chart",
+    "#storage-limit",
+    "#upgrade-banner"
+  ];
+  for (const selector of crops) {
+    expect(asked(selector)?.image?.mediaType, selector).toBe("image/png");
   }
+  const cropOf = (selector: string) =>
+    PNG.sync.read(Buffer.from(asked(selector)?.image?.base64 ?? "", "base64"));
+  // A colour is judged against the item's neighbours, so its picture is the row around it; an
+  // image's words are read from the image alone.
+  expect(cropOf("#storage-limit").height).toBeGreaterThanOrEqual(240);
+  expect(cropOf("#upgrade-banner").height).toBeLessThan(240);
   // Labelled as AI, and it changes nothing: the page still fails until a rerun passes.
   expect(report.ai).toMatchObject({
     present: true,
-    label: expect.stringContaining("AI-generated suggestions: 3")
+    label: expect.stringContaining("AI-generated suggestions: 5")
   });
   expect(report.verdict).toBe("fail");
   const html = await readFile(reportFiles.html, "utf8");
   expect(html).toContain(">AI suggestion<");
   expect(html).toContain("“Archive Project Alpha”");
   expect(html).toContain("Based on the text around it");
+  expect(html).toContain("What the colour means: “Over the storage limit”");
 });
 
 test("aee run writes the demo page's findings as one pull-request comment", async ({

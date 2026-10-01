@@ -85,13 +85,27 @@ export function labFixtureModel(): { provider: ModelProvider; requests: ModelReq
           confidence: 1,
           citedEvidenceIds: ["nearbyText"]
         };
-        return request.name === "image_purpose_specialist"
-          ? {
+        // The two readings of the page's look rest on its screenshot and the sweep's finding.
+        const seen = { ...answer, citedEvidenceIds: ["screenshot", "finding"] };
+        switch (request.name) {
+          case "image_purpose_specialist":
+            return {
               ...answer,
               classification: "informative",
               suggestedAlternative: fixedPageNames[selector]
-            }
-          : { ...answer, suggestedName: fixedPageNames[selector] };
+            };
+          case "color_meaning_specialist":
+            return { ...seen, colorCarriesMeaning: true, meaning: "Over the storage limit" };
+          case "text_image_specialist":
+            return {
+              ...seen,
+              showsText: true,
+              text: "Upgrade to Team for unlimited projects",
+              isLogo: false
+            };
+          default:
+            return { ...answer, suggestedName: fixedPageNames[selector] };
+        }
       }
     }
   };
