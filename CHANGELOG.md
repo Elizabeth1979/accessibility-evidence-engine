@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-01
+
 ### Added
 
 - The pull-request comment can show each problem as a picture: the page around the element, outlined in pink, cut from the screenshot it was found on. Turn it on with the Action's `images: true` (or `aee comment --post --images`) and the `contents: write` permission. The pictures are committed to an `aee-images` branch, named by their content, so a picture already there is not added again, and at most 10 problems get one. A problem with the whole page, such as a missing heading, gets none: an outline around the page points at nothing. Off by default, since anyone who can read the repository can see the pictures. If they cannot be uploaded, such as from a fork's read-only token, the comment is posted without them.
@@ -139,9 +141,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.5.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.5.0
 [0.4.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.5.0...HEAD
