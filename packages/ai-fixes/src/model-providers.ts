@@ -8,6 +8,13 @@ export type AnswerSchema = {
   required: string[];
 };
 
+/** A picture sent with the evidence, such as an element as the page showed it. */
+export interface ModelImage {
+  mediaType: "image/png";
+  /** The image's bytes, base64-encoded. */
+  base64: string;
+}
+
 /** What a specialist asks a model: fixed instructions, the evidence as JSON, and the answer's shape. */
 export interface ModelRequest {
   /** Names the answer's shape, for APIs that want one. */
@@ -15,6 +22,8 @@ export interface ModelRequest {
   instructions: string;
   input: unknown;
   schema: AnswerSchema;
+  /** Seen with the evidence, by a model that can see images. */
+  image?: ModelImage;
 }
 
 /** A model behind one seam. Its answer is parsed JSON, not yet checked: the specialist checks it. */
@@ -42,6 +51,18 @@ export class AiNotConfiguredError extends Error {
     );
     this.name = "AiNotConfiguredError";
   }
+}
+
+/** Thrown when the model cannot take an image, so the question can be asked again without one. */
+export class ImageInputUnsupportedError extends Error {
+  constructor(model: string) {
+    super(`${model} cannot see images.`);
+    this.name = "ImageInputUnsupportedError";
+  }
+}
+
+function dataUrl(image: ModelImage): string {
+  return `data:${image.mediaType};base64,${image.base64}`;
 }
 
 export interface CreateModelProviderOptions {
@@ -138,7 +159,24 @@ export function createClaudeModelProvider(options: ClaudeModelProviderOptions = 
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
         system: request.instructions,
-        messages: [{ role: "user", content: JSON.stringify(request.input) }],
+        messages: [
+          {
+            role: "user",
+            content: request.image
+              ? [
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: request.image.mediaType,
+                      data: request.image.base64
+                    }
+                  },
+                  { type: "text", text: JSON.stringify(request.input) }
+                ]
+              : JSON.stringify(request.input)
+          }
+        ],
         output_config: { format: { type: "json_schema", schema: request.schema } }
       });
 
@@ -215,13 +253,25 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
               role: "system",
               content: `${request.instructions}\nRespond with only a JSON object that matches this JSON Schema, with no markdown:\n${JSON.stringify(request.schema)}`
             },
-            { role: "user", content: JSON.stringify(request.input) }
+            {
+              role: "user",
+              content: request.image
+                ? [
+                    { type: "text", text: JSON.stringify(request.input) },
+                    { type: "image_url", image_url: { url: dataUrl(request.image) } }
+                  ]
+                : JSON.stringify(request.input)
+            }
           ]
         }),
         signal: AbortSignal.timeout(options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS)
       });
 
       if (!response.ok) {
+        // A model with no vision, such as a text-only one in Ollama, says so in its error.
+        if (request.image && /image/i.test(await response.text())) {
+          throw new ImageInputUnsupportedError(model);
+        }
         throw new Error(`Local model request failed with status ${response.status}.`);
       }
       const payload = (await response.json()) as {
@@ -275,7 +325,17 @@ export function createOpenAiResponsesModelProvider(
             model: options.model,
             store: false,
             instructions: request.instructions,
-            input: JSON.stringify(request.input),
+            input: request.image
+              ? [
+                  {
+                    role: "user",
+                    content: [
+                      { type: "input_text", text: JSON.stringify(request.input) },
+                      { type: "input_image", image_url: dataUrl(request.image) }
+                    ]
+                  }
+                ]
+              : JSON.stringify(request.input),
             text: {
               format: {
                 type: "json_schema",

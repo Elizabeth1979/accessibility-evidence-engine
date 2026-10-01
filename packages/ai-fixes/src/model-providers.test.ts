@@ -212,6 +212,106 @@ test("OpenAI's Responses API gets a strict, named schema and store: false", asyn
   });
 });
 
+const screenshot = { mediaType: "image/png" as const, base64: "iVBORw0KGgo=" };
+/** The answer once the screenshot is evidence: it may cite it. */
+const seeingAnswer = { ...answer, citedEvidenceIds: ["screenshot", "nearbyHeading"] };
+
+test("each provider sends the element's screenshot as an image beside the evidence", async () => {
+  const { client, requests } = fakeClaude({
+    content: [{ type: "text", text: JSON.stringify(seeingAnswer) }],
+    stop_reason: "end_turn"
+  });
+  await askSpecialist(
+    accessibleNameSpecialist,
+    context,
+    createClaudeModelProvider({ client }),
+    screenshot
+  );
+  const [claudeContent] = requests[0]?.body.messages as [{ content: unknown[] }];
+  assert.deepEqual(claudeContent.content[0], {
+    type: "image",
+    source: { type: "base64", media_type: "image/png", data: screenshot.base64 }
+  });
+
+  const bodies: Array<Record<string, unknown>> = [];
+  const reply =
+    (output: Record<string, unknown>) => async (_input: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return new Response(JSON.stringify(output), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
+    };
+  await askSpecialist(
+    accessibleNameSpecialist,
+    context,
+    createLocalModelProvider({
+      model: "tiny",
+      fetch: reply({ choices: [{ message: { content: JSON.stringify(seeingAnswer) } }] })
+    }),
+    screenshot
+  );
+  const [, localUser] = bodies[0]?.messages as [unknown, { content: unknown[] }];
+  assert.deepEqual(localUser.content[1], {
+    type: "image_url",
+    image_url: { url: `data:image/png;base64,${screenshot.base64}` }
+  });
+
+  await askSpecialist(
+    accessibleNameSpecialist,
+    context,
+    createOpenAiResponsesModelProvider({
+      apiKey: "test-key",
+      model: "test-model",
+      fetch: reply({ output_text: JSON.stringify(seeingAnswer) })
+    }),
+    screenshot
+  );
+  const [openAiUser] = bodies[1]?.input as [{ content: unknown[] }];
+  assert.deepEqual(openAiUser.content[1], {
+    type: "input_image",
+    image_url: `data:image/png;base64,${screenshot.base64}`
+  });
+});
+
+test("a model that cannot see images is asked again without one, and from then on", async () => {
+  const sent: Array<{ image: boolean; input: Record<string, unknown> }> = [];
+  const provider = createLocalModelProvider({
+    model: "text-only",
+    async fetch(_input, init) {
+      const body = JSON.parse(String(init?.body)) as { messages: [unknown, { content: unknown }] };
+      const user = body.messages[1].content;
+      const image = Array.isArray(user);
+      const text = image ? (user[0] as { text: string }).text : String(user);
+      sent.push({ image, input: JSON.parse(text) as Record<string, unknown> });
+      if (image) {
+        return new Response('{"error":{"message":"model does not support image input"}}', {
+          status: 400
+        });
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  });
+
+  assert.deepEqual(
+    await askSpecialist(accessibleNameSpecialist, context, provider, screenshot),
+    answer
+  );
+  await askSpecialist(accessibleNameSpecialist, context, provider, screenshot);
+  // The evidence names the screenshot only when the image goes with it.
+  assert.deepEqual(
+    sent.map(({ image, input }) => [image, "screenshot" in input]),
+    [
+      [true, true],
+      [false, false],
+      [false, false]
+    ]
+  );
+});
+
 // Live runs: each is skipped unless its model is reachable, so CI and offline builds stay green.
 test("live: a local model names an icon-only button", async (t) => {
   const baseUrl = process.env.AEE_LLM_BASE_URL ?? DEFAULT_LOCAL_BASE_URL;

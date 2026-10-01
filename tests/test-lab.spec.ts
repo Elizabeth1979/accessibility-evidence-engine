@@ -5,6 +5,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { PNG } from "pngjs";
+
+import { ATTACHED_SCREENSHOT } from "@aee/ai-fixes";
 
 import {
   createPortableVirtualScreenReader,
@@ -200,11 +203,19 @@ test("an allowlisted AI specialist names the icon-only controls, labelled AI, wi
     model.requests.find(({ input }) => (input as { selector: string }).selector === selector);
   expect(model.requests).toHaveLength(3);
   expect(asked("#project-search")).toBeUndefined();
-  // The model saw captured evidence only: the row the archive button sits in.
+  // The model saw captured evidence only: the row the archive button sits in, and the element as
+  // the page's screenshot shows it, cut close to its edges.
   expect(asked("#archive-project")?.input).toMatchObject({
     nearbyHeading: "Projects",
-    nearbyText: "Project Alpha Website accessibility review"
+    nearbyText: "Project Alpha Website accessibility review",
+    screenshot: ATTACHED_SCREENSHOT
   });
+  for (const selector of ["#archive-project", "#help-link", "#usage-chart"]) {
+    const image = asked(selector)?.image;
+    expect(image?.mediaType, selector).toBe("image/png");
+    const crop = PNG.sync.read(Buffer.from(image?.base64 ?? "", "base64"));
+    expect(crop.width * crop.height, selector).toBeGreaterThan(0);
+  }
   // Labelled as AI, and it changes nothing: the page still fails until a rerun passes.
   expect(report.ai).toMatchObject({
     present: true,

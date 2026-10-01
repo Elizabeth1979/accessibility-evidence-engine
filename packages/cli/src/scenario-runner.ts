@@ -13,6 +13,7 @@ import {
   proposeImageAlternativeFix,
   type AiProposedFix,
   type ImageRole,
+  type ModelImage,
   type ModelProvider
 } from "@aee/ai-fixes";
 import { isAdvisoryAxeRule } from "@aee/observers";
@@ -51,7 +52,7 @@ import {
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
-import type { CommentImage } from "./comment-images";
+import { createElementCropper, MODEL_CROP, type CommentImage } from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
   compileScenarioPlan,
@@ -1164,7 +1165,7 @@ async function writeIntegratedReport(
     elementMaps
   };
   report.synthesis = buildScenarioSynthesis(report, views);
-  await addAiSuggestions(report, views, aiSuggester);
+  await addAiSuggestions(report, views, aiSuggester, rootDir);
   assertValidSchema("scenarioReport", report, "integrated scenario report");
   const reportFont = path.join(rootDir, "aee-report-display.woff2");
   await Promise.all([
@@ -2424,20 +2425,29 @@ type AiOutcome = { suggestion: AiSuggestion } | { note: string } | { notConfigur
 
 interface AiSuggester {
   providerId: string;
-  /** Asks the specialist about one element, once per run; undefined when it is not implemented. */
+  /**
+   * Asks the specialist about one element, with its screenshot when there is one, once per run;
+   * undefined when the specialist is not implemented.
+   */
   suggest(
     specialistId: string,
     selector: string,
-    context: ElementContext
+    context: ElementContext,
+    screenshot?: ModelImage
   ): Promise<AiOutcome> | undefined;
 }
 
-/** The implemented registry specialists, each turning captured context into its question. */
+/** The implemented registry specialists, each turning captured evidence into its question. */
 const AI_SPECIALISTS: Record<
   string,
-  (selector: string, context: ElementContext, provider: ModelProvider) => Promise<AiSuggestion>
+  (
+    selector: string,
+    context: ElementContext,
+    provider: ModelProvider,
+    screenshot?: ModelImage
+  ) => Promise<AiSuggestion>
 > = {
-  [accessibleNameSpecialist.id]: async (selector, context, provider) => {
+  [accessibleNameSpecialist.id]: async (selector, context, provider, screenshot) => {
     const fix = await proposeAccessibleLabelFix(
       {
         selector,
@@ -2451,11 +2461,12 @@ const AI_SPECIALISTS: Record<
         nearbyText: context.nearbyText,
         destinationText: context.destination
       },
-      provider
+      provider,
+      screenshot
     );
     return aiSuggestion(selector, fix, fix.answer.suggestedName);
   },
-  [imagePurposeSpecialist.id]: async (selector, context, provider) => {
+  [imagePurposeSpecialist.id]: async (selector, context, provider, screenshot) => {
     const image = context.image;
     const fix = await proposeImageAlternativeFix(
       {
@@ -2474,7 +2485,8 @@ const AI_SPECIALISTS: Record<
         nearbyHeading: context.nearbyHeading,
         nearbyText: context.nearbyText
       },
-      provider
+      provider,
+      screenshot
     );
     return {
       ...aiSuggestion(selector, fix, fix.answer.suggestedAlternative),
@@ -2503,14 +2515,14 @@ function createAiSuggester(provider: ModelProvider): AiSuggester {
   const outcomes = new Map<string, Promise<AiOutcome>>();
   return {
     providerId: provider.id,
-    suggest(specialistId, selector, context) {
+    suggest(specialistId, selector, context, screenshot) {
       const run = AI_SPECIALISTS[specialistId];
       if (!run) return undefined;
       const key = `${specialistId}\n${selector}`;
       if (!outcomes.has(key)) {
         outcomes.set(
           key,
-          run(selector, context, provider).then(
+          run(selector, context, provider, screenshot).then(
             (suggestion) => ({ suggestion }),
             (error: unknown) =>
               error instanceof AiNotConfiguredError
@@ -2526,13 +2538,16 @@ function createAiSuggester(provider: ModelProvider): AiSuggester {
 
 /**
  * Asks the registry's specialist about each affected element of an allowlisted finding, from the
- * context captured with the axe result. Answers are labelled AI and never change a verdict.
+ * context captured with the axe result and the element as its screenshot shows it. Answers are
+ * labelled AI and never change a verdict.
  */
 async function addAiSuggestions(
   report: ScenarioIntegratedReport,
   views: IntegratedHtmlViews,
-  suggester: AiSuggester
+  suggester: AiSuggester,
+  rootDir: string
 ): Promise<void> {
+  const crop = createElementCropper(MODEL_CROP);
   for (const finding of report.synthesis.findings) {
     const specialistId = conceptForAxeRule(finding.ruleId)?.ai.specialistId;
     if (!specialistId) continue;
@@ -2545,9 +2560,19 @@ async function addAiSuggestions(
     );
     const asked = finding.instances.slice(0, AI_ELEMENTS_PER_FINDING);
     const outcomes = await Promise.all(
-      asked.flatMap(({ selector }) => {
+      asked.flatMap(({ selector, targetBox }) => {
         const context = contexts.get(selector);
-        const outcome = context && suggester.suggest(specialistId, selector, context);
+        const screenshot = finding.checkpoints[0]?.screenshotPath;
+        const picture =
+          screenshot && targetBox ? crop(path.resolve(rootDir, screenshot), targetBox) : undefined;
+        const outcome =
+          context &&
+          suggester.suggest(
+            specialistId,
+            selector,
+            context,
+            picture && { mediaType: "image/png", base64: picture.toString("base64") }
+          );
         return outcome ? [outcome] : [];
       })
     );
@@ -4094,7 +4119,8 @@ const EVIDENCE_WORDS: Record<string, string> = {
   markupRole: "its markup",
   linkOrButtonText: "its link or button text",
   caption: "its caption",
-  title: "its title"
+  title: "its title",
+  screenshot: "how it looks on the page"
 };
 
 /** The AI answers on a fix card, labelled as AI; or, when no model is set, how to set one. */

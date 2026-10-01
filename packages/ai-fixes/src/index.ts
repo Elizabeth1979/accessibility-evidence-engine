@@ -1,7 +1,8 @@
 import type { ProposedFix } from "@aee/core";
 
-import type { ModelProvider } from "./model-providers";
+import type { ModelImage, ModelProvider } from "./model-providers";
 import {
+  ATTACHED_SCREENSHOT,
   accessibleNameSpecialist,
   askSpecialist,
   imagePurposeSpecialist,
@@ -206,7 +207,8 @@ export type AiProposedFix<Answer> = ProposedFix & { answer: Answer };
 /** Suggests a name for an icon-only control, when the allowlist routes it to AI. */
 export async function proposeAccessibleLabelFix(
   context: AccessibleLabelContext,
-  provider: ModelProvider
+  provider: ModelProvider,
+  screenshot?: ModelImage
 ): Promise<AiProposedFix<AccessibleNameAnswer>> {
   const decision = routeContextualReview({
     kind: "icon-label",
@@ -215,10 +217,17 @@ export async function proposeAccessibleLabelFix(
     contextSignals: definedSignals(
       context.nearbyHeading,
       context.nearbyText,
-      context.destinationText
+      context.destinationText,
+      screenshot && ATTACHED_SCREENSHOT
     )
   });
-  const answer = await askAllowed(decision, accessibleNameSpecialist, context, provider);
+  const answer = await askAllowed(
+    decision,
+    accessibleNameSpecialist,
+    context,
+    provider,
+    screenshot
+  );
 
   return reviewOnlyFix(provider, decision, answer, {
     summary: `Propose accessible name "${answer.suggestedName}" for ${context.selector}.`,
@@ -229,7 +238,8 @@ export async function proposeAccessibleLabelFix(
 /** Classifies an image and drafts its alternative, when the allowlist routes it to AI. */
 export async function proposeImageAlternativeFix(
   context: ImagePurposeContext,
-  provider: ModelProvider
+  provider: ModelProvider,
+  screenshot?: ModelImage
 ): Promise<AiProposedFix<ImagePurposeAnswer>> {
   const decision = routeContextualReview({
     kind: "image-purpose",
@@ -240,10 +250,11 @@ export async function proposeImageAlternativeFix(
       context.caption,
       context.title,
       context.nearbyHeading,
-      context.nearbyText
+      context.nearbyText,
+      screenshot && ATTACHED_SCREENSHOT
     )
   });
-  const answer = await askAllowed(decision, imagePurposeSpecialist, context, provider);
+  const answer = await askAllowed(decision, imagePurposeSpecialist, context, provider, screenshot);
 
   return reviewOnlyFix(provider, decision, answer, {
     summary: `Classify ${context.selector} as ${answer.classification} and propose ${answer.suggestedAlternative ? `alternative "${answer.suggestedAlternative}"` : "an empty alternative"}.`,
@@ -255,12 +266,13 @@ async function askAllowed<Input extends object, Answer>(
   decision: AiReviewDecision,
   specialist: Specialist<Input, Answer>,
   input: Input,
-  provider: ModelProvider
+  provider: ModelProvider,
+  screenshot?: ModelImage
 ): Promise<Answer> {
   if (decision.route !== "ai-review") {
     throw new Error(`AI review was not triggered: ${decision.reason}`);
   }
-  return askSpecialist(specialist, input, provider);
+  return askSpecialist(specialist, input, provider, screenshot);
 }
 
 function reviewOnlyFix<Answer extends { rationale: string; confidence: number }>(
