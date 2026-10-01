@@ -28,11 +28,15 @@ export const COMMENT_IMAGE_LIMIT = 10;
 /**
  * The page around an element's box, cut from the screenshot the box was measured on, with the
  * element outlined just outside its edge. Nothing when the screenshot is not the page the box
- * describes, which a crop would then misplace.
+ * describes, which a crop would then misplace, or when the element is the whole page, such as
+ * for a missing heading, where an outline points at nothing.
  */
 export function outlinedCrop(page: PNG, box: AxeTargetBox): Buffer | undefined {
   const scale = page.width / box.pageWidth;
   if (Math.abs(page.height - box.pageHeight * scale) > scale) return undefined;
+  const wholePage =
+    box.x <= 0 && box.y <= 0 && box.width >= box.pageWidth && box.height >= box.pageHeight;
+  if (wholePage) return undefined;
   const px = (value: number) => Math.round(value * scale);
   const outline = Math.max(1, px(OUTLINE_WIDTH));
   const element = {

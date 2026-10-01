@@ -34,13 +34,16 @@ test("a crop shows the page around the element, outlined just outside its edge",
   assert.deepEqual(pixel(crop, outlineStart - 1, outlineStart - 1), [255, 255, 255, 255]);
 });
 
-test("a crop at the page's edge stops at it, and a box from another page gives none", () => {
+test("a crop at the page's edge stops at it, and a box from another page or the whole page gives none", () => {
   const corner = { x: 0, y: 0, width: 50, height: 10, pageWidth: 600, pageHeight: 400 };
   const crop = PNG.sync.read(outlinedCrop(whitePage(600, 400), corner)!);
   assert.deepEqual([crop.width, crop.height], [(50 + 3 + 120) * 2, (10 + 3 + 120) * 2]);
 
   // Measured on a page 900 pixels tall, so this screenshot is not the page the box describes.
   assert.equal(outlinedCrop(whitePage(600, 400), { ...corner, pageHeight: 900 }), undefined);
+  // The whole page, as for a missing heading, has nothing to point at.
+  const page = { x: 0, y: 0, width: 600, height: 400, pageWidth: 600, pageHeight: 400 };
+  assert.equal(outlinedCrop(whitePage(600, 400), page), undefined);
 });
 
 test("a comment's pictures come from the screenshot each element was measured on", async () => {
