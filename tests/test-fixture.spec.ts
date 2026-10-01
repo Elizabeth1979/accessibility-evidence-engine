@@ -26,7 +26,7 @@ test("an existing spec with only its import swapped produces findings", async ()
   await writeFile(path.join(suiteDir, "gradients.spec.ts"), GRADIENTS_SPEC, "utf8");
   await writeFile(path.join(suiteDir, "late.spec.ts"), LATE_SPEC, "utf8");
   await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
-  await promisify(execFile)(process.execPath, [
+  const { stdout } = await promisify(execFile)(process.execPath, [
     require.resolve("@playwright/test/cli"),
     "test",
     `--config=${config}`,
@@ -36,6 +36,10 @@ test("an existing spec with only its import swapped produces findings", async ()
 
   const existing = await readAssessment(suiteDir, "existing");
   expect(existing.profile).toBe("playwright-test");
+  // The test still passes, so the terminal says where its accessibility verdict is.
+  const reportLine = /^AEE: release blocked, \d+ fixes needed\. Report: (\S+)$/m.exec(stdout);
+  expect(reportLine?.[1]).toMatch(/existing-.*\/aee\/aee-report\.html$/);
+  await expect(readFile(reportLine![1]!, "utf8")).resolves.toContain("<h1>");
   expect(existing.actions.map(({ driver, actionId }) => [driver, actionId])).toEqual([
     ["playwright-test", "checkpoint-1-after-goto"],
     ["playwright-test", "checkpoint-2-test-end"]
@@ -71,6 +75,17 @@ test("an existing spec with only its import swapped produces findings", async ()
       checkpoints.map(({ actionId }) => actionId)
     ])
   ).toEqual([["image-alt", ["checkpoint-1-after-setcontent"]]]);
+  // The report is called what the test is called, apostrophe and all.
+  expect(late.name).toBe("a gallery the app draws after it's loaded");
+  const [lateComment] = await assessmentComments(suiteDir, "late");
+  await expect(
+    readFile(path.join(path.dirname(lateComment!), "aee-report.html"), "utf8")
+  ).resolves.toContain("<h1>a gallery the app draws after it&#39;s loaded</h1>");
+  // An image with no text or id is called by what it is and its file, or counted when it has none.
+  expect(late.synthesis.findings[0]?.instances.map(({ label }) => label)).toEqual([
+    "Image fern.jpg"
+  ]);
+  expect(dialog.synthesis.findings[0]?.instances.map(({ label }) => label)).toEqual(["Image 1"]);
 
   // The fixture checks pages with axe alone, and its rows say so instead of asking for a review.
   expect(existing.synthesis.status.map(({ id, result }) => [id, result]).slice(0, 2)).toEqual([
@@ -122,10 +137,10 @@ test("text over gradients", async ({ page }) => {
 
 const LATE_SPEC = `import { test } from "@aee/cli/test";
 
-test("a gallery the app draws after it loads", async ({ page }) => {
+test("a gallery the app draws after it's loaded", async ({ page }) => {
   await page.setContent(\`<!doctype html><html lang="en"><title>Gallery</title><main><h1>Gallery</h1>
     </main><script>setTimeout(() => document.querySelector("main").insertAdjacentHTML("beforeend",
-      '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">'), 400);</script></html>\`);
+      '<img src="gallery/fern.jpg?size=large">'), 400);</script></html>\`);
   await page.setContent(\`<!doctype html><html lang="en"><title>Done</title><main><h1>Done</h1></main></html>\`);
 });
 `;
@@ -165,6 +180,7 @@ async function readAssessment(suiteDir: string, spec: string) {
   return JSON.parse(
     await readFile(path.join(path.dirname(comments[0]!), "aee-report.json"), "utf8")
   ) as {
+    name?: string;
     profile: string;
     verdict: string;
     actions: Array<{ driver: string; actionId: string }>;
@@ -174,7 +190,7 @@ async function readAssessment(suiteDir: string, spec: string) {
       findings: Array<{
         ruleId: string;
         checkpoints: Array<{ actionId: string }>;
-        instances: Array<{ selector: string; detail?: string }>;
+        instances: Array<{ selector: string; label: string; detail?: string }>;
       }>;
       undecidedContrast: Array<{ selector: string; reason: string }>;
     };

@@ -34,6 +34,7 @@
     "schemaVersion": { "const": "0.1.0" },
     "assessmentId": { "$ref": "./common.schema.json#/$defs/uid" },
     "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "name": { "type": "string", "minLength": 1 },
     "scenarioDigest": { "$ref": "#/$defs/digest" },
     "planDigest": { "$ref": "#/$defs/digest" },
     "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },

@@ -77,6 +77,18 @@ try {
     "Every package must share one version."
   );
 
+  // The README installs and pins the release these packages make, so a user copies one version.
+  const readme = readFileSync(path.join(workspaceRoot, "README.md"), "utf8");
+  const readmeVersions = [
+    ...readme.matchAll(/accessibility-evidence-engine(?:@|\/releases\/download\/)v?([^\s/`]+)/g),
+    ...readme.matchAll(/\/aee-[a-z-]+-(\d[^\s/`]*)\.tgz/g)
+  ].map(([, version]) => version);
+  assert.deepEqual(
+    [...new Set(readmeVersions)],
+    [packages[0].version],
+    "The README must install and pin only the packages' own version."
+  );
+
   for (const entry of packages) {
     const files = entry.files.map((file) => file.path);
     assert.ok(files.includes("LICENSE"), `${entry.name} is missing LICENSE.`);

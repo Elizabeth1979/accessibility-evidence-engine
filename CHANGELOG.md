@@ -4,8 +4,16 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- The Playwright fixture prints one line per test with its accessibility verdict and where the report is, such as `AEE: release blocked, 2 fixes needed. Report: test-results/…/aee/aee-report.html`. The test still passes or fails on its own assertions, so before this nothing in the terminal said a report existed.
+- A scenario can have a `name`, and its report is called by it: the page title, the heading and the Markdown heading. Without one, all three use the id in words, as the heading already did.
+
 ### Fixed
 
+- A Playwright fixture report is called exactly what its test is called. It used to rebuild the title from the test's id, dropping punctuation ("Home page shows today s pick").
+- An element with no text or id, such as an image with no alt text, was listed as "Affected element 1". It is now called by what it is and, for an image, its file: "Image fern.jpg", or "Image 1" when the image is embedded data.
+- The README's GitHub Action example used `@main` while the install steps used v0.3.0. It now uses `@v0.3.0`, and the package check fails when the README installs or pins any version other than the packages' own.
 - The keyboard and pointer sweep's video shows the page throughout. It used to jump to a Tab stop's close-up, or the page shrunk, in a grey frame, and could end on a grey-edged frame: Chromium's recording shows what a clipped or full-page screenshot draws. Each Tab stop's close-up is now cut from a capture of the whole viewport, and the lane's full-page screenshot is taken in a second, unrecorded browser context.
 - An AI suggestion from a local model could cite something other than its evidence, such as the element's selector, and so be discarded. Each request's schema now lists the only fields the answer may cite, and the local provider asks the runtime to enforce the schema (`response_format` json_schema) rather than only describing it in the prompt.
 

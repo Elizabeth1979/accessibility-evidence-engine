@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { test as base, type Page } from "@playwright/test";
 
 import { startPageCheckpointLane, toSafeId } from "@aee/playwright";
@@ -73,6 +75,7 @@ export const test = base.extend<AeeTestFixtures>({
     const scenario: AeeScenario = {
       schemaVersion: CURRENT_SCHEMA_VERSION,
       id: /^[a-z]/.test(slug) ? slug : `test-${slug}`,
+      name: testInfo.title,
       target: { url: firstUrl },
       standard: { name: "WCAG", version: "2.2", levels: ["A", "AA"] },
       profile: "playwright-test",
@@ -93,7 +96,7 @@ export const test = base.extend<AeeTestFixtures>({
     const actions: ScenarioActionReport[] = [];
     const findings: Array<Record<string, unknown>> = [];
     await collectPageCheckpointActions(assessmentDir, "test", { laneId, steps }, actions, findings);
-    const { reportFiles } = await finishAssessment({
+    const { headline, reportFiles } = await finishAssessment({
       assessmentId: `${scenario.id}-${Date.now()}`,
       assessmentDir,
       scenario,
@@ -111,6 +114,8 @@ export const test = base.extend<AeeTestFixtures>({
       contentType: "text/markdown"
     });
     await testInfo.attach("aee-fixes.csv", { path: reportFiles.csv, contentType: "text/csv" });
+    // The test passes or fails on its own assertions, so say where its accessibility verdict is.
+    console.log(`AEE: ${headline}. Report: ${path.relative(process.cwd(), reportFiles.html)}`);
   },
   checkpoint: async ({ page }, use) => {
     await use(checkpoints.get(page)!);

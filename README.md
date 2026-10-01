@@ -203,7 +203,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: Elizabeth1979/accessibility-evidence-engine@main
+      - uses: Elizabeth1979/accessibility-evidence-engine@v0.3.0
         with:
           run: accessibility/scenario.yml # your approved scenario, or a test command such as npx playwright test
           fail-on: blocking # or incomplete, or never
