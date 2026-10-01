@@ -52,7 +52,7 @@ import {
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
-import { createElementCropper, type CommentImage } from "./comment-images";
+import { createElementCropper, MODEL_CROP, type CommentImage } from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
   compileScenarioPlan,
@@ -2547,7 +2547,7 @@ async function addAiSuggestions(
   suggester: AiSuggester,
   rootDir: string
 ): Promise<void> {
-  const crop = createElementCropper();
+  const crop = createElementCropper(MODEL_CROP);
   for (const finding of report.synthesis.findings) {
     const specialistId = conceptForAxeRule(finding.ruleId)?.ai.specialistId;
     if (!specialistId) continue;

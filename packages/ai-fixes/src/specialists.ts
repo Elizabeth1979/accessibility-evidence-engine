@@ -29,12 +29,9 @@ export interface Specialist<Input extends object, Answer> {
   parse(value: unknown, input: Input): Answer;
 }
 
-/**
- * The evidence that stands for an attached screenshot, so an answer can cite it. It is the crop the
- * pull-request comment shows: the element outlined, with the page around it.
- */
+/** The evidence that stands for an attached screenshot, so an answer can cite it. */
 export const ATTACHED_SCREENSHOT =
-  "The attached image: the element, outlined in magenta, as the page showed it, with the page around it.";
+  "The attached image: the element as the page showed it, cut close to its edges.";
 
 /** Providers whose model said it cannot see images: each is asked without them from then on. */
 const blindProviders = new WeakSet<ModelProvider>();
@@ -96,7 +93,7 @@ const GROUNDING = [
   "Judge quality in context, not mere presence: a name or text alternative can exist and still be wrong, generic ('image', 'button'), redundant ('image of…') or meaningless for what the element does.",
   "Ground every answer only in the evidence provided. Do not invent details about the image, page or element that the evidence does not state.",
   "citedEvidenceIds lists the names of the input fields your answer relies on. When the evidence is not enough, say so in the rationale and give a low confidence; never guess.",
-  "When the input has a screenshot field, an image is attached: the element, outlined in magenta, with the page around it. Use what it shows and cite screenshot. Without one, you have the page's text only: say so in the rationale."
+  "When the input has a screenshot field, an image is attached: the element itself, as the page showed it. Describe what it shows, read any words in it, and cite screenshot; the page around it is in the other fields. Without one, you have the page's text only: say so in the rationale."
 ].join("\n");
 
 export interface AccessibleLabelContext {
