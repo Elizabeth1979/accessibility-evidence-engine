@@ -8,8 +8,8 @@ import { marked } from "marked";
 
 import { aeeRunModelProvider } from "@aee/cli";
 
-import { screenReaderCli } from "../scripts/screen-reader-cli.mjs";
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
+import { screenReaderCli } from "./screen-reader-cli";
 import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
 
 // `npm run site:shots` regenerates site/shots from a real run of the test lab's demo page, so no

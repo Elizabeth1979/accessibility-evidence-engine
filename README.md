@@ -294,7 +294,7 @@ Review artifacts before sharing them and use test accounts and non-production en
 The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where they differ, run
 `npm run readers:compare` on a Mac (VoiceOver) or a Windows machine with NVDA. It reads the demo
 page with both, through screen-reader-cli's live bridge, and writes the two transcripts side by
-side to `test-results/readers/comparison.md`; pass another page or URL after `--`. Once per machine,
+side to `test-results/readers/comparison.md`; set `AEE_READERS_PAGE` to read another page or URL. Once per machine,
 run `npx @guidepup/setup` first: it lets the terminal drive the screen reader. The real reader
 takes over the machine for a minute or two, so leave the keyboard and mouse alone. Where the real
 reader cannot run, the file says why and the command exits nonzero; on recent macOS versions
