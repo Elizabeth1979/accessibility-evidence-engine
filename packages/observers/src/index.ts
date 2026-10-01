@@ -93,7 +93,8 @@ export interface RuntimeObserverContext extends ObserverContext {
   runtimeState?: {
     domBeforeHtml?: string;
     networkBeforeSummary?: NetworkLogSummary;
-    virtualScreenReaderBeforeEntryCount?: number;
+    /** How many entries the transcript held as the run started. */
+    virtualScreenReaderBaselineEntryCount?: number;
   };
 }
 
@@ -211,6 +212,11 @@ export function createVirtualScreenReaderObserver(): ObserverPlugin {
 
   return {
     manifest,
+    // A command's entries are those added after the run starts, so a run that captures only after
+    // the command, as a read-only one does, still knows which entries are its own.
+    async setup(context: ObserverContext): Promise<void> {
+      await recordVirtualScreenReaderBaseline(context as RuntimeObserverContext);
+    },
     async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
       return [await captureVirtualScreenReaderRecord(context as RuntimeObserverContext, "before")];
     },
@@ -895,6 +901,24 @@ function readNestedString(
     : undefined;
 }
 
+async function recordVirtualScreenReaderBaseline(context: RuntimeObserverContext): Promise<void> {
+  const snapshotTranscript = context.page?.snapshotVirtualScreenReaderTranscript?.bind(
+    context.page
+  );
+  if (!snapshotTranscript) return;
+  try {
+    const transcript = await snapshotTranscript();
+    if (isRecord(transcript) && Array.isArray(transcript.entries)) {
+      context.runtimeState ??= {};
+      context.runtimeState.virtualScreenReaderBaselineEntryCount =
+        transcript.entries.filter(isRecord).length;
+    }
+  } catch {
+    // The capture reads the transcript again and records what went wrong as its evidence; a
+    // setup that threw instead would fail the whole run before any evidence was captured.
+  }
+}
+
 async function captureVirtualScreenReaderRecord(
   context: RuntimeObserverContext,
   phase: "before" | "after"
@@ -916,15 +940,10 @@ async function captureVirtualScreenReaderRecord(
     const entries = transcript.entries.filter(isRecord);
     const entryCount = entries.length;
     const previousEntryCount =
-      phase === "after" ? (context.runtimeState?.virtualScreenReaderBeforeEntryCount ?? 0) : 0;
+      phase === "after" ? (context.runtimeState?.virtualScreenReaderBaselineEntryCount ?? 0) : 0;
     const newEntries = entries.slice(previousEntryCount);
     const focusMovedCount = newEntries.filter((entry) => entry.focusMoved === true).length;
     const lastEntry = newEntries.at(-1);
-
-    if (phase === "before") {
-      context.runtimeState ??= {};
-      context.runtimeState.virtualScreenReaderBeforeEntryCount = entryCount;
-    }
 
     const jsonArtifact = await maybeWriteArtifact(
       context,

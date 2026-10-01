@@ -32,6 +32,11 @@ export interface RunExecutionInput {
   policyName?: string;
   releasePolicy?: ReleasePolicy;
   executeInteraction?: (context: InteractionExecutionContext) => Promise<void>;
+  /**
+   * The interaction only reads the page, as a portable virtual-reader command does. With nothing
+   * to compare, the page is captured once, after it, as for a run with no interaction.
+   */
+  interactionReadsOnly?: boolean;
 }
 
 export interface RunExecutionResult {
@@ -61,11 +66,12 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
   try {
     await runObserverLifecycle(input.observerPlugins, "setup", input.observerContext);
 
-    // "Before" is only there to compare with "after" around an interaction; with none to perform,
-    // the page is captured once, as it is.
-    const beforeRecords = input.executeInteraction
-      ? await capturePhase(input.observerPlugins, "before", input.observerContext)
-      : [];
+    // "Before" is only there to compare with "after" around an interaction that can change the
+    // page; with none, or one that only reads it, the page is captured once, as it is.
+    const beforeRecords =
+      input.executeInteraction && !input.interactionReadsOnly
+        ? await capturePhase(input.observerPlugins, "before", input.observerContext)
+        : [];
 
     if (input.executeInteraction) {
       await input.executeInteraction({
