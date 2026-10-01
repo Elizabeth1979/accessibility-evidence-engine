@@ -416,9 +416,25 @@ Each test gets one assessment in its output folder (`test-results/<test>/aee/`) 
 as `aee run`, and the HTML report and PR comment are attached to the test's results. The report is
 called what the test is called, and the test prints one line with the verdict and the report's path,
 such as `AEE: release blocked, 2 fixes needed. Report: test-results/…/aee/aee-report.html`. Its plan
-profile is `playwright-test`: the fixture only observes what the test does, so the keyboard and
-pointer sweep and the virtual reader do not run, and those status rows read "Not in this run". The
-fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
+profile is `playwright-test`.
+
+Where a passing test ends on a web page that no other test of the run has ended on, the fixture also
+checks that page by keyboard and with the virtual screen reader. The keyboard and mouse sweep Tabs to
+every stop, finds mouse targets Tab never reaches and content only hover shows; it does not press
+controls. The reader starts on the page, then moves to the next landmark, the next heading and the
+next three controls. Both run on the test's own page, from a fresh load of its address, so they keep
+the test's session, cookies, storage and routes, such as a mocked sign-in or mocked data, and they
+record no video. A page is its address without query or fragment, and each is checked once per run,
+so a suite pays once per page; other tests' keyboard and reader rows read "Not in this run". A page
+that is not on the web (about:blank, a data: or a file: URL) is checked with axe only. The checks get
+three minutes of their own on top of the test's timeout. To turn them off for a project, a file or a
+test:
+
+```ts
+test.use({ aee: { keyboardAndReader: false } });
+```
+
+The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
 the fixture extends the runner the project already has and `aee run` launches the same Playwright:
 installing AEE leaves a project's Playwright as it was.
 

@@ -35,6 +35,7 @@ import {
   type KeyboardPointerSweepLaneResult,
   type PageCheckpointStep,
   type SweepFindingKind,
+  type VirtualScreenReaderCommand,
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
 } from "@aee/playwright";
@@ -493,58 +494,20 @@ export async function executeScenario(
 
   const browser = options.browser ?? (await chromium.launch({ headless: true }));
   const ownsBrowser = !options.browser;
-  // A lane that fails still counts: its error becomes a diagnostic and any evidence it wrote
-  // stays in the manifest, so the report can never read as complete.
-  const runLane = async (laneId: string, run: () => Promise<string>) => {
-    try {
-      childManifestFiles.push(await run());
-    } catch (error) {
-      diagnostics.push(describeExecutionError(laneId, error));
-      const expectedManifest = path.join(assessmentDir, laneId, "manifest.json");
-      if (await fileExists(expectedManifest)) childManifestFiles.push(expectedManifest);
-    }
-  };
+  const assessment = { assessmentDir, childManifestFiles, actions, findings, diagnostics };
+  const runLane = laneRunner(assessment);
   try {
     for (const journey of scenario.journeys) {
       const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
       const allowedOrigins = plan.safety.allowedOrigins;
-      const sweepLaneId = `${journey.id}-keyboard-pointer-sweep`;
-      await runLane(sweepLaneId, async () => {
-        const sweep = await runKeyboardPointerSweepLane({
-          browser: browser as unknown as KeyboardPointerSweepLaneBrowser<Page>,
-          projectRoot: process.cwd(),
-          outputDir: assessmentDir,
-          laneId: sweepLaneId,
-          targetUrl: startUrl,
-          allowedOrigins,
-          activateControls: journey.allowedActions.includes(ACTIVATE_PAGE_CONTROLS)
-        });
-        collectSweepFindings(journey.id, sweep, findings);
-        for (const url of sweep.blockedNavigations) {
-          diagnostics.push(
-            `${sweepLaneId}: stopped a navigation outside the allowed origins: ${url}`
-          );
-        }
-        return sweep.manifestFile;
+      await runPageLanes(assessment, {
+        target: { browser },
+        journeyId: journey.id,
+        startUrl,
+        allowedOrigins,
+        activateControls: journey.allowedActions.includes(ACTIVATE_PAGE_CONTROLS),
+        commands: journey.virtualScreenReaderCommands ?? []
       });
-
-      if (journey.virtualScreenReaderCommands?.length) {
-        const laneId = `${journey.id}-virtual-reader`;
-        const commands = journey.virtualScreenReaderCommands;
-        await runLane(laneId, async () => {
-          const lane = await runVirtualScreenReaderLane({
-            browser: browser as unknown as VirtualScreenReaderLaneBrowser<Page>,
-            projectRoot: process.cwd(),
-            outputDir: assessmentDir,
-            laneId,
-            targetUrl: startUrl,
-            allowedOrigins,
-            commands
-          });
-          await collectVirtualReaderActions(assessmentDir, journey.id, lane, actions, findings);
-          return lane.manifestFile!;
-        });
-      }
 
       for (const comparison of journey.interactionComparisons ?? []) {
         const comparisonId = `${journey.id}-${comparison.id}`;
@@ -583,6 +546,89 @@ export async function executeScenario(
     childManifestFiles,
     diagnostics,
     aiProvider: options.aiProvider
+  });
+}
+
+/** What an assessment's lanes add to as they run, before `finishAssessment` integrates it. */
+export interface AssessmentInProgress {
+  assessmentDir: string;
+  childManifestFiles: string[];
+  actions: ScenarioActionReport[];
+  findings: Array<Record<string, unknown>>;
+  diagnostics: string[];
+}
+
+/**
+ * Runs one lane of an assessment. A lane that fails still counts: its error becomes a diagnostic
+ * and any evidence it wrote stays in the manifest, so the report can never read as complete.
+ */
+function laneRunner({ assessmentDir, childManifestFiles, diagnostics }: AssessmentInProgress) {
+  return async (laneId: string, run: () => Promise<string>) => {
+    try {
+      childManifestFiles.push(await run());
+    } catch (error) {
+      diagnostics.push(describeExecutionError(laneId, error));
+      const expectedManifest = path.join(assessmentDir, laneId, "manifest.json");
+      if (await fileExists(expectedManifest)) childManifestFiles.push(expectedManifest);
+    }
+  };
+}
+
+/**
+ * Sweeps a journey's start page by keyboard and mouse, then runs its virtual screen-reader
+ * commands, each as a lane of the assessment: in browser contexts of their own for a scenario, or
+ * on the page a test drives, which keeps the test's session, routes and storage.
+ */
+export async function runPageLanes(
+  assessment: AssessmentInProgress,
+  input: {
+    target: { browser: Browser } | { page: Page };
+    journeyId: string;
+    startUrl: string;
+    allowedOrigins: string[];
+    activateControls: boolean;
+    commands: VirtualScreenReaderCommand[];
+  }
+): Promise<void> {
+  const { assessmentDir, actions, findings, diagnostics } = assessment;
+  const { journeyId, startUrl, allowedOrigins, commands } = input;
+  const runLane = laneRunner(assessment);
+  const lane = {
+    projectRoot: process.cwd(),
+    outputDir: assessmentDir,
+    targetUrl: startUrl,
+    allowedOrigins
+  };
+  const sweepLaneId = `${journeyId}-keyboard-pointer-sweep`;
+  await runLane(sweepLaneId, async () => {
+    const sweep = await runKeyboardPointerSweepLane({
+      ...("browser" in input.target
+        ? { browser: input.target.browser as unknown as KeyboardPointerSweepLaneBrowser<Page> }
+        : { page: input.target.page }),
+      ...lane,
+      laneId: sweepLaneId,
+      activateControls: input.activateControls
+    });
+    collectSweepFindings(journeyId, sweep, findings);
+    for (const url of sweep.blockedNavigations) {
+      diagnostics.push(`${sweepLaneId}: stopped a navigation outside the allowed origins: ${url}`);
+    }
+    return sweep.manifestFile;
+  });
+
+  if (commands.length === 0) return;
+  const readerLaneId = `${journeyId}-virtual-reader`;
+  await runLane(readerLaneId, async () => {
+    const reader = await runVirtualScreenReaderLane({
+      ...("browser" in input.target
+        ? { browser: input.target.browser as unknown as VirtualScreenReaderLaneBrowser<Page> }
+        : { page: input.target.page }),
+      ...lane,
+      laneId: readerLaneId,
+      commands
+    });
+    await collectVirtualReaderActions(assessmentDir, journeyId, reader, actions, findings);
+    return reader.manifestFile!;
   });
 }
 
@@ -1704,7 +1750,9 @@ function buildStatusAreas(
   });
   const { plannedChecks } = report.completeness;
   // The test fixture checks each page with axe alone; a scenario run adds the other checks.
-  const axeOnly = report.profile === "playwright-test";
+  // The test fixture checks a page by keyboard and with the reader once per run, where a passing
+  // test ends on it; a scenario run checks every journey's start page.
+  const fixture = report.profile === "playwright-test";
   const titles = (list: FindingSynthesis[]) => `${list.map(({ title }) => title).join("; ")}.`;
   const rulesRan = views.axeReports.length > 0;
 
@@ -1723,7 +1771,9 @@ function buildStatusAreas(
       ? notRun(
           "keyboard",
           "Keyboard access",
-          "This run checked each page with axe only; a scenario run (aee run) adds the keyboard and mouse sweep."
+          fixture
+            ? "Not for this test: the test fixture sweeps each page once per run, where the first passing test ends on it, and this test's page was swept in another test, is not a web page, or the check is off."
+            : "This scenario's plan has no keyboard and mouse sweep."
         )
       : swept && comparisonsPassed
         ? noIssue(
@@ -1755,8 +1805,8 @@ function buildStatusAreas(
       ? notRun(
           "reader",
           "Virtual reader",
-          axeOnly
-            ? "This run checked each page with axe only; a scenario run (aee run) adds the virtual screen reader."
+          fixture
+            ? "Not for this test: the test fixture reads each page once per run, where the first passing test ends on it, and this test's page was read in another test, is not a web page, or the check is off."
             : "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
         )
       : reader.commands > 0 && reader.failed === 0

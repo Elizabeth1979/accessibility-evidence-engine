@@ -21,7 +21,7 @@
     "schemaVersion": { "const": "0.2.0" },
     "laneId": { "$ref": "./common.schema.json#/$defs/uid" },
     "driver": { "const": "keyboard-pointer-sweep" },
-    "isolation": { "const": "dedicated-browser-context" },
+    "isolation": { "enum": ["dedicated-browser-context", "test-page"] },
     "status": { "enum": ["completed", "blocked", "failed"] },
     "targetUrl": { "type": "string", "format": "uri" },
     "allowedOrigins": {

@@ -151,18 +151,28 @@ export interface LaneBrowserContextOptions {
   };
 }
 
-export interface RunVirtualScreenReaderLaneOptions<TPage extends VirtualScreenReaderLanePage> {
-  browser: VirtualScreenReaderLaneBrowser<TPage>;
-  projectRoot: string;
-  targetUrl: string;
-  allowedOrigins: string[];
-  commands: VirtualScreenReaderCommand[];
-  outputDir?: string;
-  laneId?: string;
-  policy?: AeePolicyOverrides;
-  additionalObservers?: string[];
-  additionalJudges?: string[];
-}
+/**
+ * Where a lane runs: in browser contexts of its own, recorded and closed when it ends, or on the
+ * page a test already drives, which keeps the test's session, routes and storage and records nothing.
+ */
+export type LaneIsolation = "dedicated-browser-context" | "test-page";
+
+/** A lane's own browser, or the page a test drives; never both. */
+export type LaneTarget<TBrowser, TPage> =
+  { browser: TBrowser; page?: undefined } | { page: TPage; browser?: undefined };
+
+export type RunVirtualScreenReaderLaneOptions<TPage extends VirtualScreenReaderLanePage> =
+  LaneTarget<VirtualScreenReaderLaneBrowser<TPage>, TPage> & {
+    projectRoot: string;
+    targetUrl: string;
+    allowedOrigins: string[];
+    commands: VirtualScreenReaderCommand[];
+    outputDir?: string;
+    laneId?: string;
+    policy?: AeePolicyOverrides;
+    additionalObservers?: string[];
+    additionalJudges?: string[];
+  };
 
 export interface VirtualScreenReaderLaneStep {
   sequence: number;
@@ -180,7 +190,7 @@ export interface VirtualScreenReaderLaneResult {
   schemaVersion: "0.1.0";
   laneId: string;
   driver: "portable-virtual-screen-reader";
-  isolation: "dedicated-browser-context";
+  isolation: LaneIsolation;
   status: "completed";
   targetUrl: string;
   allowedOrigins: string[];
@@ -325,21 +335,30 @@ export interface InputComparisonResult {
   manifestFile: string;
 }
 
-export interface KeyboardPointerSweepLanePage extends KeyboardPointerSweepPage {
-  video?(): PlaywrightVideoLike | null;
-}
-
 export interface KeyboardPointerSweepLaneRoute {
   request(): { url(): string; isNavigationRequest(): boolean };
-  continue(): Promise<void>;
+  fallback(): Promise<void>;
   abort(errorCode?: string): Promise<void>;
 }
 
-export interface KeyboardPointerSweepLaneContext<TPage extends KeyboardPointerSweepLanePage> {
-  route(
-    url: string,
-    handler: (route: KeyboardPointerSweepLaneRoute) => Promise<void>
-  ): Promise<void>;
+export type KeyboardPointerSweepLaneRouteHandler = (
+  route: KeyboardPointerSweepLaneRoute
+) => Promise<void>;
+
+/** Where the sweep's navigation guard is set: a lane's own context, or a test's page. */
+export interface KeyboardPointerSweepLaneRouter {
+  route(url: string, handler: KeyboardPointerSweepLaneRouteHandler): Promise<unknown>;
+  unroute(url: string, handler: KeyboardPointerSweepLaneRouteHandler): Promise<unknown>;
+}
+
+export interface KeyboardPointerSweepLanePage
+  extends KeyboardPointerSweepPage, KeyboardPointerSweepLaneRouter {
+  video?(): PlaywrightVideoLike | null;
+}
+
+export interface KeyboardPointerSweepLaneContext<
+  TPage extends KeyboardPointerSweepLanePage
+> extends KeyboardPointerSweepLaneRouter {
   newPage(): Promise<TPage>;
   close(): Promise<void>;
 }
@@ -348,16 +367,16 @@ export interface KeyboardPointerSweepLaneBrowser<TPage extends KeyboardPointerSw
   newContext(options?: LaneBrowserContextOptions): Promise<KeyboardPointerSweepLaneContext<TPage>>;
 }
 
-export interface RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSweepLanePage> {
-  browser: KeyboardPointerSweepLaneBrowser<TPage>;
-  projectRoot: string;
-  targetUrl: string;
-  allowedOrigins: string[];
-  /** Passed to the sweep: press on-page controls, never links or form submits. */
-  activateControls: boolean;
-  outputDir?: string;
-  laneId?: string;
-}
+export type RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSweepLanePage> =
+  LaneTarget<KeyboardPointerSweepLaneBrowser<TPage>, TPage> & {
+    projectRoot: string;
+    targetUrl: string;
+    allowedOrigins: string[];
+    /** Passed to the sweep: press on-page controls, never links or form submits. */
+    activateControls: boolean;
+    outputDir?: string;
+    laneId?: string;
+  };
 
 export interface KeyboardPointerSweepLaneFinding extends SweepFinding {
   /** Where the element is on the lane's full-page screenshot. */
@@ -376,7 +395,7 @@ export interface KeyboardPointerSweepLaneDocument {
   schemaVersion: "0.2.0";
   laneId: string;
   driver: "keyboard-pointer-sweep";
-  isolation: "dedicated-browser-context";
+  isolation: LaneIsolation;
   status: "completed" | "blocked" | "failed";
   targetUrl: string;
   allowedOrigins: string[];
@@ -1214,6 +1233,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   const judgeIds = [
     ...new Set([...VIRTUAL_READER_LANE_JUDGES, ...(options.additionalJudges ?? [])])
   ];
+  const isolation: LaneIsolation = options.page ? "test-page" : "dedicated-browser-context";
   const manifestLane: EvidenceManifestLaneSource = {
     id: laneId,
     driver: "portable-virtual-screen-reader",
@@ -1230,12 +1250,18 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   let runError: unknown;
 
   try {
-    browserContext = await options.browser.newContext({
-      recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
-    });
-    const page = await browserContext.newPage();
-    pageVideo = page.video?.();
-    if (!pageVideo) throw new Error("Virtual screen-reader lane did not start video capture.");
+    // On a test's page the reader keeps the test's session, routes and storage, and records nothing.
+    let page: TPage;
+    if (options.browser) {
+      browserContext = await options.browser.newContext({
+        recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
+      });
+      page = await browserContext.newPage();
+      pageVideo = page.video?.();
+      if (!pageVideo) throw new Error("Virtual screen-reader lane did not start video capture.");
+    } else {
+      page = options.page;
+    }
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
     assertAllowedOrigin(page.url(), allowedOrigins);
     const reader = createPortableVirtualScreenReader(page);
@@ -1273,7 +1299,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
           meta: {
             laneId,
             laneSequence: sequence,
-            isolation: "dedicated-browser-context"
+            isolation
           }
         },
         async performInteraction() {
@@ -1358,7 +1384,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       schemaVersion: "0.1.0",
       laneId,
       driver: "portable-virtual-screen-reader",
-      isolation: "dedicated-browser-context",
+      isolation,
       status: failureStatus,
       targetUrl: options.targetUrl,
       allowedOrigins,
@@ -1389,14 +1415,16 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
     throw runError;
   }
 
-  if (!transcript || !video) throw new Error("Virtual screen-reader lane evidence is incomplete.");
+  if (!transcript || (options.browser && !video)) {
+    throw new Error("Virtual screen-reader lane evidence is incomplete.");
+  }
   const transcriptJsonFile = path.join(laneOutputDir, "transcript.json");
   const transcriptTextFile = path.join(laneOutputDir, "transcript.txt");
   const laneResult: VirtualScreenReaderLaneResult = {
     schemaVersion: "0.1.0",
     laneId,
     driver: "portable-virtual-screen-reader",
-    isolation: "dedicated-browser-context",
+    isolation,
     status: "completed",
     targetUrl: options.targetUrl,
     allowedOrigins,
@@ -1582,28 +1610,77 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
   };
 }
 
-/** Stops every navigation that leaves the allowed origins, including one a pressed control starts. */
-async function keepNavigationsWithin<TPage extends KeyboardPointerSweepLanePage>(
-  context: KeyboardPointerSweepLaneContext<TPage>,
+/**
+ * Stops every navigation that leaves the allowed origins, including one a pressed control starts,
+ * and hands every other request on, to a test's own routes when the sweep runs on its page.
+ */
+function navigationGuard(
   allowedOrigins: string[],
   blockedNavigations: string[]
-): Promise<void> {
-  await context.route("**/*", async (route) => {
+): KeyboardPointerSweepLaneRouteHandler {
+  return async (route) => {
     const request = route.request();
     if (request.isNavigationRequest() && !allowedOrigins.includes(new URL(request.url()).origin)) {
       blockedNavigations.push(request.url());
       await route.abort("blockedbyclient");
     } else {
-      await route.continue();
+      await route.fallback();
     }
+  };
+}
+
+/**
+ * The pages a sweep lane drives, with its navigation guard set. On its own browser the lane sweeps
+ * in a recorded context and takes its stills in a second, unrecorded one: a full-page capture
+ * redraws the page at another size, and the recording keeps that frame until the page next
+ * changes, which can be the end of the video. On a test's page it does both there, and takes its
+ * guard off again when it closes.
+ */
+async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
+  target: LaneTarget<KeyboardPointerSweepLaneBrowser<TPage>, TPage>,
+  laneOutputDir: string,
+  guard: KeyboardPointerSweepLaneRouteHandler
+): Promise<{
+  page: TPage;
+  still: TPage;
+  video?: PlaywrightVideoLike | null;
+  close(): Promise<void>;
+}> {
+  if (!target.browser) {
+    const { page } = target;
+    await page.route("**/*", guard);
+    return {
+      page,
+      still: page,
+      close: async () => {
+        await page.unroute("**/*", guard);
+      }
+    };
+  }
+  const recorded = await target.browser.newContext({
+    recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
   });
+  const unrecorded = await target.browser.newContext();
+  const close = async () => {
+    await recorded.close();
+    await unrecorded.close();
+  };
+  try {
+    for (const context of [recorded, unrecorded]) await context.route("**/*", guard);
+    const page = await recorded.newPage();
+    return { page, still: await unrecorded.newPage(), video: page.video?.(), close };
+  } catch (error) {
+    await close();
+    throw error;
+  }
 }
 
 /**
  * Sweeps one page by keyboard and pointer in its own recorded browser context, then records the
  * result, and, from a fresh load in an unrecorded context, a full-page screenshot and where each
- * finding is on it. In both, every navigation is stopped unless it stays inside the allowed
- * origins.
+ * finding is on it. Given a test's page instead, it does both on that page, from a fresh load of
+ * the target, so the sweep keeps the test's session, routes and storage. Every navigation is
+ * stopped unless it stays inside the allowed origins.
  */
 export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerSweepLanePage>(
   options: RunKeyboardPointerSweepLaneOptions<TPage>
@@ -1627,7 +1704,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     schemaVersion: "0.2.0" as const,
     laneId,
     driver: "keyboard-pointer-sweep" as const,
-    isolation: "dedicated-browser-context" as const,
+    isolation: options.page ? ("test-page" as const) : ("dedicated-browser-context" as const),
     targetUrl: options.targetUrl,
     allowedOrigins,
     activateControls: options.activateControls,
@@ -1638,30 +1715,26 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   let sweep:
     Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
   const focusCropFiles: string[] = [];
-  let pageVideo: PlaywrightVideoLike | null | undefined;
   let runError: unknown;
 
   await mkdir(laneOutputDir, { recursive: true });
-  const context = await options.browser.newContext({
-    recordVideo: { dir: laneOutputDir, size: LANE_VIDEO_SIZE }
-  });
-  // The full-page screenshot comes from a context that is not recorded: a full-page capture
-  // redraws the page at another size, and the recording keeps that frame until the page next
-  // changes, which can be the end of the video.
-  const stillContext = await options.browser.newContext();
+  const {
+    page,
+    still,
+    video: pageVideo,
+    close
+  } = await openSweepPages(
+    options,
+    laneOutputDir,
+    navigationGuard(allowedOrigins, blockedNavigations)
+  );
   try {
-    for (const each of [context, stillContext]) {
-      await keepNavigationsWithin(each, allowedOrigins, blockedNavigations);
-    }
-    const page = await context.newPage();
-    pageVideo = page.video?.();
     const result = await sweepKeyboardAndPointer({
       page,
       url: options.targetUrl,
       activateControls: options.activateControls,
       onStep: (step) => steps.push(step)
     });
-    const still = await stillContext.newPage();
     await still.goto(options.targetUrl);
     await still.screenshot({ path: screenshotFile, fullPage: true });
     const locations = await locateElements(
@@ -1698,8 +1771,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   } catch (error) {
     runError = error;
   } finally {
-    await context.close();
-    await stillContext.close();
+    await close();
   }
 
   const status = sweep ? "completed" : blockedNavigations.length > 0 ? "blocked" : "failed";
