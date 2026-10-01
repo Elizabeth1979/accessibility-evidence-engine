@@ -5,12 +5,16 @@ import path from "node:path";
 import {
   accessibleNameSpecialist,
   AiNotConfiguredError,
+  colorMeaningSpecialist,
   createModelProvider,
   imagePurposeSpecialist,
   imageRoleFromMarkup,
+  judgeColorMeaning,
   parseModelProviderName,
   proposeAccessibleLabelFix,
   proposeImageAlternativeFix,
+  readTextImage,
+  textImageSpecialist,
   type AiProposedFix,
   type ImageRole,
   type ModelImage,
@@ -52,7 +56,13 @@ import {
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
-import { createElementCropper, MODEL_CROP, type CommentImage } from "./comment-images";
+import {
+  COMMENT_CROP,
+  createElementCropper,
+  MODEL_CROP,
+  type CommentImage,
+  type CropStyle
+} from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
   compileScenarioPlan,
@@ -346,6 +356,8 @@ interface AiSuggestion {
   selector: string;
   /** The proposed accessible name or text alternative; empty for a decorative image. */
   text: string;
+  /** What the text is, when it is a reading rather than a name to apply, such as "Words in the image". */
+  label?: string;
   classification?: ImageRole;
   rationale: string;
   confidence: number;
@@ -2426,72 +2438,113 @@ type AiOutcome = { suggestion: AiSuggestion } | { note: string } | { notConfigur
 interface AiSuggester {
   providerId: string;
   /**
-   * Asks the specialist about one element, with its screenshot when there is one, once per run;
-   * undefined when the specialist is not implemented.
+   * Asks the specialist about one affected element, once per run; undefined when the specialist
+   * is not implemented, or the question needs evidence this finding lacks.
    */
-  suggest(
-    specialistId: string,
-    selector: string,
-    context: ElementContext,
-    screenshot?: ModelImage
-  ): Promise<AiOutcome> | undefined;
+  suggest(specialistId: string, question: AiQuestion): Promise<AiOutcome> | undefined;
 }
 
-/** The implemented registry specialists, each turning captured evidence into its question. */
-const AI_SPECIALISTS: Record<
-  string,
-  (
-    selector: string,
-    context: ElementContext,
-    provider: ModelProvider,
-    screenshot?: ModelImage
-  ) => Promise<AiSuggestion>
-> = {
-  [accessibleNameSpecialist.id]: async (selector, context, provider, screenshot) => {
-    const fix = await proposeAccessibleLabelFix(
-      {
-        selector,
-        role: context.role ?? ({ a: "link", button: "button" }[context.tagName] || context.tagName),
-        iconDescription: context.iconOnly
-          ? context.iconHints.length
-            ? `an icon; its markup mentions ${context.iconHints.join(", ")}`
-            : "an icon with no text or description in its markup"
-          : undefined,
-        nearbyHeading: context.nearbyHeading,
-        nearbyText: context.nearbyText,
-        destinationText: context.destination
-      },
-      provider,
-      screenshot
-    );
-    return aiSuggestion(selector, fix, fix.answer.suggestedName);
+/** What a specialist is asked about one affected element. */
+interface AiQuestion {
+  instance: FindingInstanceSynthesis;
+  /** Captured with the axe result; a sweep finding has none. */
+  context?: ElementContext;
+  screenshot?: ModelImage;
+}
+
+/** An implemented registry specialist: how its picture is cut, and how it turns evidence into its question. */
+interface AiSpecialistRun {
+  crop: CropStyle;
+  ask(question: AiQuestion, provider: ModelProvider): Promise<AiSuggestion> | undefined;
+}
+
+const AI_SPECIALISTS: Record<string, AiSpecialistRun> = {
+  [accessibleNameSpecialist.id]: {
+    crop: MODEL_CROP,
+    ask({ instance: { selector }, context, screenshot }, provider) {
+      if (!context) return undefined;
+      return proposeAccessibleLabelFix(
+        {
+          selector,
+          role:
+            context.role ?? ({ a: "link", button: "button" }[context.tagName] || context.tagName),
+          iconDescription: context.iconOnly
+            ? context.iconHints.length
+              ? `an icon; its markup mentions ${context.iconHints.join(", ")}`
+              : "an icon with no text or description in its markup"
+            : undefined,
+          nearbyHeading: context.nearbyHeading,
+          nearbyText: context.nearbyText,
+          destinationText: context.destination
+        },
+        provider,
+        screenshot
+      ).then((fix) => aiSuggestion(selector, fix, fix.answer.suggestedName));
+    }
   },
-  [imagePurposeSpecialist.id]: async (selector, context, provider, screenshot) => {
-    const image = context.image;
-    const fix = await proposeImageAlternativeFix(
-      {
-        selector,
-        source: image?.source,
-        currentAlternative: image?.alt,
-        markupRole: imageRoleFromMarkup({
-          role: image?.role,
-          ariaHidden: image?.ariaHidden,
-          alt: image?.alt,
-          soleContentOfLinkOrButton: image?.soleContentOfLinkOrButton
-        }),
-        linkOrButtonText: image?.linkOrButtonText,
-        caption: image?.caption,
-        title: image?.title,
-        nearbyHeading: context.nearbyHeading,
-        nearbyText: context.nearbyText
-      },
-      provider,
-      screenshot
-    );
-    return {
-      ...aiSuggestion(selector, fix, fix.answer.suggestedAlternative),
-      classification: fix.answer.classification
-    };
+  [imagePurposeSpecialist.id]: {
+    crop: MODEL_CROP,
+    ask({ instance: { selector }, context, screenshot }, provider) {
+      if (!context) return undefined;
+      const image = context.image;
+      return proposeImageAlternativeFix(
+        {
+          selector,
+          source: image?.source,
+          currentAlternative: image?.alt,
+          markupRole: imageRoleFromMarkup({
+            role: image?.role,
+            ariaHidden: image?.ariaHidden,
+            alt: image?.alt,
+            soleContentOfLinkOrButton: image?.soleContentOfLinkOrButton
+          }),
+          linkOrButtonText: image?.linkOrButtonText,
+          caption: image?.caption,
+          title: image?.title,
+          nearbyHeading: context.nearbyHeading,
+          nearbyText: context.nearbyText
+        },
+        provider,
+        screenshot
+      ).then((fix) => ({
+        ...aiSuggestion(selector, fix, fix.answer.suggestedAlternative),
+        classification: fix.answer.classification
+      }));
+    }
+  },
+  // The colour is judged against the item's neighbours, so the picture is the comment's: the row
+  // around the item, the item outlined.
+  [colorMeaningSpecialist.id]: {
+    crop: COMMENT_CROP,
+    ask({ instance: { selector, label, detail }, screenshot }, provider) {
+      return judgeColorMeaning(
+        { selector, itemText: label, finding: detail ?? "" },
+        provider,
+        screenshot
+      ).then((fix) => ({
+        ...aiSuggestion(
+          selector,
+          fix,
+          fix.answer.colorCarriesMeaning ? fix.answer.meaning : "Nothing a person needs"
+        ),
+        label: "What the colour means"
+      }));
+    }
+  },
+  [textImageSpecialist.id]: {
+    crop: MODEL_CROP,
+    ask({ instance: { selector, label, detail }, screenshot }, provider) {
+      return readTextImage(
+        { selector, currentAlternative: label, finding: detail ?? "" },
+        provider,
+        screenshot
+      ).then((fix) => ({
+        ...aiSuggestion(selector, fix, fix.answer.showsText ? fix.answer.text : "No words"),
+        label: fix.answer.isLogo
+          ? "Words in the image, a logo, which WCAG exempts"
+          : "Words in the image"
+      }));
+    }
   }
 };
 
@@ -2515,14 +2568,15 @@ function createAiSuggester(provider: ModelProvider): AiSuggester {
   const outcomes = new Map<string, Promise<AiOutcome>>();
   return {
     providerId: provider.id,
-    suggest(specialistId, selector, context, screenshot) {
-      const run = AI_SPECIALISTS[specialistId];
-      if (!run) return undefined;
+    suggest(specialistId, question) {
+      const { selector } = question.instance;
       const key = `${specialistId}\n${selector}`;
       if (!outcomes.has(key)) {
+        const asked = AI_SPECIALISTS[specialistId]?.ask(question, provider);
+        if (!asked) return undefined;
         outcomes.set(
           key,
-          run(selector, context, provider, screenshot).then(
+          asked.then(
             (suggestion) => ({ suggestion }),
             (error: unknown) =>
               error instanceof AiNotConfiguredError
@@ -2538,8 +2592,8 @@ function createAiSuggester(provider: ModelProvider): AiSuggester {
 
 /**
  * Asks the registry's specialist about each affected element of an allowlisted finding, from the
- * context captured with the axe result and the element as its screenshot shows it. Answers are
- * labelled AI and never change a verdict.
+ * evidence captured with it (an axe result's context, a sweep finding's summary) and the element
+ * as its screenshot shows it. Answers are labelled AI and never change a verdict.
  */
 async function addAiSuggestions(
   report: ScenarioIntegratedReport,
@@ -2547,10 +2601,17 @@ async function addAiSuggestions(
   suggester: AiSuggester,
   rootDir: string
 ): Promise<void> {
-  const crop = createElementCropper(MODEL_CROP);
+  const croppers = new Map<CropStyle, ReturnType<typeof createElementCropper>>();
   for (const finding of report.synthesis.findings) {
-    const specialistId = conceptForAxeRule(finding.ruleId)?.ai.specialistId;
-    if (!specialistId) continue;
+    const specialistId = (
+      isSweepFindingKind(finding.ruleId)
+        ? remediationEntry(SWEEP_FINDING_CONCEPTS[finding.ruleId])
+        : conceptForAxeRule(finding.ruleId)
+    )?.ai.specialistId;
+    const run = specialistId ? AI_SPECIALISTS[specialistId] : undefined;
+    if (!specialistId || !run) continue;
+    const crop = croppers.get(run.crop) ?? createElementCropper(run.crop);
+    croppers.set(run.crop, crop);
     const contexts = new Map(
       views.axeReports
         .flatMap(({ violations }) => violations)
@@ -2560,19 +2621,17 @@ async function addAiSuggestions(
     );
     const asked = finding.instances.slice(0, AI_ELEMENTS_PER_FINDING);
     const outcomes = await Promise.all(
-      asked.flatMap(({ selector, targetBox }) => {
-        const context = contexts.get(selector);
+      asked.flatMap((instance) => {
         const screenshot = finding.checkpoints[0]?.screenshotPath;
         const picture =
-          screenshot && targetBox ? crop(path.resolve(rootDir, screenshot), targetBox) : undefined;
-        const outcome =
-          context &&
-          suggester.suggest(
-            specialistId,
-            selector,
-            context,
-            picture && { mediaType: "image/png", base64: picture.toString("base64") }
-          );
+          screenshot && instance.targetBox
+            ? crop(path.resolve(rootDir, screenshot), instance.targetBox)
+            : undefined;
+        const outcome = suggester.suggest(specialistId, {
+          instance,
+          context: contexts.get(instance.selector),
+          screenshot: picture && { mediaType: "image/png", base64: picture.toString("base64") }
+        });
         return outcome ? [outcome] : [];
       })
     );
@@ -3177,7 +3236,7 @@ function commentAiSuggestions(findings: FindingSynthesis[], heading: string): st
     "",
     ...suggested.map(({ finding, suggestion }) => {
       const text = suggestion.text
-        ? commentCode(suggestion.text)
+        ? `${suggestion.label ? `${commentText(suggestion.label)}: ` : ""}${commentCode(suggestion.text)}`
         : "an empty alternative (decorative)";
       const role = suggestion.classification ? `, image role ${suggestion.classification}` : "";
       return `- **AI suggestion** for ${commentCode(suggestion.selector)} (${commentText(finding.title)}): ${text}${role}. Based on ${commentText(citedEvidence(suggestion.citedEvidenceIds))}; confidence ${suggestion.confidence.toFixed(2)}; suggested by ${commentCode(finding.remediation.ai.providerId ?? "a model")}.`;
@@ -3896,7 +3955,7 @@ function fixTicket(
     suggestedFix: finding.remediation.deterministic,
     aiSuggestion:
       ai.status === "suggested" && ai.suggestions?.length
-        ? `${ai.suggestions.map(({ selector, text }) => `"${text}" for ${selector}`).join("; ")} (suggested by AI${ai.providerId ? `, ${ai.providerId}` : ""})`
+        ? `${ai.suggestions.map(({ selector, text, label }) => `${label ? `${label}: ` : ""}"${text}" for ${selector}`).join("; ")} (suggested by AI${ai.providerId ? `, ${ai.providerId}` : ""})`
         : undefined,
     affected: `${finding.instanceCount}: ${finding.instances
       .slice(0, 10)
@@ -4138,7 +4197,7 @@ function renderAiContribution(ai: FindingAi): string {
 
 function renderAiSuggestion(suggestion: AiSuggestion): string {
   const text = suggestion.text
-    ? `“${escapeHtml(suggestion.text)}”`
+    ? `${suggestion.label ? `${escapeHtml(suggestion.label)}: ` : ""}“${escapeHtml(suggestion.text)}”`
     : "An empty alternative (decorative)";
   return `<li><p><strong>${text}</strong> for <code>${escapeHtml(suggestion.selector)}</code>${suggestion.classification ? ` · image role: ${escapeHtml(suggestion.classification)}` : ""}</p><p>${escapeHtml(suggestion.rationale)}</p><p class="ai-meta">Based on ${escapeHtml(citedEvidence(suggestion.citedEvidenceIds))} · confidence ${suggestion.confidence.toFixed(2)}</p></li>`;
 }
@@ -4150,7 +4209,7 @@ function aiMarkdown(ai: FindingAi): string {
   return `AI suggestion from ${ai.providerId ?? "a model"}, review before use: ${ai.suggestions
     .map(
       (suggestion) =>
-        `${suggestion.text ? `“${suggestion.text}”` : "an empty alternative"} for \`${suggestion.selector}\` (based on ${citedEvidence(suggestion.citedEvidenceIds)}; confidence ${suggestion.confidence.toFixed(2)})`
+        `${suggestion.text ? `${suggestion.label ? `${suggestion.label}: ` : ""}“${suggestion.text}”` : "an empty alternative"} for \`${suggestion.selector}\` (based on ${citedEvidence(suggestion.citedEvidenceIds)}; confidence ${suggestion.confidence.toFixed(2)})`
     )
     .join("; ")}.`;
 }

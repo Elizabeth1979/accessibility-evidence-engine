@@ -5,9 +5,15 @@ import {
   ATTACHED_SCREENSHOT,
   accessibleNameSpecialist,
   askSpecialist,
+  colorMeaningSpecialist,
   imagePurposeSpecialist,
+  textImageSpecialist,
   type AccessibleLabelContext,
   type AccessibleNameAnswer,
+  type ColorMeaningAnswer,
+  type ColorMeaningContext,
+  type TextImageAnswer,
+  type TextImageContext,
   type ImagePurposeAnswer,
   type ImagePurposeContext,
   type ImageRole,
@@ -34,6 +40,11 @@ export type ContextualReviewCandidate =
       /** The role the markup already decides, if any (imageRoleFromMarkup). */
       markupRole?: ImageRole;
       contextSignals: string[];
+    }
+  | {
+      /** A colour-only difference, or an image that may be words, judged from how it looks. */
+      kind: "screenshot-judgement";
+      hasScreenshot: boolean;
     }
   | {
       kind: "deterministic-rule";
@@ -178,6 +189,19 @@ export function routeContextualReview(candidate: ContextualReviewCandidate): AiR
     };
   }
 
+  if (candidate.kind === "screenshot-judgement") {
+    return candidate.hasScreenshot
+      ? {
+          route: "ai-review",
+          reason:
+            "Whether a colour means something, or what words an image shows, is read from how it looks on the page."
+        }
+      : {
+          route: "deterministic",
+          reason: "No screenshot of the element was captured, so there is nothing to judge it from."
+        };
+  }
+
   if (candidate.markupRole === "decorative") {
     return {
       route: "deterministic",
@@ -262,6 +286,42 @@ export async function proposeImageAlternativeFix(
   });
 }
 
+/** Says whether a colour-only difference carries information, from the row as the page showed it. */
+export async function judgeColorMeaning(
+  context: ColorMeaningContext,
+  provider: ModelProvider,
+  screenshot?: ModelImage
+): Promise<AiProposedFix<ColorMeaningAnswer>> {
+  const decision = routeContextualReview({
+    kind: "screenshot-judgement",
+    hasScreenshot: Boolean(screenshot)
+  });
+  const answer = await askAllowed(decision, colorMeaningSpecialist, context, provider, screenshot);
+  return reviewOnlyFix(provider, decision, answer, {
+    summary: answer.colorCarriesMeaning
+      ? `The colour of ${context.selector} means "${answer.meaning}"; add a cue that is not colour.`
+      : `The colour of ${context.selector} tells nothing a person needs.`
+  });
+}
+
+/** Reads the words an image shows, if any, from the image as the page showed it. */
+export async function readTextImage(
+  context: TextImageContext,
+  provider: ModelProvider,
+  screenshot?: ModelImage
+): Promise<AiProposedFix<TextImageAnswer>> {
+  const decision = routeContextualReview({
+    kind: "screenshot-judgement",
+    hasScreenshot: Boolean(screenshot)
+  });
+  const answer = await askAllowed(decision, textImageSpecialist, context, provider, screenshot);
+  return reviewOnlyFix(provider, decision, answer, {
+    summary: answer.showsText
+      ? `${context.selector} shows the words "${answer.text}"${answer.isLogo ? ", as a logo" : "; set them as real text"}.`
+      : `${context.selector} shows no words.`
+  });
+}
+
 async function askAllowed<Input extends object, Answer>(
   decision: AiReviewDecision,
   specialist: Specialist<Input, Answer>,
@@ -279,14 +339,14 @@ function reviewOnlyFix<Answer extends { rationale: string; confidence: number }>
   provider: ModelProvider,
   decision: AiReviewDecision,
   answer: Answer,
-  proposal: { summary: string; patch: string }
+  proposal: { summary: string; patch?: string }
 ): AiProposedFix<Answer> {
   return {
     providerId: provider.id,
     summary: proposal.summary,
     rationale: `${decision.reason} ${answer.rationale} Model confidence: ${answer.confidence.toFixed(2)}. This proposal requires human review and a verified rerun.`,
     safety: "review",
-    patches: [proposal.patch],
+    patches: proposal.patch ? [proposal.patch] : [],
     answer
   };
 }

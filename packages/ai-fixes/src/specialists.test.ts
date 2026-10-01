@@ -6,10 +6,13 @@ import test from "node:test";
 import {
   accessibleNameSpecialist,
   askSpecialist,
+  colorMeaningSpecialist,
   imagePurposeSpecialist,
   imageRoleFromMarkup,
+  judgeColorMeaning,
   proposeImageAlternativeFix,
   SPECIALISTS,
+  textImageSpecialist,
   type ImagePurposeContext,
   type ModelProvider,
   type ModelRequest
@@ -175,4 +178,74 @@ test("an image alternative is proposed for review, never applied", async () => {
     proposeImageAlternativeFix({ selector: "#logo", markupRole: "decorative" }, provider),
     /already marks the image decorative/
   );
+});
+
+const overLimit = {
+  selector: "#storage-limit",
+  itemText: "Storage: 12 of 10 GB",
+  finding: "Stands out from its 2 neighbours by colour alone (color: rgb(255, 141, 141))."
+};
+/** The evidence as a model with the screenshot gets it, which an answer may cite. */
+const seen = { screenshot: "The attached image: the element as the page showed it." };
+
+test("a colour's meaning is named when it has one, and empty when it has none", () => {
+  const parse = (answer: Record<string, unknown>) =>
+    colorMeaningSpecialist.parse(
+      {
+        colorCarriesMeaning: true,
+        meaning: "Over the storage limit",
+        rationale: "Red marks the one limit that is exceeded.",
+        confidence: 0.8,
+        citedEvidenceIds: ["screenshot", "itemText"],
+        ...answer
+      },
+      { ...overLimit, ...seen }
+    );
+
+  assert.equal(parse({}).meaning, "Over the storage limit");
+  assert.equal(parse({ colorCarriesMeaning: false, meaning: "" }).colorCarriesMeaning, false);
+  assert.throws(() => parse({ meaning: "" }), /meaning must be 1 to 80/);
+  assert.throws(() => parse({ colorCarriesMeaning: false }), /tells nothing has an empty meaning/);
+  assert.throws(() => parse({ colorCarriesMeaning: "yes" }), /must be true or false/);
+});
+
+test("an image's words are read when it shows some, and a logo is said to be one", () => {
+  const banner = {
+    selector: "#upgrade-banner",
+    currentAlternative: "Upgrade to Team for unlimited projects",
+    finding: "An image shaped like a line of text, drawn in two flat colours.",
+    ...seen
+  };
+  const parse = (answer: Record<string, unknown>) =>
+    textImageSpecialist.parse(
+      {
+        showsText: true,
+        text: "Upgrade to Team for unlimited projects",
+        isLogo: false,
+        rationale: "The banner is one line of white words on green.",
+        confidence: 0.9,
+        citedEvidenceIds: ["screenshot"],
+        ...answer
+      },
+      banner
+    );
+
+  assert.equal(parse({}).text, "Upgrade to Team for unlimited projects");
+  assert.equal(parse({ showsText: false, text: "" }).showsText, false);
+  assert.equal(parse({ isLogo: true }).isLogo, true);
+  assert.throws(() => parse({ text: "" }), /text must be 1 to 300/);
+  assert.throws(() => parse({ showsText: false }), /shows no words has empty text/);
+});
+
+test("a colour is judged only from a screenshot: without one, no model is asked", async () => {
+  const asked: ModelRequest[] = [];
+  const provider: ModelProvider = {
+    id: "test-model",
+    async ask(request) {
+      asked.push(request);
+      return {};
+    }
+  };
+  await assert.rejects(judgeColorMeaning(overLimit, provider), /no screenshot of the element/i);
+  assert.equal(asked.length, 0);
 });

@@ -30,8 +30,7 @@ export interface Specialist<Input extends object, Answer> {
 }
 
 /** The evidence that stands for an attached screenshot, so an answer can cite it. */
-export const ATTACHED_SCREENSHOT =
-  "The attached image: the element as the page showed it, cut close to its edges.";
+export const ATTACHED_SCREENSHOT = "The attached image: the element as the page showed it.";
 
 /** Providers whose model said it cannot see images: each is asked without them from then on. */
 const blindProviders = new WeakSet<ModelProvider>();
@@ -88,12 +87,16 @@ function citingOnly(schema: AnswerSchema, fields: string[]): AnswerSchema {
   };
 }
 
+/** The picture a naming or alt-text question gets: the element alone, as its context is text. */
+const CLOSE_CROP =
+  "A screenshot, when attached, is the element itself cut close to its edges; the page around it is in the other fields.";
+
 // Ported from accessibility-engine's judge prompt: quality in context, grounded in evidence only.
 const GROUNDING = [
   "Judge quality in context, not mere presence: a name or text alternative can exist and still be wrong, generic ('image', 'button'), redundant ('image of…') or meaningless for what the element does.",
   "Ground every answer only in the evidence provided. Do not invent details about the image, page or element that the evidence does not state.",
   "citedEvidenceIds lists the names of the input fields your answer relies on. When the evidence is not enough, say so in the rationale and give a low confidence; never guess.",
-  "When the input has a screenshot field, an image is attached: the element itself, as the page showed it. Describe what it shows, read any words in it, and cite screenshot; the page around it is in the other fields. Without one, you have the page's text only: say so in the rationale."
+  "When the input has a screenshot field, an image is attached: the element as the page showed it. Use what it shows, read any words in it, and cite screenshot. Without one, you have the page's text only: say so in the rationale."
 ].join("\n");
 
 export interface AccessibleLabelContext {
@@ -119,6 +122,7 @@ export const accessibleNameSpecialist: Specialist<AccessibleLabelContext, Access
   instructions: [
     "Suggest an accessible name for an icon-only control that has none.",
     GROUNDING,
+    CLOSE_CROP,
     "The name must describe what the control does in this context: 'Open cart drawer', not 'button'. Keep it short, start with a verb when the control acts, name the object it acts on when the context gives one, and leave out the role ('button', 'link')."
   ].join("\n"),
   schema: answerSchema({
@@ -207,6 +211,7 @@ export const imagePurposeSpecialist: Specialist<ImagePurposeContext, ImagePurpos
   instructions: [
     "Classify an image's purpose, then draft its text alternative from the page context.",
     GROUNDING,
+    CLOSE_CROP,
     "Classify it as one of:",
     "- decorative: it adds nothing the page does not already say; its alternative is empty.",
     "- functional: it is inside a link or button; the alternative describes the action or destination, not the picture.",
@@ -259,6 +264,106 @@ export const imagePurposeSpecialist: Specialist<ImagePurposeContext, ImagePurpos
   }
 };
 
+export interface ColorMeaningContext {
+  selector: string;
+  /** The item's text. */
+  itemText: string;
+  /** The sweep's finding: which colours differ from the item's like neighbours, and any state. */
+  finding: string;
+}
+
+export interface ColorMeaningAnswer {
+  colorCarriesMeaning: boolean;
+  /** What the colour tells a person, in a few words; empty when it tells nothing. */
+  meaning: string;
+  rationale: string;
+  confidence: number;
+  citedEvidenceIds: string[];
+}
+
+/** Says whether a colour-only difference carries information, from the row as the page showed it. */
+export const colorMeaningSpecialist: Specialist<ColorMeaningContext, ColorMeaningAnswer> = {
+  id: "color-meaning-specialist",
+  instructions: [
+    "One item in a row of like items differs from its neighbours in colour only; finding says which colours. The screenshot shows the row with the item outlined in magenta.",
+    GROUNDING,
+    "Say whether the colour tells a person something they need, such as a state (the current page, a selected item, an error, a required field, over a limit) or a status, and name it in a few words. If it is decoration or emphasis that tells nothing, colorCarriesMeaning is false and meaning is empty.",
+    "Do not judge contrast or suggest colours: only whether the colour carries information that a person who cannot see it would miss."
+  ].join("\n"),
+  schema: answerSchema({
+    colorCarriesMeaning: { type: "boolean" },
+    meaning: { type: "string" },
+    rationale: { type: "string" },
+    confidence: { type: "number" },
+    citedEvidenceIds: { type: "array", items: { type: "string" } }
+  }),
+  parse(value, input) {
+    const answer = readRecord(value, "colour-meaning answer");
+    const colorCarriesMeaning = readBoolean(answer.colorCarriesMeaning, "colorCarriesMeaning");
+    const meaning = typeof answer.meaning === "string" ? answer.meaning.trim() : "";
+    if (colorCarriesMeaning) readText(meaning, "meaning", 80);
+    else if (meaning) throw new Error("A colour that tells nothing has an empty meaning.");
+    return {
+      colorCarriesMeaning,
+      meaning,
+      rationale: readText(answer.rationale, "rationale", 500),
+      confidence: readConfidence(answer.confidence),
+      citedEvidenceIds: readCitations(answer.citedEvidenceIds, input)
+    };
+  }
+};
+
+export interface TextImageContext {
+  selector: string;
+  currentAlternative: string;
+  /** The sweep's finding: why the image may be words drawn as pixels. */
+  finding: string;
+}
+
+export interface TextImageAnswer {
+  showsText: boolean;
+  /** The words the image shows, as written; empty when it shows none. */
+  text: string;
+  /** A logo or wordmark, which WCAG 1.4.5 exempts. */
+  isLogo: boolean;
+  rationale: string;
+  confidence: number;
+  citedEvidenceIds: string[];
+}
+
+/** Reads the words an image shows, if any, from the image as the page showed it. */
+export const textImageSpecialist: Specialist<TextImageContext, TextImageAnswer> = {
+  id: "text-image-specialist",
+  instructions: [
+    "The screenshot shows an image cut close to its edges. Say whether it shows words drawn as pixels, and write them exactly as shown. Say whether it is a logo or wordmark, which WCAG exempts.",
+    GROUNDING,
+    "Labels inside a chart, diagram, map or photograph are part of the picture: showsText is false for them. When showsText is false, text is empty."
+  ].join("\n"),
+  schema: answerSchema({
+    showsText: { type: "boolean" },
+    text: { type: "string" },
+    isLogo: { type: "boolean" },
+    rationale: { type: "string" },
+    confidence: { type: "number" },
+    citedEvidenceIds: { type: "array", items: { type: "string" } }
+  }),
+  parse(value, input) {
+    const answer = readRecord(value, "text-image answer");
+    const showsText = readBoolean(answer.showsText, "showsText");
+    const text = typeof answer.text === "string" ? answer.text.trim() : "";
+    if (showsText) readText(text, "text", 300);
+    else if (text) throw new Error("An image that shows no words has empty text.");
+    return {
+      showsText,
+      text,
+      isLogo: readBoolean(answer.isLogo, "isLogo"),
+      rationale: readText(answer.rationale, "rationale", 500),
+      confidence: readConfidence(answer.confidence),
+      citedEvidenceIds: readCitations(answer.citedEvidenceIds, input)
+    };
+  }
+};
+
 const GENERIC_NAMES = new Set(["button", "link", "icon", "image", "photo", "picture", "graphic"]);
 
 function answerSchema(properties: Record<string, unknown>): AnswerSchema {
@@ -283,6 +388,11 @@ function readText(value: unknown, field: string, maximum: number): string {
     throw new Error(`${field} must be 1 to ${maximum} characters.`);
   }
   return text;
+}
+
+function readBoolean(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`${field} must be true or false.`);
+  return value;
 }
 
 function readConfidence(value: unknown): number {
@@ -313,5 +423,7 @@ function fileName(source: string | undefined): string | undefined {
 /** Every specialist the registry allowlists and this package implements. */
 export const SPECIALISTS: ReadonlyArray<Specialist<{ selector: string }, unknown>> = [
   accessibleNameSpecialist,
-  imagePurposeSpecialist
+  imagePurposeSpecialist,
+  colorMeaningSpecialist,
+  textImageSpecialist
 ];

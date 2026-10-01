@@ -204,10 +204,11 @@
         "Flag, as advisory, a selected image whose screenshot is drawn mostly in two flat colours, as words on a plain background are."
       ],
       "ai": {
-        "allowed": false,
+        "allowed": true,
         "required": false,
-        "purpose": "Whether the image's words are pixels is for a person until a specialist that reads the image is allowlisted for it.",
-        "outputs": []
+        "specialistId": "text-image-specialist",
+        "purpose": "Read the words an image shows, if any, and say whether it is a logo, from the image as the page showed it. Labelled AI; the finding stays advisory either way.",
+        "outputs": ["showsText", "text", "isLogo", "rationale", "confidence", "citedEvidenceIds"]
       },
       "verification": [
         "Replace the image with real text styled with CSS, and confirm it resizes to 200% and keeps its look.",
@@ -358,10 +359,11 @@
         "Flag, as advisory, one of a row of like items (list items, links, buttons, tabs, options, menu items) that differs from its matching neighbours in colour only: no difference in weight, size, underline, border, shape, an icon or text added by a style, no fill or line that appears, and no change in lightness of 3:1 (technique G183). Skip a row whose other items share one text the item lacks, and a disabled item."
       ],
       "ai": {
-        "allowed": false,
+        "allowed": true,
         "required": false,
-        "purpose": "Whether the colour carries meaning is for a person until a specialist that sees the screenshot is allowlisted for it.",
-        "outputs": []
+        "specialistId": "color-meaning-specialist",
+        "purpose": "Say whether a colour-only difference tells a person something they need, such as a state or a status, from the row as the page showed it. Labelled AI; the finding stays advisory either way.",
+        "outputs": ["colorCarriesMeaning", "meaning", "rationale", "confidence", "citedEvidenceIds"]
       },
       "verification": [
         "Compare the item with its neighbours in greyscale: it still stands out by its weight, underline, border, icon or text.",
