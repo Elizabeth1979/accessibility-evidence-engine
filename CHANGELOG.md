@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- The pull-request comment can show each problem as a picture: the page around the element, outlined in pink, cut from the screenshot it was found on. Turn it on with the Action's `images: true` (or `aee comment --post --images`) and the `contents: write` permission. The pictures are committed to an `aee-images` branch, named by their content, so a picture already there is not added again, and at most 10 problems get one. A problem with the whole page, such as a missing heading, gets none: an outline around the page points at nothing. Off by default, since anyone who can read the repository can see the pictures. If they cannot be uploaded, such as from a fork's read-only token, the comment is posted without them.
+
 ## [0.4.1] - 2026-10-01
 
 ### Fixed

@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { commentImages } from "./comment-images";
 import {
   overallVerdict,
   PR_COMMENT_MARKER,
@@ -44,31 +45,134 @@ export interface CommentResult {
   body: string;
   verdict: ScenarioIntegratedReport["verdict"];
   reports: number;
+  /** The pictures the comment shows, by file name, to upload before it is posted. */
+  images: Map<string, Buffer>;
 }
 
-/** Reads a run's assessments and renders the one comment for them. */
+/**
+ * Reads a run's assessments and renders the one comment for them. With `imageUrl`, each problem it
+ * shows, up to a limit, gets a picture of the element on its page, at the address `imageUrl` gives.
+ */
 export async function buildPullRequestComment(
   folders: string[],
-  runUrl?: string
+  runUrl?: string,
+  imageUrl?: (name: string) => string
 ): Promise<CommentResult> {
-  const reports: ScenarioIntegratedReport[] = [];
+  const assessments: Array<{ report: ScenarioIntegratedReport; dir: string }> = [];
   for (const file of await findAssessmentReports(folders)) {
-    reports.push(JSON.parse(await readFile(file, "utf8")) as ScenarioIntegratedReport);
+    assessments.push({
+      report: JSON.parse(await readFile(file, "utf8")) as ScenarioIntegratedReport,
+      dir: path.dirname(file)
+    });
   }
+  const reports = assessments.map(({ report }) => report);
+  const pictures = imageUrl ? commentImages(assessments, imageUrl) : undefined;
   return {
-    body: renderPullRequestSummary(reports, runUrl),
+    body: renderPullRequestSummary(reports, runUrl, pictures?.imageFor),
     verdict: overallVerdict(reports),
-    reports: reports.length
+    reports: reports.length,
+    images: pictures?.files ?? new Map()
   };
 }
 
-export interface StickyCommentTarget {
+/** A repository on GitHub, and what AEE needs to call its API. */
+export interface GitHubTarget {
   /** owner/name */
   repository: string;
-  pullNumber: number;
   token: string;
   apiUrl?: string;
   fetch?: typeof globalThis.fetch;
+}
+
+export interface StickyCommentTarget extends GitHubTarget {
+  pullNumber: number;
+}
+
+/**
+ * Calls GitHub's REST API as the target's token. A call marked optional answers nothing for a 404,
+ * such as for a branch that does not exist yet; any other failure throws with GitHub's answer.
+ */
+function gitHubApi(target: GitHubTarget) {
+  const request = target.fetch ?? globalThis.fetch;
+  const api = (target.apiUrl ?? "https://api.github.com").replace(/\/$/, "");
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${target.token}`,
+    "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28"
+  };
+  const call = async (method: string, url: string, payload?: unknown, optional = false) => {
+    const response = await request(url, {
+      method,
+      headers,
+      ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
+    });
+    if (optional && response.status === 404) return undefined;
+    if (!response.ok) {
+      throw new Error(
+        `GitHub ${method} ${url} answered ${response.status}: ${await response.text()}`
+      );
+    }
+    return response.json() as Promise<unknown>;
+  };
+  return { repo: `${api}/repos/${target.repository}`, api, call };
+}
+
+/** The branch the comment's pictures are kept on, apart from the project's own code. */
+export const COMMENT_IMAGE_BRANCH = "aee-images";
+
+/** Where a picture uploaded to the images branch is shown from. */
+export function commentImageUrl(serverUrl: string, repository: string, name: string): string {
+  return `${serverUrl.replace(/\/$/, "")}/${repository}/raw/${COMMENT_IMAGE_BRANCH}/${name}`;
+}
+
+/**
+ * Commits the comment's pictures to the images branch, creating it on first use, before the
+ * comment that shows them is posted. Pictures are named by their content, so one already on the
+ * branch adds nothing, and earlier comments keep theirs.
+ */
+export async function uploadCommentImages(
+  files: Map<string, Buffer>,
+  target: GitHubTarget
+): Promise<void> {
+  if (files.size === 0) return;
+  const { repo, call } = gitHubApi(target);
+  const ref = (await call(
+    "GET",
+    `${repo}/git/ref/heads/${COMMENT_IMAGE_BRANCH}`,
+    undefined,
+    true
+  )) as { object: { sha: string } } | undefined;
+  const parent = ref?.object.sha;
+  const baseTree = parent
+    ? ((await call("GET", `${repo}/git/commits/${parent}`)) as { tree: { sha: string } }).tree.sha
+    : undefined;
+  const entries = [];
+  for (const [name, data] of files) {
+    const blob = (await call("POST", `${repo}/git/blobs`, {
+      content: data.toString("base64"),
+      encoding: "base64"
+    })) as { sha: string };
+    entries.push({ path: name, mode: "100644", type: "blob", sha: blob.sha });
+  }
+  const tree = (await call("POST", `${repo}/git/trees`, {
+    ...(baseTree ? { base_tree: baseTree } : {}),
+    tree: entries
+  })) as { sha: string };
+  if (tree.sha === baseTree) return;
+  const commit = (await call("POST", `${repo}/git/commits`, {
+    message: "Add pictures for an AEE pull-request comment",
+    tree: tree.sha,
+    parents: parent ? [parent] : []
+  })) as { sha: string };
+  if (parent) {
+    await call("PATCH", `${repo}/git/refs/heads/${COMMENT_IMAGE_BRANCH}`, { sha: commit.sha });
+  } else {
+    await call("POST", `${repo}/git/refs`, {
+      ref: `refs/heads/${COMMENT_IMAGE_BRANCH}`,
+      sha: commit.sha
+    });
+  }
 }
 
 /**
@@ -79,27 +183,7 @@ export async function postStickyComment(
   body: string,
   target: StickyCommentTarget
 ): Promise<{ action: "created" | "updated"; url: string }> {
-  const request = target.fetch ?? globalThis.fetch;
-  const api = (target.apiUrl ?? "https://api.github.com").replace(/\/$/, "");
-  const headers = {
-    Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${target.token}`,
-    "Content-Type": "application/json",
-    "X-GitHub-Api-Version": "2022-11-28"
-  };
-  const call = async (method: string, url: string, payload?: unknown) => {
-    const response = await request(url, {
-      method,
-      headers,
-      ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
-    });
-    if (!response.ok) {
-      throw new Error(
-        `GitHub ${method} ${url} answered ${response.status}: ${await response.text()}`
-      );
-    }
-    return response.json() as Promise<unknown>;
-  };
+  const { api, call } = gitHubApi(target);
 
   const issueComments = `${api}/repos/${target.repository}/issues/${target.pullNumber}/comments`;
   for (let page = 1; ; page += 1) {

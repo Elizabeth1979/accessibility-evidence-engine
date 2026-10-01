@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { failsOn } from "./pr-comment";
+import { commentImageUrl, failsOn, uploadCommentImages } from "./pr-comment";
 import {
   PR_COMMENT_MARKER,
   renderPullRequestSummary,
@@ -134,4 +134,122 @@ test("a comment stays under GitHub's size limit and names what it left out", () 
 
 test("a run that wrote no report says so", () => {
   assert.match(renderPullRequestSummary([]), /not decided, no AEE report was written/);
+});
+
+test("a problem with a picture shows it first, with its alt text, in one test and in a suite", () => {
+  const image = (finding: { instances: Array<{ label: string }> }) => ({
+    url: `https://github.com/owner/app/raw/aee-images/${finding.instances[0]!.label}.png`,
+    alt: `Screenshot: “${finding.instances[0]!.label}”, outlined in pink`
+  });
+  const picture =
+    '<img src="https://github.com/owner/app/raw/aee-images/Archive.png" alt="Screenshot: “Archive”, outlined in pink">';
+  for (const body of [
+    renderPullRequestSummary([assessment("Archive a project", "fail")], undefined, image),
+    renderPullRequestSummary(
+      [assessment("Archive a project", "fail"), assessment("Home page loads", "pass")],
+      undefined,
+      image
+    )
+  ]) {
+    assert.ok(body.includes(`</summary>\n\n${picture}\n\n**Problem:**`));
+  }
+  // Without pictures, the comment is as it was.
+  assert.ok(!renderPullRequestSummary([assessment("Archive a project", "fail")]).includes("<img"));
+});
+
+test("pictures are shown from the images branch of the repository the comment is on", () => {
+  assert.equal(
+    commentImageUrl("https://github.com/", "owner/app", "abc.png"),
+    "https://github.com/owner/app/raw/aee-images/abc.png"
+  );
+});
+
+/** A fake GitHub API that records each call and answers from the given replies, in order. */
+function fakeGitHub(replies: Array<{ status: number; body?: unknown }>) {
+  const calls: Array<{ method: string; url: string; body?: unknown }> = [];
+  const fetch = (async (url: string, init: { method: string; body?: string }) => {
+    calls.push({
+      method: init.method,
+      url: url.replace("https://api.github.com/repos/owner/app", ""),
+      ...(init.body ? { body: JSON.parse(init.body) as unknown } : {})
+    });
+    const reply = replies.shift()!;
+    return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
+      status: reply.status
+    });
+  }) as unknown as typeof globalThis.fetch;
+  return { calls, target: { repository: "owner/app", token: "token", fetch } };
+}
+
+test("the first pictures create the images branch, with no history of the project's own", async () => {
+  const { calls, target } = fakeGitHub([
+    { status: 404, body: { message: "Not Found" } },
+    { status: 201, body: { sha: "blob1" } },
+    { status: 201, body: { sha: "tree1" } },
+    { status: 201, body: { sha: "commit1" } },
+    { status: 201, body: {} }
+  ]);
+  await uploadCommentImages(new Map([["a.png", Buffer.from("png")]]), target);
+
+  assert.deepEqual(calls, [
+    { method: "GET", url: "/git/ref/heads/aee-images" },
+    { method: "POST", url: "/git/blobs", body: { content: "cG5n", encoding: "base64" } },
+    {
+      method: "POST",
+      url: "/git/trees",
+      body: { tree: [{ path: "a.png", mode: "100644", type: "blob", sha: "blob1" }] }
+    },
+    {
+      method: "POST",
+      url: "/git/commits",
+      body: { message: "Add pictures for an AEE pull-request comment", tree: "tree1", parents: [] }
+    },
+    { method: "POST", url: "/git/refs", body: { ref: "refs/heads/aee-images", sha: "commit1" } }
+  ]);
+});
+
+test("later pictures are added to the branch, and pictures already on it add nothing", async () => {
+  const later = fakeGitHub([
+    { status: 200, body: { object: { sha: "commit1" } } },
+    { status: 200, body: { tree: { sha: "tree1" } } },
+    { status: 201, body: { sha: "blob2" } },
+    { status: 201, body: { sha: "tree2" } },
+    { status: 201, body: { sha: "commit2" } },
+    { status: 200, body: {} }
+  ]);
+  await uploadCommentImages(new Map([["b.png", Buffer.from("png")]]), later.target);
+  assert.deepEqual(later.calls.at(3)?.body, {
+    base_tree: "tree1",
+    tree: [{ path: "b.png", mode: "100644", type: "blob", sha: "blob2" }]
+  });
+  assert.deepEqual(later.calls.at(4)?.body, {
+    message: "Add pictures for an AEE pull-request comment",
+    tree: "tree2",
+    parents: ["commit1"]
+  });
+  assert.deepEqual(later.calls.at(5), {
+    method: "PATCH",
+    url: "/git/refs/heads/aee-images",
+    body: { sha: "commit2" }
+  });
+
+  const again = fakeGitHub([
+    { status: 200, body: { object: { sha: "commit2" } } },
+    { status: 200, body: { tree: { sha: "tree2" } } },
+    { status: 201, body: { sha: "blob2" } },
+    { status: 201, body: { sha: "tree2" } }
+  ]);
+  await uploadCommentImages(new Map([["b.png", Buffer.from("png")]]), again.target);
+  assert.equal(again.calls.length, 4);
+});
+
+test("a token that cannot write the branch fails the upload with GitHub's answer", async () => {
+  const { target } = fakeGitHub([
+    { status: 404, body: { message: "Not Found" } },
+    { status: 403, body: { message: "Resource not accessible by integration" } }
+  ]);
+  await assert.rejects(
+    uploadCommentImages(new Map([["a.png", Buffer.from("png")]]), target),
+    /answered 403: .*Resource not accessible by integration/
+  );
 });

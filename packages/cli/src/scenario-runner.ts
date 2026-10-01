@@ -51,6 +51,7 @@ import {
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
 
+import type { CommentImage } from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
   compileScenarioPlan,
@@ -213,7 +214,7 @@ interface AxeNodeView {
   contrast?: ContrastMeasurement;
 }
 
-interface AxeTargetBox {
+export interface AxeTargetBox {
   x: number;
   y: number;
   width: number;
@@ -301,7 +302,7 @@ interface FindingCheckpointSynthesis {
   sweepPath?: string;
 }
 
-interface FindingSynthesis {
+export interface FindingSynthesis {
   ruleId: string;
   title: string;
   severity: string;
@@ -351,7 +352,7 @@ interface AiSuggestion {
   patch: string;
 }
 
-interface FindingInstanceSynthesis {
+export interface FindingInstanceSynthesis {
   component: string;
   label: string;
   selector: string;
@@ -2694,6 +2695,9 @@ export function renderPullRequestComment(report: ScenarioIntegratedReport): stri
   ].join("\n");
 }
 
+/** The picture of a finding the comment shows, if it has one. */
+export type CommentImageFor = (finding: FindingSynthesis) => CommentImage | undefined;
+
 /** Marks the comment AEE owns on a pull request, so a later run updates it instead of adding one. */
 export const PR_COMMENT_MARKER = "<!-- aee-pr-comment -->";
 
@@ -2716,7 +2720,8 @@ export function overallVerdict(
  */
 export function renderPullRequestSummary(
   reports: ScenarioIntegratedReport[],
-  runUrl?: string
+  runUrl?: string,
+  imageFor?: CommentImageFor
 ): string {
   const footer = runUrl
     ? `<sub>The full reports, with screenshots and evidence for every finding, are in [this run's aee-reports artifact](${encodeURI(runUrl)}). Evidence may contain sensitive page content.</sub>`
@@ -2736,12 +2741,12 @@ export function renderPullRequestSummary(
       PR_COMMENT_MARKER,
       `## Accessibility: ${verdictHeadline(report)}`,
       "",
-      ...commentBody(report, "###"),
+      ...commentBody(report, "###", imageFor),
       footer,
       ""
     ].join("\n");
   }
-  return renderSuiteSummary(reports, footer);
+  return renderSuiteSummary(reports, footer, imageFor);
 }
 
 /** How a status row's results are ordered in a suite: what needs work first. */
@@ -2761,7 +2766,11 @@ const COMMENT_NAMES_PER_GROUP = 30;
  * A shared component's problem is listed once however many tests render it, so the comment
  * grows with the number of problems, not the number of tests.
  */
-function renderSuiteSummary(reports: ScenarioIntegratedReport[], footer: string): string {
+function renderSuiteSummary(
+  reports: ScenarioIntegratedReport[],
+  footer: string,
+  imageFor?: CommentImageFor
+): string {
   // A test suite writes one assessment per test; anything else is named for what it is.
   const noun = reports.every(({ profile }) => profile === "playwright-test")
     ? { one: "test", many: "tests" }
@@ -2862,7 +2871,7 @@ function renderSuiteSummary(reports: ScenarioIntegratedReport[], footer: string)
     const block = [
       ...heading,
       // Problems of one rule on different elements share a title; the first element tells them apart.
-      ...commentFinding(finding, {
+      ...commentFinding(finding, imageFor?.(finding), {
         names: tests,
         noun,
         element:
@@ -2998,7 +3007,11 @@ function verdictHeadline(report: ScenarioIntegratedReport): string {
 }
 
 /** Everything under a comment's headline; sections take the heading level given. */
-function commentBody(report: ScenarioIntegratedReport, heading: string): string[] {
+function commentBody(
+  report: ScenarioIntegratedReport,
+  heading: string,
+  imageFor?: CommentImageFor
+): string[] {
   const { findings, status, uniqueIncompleteRules, undecidedContrast } = report.synthesis;
   const blocking = findings.filter(({ advisory }) => !advisory);
   const advisory = findings.filter(({ advisory }) => advisory);
@@ -3015,7 +3028,7 @@ function commentBody(report: ScenarioIntegratedReport, heading: string): string[
       ? [
           `${heading} ${title} (${group.length})`,
           "",
-          ...group.flatMap((finding) => commentFinding(finding))
+          ...group.flatMap((finding) => commentFinding(finding, imageFor?.(finding)))
         ]
       : [];
   lines.push(
@@ -3044,9 +3057,10 @@ function commentBody(report: ScenarioIntegratedReport, heading: string): string[
   return lines;
 }
 
-/** One finding, collapsed; in a suite summary, with the tests that saw it. */
+/** One finding, collapsed, with a picture of it when there is one; in a suite summary, with the tests that saw it. */
 function commentFinding(
   finding: FindingSynthesis,
+  image: CommentImage | undefined,
   seenIn?: { names: string[]; noun: { one: string; many: string }; element?: string }
 ): string[] {
   const facts = [
@@ -3062,6 +3076,7 @@ function commentFinding(
     "<details>",
     `<summary><strong>${commentHtml(finding.title)}</strong> · ${commentHtml(facts.join(" · "))}</summary>`,
     "",
+    ...(image ? [`<img src="${encodeURI(image.url)}" alt="${commentHtml(image.alt)}">`, ""] : []),
     `**Problem:** ${commentText(findingImpact(finding))}`,
     "",
     "**Elements:**",
