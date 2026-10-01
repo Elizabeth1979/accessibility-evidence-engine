@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- A failed request nobody hears: where the keyboard sweep presses controls, it reports a press whose request fails (an error status, or no response) while the page shows and says nothing, such as a save that fails silently. A request the page cancels does not count, and only requests a script sends do. Findings name the request by its method and outcome, never its address. It is advisory, under the `status-messages` concept.
 - A message nobody hears (WCAG 4.1.3): where the keyboard sweep presses controls, it reports text a press shows that a screen reader does not say, such as "Link copied." in a plain paragraph. Text counts as said when it is inside a live region that was on the page before the press, in an alert, or where focus moved. A press that loads a page or changes the control's own expanded, pressed or checked state is left alone. It is advisory, listed under a new `status-messages` registry concept with the live-regions pattern, and never blocks release.
 
 ### Changed

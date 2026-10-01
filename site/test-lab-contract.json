@@ -108,6 +108,14 @@
       "concept": "status-messages",
       "check": "Keyboard (Playwright): press each control, check new text is announced",
       "sweepFinding": "status-not-announced"
+    },
+    {
+      "id": "silent-sync-failure",
+      "title": "A failed sync says nothing",
+      "whoItHurts": "Everyone believes the settings synced; screen reader users have no way to find out otherwise.",
+      "concept": "status-messages",
+      "check": "Keyboard (Playwright): press each control, check a failed request is announced",
+      "sweepFinding": "failure-not-announced"
     }
   ]
 }

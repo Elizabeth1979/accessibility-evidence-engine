@@ -19,6 +19,7 @@ import {
   runOnLabPage,
   type LabPage
 } from "./test-lab-helpers";
+import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 
 const registry = JSON.parse(
   readFileSync("packages/schemas/json/remediation-registry.json", "utf8")
@@ -48,13 +49,19 @@ const expectedSweepKinds = contract.issues.flatMap(({ sweepFinding }) =>
 );
 const expectedAxeRules = contract.issues.flatMap(({ axeRule }) => (axeRule ? [axeRule] : []));
 
+// Over http, as the lab is published: a page opened from a file cannot send a request.
 async function sweepFindings(page: Page, labPage: LabPage) {
-  const result = await sweepKeyboardAndPointer({
-    page,
-    url: new URL(labPage.url, site).href,
-    activateControls: true
-  });
-  return result.findings.map(({ kind }) => kind).sort();
+  const server = await startHtmlServer(serveDirectory("site"));
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: new URL(labPage.url, `${server.origin}/`).href,
+      activateControls: true
+    });
+    return result.findings.map(({ kind }) => kind).sort();
+  } finally {
+    await server.close();
+  }
 }
 
 test("every issue belongs to a registry concept and has exactly one way it is found", () => {
@@ -131,7 +138,7 @@ test("aee run reports every issue the lab marks as found, and its status rows ag
       .filter(({ advisory }) => advisory)
       .map(({ ruleId }) => ruleId)
       .sort()
-  ).toEqual(["empty-heading", "status-not-announced"]);
+  ).toEqual(["empty-heading", "failure-not-announced", "status-not-announced"]);
   for (const finding of sweepFindings) {
     expect(finding.pattern?.url, finding.ruleId).toContain("/Elizabeth1979/a11y-skills/");
     expect(finding.checkpoints[0]?.sweepPath, finding.ruleId).toBeTruthy();
@@ -249,11 +256,10 @@ test("aee run presses no control unless the journey allows activate-page-control
     ["focus", "hover"],
     testInfo
   );
-  // Lost focus and the silent message are found by pressing Archive, so without the permission
-  // neither can be found.
-  const withoutPressing = expectedSweepKinds.filter(
-    (kind) => kind !== "focus-lost" && kind !== "status-not-announced"
-  );
+  // Lost focus and the silent message are found by pressing Archive, and the silent failure by
+  // pressing Sync, so without the permission none of them can be found.
+  const foundByPressing = ["focus-lost", "status-not-announced", "failure-not-announced"];
+  const withoutPressing = expectedSweepKinds.filter((kind) => !foundByPressing.includes(kind));
   expect(activated).toEqual([]);
   expect(sweepFindings.map(({ ruleId }) => ruleId).sort()).toEqual(withoutPressing.sort());
 });

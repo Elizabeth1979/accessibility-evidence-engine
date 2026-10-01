@@ -440,11 +440,12 @@
         }
       ],
       "patterns": ["live-regions"],
-      "applicability": "Text an action shows without loading a page or moving focus: a confirmation, an error, progress, a count or a result.",
-      "requiredEvidence": ["interaction-trace", "focus-state", "dom-snapshot"],
+      "applicability": "Text an action shows without loading a page or moving focus: a confirmation, an error, progress, a count or a result, and the failure of a request the action sends.",
+      "requiredEvidence": ["interaction-trace", "focus-state", "dom-snapshot", "network-log"],
       "deterministicDetection": [
         "Press each in-page control by keyboard and record the text the press shows, once the page has settled.",
-        "Flag, as advisory, new text that is in no live region present before the press (an alert is said as it is added), that focus did not move to, and that no page load or change in the control's own state (expanded, pressed, checked) explains."
+        "Flag, as advisory, new text that is in no live region present before the press (an alert is said as it is added), that focus did not move to, and that no page load or change in the control's own state (expanded, pressed, checked) explains.",
+        "Record the requests a script sends during each press, and flag, as advisory, a press whose request fails (an error status, or no response; a request the page cancels does not count) while the page shows and says nothing new. Requests are named by method and outcome, never by address."
       ],
       "ai": {
         "allowed": false,
@@ -454,7 +455,8 @@
       },
       "verification": [
         "Press the control again and confirm the text is inside a live region that was on the page before the press, or that focus moves to it.",
-        "With a screen reader, confirm the message is said once, and focus stays where it was."
+        "With a screen reader, confirm the message is said once, and focus stays where it was.",
+        "Make the request fail again and confirm the page says what failed and what to do next."
       ]
     }
   ]
