@@ -26,6 +26,7 @@
     "site:roadmap": "node scripts/generate-roadmap.mjs",
     "site:lab": "node scripts/generate-test-lab.mjs",
     "site:shots": "npm run build && playwright test --config playwright.shots.config.ts",
+    "score:ai": "npm run build && playwright test --config playwright.score.config.ts",
     "playwright:install": "playwright install chromium",
     "test": "npm run test:unit && npm run test:playwright",
     "test:coverage": "npm run build && node --experimental-test-coverage --test-coverage-lines=60 --test-coverage-branches=60 --test-coverage-functions=75 --test \"packages/*/dist/*.test.js\"",

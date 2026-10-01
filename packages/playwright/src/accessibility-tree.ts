@@ -58,12 +58,30 @@ export async function fetchAccessibilityTree(session: CdpSession): Promise<Acces
  * The focused element's role and name as the accessibility tree has them, which is what a screen
  * reader announces when focus arrives. Nothing when focus is on no element.
  */
-export async function describeFocusedElement(
+export function describeFocusedElement(
   session: CdpSession
 ): Promise<{ role: string; name: string } | undefined> {
-  const { result } = (await session.send("Runtime.evaluate", {
-    expression: "document.activeElement"
-  })) as { result: { objectId?: string } };
+  return describeEvaluatedElement(session, "document.activeElement");
+}
+
+/**
+ * The role and name of the first element a CSS selector matches, as the accessibility tree has
+ * them. Nothing when no element matches.
+ */
+export function describeSelectedElement(
+  session: CdpSession,
+  selector: string
+): Promise<{ role: string; name: string } | undefined> {
+  return describeEvaluatedElement(session, `document.querySelector(${JSON.stringify(selector)})`);
+}
+
+async function describeEvaluatedElement(
+  session: CdpSession,
+  expression: string
+): Promise<{ role: string; name: string } | undefined> {
+  const { result } = (await session.send("Runtime.evaluate", { expression })) as {
+    result: { objectId?: string };
+  };
   if (!result.objectId) return undefined;
   try {
     const { nodes } = (await session.send("Accessibility.getPartialAXTree", {

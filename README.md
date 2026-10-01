@@ -78,9 +78,22 @@ without uploading captured data. Detailed DOM, accessibility-tree, focus, Axe, a
 in the technical annex. Deterministic remediation leads. When you name a model with
 `AEE_LLM_PROVIDER` (`local` for one on your machine, or `claude`), the registry's allowlisted
 specialists suggest a name for each icon-only control and a text alternative for each image
-without one, from the page context captured with the axe result. Each suggestion is labelled AI,
-needs review, and never passes or fails anything. With no model named, nothing is sent and the
-report says how to turn it on.
+without one, say what a colour-only difference seems to mean, and read the words in an image of
+text. Each gets the page context captured with the finding and the element as the screenshot
+shows it. Each suggestion is labelled AI, needs review, and never passes or fails anything. With
+no model named, nothing is sent and the report says how to turn it on.
+
+Which model is worth it: `npm run score:ai` scores each model's names for the test lab's nameless
+elements against the names the fixed page gives them (the share of words in common), and the
+AI score workflow runs it on a GitHub runner. The free local model (`gemma4:e4b`, no key, nothing
+leaves the machine) scored 48% and 50% in two runs, at about a minute per answer. It is worth it
+for icon buttons and links: "Archive project" and "Get help" name the right action, though not
+which project or topic. It is not worth it for image alt text: one run described the chart well,
+the other pasted the text beside it. Read the answers, not only the number: word match cannot tell
+an alt text that is right in other words from a wrong one, so the good chart description scored
+21% and the pasted text 15%. Claude has not been scored yet; add an `ANTHROPIC_API_KEY` secret and
+run the AI score workflow, and its score prints beside the free model's. Three names make a sanity
+check, not a benchmark.
 
 Add `--open` to open the HTML report, or `--ci` to return a nonzero status for a failed, unknown, or
 incomplete result. The runner executes only the virtual-reader commands and pointer/keyboard
