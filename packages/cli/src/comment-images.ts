@@ -34,8 +34,9 @@ export const COMMENT_IMAGE_LIMIT = 10;
 export function outlinedCrop(page: PNG, box: AxeTargetBox): Buffer | undefined {
   const scale = page.width / box.pageWidth;
   if (Math.abs(page.height - box.pageHeight * scale) > scale) return undefined;
+  // The page's size is rounded to whole pixels; the element's is not.
   const wholePage =
-    box.x <= 0 && box.y <= 0 && box.width >= box.pageWidth && box.height >= box.pageHeight;
+    box.x <= 0 && box.y <= 0 && box.width >= box.pageWidth - 1 && box.height >= box.pageHeight - 1;
   if (wholePage) return undefined;
   const px = (value: number) => Math.round(value * scale);
   const outline = Math.max(1, px(OUTLINE_WIDTH));

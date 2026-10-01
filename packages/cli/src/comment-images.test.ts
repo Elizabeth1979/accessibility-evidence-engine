@@ -41,8 +41,9 @@ test("a crop at the page's edge stops at it, and a box from another page or the 
 
   // Measured on a page 900 pixels tall, so this screenshot is not the page the box describes.
   assert.equal(outlinedCrop(whitePage(600, 400), { ...corner, pageHeight: 900 }), undefined);
-  // The whole page, as for a missing heading, has nothing to point at.
-  const page = { x: 0, y: 0, width: 600, height: 400, pageWidth: 600, pageHeight: 400 };
+  // The whole page, as for a missing heading, has nothing to point at. The page's height is
+  // rounded; the element's, as the browser measured it, is not.
+  const page = { x: 0, y: 0, width: 600, height: 399.55, pageWidth: 600, pageHeight: 400 };
   assert.equal(outlinedCrop(whitePage(600, 400), page), undefined);
 });
 
