@@ -486,3 +486,81 @@ test("the sweep counts a tab arrow keys reach as reachable, and reports a mouse 
     { kind: "pointer-only", selector: "#more" }
   ]);
 });
+
+test("the sweep waits for an app to draw the page before it presses Tab", async ({ page }) => {
+  // As a single-page app on a busy machine: "Loading" for a while after the load, then the page.
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(`<!doctype html>
+<html lang="en">
+  <head><title>Late app</title></head>
+  <body>
+    <div id="root">Loading</div>
+    <script>
+      let ticks = 0;
+      const timer = setInterval(() => {
+        ticks += 1;
+        if (ticks < 6) return void (document.querySelector("#root").textContent += ".");
+        clearInterval(timer);
+        document.querySelector("#root").innerHTML =
+          '<header><a id="home" href="#home">Home</a><button id="out" type="button">Sign out</button></header>' +
+          '<main><h1>Album</h1><button id="rename" type="button">Rename album</button></main>';
+      }, 100);
+    </script>
+  </body>
+</html>`)}`,
+    activateControls: false
+  });
+
+  expect(result.tabStops.map(({ selector }) => selector)).toEqual(["#home", "#out", "#rename"]);
+  expect(result.findings).toEqual([]);
+});
+
+test("a sweep whose Tab reaches nothing on a page with links and buttons decides nothing", async ({
+  browser
+}, testInfo) => {
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    // A script that stops Tab: the walk reaches nothing, so it cannot tell what a mouse alone uses.
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Stopped</title></head>
+  <body>
+    <main>
+      <h1>Stopped</h1>
+      <a href="/elsewhere">Elsewhere</a>
+      <button type="button">Save</button>
+    </main>
+    <script>
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Tab") event.preventDefault();
+      });
+    </script>
+  </body>
+</html>`);
+  });
+  try {
+    const run = runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      laneId: "stopped",
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+    await expect(run).rejects.toThrow(/^Tab reached nothing, though the page has 2 controls/);
+    const record = JSON.parse(
+      await readFile(
+        testInfo.outputPath("aee-output", "stopped", "keyboard-pointer-sweep.json"),
+        "utf8"
+      )
+    ) as { status: string; findings?: unknown[]; diagnostics: string[] };
+    expect(record.status).toBe("failed");
+    expect(record.findings).toBeUndefined();
+    expect(record.diagnostics).toEqual([
+      expect.stringMatching(/not decided; try the page by keyboard\.$/)
+    ]);
+  } finally {
+    await site.close();
+  }
+});

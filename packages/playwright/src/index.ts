@@ -35,6 +35,7 @@ import {
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
+import { waitForQuietPage } from "./quiet-page";
 import { describeElementContexts } from "./element-context";
 import {
   locateElements,
@@ -1559,12 +1560,8 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
       requiredArtifactBasenames: CHECKPOINT_REQUIRED_ARTIFACTS
     };
     manifestLane.actions.push(manifestAction);
-    // A page load returns before an app has drawn the page; the checkpoint captures what a person
-    // sees once it has, as an interaction's capture does after its stabilizing pause.
-    await waitForQuietPage(
-      options.page as EvaluatablePageLike,
-      resolvePolicyConfig().capture.stabilizeAfterInteractionMs
-    );
+    // The checkpoint captures what a person sees once the app has drawn the page.
+    await waitForQuietPage(options.page as EvaluatablePageLike);
     const pageUrl = options.page.url();
     try {
       const result = await runAeeOnPage({
@@ -1749,6 +1746,7 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       onStep: (step) => steps.push(step)
     });
     await still.goto(options.targetUrl);
+    await waitForQuietPage(still);
     await still.screenshot({ path: screenshotFile, fullPage: true });
     const locations = await locateElements(
       still,
@@ -1952,41 +1950,6 @@ async function runInteractionWithStabilization<TPage extends PlaywrightPageLike>
   if (stabilizeAfterInteractionMs > 0) {
     await waitFor(stabilizeAfterInteractionMs);
   }
-}
-
-/** The longest a checkpoint waits for a page that keeps changing, such as one with a ticking clock. */
-const QUIET_PAGE_LIMIT_MS = 3_000;
-
-/**
- * Resolves once the page's DOM has not changed for `quietMs`, or after QUIET_PAGE_LIMIT_MS at
- * most. Style-only changes, as a script-driven animation makes on every frame, do not count.
- */
-async function waitForQuietPage(page: EvaluatablePageLike, quietMs: number): Promise<void> {
-  await page.evaluate?.(
-    ({ quietMs, limitMs }: { quietMs: number; limitMs: number }) =>
-      new Promise<void>((resolve) => {
-        const done = () => {
-          observer.disconnect();
-          clearTimeout(quiet);
-          clearTimeout(limit);
-          resolve();
-        };
-        let quiet = setTimeout(done, quietMs);
-        const limit = setTimeout(done, limitMs);
-        const observer = new MutationObserver((mutations) => {
-          if (mutations.every(({ attributeName }) => attributeName === "style")) return;
-          clearTimeout(quiet);
-          quiet = setTimeout(done, quietMs);
-        });
-        observer.observe(document, {
-          subtree: true,
-          childList: true,
-          attributes: true,
-          characterData: true
-        });
-      }),
-    { quietMs, limitMs: QUIET_PAGE_LIMIT_MS }
-  );
 }
 
 function waitFor(durationMs: number): Promise<void> {
