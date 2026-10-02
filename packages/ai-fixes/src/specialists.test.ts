@@ -119,8 +119,8 @@ test("the markup decides an image's role only when it says so", () => {
 const chartContext: ImagePurposeContext = {
   selector: "#usage-chart",
   source: "https://example.test/img/usage-chart.svg",
-  nearbyHeading: "Usage",
-  nearbyText: "Requests per day this month"
+  nearbyHeading: "Requests per day",
+  nearbyText: "Usage resets on the first day of each month. Seats: 5 of 5"
 };
 
 test("an image answer keeps the markup's role and a real alternative", () => {
@@ -147,6 +147,29 @@ test("an image answer keeps the markup's role and a real alternative", () => {
   assert.throws(() => parse({ suggestedAlternative: "Image of a chart" }), /saying it is an image/);
   assert.throws(() => parse({ suggestedAlternative: "usage-chart.svg" }), /not a text alternative/);
   assert.throws(() => parse({ classification: "logo" }), /must be one of/);
+  // The free model's first lab answer: the hint beside the chart, not what the chart shows.
+  assert.throws(
+    () =>
+      parse({
+        suggestedAlternative:
+          "Usage chart showing daily usage for Mon-Fri. Usage resets on the first day of each month."
+      }),
+    /repeats "Usage resets on the first day of each month\." from beside the image/
+  );
+  assert.throws(
+    () =>
+      parse(
+        { suggestedAlternative: "Plan usage: Storage: 12 of 10 GB" },
+        { ...chartContext, nearbyText: "Seats: 5 of 5\nStorage: 12 of 10 GB" }
+      ),
+    /repeats "Storage: 12 of 10 GB"/
+  );
+  // Sharing a word or two with the heading is not repeating it.
+  assert.equal(
+    parse({ suggestedAlternative: "Line chart of requests per day, Monday to Friday" })
+      .suggestedAlternative,
+    "Line chart of requests per day, Monday to Friday"
+  );
   assert.throws(
     () => parse({}, { ...chartContext, markupRole: "functional" }),
     /makes this image functional; the answer said complex/
