@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-02
+
 ### Added
 
 - `npm run readers:compare` reads a page with the virtual screen reader and with VoiceOver (macOS) or NVDA (Windows), through screen-reader-cli's live bridge, and writes the two transcripts side by side to `test-results/readers/`. Where the real reader cannot run, the file says why and the command exits nonzero.
@@ -156,10 +158,11 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.6.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.5.0
 [0.4.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.6.0...HEAD
