@@ -1,6 +1,6 @@
 {
   "name": "@aee/schemas",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "JSON Schemas and runtime validation for Accessibility Evidence Engine artifacts.",
   "license": "Apache-2.0",
   "type": "commonjs",
