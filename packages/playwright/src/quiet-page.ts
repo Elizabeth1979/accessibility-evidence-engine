@@ -80,22 +80,26 @@ export async function waitForQuietPage(
   openRequests?: OpenRequests
 ): Promise<void> {
   const deadline = Date.now() + QUIET_PAGE_LIMIT_MS;
+  // Reaching the limit ends the wait after one last read, even if a timer fired a moment before
+  // the clock reached the deadline.
+  let settled = true;
   do {
-    if (openRequests) await before(deadline, openRequests.settled());
+    if (openRequests) settled = await before(deadline, openRequests.settled());
     await waitForQuietDom(page, Math.max(0, deadline - Date.now()));
-  } while (openRequests?.count && Date.now() < deadline);
+  } while (settled && openRequests?.count && Date.now() < deadline);
 }
 
-/** Resolves with the promise, or at the deadline if it has not settled by then. */
-async function before(deadline: number, promise: Promise<void>): Promise<void> {
+/** Whether the promise settled before the deadline; resolves at the deadline if it has not. */
+async function before(deadline: number, promise: Promise<void>): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([
-    promise,
-    new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, Math.max(0, deadline - Date.now()));
+  const settled = await Promise.race([
+    promise.then(() => true),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), Math.max(0, deadline - Date.now()));
     })
   ]);
   clearTimeout(timer);
+  return settled;
 }
 
 async function waitForQuietDom(page: QuietPageLike, limitMs: number): Promise<void> {

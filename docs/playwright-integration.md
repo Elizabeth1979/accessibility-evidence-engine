@@ -437,6 +437,15 @@ test:
 test.use({ aee: { keyboardAndReader: false } });
 ```
 
+Since the sweep presses nothing, the fixture watches the presses the test makes instead, in every
+test and whatever the setting above: each click, double-click, tap, key press, check or uncheck,
+from just before it until the test's next action, page load or checkpoint, or its end. So a press is
+read with whatever the test waited for after it, and the watch adds no time. Text a press shows that
+a screen reader does not say is reported as `status-not-announced`, and a request a press sends that
+fails while the page shows and says nothing as `failure-not-announced`, both advisory, as when the
+sweep presses controls in `aee run`. They are recorded as a lane of their own (`test-observed-presses`,
+marked `pressedBy: "test"`); a press inside an iframe is not read.
+
 The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
 the fixture extends the runner the project already has and `aee run` launches the same Playwright:
 installing AEE leaves a project's Playwright as it was.

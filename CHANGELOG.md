@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- A message nobody hears and a failed request nobody hears now reach Playwright tests that use the `@aee/cli/test` fixture. The fixture never presses a control on your app, so these two checks never ran there; it now watches the presses your test makes (clicks, taps, key presses, checks) and reports text a press shows that a screen reader does not say, and a request a press sends that fails while the page shows and says nothing. Each press is read when the test moves on, with whatever the test waited for, so it adds no time. Both stay advisory, under the same kinds (`status-not-announced`, `failure-not-announced`), and the report says AEE pressed nothing.
+
 ### Fixed
 
 - A checkpoint and the keyboard sweep read a page once the data it loads has arrived, not only once its DOM has paused. An app that draws after a slow request, such as a gallery whose photos come a second after the page loads, was read before it drew: the wait for 250 ms without a DOM change ended during the request. Now the wait first lets the page's open requests finish, then waits for the DOM to stop changing, and again if drawing sent new requests, for 3 seconds at most as before. A page with nothing loading is read as quickly as before.
