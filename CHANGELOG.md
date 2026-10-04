@@ -4,6 +4,11 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Changed
+
+- AEE needs Node 22.12 or later, up from 22.0: parse5 8, which applies a reviewed fix to an HTML file, is published only as an ES module, and Node loads one from AEE's CommonJS packages from 22.12. CI now builds and runs the unit tests on Node 22.12 as well as 24, so the oldest Node AEE promises is tested.
+- Dependencies: parse5 8.0.1, `@anthropic-ai/sdk` 0.131, `@modelcontextprotocol/sdk` 1.32, Playwright 1.63 for AEE's own tests, and the latest ESLint, Prettier and typescript-eslint. Node's type definitions follow the oldest supported Node (22), so code cannot use a Node API that version lacks.
+
 ## [0.6.0] - 2026-10-02
 
 ### Added
