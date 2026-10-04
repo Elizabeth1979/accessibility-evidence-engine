@@ -510,6 +510,16 @@ const SWEEP_FINDING_TEXT: Record<
     area: "semantics",
     advisory: true
   },
+  "form-not-announced": {
+    title: "A form opens, but nothing says so",
+    expected:
+      "A screen reader says what opened: the control says it is expanded, or focus moves into the form.",
+    impact:
+      "Screen-reader users press the control, hear nothing, and do not know a form is now waiting for them elsewhere on the page.",
+    fix: 'Move focus to the first field of the form that opened, or make the control a disclosure: a button with aria-expanded, which a screen reader announces as "expanded".',
+    area: "keyboard",
+    advisory: true
+  },
   "colour-only": {
     title: "Told apart by colour alone",
     expected:
