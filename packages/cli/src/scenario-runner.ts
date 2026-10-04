@@ -26,6 +26,7 @@ import {
   announcedWithoutName,
   runInputComparison,
   runKeyboardPointerSweepLane,
+  writeObservedPressesLane,
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
   type ContrastMeasurement,
@@ -38,6 +39,7 @@ import {
   type KeyboardPointerSweepLaneDocument,
   type KeyboardPointerSweepLaneFinding,
   type KeyboardPointerSweepLaneResult,
+  type ObservedPresses,
   type PageCheckpointStep,
   type SweepFindingKind,
   type VirtualScreenReaderCommand,
@@ -644,6 +646,28 @@ function laneRunner({ assessmentDir, childManifestFiles, diagnostics }: Assessme
 }
 
 /**
+ * Records the presses a test made itself, and what they showed and said, as a lane of the
+ * assessment (see observePresses). Nothing is pressed.
+ */
+export async function recordObservedPresses(
+  assessment: AssessmentInProgress,
+  input: { journeyId: string; targetUrl: string; startedAt: string; observed: ObservedPresses }
+): Promise<void> {
+  const { journeyId, ...lane } = input;
+  const laneId = `${journeyId}-observed-presses`;
+  await laneRunner(assessment)(laneId, async () => {
+    const observed = await writeObservedPressesLane({
+      ...lane,
+      projectRoot: process.cwd(),
+      outputDir: assessment.assessmentDir,
+      laneId
+    });
+    collectSweepFindings(journeyId, observed, assessment.findings);
+    return observed.manifestFile;
+  });
+}
+
+/**
  * Sweeps a journey's start page by keyboard and mouse, then runs its virtual screen-reader
  * commands, each as a lane of the assessment: in browser contexts of their own for a scenario, or
  * on the page a test drives, which keeps the test's session, routes and storage. Returns the
@@ -875,7 +899,7 @@ function countPlannedLanes(scenario: AeeScenario): number {
 /** One finding per kind, like one per axe rule; its elements are read back from the lane's evidence. */
 function collectSweepFindings(
   journeyId: string,
-  sweep: KeyboardPointerSweepLaneResult,
+  sweep: Pick<KeyboardPointerSweepLaneResult, "laneId" | "findings">,
   findings: Array<Record<string, unknown>>
 ): void {
   for (const kind of new Set(sweep.findings.map(({ kind }) => kind))) {
@@ -1863,14 +1887,14 @@ function buildStatusAreas(
   const rulesRan = views.axeReports.length > 0;
 
   const keyboardFindings = blockingIn("keyboard");
+  const sweeps = views.sweeps.filter(sweptByAee);
   const swept =
-    views.sweeps.length > 0 &&
-    views.sweeps.every(({ document }) => document?.status === "completed");
+    sweeps.length > 0 && sweeps.every(({ document }) => document?.status === "completed");
   const comparisonsPassed = views.comparisons.every(
     ({ equivalence, expectation }) =>
       equivalence.verdict === "pass" && expectation.verdict === "pass"
   );
-  const pressed = views.sweeps.every(({ document }) => document?.activateControls);
+  const pressed = sweeps.every(({ document }) => document?.activateControls);
   const keyboard = keyboardFindings.length
     ? fixRequired("keyboard", "Keyboard access", titles(keyboardFindings))
     : !plannedChecks.keyboard
@@ -2127,6 +2151,14 @@ function buildFindingSynthesis(
   };
 }
 
+/**
+ * Whether a sweep record is the sweep's own, which walks Tab and may press controls, rather than a
+ * test's presses AEE only watched, which have no Tab stops or page capture.
+ */
+function sweptByAee({ document }: { document?: KeyboardPointerSweepLaneDocument }): boolean {
+  return document?.pressedBy !== "test";
+}
+
 /** A sweep finding, grouped like an axe rule: one checkpoint per swept page that shows it. */
 function buildSweepFindingSynthesis(
   views: IntegratedHtmlViews,
@@ -2158,6 +2190,7 @@ function buildSweepFindingSynthesis(
     undefined
   );
   const instances = (representative?.matches ?? []).map(sweepFindingInstance);
+  const pages = views.sweeps.filter(sweptByAee).length;
   const maximumAffectedNodes = representative?.matches.length ?? 0;
   const entry = remediationEntry(SWEEP_FINDING_CONCEPTS[kind]);
   const text = SWEEP_FINDING_TEXT[kind];
@@ -2171,9 +2204,11 @@ function buildSweepFindingSynthesis(
       .filter(({ standard, relationship }) => standard === "WCAG" && relationship === "primary")
       .map(({ requirementId }) => `WCAG ${requirementId}`),
     pattern: entry.patterns[0] ? patternLink(entry.patterns[0]) : undefined,
-    conclusion: representative
-      ? `${representative.matches[0]!.summary} The keyboard and pointer sweep found this on ${checkpoints.length} of ${views.sweeps.length} swept page${views.sweeps.length === 1 ? "" : "s"}.`
-      : "The sweep reported this finding, but its evidence could not be read.",
+    conclusion: !representative
+      ? "The sweep reported this finding, but its evidence could not be read."
+      : representative.document.pressedBy === "test"
+        ? `${representative.matches[0]!.summary} AEE watched the test's own presses and pressed nothing.`
+        : `${representative.matches[0]!.summary} The keyboard and pointer sweep found this on ${swept.filter(sweptByAee).length} of ${pages} swept page${pages === 1 ? "" : "s"}.`,
     occurrenceCount: Array.isArray(finding.occurrences)
       ? finding.occurrences.length
       : checkpoints.length,
@@ -3849,9 +3884,13 @@ function renderSweepOverview(views: IntegratedHtmlViews): string {
             : findings.length
               ? { verdict: "unknown", label: `${findings.length} advisory` }
               : { verdict: "pass", label: "No findings" };
-      const pressed = document.activateControls
-        ? `${document.activated?.length ?? 0} controls pressed by keyboard and by mouse`
-        : `Controls not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed`;
+      const presses = document.activated?.length ?? 0;
+      const pressed =
+        document.pressedBy === "test"
+          ? `${presses} press${presses === 1 ? "" : "es"} the test made, watched; AEE pressed nothing`
+          : document.activateControls
+            ? `${presses} controls pressed by keyboard and by mouse`
+            : `Controls not pressed: ${ACTIVATE_PAGE_CONTROLS} is not allowed`;
       const rows = findings
         .map((finding, index) => {
           const { label, selector } = sweepFindingInstance(finding, index);
@@ -3859,7 +3898,7 @@ function renderSweepOverview(views: IntegratedHtmlViews): string {
           return `<li><strong>${escapeHtml(title)}${advisory ? " (advisory)" : ""}:</strong> ${escapeHtml(label)} <code>${escapeHtml(selector)}</code></li>`;
         })
         .join("");
-      return `<article class="finding-dossier"><header><div><h4>${escapeHtml(document.targetUrl)}</h4><p>${document.tabStops?.length ?? 0} tab stops · ${escapeHtml(pressed)}</p></div><span class="badge ${badge.verdict}">${escapeHtml(badge.label)}</span></header>${document.diagnostics ? `<p>${escapeHtml(document.diagnostics.join(" "))}</p>` : ""}${rows ? `<ul>${rows}</ul>` : ""}<p class="evidence-links"><a href="${encodeURI(sweepPath)}">Open the sweep record</a>${screenshotPath ? ` <a href="${encodeURI(screenshotPath)}">Open the page capture</a>` : ""}</p></article>`;
+      return `<article class="finding-dossier"><header><div><h4>${escapeHtml(document.targetUrl)}</h4><p>${document.pressedBy === "test" ? "" : `${document.tabStops?.length ?? 0} tab stops · `}${escapeHtml(pressed)}</p></div><span class="badge ${badge.verdict}">${escapeHtml(badge.label)}</span></header>${document.diagnostics ? `<p>${escapeHtml(document.diagnostics.join(" "))}</p>` : ""}${rows ? `<ul>${rows}</ul>` : ""}<p class="evidence-links"><a href="${encodeURI(sweepPath)}">Open the sweep record</a>${screenshotPath ? ` <a href="${encodeURI(screenshotPath)}">Open the page capture</a>` : ""}</p></article>`;
     })
     .join("");
 }
@@ -4586,7 +4625,7 @@ function buildPageStates(
   }
   for (const sweep of views.sweeps) {
     const document = sweep.document;
-    if (!document) continue;
+    if (!document || !sweptByAee(sweep)) continue;
     const state = stateFor(
       sweep.screenshotPath,
       pageStateLabel("keyboard-pointer-sweep", document.laneId),

@@ -3,7 +3,9 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type TestInfo } from "@playwright/test";
+
+import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 
 test("an existing spec with only its import swapped produces findings", async () => {
   const testInfo = test.info();
@@ -14,26 +16,16 @@ test("an existing spec with only its import swapped produces findings", async ()
     'import { expect, test } from "@aee/cli/test";'
   );
   expect(swapped).not.toBe(original);
-  // The spec runs as its own suite, from the repository root like the original.
-  const suiteDir = testInfo.outputPath("suite");
-  const config = path.join(suiteDir, "playwright.config.js");
-  await mkdir(suiteDir, { recursive: true });
-  await writeFile(path.join(suiteDir, "existing.spec.ts"), swapped, "utf8");
-  // A state no page load reaches is checked only when the test names it.
-  await writeFile(path.join(suiteDir, "dialog.spec.ts"), DIALOG_SPEC, "utf8");
-  // A test that takes the page but never loads one leaves nothing to check.
-  await writeFile(path.join(suiteDir, "blank.spec.ts"), BLANK_SPEC, "utf8");
-  await writeFile(path.join(suiteDir, "gradients.spec.ts"), GRADIENTS_SPEC, "utf8");
-  await writeFile(path.join(suiteDir, "late.spec.ts"), LATE_SPEC, "utf8");
-  await writeFile(path.join(suiteDir, "shop.spec.ts"), SHOP_SPEC, "utf8");
-  await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
-  const { stdout } = await promisify(execFile)(process.execPath, [
-    require.resolve("@playwright/test/cli"),
-    "test",
-    `--config=${config}`,
-    `--output=${path.join(suiteDir, "results")}`,
-    "--reporter=line"
-  ]);
+  const { suiteDir, stdout } = await runSuite(testInfo, {
+    existing: swapped,
+    // A state no page load reaches is checked only when the test names it.
+    dialog: DIALOG_SPEC,
+    // A test that takes the page but never loads one leaves nothing to check.
+    blank: BLANK_SPEC,
+    gradients: GRADIENTS_SPEC,
+    late: LATE_SPEC,
+    shop: SHOP_SPEC
+  });
 
   const existing = await readAssessment(suiteDir, "existing");
   expect(existing.profile).toBe("playwright-test");
@@ -170,6 +162,94 @@ test("an existing spec with only its import swapped produces findings", async ()
   expect(comment).toContain("- `#shadow`: text over a gradient; not measured");
 });
 
+test("the presses a test makes are watched for what they show and do not say", async () => {
+  const testInfo = test.info();
+  test.setTimeout(120_000);
+  // Over http, as the lab is published: a page opened from a file cannot send a request.
+  const server = await startHtmlServer(serveDirectory("site"));
+  let suiteDir: string;
+  try {
+    ({ suiteDir } = await runSuite(testInfo, { lab: LAB_SPEC }, { AEE_LAB: server.origin }));
+  } finally {
+    await server.close();
+  }
+  const announcementFindings = async (title: string) =>
+    (await readAssessment(suiteDir, "lab", title)).synthesis.findings
+      .filter(({ ruleId }) => ruleId.endsWith("-not-announced"))
+      .map(({ ruleId, instances }) => [ruleId, instances.map(({ label }) => label)]);
+
+  // The test's own click on Archive shows a message no live region says; on Sync, a request fails
+  // and the page shows and says nothing. The fixed page says both, so it gets neither.
+  expect(await announcementFindings("archive on the demo page")).toEqual([
+    ["status-not-announced", ["Project Alpha archived. You can restore it."]]
+  ]);
+  expect(await announcementFindings("sync on the demo page")).toEqual([
+    ["failure-not-announced", ["Sync settings"]]
+  ]);
+  expect(await announcementFindings("archive on the fixed page")).toEqual([]);
+  expect(await announcementFindings("sync on the fixed page")).toEqual([]);
+
+  // The keyboard sweep is off, so the presses were the test's own, which AEE only watched.
+  const archive = await readAssessment(suiteDir, "lab", "archive on the demo page");
+  expect(archive.completeness.plannedChecks.skipped).toBe("turned-off");
+  const [comment] = await assessmentComments(suiteDir, "lab", "archive on the demo page");
+  const lane = JSON.parse(
+    await readFile(
+      path.join(path.dirname(comment!), "test-observed-presses", "keyboard-pointer-sweep.json"),
+      "utf8"
+    )
+  ) as { pressedBy: string; activateControls: boolean; activated: string[] };
+  expect(lane).toMatchObject({
+    pressedBy: "test",
+    activateControls: false,
+    activated: ["#archive-project"]
+  });
+  await expect(
+    readFile(path.join(path.dirname(comment!), "aee-report.html"), "utf8")
+  ).resolves.toContain("1 press the test made, watched; AEE pressed nothing");
+});
+
+/**
+ * The lab's Archive and Sync buttons, each clicked once by the test, which counts every press the
+ * page gets, so AEE pressing anything would fail it.
+ */
+const LAB_SPEC = `import { expect, test } from "@aee/cli/test";
+
+test.use({ aee: { keyboardAndReader: false } });
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    for (const type of ["click", "keydown"]) {
+      addEventListener(type, (event) => {
+        if (event.isTrusted) document.documentElement.dataset.presses = String(Number(document.documentElement.dataset.presses ?? 0) + 1);
+      }, true);
+    }
+  });
+});
+
+test.afterEach(async ({ page }) => {
+  await expect(page.locator("html")).toHaveAttribute("data-presses", "1");
+});
+
+for (const [name, query] of [["demo", ""], ["fixed", "?case=fixed"]]) {
+  const status = (page) => page.locator("#action-status");
+
+  test(\`archive on the \${name} page\`, async ({ page }) => {
+    await page.goto(\`\${process.env.AEE_LAB}/test-case.html\${query}\`);
+    await page.locator("#archive-project").click();
+    await expect(status(page)).toHaveText("Project Alpha archived. You can restore it.");
+  });
+
+  test(\`sync on the \${name} page\`, async ({ page }) => {
+    await page.goto(\`\${process.env.AEE_LAB}/test-case.html\${query}\`);
+    const synced = page.waitForResponse("**/api/sync-settings");
+    await page.getByRole("button", { name: "Sync settings" }).click();
+    await synced;
+    if (query) await expect(status(page)).toHaveText(/could not be synced/);
+  });
+}
+`;
+
 /** Four texts over gradients: one passes, one fails, and two are left for a person. */
 const GRADIENTS_SPEC = `import { expect, test } from "@aee/cli/test";
 
@@ -252,6 +332,33 @@ test("the help dialog opens and closes", async ({ page, checkpoint }) => {
   await expect(page.getByRole("dialog")).toBeHidden();
 });
 `;
+
+/** Runs specs, by name, as a suite of their own, from the repository root like the originals. */
+async function runSuite(
+  testInfo: TestInfo,
+  specs: Record<string, string>,
+  env: Record<string, string> = {}
+) {
+  const suiteDir = testInfo.outputPath("suite");
+  const config = path.join(suiteDir, "playwright.config.js");
+  await mkdir(suiteDir, { recursive: true });
+  for (const [name, spec] of Object.entries(specs)) {
+    await writeFile(path.join(suiteDir, `${name}.spec.ts`), spec, "utf8");
+  }
+  await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
+  const { stdout } = await promisify(execFile)(
+    process.execPath,
+    [
+      require.resolve("@playwright/test/cli"),
+      "test",
+      `--config=${config}`,
+      `--output=${path.join(suiteDir, "results")}`,
+      "--reporter=line"
+    ],
+    { env: { ...process.env, ...env } }
+  );
+  return { suiteDir, stdout };
+}
 
 /** The assessments a spec's tests wrote, one PR comment each; with a title, that test's only. */
 async function assessmentComments(suiteDir: string, spec: string, title?: string) {

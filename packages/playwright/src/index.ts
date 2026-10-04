@@ -45,6 +45,7 @@ import {
 import {
   sweepKeyboardAndPointer,
   type KeyboardPointerSweepPage,
+  type ObservedPresses,
   type SweepFinding,
   type SweepStep,
   type SweepTabStop
@@ -411,6 +412,11 @@ export interface KeyboardPointerSweepLaneDocument {
   targetUrl: string;
   allowedOrigins: string[];
   activateControls: boolean;
+  /**
+   * Who pressed the controls in `activated`: the sweep (the default), or the test itself, whose
+   * presses AEE only watched (see observePresses); such a record has no Tab stops.
+   */
+  pressedBy?: "sweep" | "test";
   startedAt: string;
   finishedAt: string;
   /** Navigations outside the allowed origins, stopped before they left the page. */
@@ -1692,6 +1698,57 @@ async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
  * the target, so the sweep keeps the test's session, routes and storage. Every navigation is
  * stopped unless it stays inside the allowed origins.
  */
+/**
+ * Records the presses a test made, as observePresses watched them, as a sweep lane of their own:
+ * so its findings are reported like the sweep's, whether or not the sweep ran in this test.
+ */
+export async function writeObservedPressesLane(options: {
+  projectRoot: string;
+  outputDir?: string;
+  laneId: string;
+  targetUrl: string;
+  startedAt: string;
+  observed: ObservedPresses;
+}): Promise<KeyboardPointerSweepLaneDocument & { findings: SweepFinding[]; manifestFile: string }> {
+  const { laneId, targetUrl, observed } = options;
+  assertSafeRunId(laneId);
+  const laneOutputDir = path.resolve(
+    options.projectRoot,
+    options.outputDir ?? "aee-output",
+    laneId
+  );
+  const sweepFile = path.join(laneOutputDir, "keyboard-pointer-sweep.json");
+  const manifestFile = path.join(laneOutputDir, "manifest.json");
+  const laneRecord = {
+    schemaVersion: "0.2.0" as const,
+    laneId,
+    driver: "keyboard-pointer-sweep" as const,
+    isolation: "test-page" as const,
+    status: "completed" as const,
+    targetUrl,
+    allowedOrigins: [targetUrl],
+    activateControls: false,
+    pressedBy: "test" as const,
+    startedAt: options.startedAt,
+    finishedAt: new Date().toISOString(),
+    blockedNavigations: [],
+    tabStops: [],
+    activated: observed.pressed,
+    findings: observed.findings
+  };
+  assertValidSchema("keyboardPointerSweepLane", laneRecord, "observed presses lane output");
+  await mkdir(laneOutputDir, { recursive: true });
+  await writeFile(sweepFile, JSON.stringify(laneRecord, null, 2), "utf8");
+  await writeEvidenceManifest({
+    assessmentId: laneId,
+    rootDir: laneOutputDir,
+    manifestFile,
+    lanes: [{ id: laneId, driver: "keyboard-pointer-sweep", status: "completed", actions: [] }],
+    supplementalFiles: [{ path: sweepFile, kind: "keyboard-pointer-sweep", phase: "lane", laneId }]
+  });
+  return { ...laneRecord, manifestFile };
+}
+
 export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerSweepLanePage>(
   options: RunKeyboardPointerSweepLaneOptions<TPage>
 ): Promise<KeyboardPointerSweepLaneResult> {

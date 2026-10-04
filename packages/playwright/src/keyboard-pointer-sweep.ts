@@ -165,8 +165,8 @@ type ProbeRequest =
   | { mode: "visible"; selector: string }
   | { mode: "pressable"; tabStops: string[] }
   | { mode: "outcome"; selector: string }
-  | { mode: "watch-changes"; selector: string }
-  | { mode: "new-text"; selector: string }
+  | { mode: "watch-changes"; selector?: string }
+  | { mode: "new-text"; selector?: string }
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string; margin?: number }
@@ -203,10 +203,10 @@ interface PressableControl extends ProbedElement {
 
 /**
  * The text a press showed: how many of its new elements a screen reader says, and those it does
- * not. Null when the press loaded a page or changed the control's own state, which a screen
- * reader says itself.
+ * not, and the control pressed. Null when the press loaded a page or changed the control's own
+ * state, which a screen reader says itself, or when a watch with no control saw no press.
  */
-type NewText = { said: number; unsaid: ProbedElement[] } | null;
+type NewText = { pressed: ProbedElement; said: number; unsaid: ProbedElement[] } | null;
 
 /** An item that stands out from its like neighbours by colour alone. */
 interface ColourOnlyItem extends ProbedElement {
@@ -228,19 +228,8 @@ export async function sweepKeyboardAndPointer(
   options: KeyboardPointerSweepOptions
 ): Promise<KeyboardPointerSweepResult> {
   const { page, url, onStep } = options;
-  // A press can load another page while the page is being read: read the page it loaded.
-  const onLoadedPage = async <T>(read: () => Promise<T>): Promise<T> => {
-    try {
-      return await read();
-    } catch (error) {
-      if (page.isClosed() || !/Execution context was destroyed/.test(String(error))) throw error;
-      await page.waitForLoadState();
-      return read();
-    }
-  };
-  const probe = <T>(request: ProbeRequest): Promise<T> =>
-    onLoadedPage(async () => (await page.evaluate(runSweepProbe, request)) as T);
-  const settle = () => onLoadedPage(() => waitForQuietPage(page));
+  const probe = probeOf(page);
+  const settle = () => onLoadedPage(page, () => waitForQuietPage(page));
 
   await loadAfresh(page, url);
   const findings: SweepFinding[] = (
@@ -329,6 +318,68 @@ export async function sweepKeyboardAndPointer(
   }
 
   return { url, tabStops, activated, findings };
+}
+
+/** A press can load another page while the page is being read: read the page it loaded. */
+async function onLoadedPage<T>(page: KeyboardPointerSweepPage, read: () => Promise<T>): Promise<T> {
+  try {
+    return await read();
+  } catch (error) {
+    if (page.isClosed() || !/Execution context was destroyed/.test(String(error))) throw error;
+    await page.waitForLoadState();
+    return read();
+  }
+}
+
+function probeOf(page: KeyboardPointerSweepPage) {
+  return <T>(request: ProbeRequest): Promise<T> =>
+    onLoadedPage(page, async () => (await page.evaluate(runSweepProbe, request)) as T);
+}
+
+/** What the presses a test made itself showed and said, as sweep findings; AEE presses nothing. */
+export interface ObservedPresses {
+  /** Each control the test pressed while it was watched. */
+  pressed: string[];
+  findings: SweepFinding[];
+}
+
+/**
+ * Watches the presses a test makes, one at a time, without pressing anything itself: `start`
+ * before the test's press, and `stop` when the test moves on (its next action, a page load, or its
+ * end), so the press is read with whatever the test waited for after it. The control is the one
+ * the press's click or key went to. It finds what pressing finds in the sweep:
+ * status-not-announced and failure-not-announced.
+ */
+export function observePresses(page: KeyboardPointerSweepPage) {
+  const probe = probeOf(page);
+  const observed: ObservedPresses = { pressed: [], findings: [] };
+  let watching: { verb: string; failedRequests: () => string[] } | undefined;
+  return {
+    /** `verb` says what the test does, such as "Clicking", before the control it does it to. */
+    async start(verb: string): Promise<void> {
+      await this.stop();
+      await probe({ mode: "watch-changes" });
+      watching = { verb, failedRequests: watchFailedRequests(page) };
+    },
+    async stop(): Promise<void> {
+      if (!watching) return;
+      const { verb, failedRequests } = watching;
+      watching = undefined;
+      const failed = failedRequests();
+      if (page.isClosed()) return;
+      const newText = await probe<NewText>({ mode: "new-text" });
+      if (!newText) return;
+      observed.pressed.push(newText.pressed.selector);
+      observed.findings.push(
+        ...announcementFindings(
+          `${verb} ${describeElement(newText.pressed)} in the test`,
+          newText,
+          failed
+        )
+      );
+    },
+    result: (): ObservedPresses => observed
+  };
 }
 
 /** The keys that move focus inside a composite widget, whichever way it is laid out. */
@@ -676,23 +727,37 @@ async function pressControl(
       )
     );
   }
-  const { newText, failedRequests } = pressed;
-  for (const message of newText?.unsaid ?? []) {
-    findings.push(
-      sweepFinding(
-        "status-not-announced",
-        message,
-        `Pressing ${describeElement(control)} with ${control.key} shows this text, but a screen reader does not say it: it is in no live region that was on the page before, and focus did not move to it.`
-      )
-    );
-  }
+  findings.push(
+    ...announcementFindings(
+      `Pressing ${describeElement(control)} with ${control.key}`,
+      pressed.newText,
+      pressed.failedRequests
+    )
+  );
+  return findings;
+}
+
+/** What a press, named by `press`, showed and did not say, and the requests it sent that failed. */
+function announcementFindings(
+  press: string,
+  newText: NewText,
+  failedRequests: string[]
+): SweepFinding[] {
+  if (!newText) return [];
+  const findings = newText.unsaid.map((message) =>
+    sweepFinding(
+      "status-not-announced",
+      message,
+      `${press} shows this text, but a screen reader does not say it: it is in no live region that was on the page before, and focus did not move to it.`
+    )
+  );
   // A message the page shows but does not say is reported above; here the page shows nothing.
-  if (failedRequests.length > 0 && newText?.said === 0 && newText.unsaid.length === 0) {
+  if (failedRequests.length > 0 && newText.said === 0 && newText.unsaid.length === 0) {
     findings.push(
       sweepFinding(
         "failure-not-announced",
-        control,
-        `Pressing ${describeElement(control)} with ${control.key} sends a request that fails (${failedRequests.join("; ")}), and the page shows and says nothing about it.`
+        newText.pressed,
+        `${press} sends a request that fails (${failedRequests.join("; ")}), and the page shows and says nothing about it.`
       )
     );
   }
@@ -709,6 +774,18 @@ async function failedRequestsDuring(
   page: KeyboardPointerSweepPage,
   run: () => Promise<void>
 ): Promise<string[]> {
+  const stop = watchFailedRequests(page);
+  let failed: string[];
+  try {
+    await run();
+  } finally {
+    failed = stop();
+  }
+  return failed;
+}
+
+/** Starts watching for requests that fail (see failedRequestsDuring); the result stops and reads. */
+function watchFailedRequests(page: KeyboardPointerSweepPage): () => string[] {
   const failed: string[] = [];
   const sentByScript = (request: KeyboardPointerSweepRequest) =>
     request.resourceType() === "fetch" || request.resourceType() === "xhr";
@@ -725,13 +802,11 @@ async function failedRequestsDuring(
   };
   page.on("response", onResponse);
   page.on("requestfailed", onFailed);
-  try {
-    await run();
-  } finally {
+  return () => {
     page.off("response", onResponse);
     page.off("requestfailed", onFailed);
-  }
-  return failed;
+    return failed;
+  };
 }
 
 function sweepFinding(
@@ -794,15 +869,22 @@ function runSweepProbe(request: ProbeRequest): unknown {
   // Text compared across a press, as the page shows it or as its nodes hold it, which differ in
   // spacing and in case a style transforms.
   const normalized = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();
+  // Elements whose text is their name, which a screen reader says as they get focus.
+  const controls =
+    'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"]';
   // What a press changed, recorded from just before it; "new-text" reads and ends it.
   const watchKey = Symbol.for("aee.sweep.watch-changes");
   interface ChangeWatch {
     url: string;
     text: string;
+    /** The control pressed and its states as the press began; unset until a watch with no
+     * control sees one. */
+    pressed?: { control: Element | null; selector: string; label: string };
     states: Record<string, string | null>;
     liveRegions: Element[];
     changed: Set<Element>;
     observer: MutationObserver;
+    stopListening: () => void;
   }
   const store = globalThis as unknown as Record<symbol, ChangeWatch | undefined>;
 
@@ -956,10 +1038,32 @@ function runSweepProbe(request: ProbeRequest): unknown {
         characterData: true,
         attributes: true
       });
+      const named = request.selector ? document.querySelector(request.selector) : null;
+      // With no control named, the control is where the press's click or key went, read as the
+      // event starts on its way down, before the page's own handlers change anything.
+      const onPress = (event: Event) => {
+        const watch = store[watchKey];
+        const target = event.composedPath()[0];
+        if (!event.isTrusted || !watch || watch.pressed || !(target instanceof Element)) return;
+        const control = target.closest(controls) ?? target;
+        watch.pressed = { control, selector: selectorFor(control), label: labelFor(control) };
+        watch.states = statesOf(control);
+      };
+      const presses = ["click", "keydown"];
+      if (!named) for (const type of presses) addEventListener(type, onPress, true);
       store[watchKey] = {
         url: location.href,
         text: normalized(document.body.innerText),
-        states: statesOf(document.querySelector(request.selector)),
+        ...(request.selector
+          ? {
+              pressed: {
+                control: named,
+                selector: request.selector,
+                label: named ? labelFor(named) : ""
+              }
+            }
+          : {}),
+        states: statesOf(named),
         // A screen reader says a change inside a live region only if the region was on the page
         // before the change; a region added with its text is said by some and not by others.
         liveRegions: [
@@ -968,7 +1072,10 @@ function runSweepProbe(request: ProbeRequest): unknown {
           )
         ],
         changed,
-        observer
+        observer,
+        stopListening: () => {
+          for (const type of presses) removeEventListener(type, onPress, true);
+        }
       };
       return null;
     }
@@ -981,9 +1088,14 @@ function runSweepProbe(request: ProbeRequest): unknown {
       // No watch: the press loaded another document.
       if (!watch) return null;
       watch.observer.disconnect();
-      const control = document.querySelector(request.selector);
-      const skipped =
-        'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]';
+      watch.stopListening();
+      if (!watch.pressed) return null;
+      const { selector, label } = watch.pressed;
+      // A named control is found again, as the press may have drawn it afresh.
+      const control = request.selector
+        ? document.querySelector(request.selector)
+        : watch.pressed.control;
+      const skipped = `${controls}, dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]`;
       if (
         location.href !== watch.url ||
         JSON.stringify(statesOf(control)) !== JSON.stringify(watch.states)
@@ -1023,6 +1135,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       const said = (element: Element) =>
         saidAt(element) || textParts(element).every(({ parent }) => saidAt(parent));
       return {
+        pressed: { selector, label },
         said: shown.filter(said).length,
         unsaid: shown
           .filter((element) => !said(element))

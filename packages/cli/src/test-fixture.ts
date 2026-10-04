@@ -5,6 +5,7 @@ import path from "node:path";
 import { test as base, type Page, type TestInfo } from "@playwright/test";
 
 import {
+  observePresses,
   startPageCheckpointLane,
   toSafeId,
   type VirtualScreenReaderCommand
@@ -15,6 +16,7 @@ import { compileScenarioPlan, type AeeScenario } from "./scenario";
 import {
   collectPageCheckpointActions,
   finishAssessment,
+  recordObservedPresses,
   runPageLanes,
   TEST_READER_COMMANDS,
   type AssessmentInProgress,
@@ -23,6 +25,38 @@ import {
 
 /** The page loads a test starts; the page is checkpointed as soon as each one returns. */
 const PAGE_LOADS = ["goto", "reload", "setContent", "goBack", "goForward"] as const;
+
+/**
+ * The presses a test makes, which AEE watches, as what each says the test does. A locator's and the
+ * page's own presses go through the main frame; one inside an iframe goes unread, as the watch is
+ * on the page's own document.
+ */
+const FRAME_PRESSES: Record<string, (args: unknown[]) => string> = {
+  click: () => "Clicking",
+  dblclick: () => "Double-clicking",
+  tap: () => "Tapping",
+  press: (args) => `Pressing ${String(args[1])} on`,
+  check: () => "Checking",
+  uncheck: () => "Unchecking",
+  setChecked: (args) => (args[1] ? "Checking" : "Unchecking")
+};
+const KEYBOARD_PRESSES: Record<string, (args: unknown[]) => string> = {
+  press: (args) => `Pressing ${String(args[0])} on`
+};
+const MOUSE_PRESSES: Record<string, (args: unknown[]) => string> = {
+  click: () => "Clicking",
+  dblclick: () => "Double-clicking"
+};
+/** The test's other actions, each of which ends the watch on the press before it. */
+const FRAME_ACTIONS = [
+  "fill",
+  "type",
+  "hover",
+  "selectOption",
+  "setInputFiles",
+  "focus",
+  "dragAndDrop"
+];
 
 /**
  * The time the keyboard and reader checks get, on top of the test's own: they run once the test has
@@ -105,14 +139,20 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     // One collapsed step per checkpoint, so its browser calls do not crowd the test's own steps.
     const checkpoint = (name: string) =>
       base.step(`AEE checkpoint: ${name}`, () => lane.checkpoint(name), { box: true });
-    checkpoints.set(page, checkpoint);
     let loaded = false;
-    // The test's own loads are checkpointed; the keyboard and reader checks' loads, after it, are not.
+    // The test's own loads and presses are observed; the keyboard and reader checks', after it, not.
     let observing = true;
+    // Each press the test makes is watched until its next action, page load or checkpoint.
+    const presses = observePresses(page);
+    checkpoints.set(page, async (name) => {
+      await presses.stop();
+      await checkpoint(name);
+    });
     for (const method of PAGE_LOADS) {
       const load: (...args: never[]) => Promise<unknown> = page[method].bind(page);
       Object.defineProperty(page, method, {
         value: async (...args: never[]) => {
+          if (observing) await presses.stop();
           const response = await load(...args);
           if (observing) {
             loaded = true;
@@ -122,8 +162,40 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
         }
       });
     }
+    // An action that makes another, as setChecked makes a check, is watched once.
+    let acting = false;
+    const watch = (
+      target: object,
+      actions: Record<string, ((args: unknown[]) => string) | undefined>
+    ) => {
+      for (const [method, verb] of Object.entries(actions)) {
+        const original = (target as Record<string, (...args: unknown[]) => Promise<unknown>>)[
+          method
+        ]!.bind(target);
+        Object.defineProperty(target, method, {
+          value: async (...args: unknown[]) => {
+            if (!observing || acting) return original(...args);
+            acting = true;
+            try {
+              if (verb) await presses.start(verb(args));
+              else await presses.stop();
+              return await original(...args);
+            } finally {
+              acting = false;
+            }
+          }
+        });
+      }
+    };
+    watch(page.mainFrame(), {
+      ...FRAME_PRESSES,
+      ...Object.fromEntries(FRAME_ACTIONS.map((method) => [method, undefined]))
+    });
+    watch(page.keyboard, KEYBOARD_PRESSES);
+    watch(page.mouse, MOUSE_PRESSES);
 
     await use(page);
+    if (!page.isClosed()) await presses.stop();
     observing = false;
 
     // A test that never loads a page, such as one that only calls `page.request`, leaves the blank
@@ -133,6 +205,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     if (passed) await checkpoint("test end");
     const { laneId, steps, diagnostics, manifestFile } = await lane.finish();
     if (steps.length === 0 && diagnostics.length === 0) return;
+    const observed = presses.result();
 
     const firstUrl = steps[0]?.pageUrl ?? page.url();
     const endUrl = page.url();
@@ -161,6 +234,14 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
       assessment.actions,
       assessment.findings
     );
+    if (observed.pressed.length > 0) {
+      await recordObservedPresses(assessment, {
+        journeyId: "test",
+        targetUrl: endUrl,
+        startedAt,
+        observed
+      });
+    }
     let readerCommands: VirtualScreenReaderCommand[] = [];
     if (checkInFull) {
       // A timeout of 0 is no timeout.
@@ -210,7 +291,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
       scenario,
       plan: compileScenarioPlan(scenario),
       startedAt,
-      plannedLanes: checkInFull ? 3 : 1,
+      plannedLanes: (checkInFull ? 3 : 1) + (observed.pressed.length > 0 ? 1 : 0),
       pageChecksSkipped: skipped,
       ...assessment
     });
