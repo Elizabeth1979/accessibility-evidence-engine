@@ -4,6 +4,13 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-04
+
+### Fixed
+
+- A press that shows a new screen is no longer reported as a message nobody hears. A single-page app that swaps its main content when you sign in or change view, without changing the address, had the whole new screen reported, in every test that signed in. A press that replaces the page's main content (`main` or `role="main"`) now counts as a new view, as a page load does.
+- Text that appears inside a dialog that was already open is now read like any other message. All dialog text was skipped, so a failed save whose error the dialog showed was reported as a failure nobody is told about. Only a dialog the press opened is still left out.
+
 ## [0.7.0] - 2026-10-04
 
 ### Added
@@ -176,6 +183,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.7.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.5.0
@@ -184,4 +192,4 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.7.1...HEAD

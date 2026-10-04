@@ -708,6 +708,59 @@ test("the sweep reports a request a press sends that fails when the page shows a
   }
 });
 
+test("a press that shows a new view is no message, and one in an open dialog is read", async ({
+  page
+}) => {
+  // As a single-page app does: signing in swaps the main content for a new view at the same
+  // address, and saving in a dialog that is already open shows its error inside it.
+  const html = `<!doctype html>
+<html lang="en">
+  <head><title>Albums</title></head>
+  <body>
+    <main id="sign-in-view">
+      <h1>Albums</h1>
+      <button id="sign-in" type="button">Sign in</button>
+      <dialog open aria-label="Edit story">
+        <button id="save" type="button">Save</button>
+        <p id="save-error"></p>
+      </dialog>
+    </main>
+    <script>
+      document.getElementById("sign-in").addEventListener("click", () => {
+        const view = document.createElement("main");
+        view.innerHTML = "<h1>Your albums</h1><p>Every story you keep lives here.</p>";
+        document.getElementById("sign-in-view").replaceWith(view);
+      });
+      document.getElementById("save").addEventListener("click", async () => {
+        const response = await fetch("/api/save").catch(() => undefined);
+        if (!response?.ok) document.getElementById("save-error").textContent = "Could not save.";
+      });
+    </script>
+  </body>
+</html>`;
+  const server = await startHtmlServer((request, response) => {
+    if (request.url === "/") response.writeHead(200, { "content-type": "text/html" }).end(html);
+    else response.writeHead(500).end();
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: `${server.origin}/`,
+      activateControls: true
+    });
+
+    // The new view is not a message, though focus is lost with the button it removed. The failed
+    // save shows its error in the open dialog, where no live region says it: that error is the
+    // finding, not a failure nobody is told about.
+    expect(result.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
+      { kind: "focus-lost", selector: "#sign-in" },
+      { kind: "status-not-announced", selector: "#save-error" }
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
 test("the sweep reports an item that stands out from its like neighbours by colour alone", async ({
   page
 }) => {
