@@ -881,14 +881,17 @@ function runSweepProbe(request: ProbeRequest): unknown {
     selectors
       .map((selector) => document.querySelector(selector))
       .filter((element): element is Element => element !== null);
-  // A control's own state, which a screen reader says as it changes: expanded, pressed, checked.
-  const statesOf = (element: Element | null): Record<string, string | null> =>
-    Object.fromEntries(
+  // A control's own state, which a screen reader says as it changes: expanded, pressed, checked,
+  // including a native check box's or radio button's, which no attribute shows.
+  const statesOf = (element: Element | null): Record<string, string | null> => ({
+    ...Object.fromEntries(
       ["aria-expanded", "aria-pressed", "aria-checked", "open"].map((name) => [
         name,
         element?.getAttribute(name) ?? null
       ])
-    );
+    ),
+    checked: element instanceof HTMLInputElement ? String(element.checked) : null
+  });
   // Text compared across a press, as the page shows it or as its nodes hold it, which differ in
   // spacing and in case a style transforms.
   const normalized = (text: string) => text.replace(/\s+/g, " ").trim().toLowerCase();

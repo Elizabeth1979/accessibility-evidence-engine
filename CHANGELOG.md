@@ -10,6 +10,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Fixed
 
+- Checking a native check box or radio button is no longer reported as a message nobody hears when it shows more of the form, such as a "Share with a team" box that reveals a team name field. A screen reader says the box is now checked, so the new fields are the expected result, as they already were for a control marked with `aria-checked` or `aria-expanded`. This applies to the sweep's presses and to the presses a test makes.
 - A checkpoint and the keyboard sweep read a page once the data it loads has arrived, not only once its DOM has paused. An app that draws after a slow request, such as a gallery whose photos come a second after the page loads, was read before it drew: the wait for 250 ms without a DOM change ended during the request. Now the wait first lets the page's open requests finish, then waits for the DOM to stop changing, and again if drawing sent new requests, for 3 seconds at most as before. A page with nothing loading is read as quickly as before.
 
 ### Changed
