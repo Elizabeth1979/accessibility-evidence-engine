@@ -56,7 +56,7 @@
     "dist/virtual-screen-reader.d.ts"
   ],
   "engines": {
-    "node": ">=22.12"
+    "node": ">=22.13"
   },
   "repository": {
     "type": "git",

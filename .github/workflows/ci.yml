@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   oldest-node:
-    # The packages promise Node 22.12 and later; the main job runs Node 24.
+    # The packages promise Node 22.13 and later; the main job runs Node 24.
     name: Build and unit tests on Node 22
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -32,7 +32,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22.12
+          node-version: 22.13
           cache: npm
 
       - name: Install dependencies
