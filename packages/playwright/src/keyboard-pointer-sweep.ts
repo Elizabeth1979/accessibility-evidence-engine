@@ -1177,8 +1177,9 @@ function runSweepProbe(request: ProbeRequest): unknown {
       return null;
     }
     // The text a press showed (see NewText). Text is said when it is in a live region that was
-    // there before (or an alert, which is said as it is added) or focus moved to it. Controls are
-    // left out, as their text is their name, and so is a dialog the press opened.
+    // there before (or an alert, which is said as it is added), when focus moved to it, or when the
+    // element focus moved to is named or described by it. Controls are left out, as their text is
+    // their name, and so is a dialog the press opened.
     case "new-text": {
       const watch = store[watchKey];
       delete store[watchKey];
@@ -1209,12 +1210,21 @@ function runSweepProbe(request: ProbeRequest): unknown {
         return dialog !== null && !watch.dialogs.includes(dialog);
       };
       const active = document.activeElement;
+      // What a screen reader says with the element focus moved to: the text its name and its
+      // description come from, such as a warning a "Keep it" button is described by.
+      const saidWithFocus =
+        active === null || active === document.body
+          ? []
+          : ["aria-labelledby", "aria-describedby"]
+              .flatMap((name) => active.getAttribute(name)?.split(/\s+/) ?? [])
+              .flatMap((id) => document.getElementById(id) ?? []);
       const saidAt = (element: Element) =>
         element.closest('[role="alert"]') !== null ||
         watch.liveRegions.some((region) => region.isConnected && region.contains(element)) ||
         (active !== null &&
           active !== document.body &&
-          (element.contains(active) || active.contains(element)));
+          (element.contains(active) || active.contains(element))) ||
+        saidWithFocus.some((source) => source.contains(element));
       // The visible text of an element outside any control, piece by piece.
       const textParts = (element: Element) => {
         const parts: Array<{ text: string; parent: Element }> = [];
