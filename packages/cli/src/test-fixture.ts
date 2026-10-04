@@ -2,11 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { test as base, type Page, type TestInfo } from "@playwright/test";
+import { test as base, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 import {
   startPageCheckpointLane,
   toSafeId,
+  type PageCheckpointLane,
   type VirtualScreenReaderCommand
 } from "@aee/playwright";
 import { CURRENT_SCHEMA_VERSION } from "@aee/schemas";
@@ -23,6 +24,53 @@ import {
 
 /** The page loads a test starts; the page is checkpointed as soon as each one returns. */
 const PAGE_LOADS = ["goto", "reload", "setContent", "goBack", "goForward"] as const;
+
+/**
+ * The actions, of a page and of a locator, that can press a control: what each press shows is
+ * read once the page settles, as the sweep reads its own presses.
+ */
+const PRESSES = ["click", "dblclick", "tap", "check", "uncheck", "setChecked", "press"] as const;
+
+/** The lane reading the presses on each page an AEE test drives, while the test runs. */
+const pressLanes = new WeakMap<Page, PageCheckpointLane>();
+/** The locator prototypes whose presses are already handed to the lanes. */
+const readingPrototypes = new WeakSet<object>();
+
+/**
+ * Reads the presses a test makes through a locator, as most tests do. A locator is made afresh by
+ * every query and chained call, so the locators' shared prototype carries the reading, once per
+ * worker; a locator on a page no AEE test is driving acts as it always does.
+ */
+function readLocatorPresses(page: Page): void {
+  const prototype = Object.getPrototypeOf(page.locator(":root")) as Record<string, unknown>;
+  if (readingPrototypes.has(prototype)) return;
+  readingPrototypes.add(prototype);
+  for (const method of PRESSES) {
+    const act = prototype[method] as (this: Locator, ...args: unknown[]) => Promise<unknown>;
+    Object.defineProperty(prototype, method, {
+      configurable: true,
+      writable: true,
+      value: function (this: Locator, ...args: unknown[]) {
+        const lane = pressLanes.get(this.page());
+        return lane ? lane.press(() => act.apply(this, args)) : act.apply(this, args);
+      }
+    });
+  }
+}
+
+/** Hands each call of an object's press methods, such as a page's clicks, to `read`. */
+function readPresses<Method extends string>(
+  owner: Record<Method, (...args: never[]) => Promise<unknown>>,
+  methods: readonly Method[],
+  read: (act: () => Promise<unknown>) => Promise<unknown>
+): void {
+  for (const method of methods) {
+    const act = owner[method].bind(owner);
+    Object.defineProperty(owner, method, {
+      value: (...args: never[]) => read(() => act(...args))
+    });
+  }
+}
 
 /**
  * The time the keyboard and reader checks get, on top of the test's own: they run once the test has
@@ -87,9 +135,10 @@ async function claimPageForRun(testInfo: TestInfo, address: string): Promise<boo
  * spec's import and nothing else: each page load the test starts, and the page as the test leaves
  * it, is checked like an `aee run` checkpoint, and the test gets the same report and PR comment,
  * attached to its results. A checkpoint waits for the page load that started it, so the test never
- * races it. Where a passing test ends on a page no other test of the run has, that page is also
- * swept by keyboard and mouse and read with the virtual screen reader, on the test's own page. The
- * fixture reports; it never fails a test.
+ * races it. Each control the test presses is read for what the press shows that a screen reader
+ * does not say; the fixture never presses one itself. Where a passing test ends on a page no other
+ * test of the run has, that page is also swept by keyboard and mouse and read with the virtual
+ * screen reader, on the test's own page. The fixture reports; it never fails a test.
  */
 export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
   aee: [{ keyboardAndReader: true }, { option: true }],
@@ -107,7 +156,8 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
       base.step(`AEE checkpoint: ${name}`, () => lane.checkpoint(name), { box: true });
     checkpoints.set(page, checkpoint);
     let loaded = false;
-    // The test's own loads are checkpointed; the keyboard and reader checks' loads, after it, are not.
+    // The test's own loads are checkpointed and its presses read; the keyboard and reader checks'
+    // own, after it, are not.
     let observing = true;
     for (const method of PAGE_LOADS) {
       const load: (...args: never[]) => Promise<unknown> = page[method].bind(page);
@@ -122,16 +172,22 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
         }
       });
     }
+    pressLanes.set(page, lane);
+    readLocatorPresses(page);
+    const read = (act: () => Promise<unknown>) => (observing ? lane.press(act) : act());
+    readPresses(page, PRESSES, read);
+    readPresses(page.keyboard, ["press"], read);
 
     await use(page);
     observing = false;
+    pressLanes.delete(page);
 
     // A test that never loads a page, such as one that only calls `page.request`, leaves the blank
     // page every tab starts on, and checking that would report its missing title and language.
     const leftAPage = loaded || page.url() !== "about:blank";
     const passed = testInfo.status === testInfo.expectedStatus && !page.isClosed() && leftAPage;
     if (passed) await checkpoint("test end");
-    const { laneId, steps, diagnostics, manifestFile } = await lane.finish();
+    const { laneId, steps, pressFindings, diagnostics, manifestFile } = await lane.finish();
     if (steps.length === 0 && diagnostics.length === 0) return;
 
     const firstUrl = steps[0]?.pageUrl ?? page.url();
@@ -157,7 +213,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     await collectPageCheckpointActions(
       assessmentDir,
       "test",
-      { laneId, steps },
+      { laneId, steps, pressFindings },
       assessment.actions,
       assessment.findings
     );

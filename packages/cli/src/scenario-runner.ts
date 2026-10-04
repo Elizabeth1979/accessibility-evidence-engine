@@ -40,6 +40,7 @@ import {
   type KeyboardPointerSweepLaneResult,
   type PageCheckpointStep,
   type SweepFindingKind,
+  type TestPressesDocument,
   type VirtualScreenReaderCommand,
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
@@ -293,6 +294,13 @@ interface SweepView {
   readError?: string;
 }
 
+/** The controls a Playwright test pressed, and what its presses showed. */
+interface PressesView {
+  path: string;
+  document?: TestPressesDocument;
+  readError?: string;
+}
+
 interface FindingCheckpointSynthesis {
   actionId: string;
   laneId: string;
@@ -311,6 +319,7 @@ interface FindingCheckpointSynthesis {
   viewportPath?: string;
   readerTranscriptPath?: string;
   sweepPath?: string;
+  pressesPath?: string;
 }
 
 export interface FindingSynthesis {
@@ -415,6 +424,7 @@ interface IntegratedHtmlViews {
   axeReports: AxeReportView[];
   comparisons: InputComparisonView[];
   sweeps: SweepView[];
+  presses: PressesView[];
   screens: ScreenView[];
   elementMaps: ElementMapView[];
 }
@@ -875,7 +885,7 @@ function countPlannedLanes(scenario: AeeScenario): number {
 /** One finding per kind, like one per axe rule; its elements are read back from the lane's evidence. */
 function collectSweepFindings(
   journeyId: string,
-  sweep: KeyboardPointerSweepLaneResult,
+  sweep: Pick<KeyboardPointerSweepLaneResult, "laneId" | "findings">,
   findings: Array<Record<string, unknown>>
 ): void {
   for (const kind of new Set(sweep.findings.map(({ kind }) => kind))) {
@@ -910,14 +920,22 @@ async function collectVirtualReaderActions(
   }
 }
 
-/** A Playwright test's checkpoints, as actions of one lane, like a reader lane's commands. */
+/**
+ * A Playwright test's checkpoints, as actions of one lane, like a reader lane's commands, and what
+ * its presses showed that a screen reader user does not hear, as the sweep reports its own.
+ */
 export async function collectPageCheckpointActions(
   rootDir: string,
   journeyId: string,
-  lane: { laneId: string; steps: PageCheckpointStep[] },
+  lane: {
+    laneId: string;
+    steps: PageCheckpointStep[];
+    pressFindings: KeyboardPointerSweepLaneFinding[];
+  },
   actions: ScenarioActionReport[],
   findings: Array<Record<string, unknown>>
 ): Promise<void> {
+  collectSweepFindings(journeyId, { laneId: lane.laneId, findings: lane.pressFindings }, findings);
   for (const step of lane.steps) {
     await collectAction(
       rootDir,
@@ -1157,22 +1175,32 @@ async function writeIntegratedReport(
   rootDir: string,
   aiSuggester: AiSuggester
 ): Promise<void> {
-  const [transcripts, actionReports, axeReports, comparisons, sweeps, screens, elementMaps] =
-    await Promise.all([
-      loadReaderTranscriptViews(report, rootDir),
-      loadActionReportViews(report, rootDir),
-      loadAxeReportViews(report, rootDir),
-      loadInputComparisonViews(report, rootDir),
-      loadSweepViews(report, rootDir),
-      loadScreenViews(report, rootDir),
-      loadElementMapViews(report, rootDir)
-    ]);
+  const [
+    transcripts,
+    actionReports,
+    axeReports,
+    comparisons,
+    sweeps,
+    presses,
+    screens,
+    elementMaps
+  ] = await Promise.all([
+    loadReaderTranscriptViews(report, rootDir),
+    loadActionReportViews(report, rootDir),
+    loadAxeReportViews(report, rootDir),
+    loadInputComparisonViews(report, rootDir),
+    loadSweepViews(report, rootDir),
+    loadPressesViews(report, rootDir),
+    loadScreenViews(report, rootDir),
+    loadElementMapViews(report, rootDir)
+  ]);
   const views = {
     transcripts,
     actionReports,
     axeReports,
     comparisons,
     sweeps,
+    presses,
     screens,
     elementMaps
   };
@@ -1505,6 +1533,28 @@ async function loadSweepViews(
           screenshotPath: screenshot ? String(screenshot.path) : undefined,
           document: document as unknown as KeyboardPointerSweepLaneDocument
         };
+      } catch (error) {
+        return {
+          path: artifactPath,
+          readError: error instanceof Error ? error.message : String(error)
+        };
+      }
+    })
+  );
+}
+
+async function loadPressesViews(
+  report: ScenarioIntegratedReport,
+  rootDir: string
+): Promise<PressesView[]> {
+  const artifacts = report.artifacts.filter((artifact) => artifact.kind === "test-presses");
+  return Promise.all(
+    artifacts.map(async (artifact) => {
+      const artifactPath = String(artifact.path);
+      try {
+        const document = await readReportJson(rootDir, artifactPath);
+        assertValidSchema("testPresses", document, artifactPath);
+        return { path: artifactPath, document: document as unknown as TestPressesDocument };
       } catch (error) {
         return {
           path: artifactPath,
@@ -2127,38 +2177,90 @@ function buildFindingSynthesis(
   };
 }
 
-/** A sweep finding, grouped like an axe rule: one checkpoint per swept page that shows it. */
+/**
+ * A sweep finding, grouped like an axe rule: one checkpoint per swept page, and per press a test
+ * made, that shows it. The one with the most elements comes first, as its picture shows them.
+ */
 function buildSweepFindingSynthesis(
   views: IntegratedHtmlViews,
   kind: SweepFindingKind,
   finding: Record<string, unknown>
 ): FindingSynthesis {
-  const swept = views.sweeps.flatMap(({ path: sweepPath, screenshotPath, document }) => {
-    const matches = (document?.findings ?? []).filter((candidate) => candidate.kind === kind);
-    return document && matches.length ? [{ sweepPath, screenshotPath, document, matches }] : [];
-  });
-  const checkpoints: FindingCheckpointSynthesis[] = swept.map(
-    ({ sweepPath, screenshotPath, document, matches }) => ({
-      actionId: "keyboard-pointer-sweep",
-      laneId: document.laneId,
-      runId: document.laneId,
-      driver: "keyboard-pointer-sweep",
-      behaviorVerdict: "fail",
+  const checkpointFor = (
+    matches: KeyboardPointerSweepLaneFinding[],
+    checkpoint: Pick<FindingCheckpointSynthesis, "actionId" | "laneId" | "driver"> &
+      Partial<FindingCheckpointSynthesis>
+  ) => ({
+    matches,
+    checkpoint: {
+      runId: checkpoint.laneId,
+      behaviorVerdict: "fail" as const,
       behaviorSummary: matches[0]!.summary,
       nodeCount: matches.length,
       targets: matches.slice(0, 8).map(({ selector }) => selector),
       htmlSamples: [],
-      screenshotPath,
-      sweepPath
+      ...checkpoint
+    }
+  });
+  const swept = views.sweeps.flatMap(({ path: sweepPath, screenshotPath, document }) => {
+    const matches = (document?.findings ?? []).filter((candidate) => candidate.kind === kind);
+    return document && matches.length
+      ? [
+          checkpointFor(matches, {
+            actionId: "keyboard-pointer-sweep",
+            laneId: document.laneId,
+            driver: "keyboard-pointer-sweep",
+            screenshotPath,
+            sweepPath
+          })
+        ]
+      : [];
+  });
+  const pressed = views.presses.flatMap(({ path: pressesPath, document }) =>
+    (document?.presses ?? []).flatMap(({ sequence, screenshot, findings }) => {
+      const matches = findings.filter((candidate) => candidate.kind === kind);
+      return document && matches.length
+        ? [
+            checkpointFor(matches, {
+              actionId: `press-${sequence}`,
+              laneId: document.laneId,
+              driver: "playwright-test",
+              ...(screenshot
+                ? { screenshotPath: path.posix.join(path.posix.dirname(pressesPath), screenshot) }
+                : {}),
+              pressesPath
+            })
+          ]
+        : [];
     })
   );
-  const representative = swept.reduce<(typeof swept)[number] | undefined>(
+  const found = [...swept, ...pressed];
+  const representative = found.reduce<(typeof found)[number] | undefined>(
     (largest, entry) =>
       !largest || entry.matches.length > largest.matches.length ? entry : largest,
     undefined
   );
+  const checkpoints: FindingCheckpointSynthesis[] = representative
+    ? [representative, ...found.filter((entry) => entry !== representative)].map(
+        ({ checkpoint }) => checkpoint
+      )
+    : [];
   const instances = (representative?.matches ?? []).map(sweepFindingInstance);
   const maximumAffectedNodes = representative?.matches.length ?? 0;
+  const pressesRead = views.presses.reduce(
+    (count, { document }) => count + (document?.pressesRead ?? 0),
+    0
+  );
+  const where = [
+    swept.length
+      ? `The keyboard and pointer sweep found this on ${swept.length} of ${views.sweeps.length} swept page${views.sweeps.length === 1 ? "" : "s"}.`
+      : "",
+    pressed.length
+      ? `It followed ${pressed.length} of the ${pressesRead} controls the test pressed.`
+      : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
   const entry = remediationEntry(SWEEP_FINDING_CONCEPTS[kind]);
   const text = SWEEP_FINDING_TEXT[kind];
   return {
@@ -2172,7 +2274,7 @@ function buildSweepFindingSynthesis(
       .map(({ requirementId }) => `WCAG ${requirementId}`),
     pattern: entry.patterns[0] ? patternLink(entry.patterns[0]) : undefined,
     conclusion: representative
-      ? `${representative.matches[0]!.summary} The keyboard and pointer sweep found this on ${checkpoints.length} of ${views.sweeps.length} swept page${views.sweeps.length === 1 ? "" : "s"}.`
+      ? `${representative.matches[0]!.summary} ${where}`
       : "The sweep reported this finding, but its evidence could not be read.",
     occurrenceCount: Array.isArray(finding.occurrences)
       ? finding.occurrences.length
@@ -4329,7 +4431,8 @@ function renderEvidenceLinks(checkpoint: FindingCheckpointSynthesis): string {
     [checkpoint.focusPath, "Focus"],
     [checkpoint.readerTranscriptPath, "Reader state"],
     [checkpoint.axePath, "Axe"],
-    [checkpoint.sweepPath, "Keyboard and pointer sweep"]
+    [checkpoint.sweepPath, "Keyboard and pointer sweep"],
+    [checkpoint.pressesPath, "The test's presses"]
   ].filter((entry): entry is [string, string] => Boolean(entry[0]));
   return links.length
     ? `<ul class="evidence-links">${links.map(([href, label]) => `<li><a href="${encodeURI(href)}">${escapeHtml(label)}</a></li>`).join("")}</ul>`

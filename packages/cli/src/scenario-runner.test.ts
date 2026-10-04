@@ -207,6 +207,7 @@ function exampleSynthesisInputs() {
       axeReports,
       comparisons,
       sweeps: [],
+      presses: [],
       screens: [],
       elementMaps: []
     }
@@ -262,6 +263,7 @@ test("scenario synthesis correlates findings with keyboard, reader, DOM, AOM, an
     axeReports,
     comparisons,
     sweeps: [],
+    presses: [],
     screens: [],
     elementMaps: []
   });
@@ -511,6 +513,7 @@ test("scenario synthesis clearly reports an empty authored scope", () => {
     axeReports: [],
     comparisons: [],
     sweeps: [],
+    presses: [],
     screens: [],
     elementMaps: []
   });
@@ -549,6 +552,7 @@ test("a test whose page the fixture did not check says why, and only a page chec
         axeReports: [],
         comparisons: [],
         sweeps: [],
+        presses: [],
         screens: [],
         elementMaps: []
       }

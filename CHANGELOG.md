@@ -4,7 +4,13 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- The one-line import reads the test's own presses. AEE never presses a control on an app it checks through a test, since a press can change real data, so the checks for a message nobody hears and a failed request nobody hears never ran there. Now every click, tap, check and key press the test makes on a button, check box, radio button, switch or disclosure is read once the page settles, as the sweep reads its own presses, and reported the same way, advisory, with a screenshot of the page just after the press. AEE still presses nothing the test did not.
+
 ### Fixed
+
+- Checking a native check box or radio button counts as a change to the control's own state, which a screen reader says, so content it shows, such as more form fields, is no longer reported as a message nobody hears.
 
 - A checkpoint and the keyboard sweep read a page once the data it loads has arrived, not only once its DOM has paused. An app that draws after a slow request, such as a gallery whose photos come a second after the page loads, was read before it drew: the wait for 250 ms without a DOM change ended during the request. Now the wait first lets the page's open requests finish, then waits for the DOM to stop changing, and again if drawing sent new requests, for 3 seconds at most as before. A page with nothing loading is read as quickly as before.
 

@@ -437,6 +437,17 @@ test:
 test.use({ aee: { keyboardAndReader: false } });
 ```
 
+The fixture never presses a control itself, since a press on a real app can change real data. It
+reads the presses the test makes instead: every `click`, `dblclick`, `tap`, `check`, `uncheck`,
+`setChecked` and `press` of a page or locator, and `page.keyboard.press`. When one reaches a
+button, a check box, a radio button, a switch or a disclosure, by a click or by Enter or Space, the
+fixture waits for the page to settle, as the sweep does after its own presses, and reports two
+things, both advisory: text the press showed that a screen reader does not say, because it is in no
+live region that was there before and focus did not move to it, and a request the press sent that
+failed while the page showed and said nothing. Each is reported with a screenshot of the page just
+after the press, on which the report outlines the element. The wait follows only presses that reach a control, so a test runs
+about as fast as before. Presses in an iframe and `page.mouse` clicks are not read.
+
 The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
 the fixture extends the runner the project already has and `aee run` launches the same Playwright:
 installing AEE leaves a project's Playwright as it was.

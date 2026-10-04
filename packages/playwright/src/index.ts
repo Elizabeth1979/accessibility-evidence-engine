@@ -43,8 +43,10 @@ import {
   type ElementLocationPage
 } from "./element-locations";
 import {
+  observePress,
   sweepKeyboardAndPointer,
   type KeyboardPointerSweepPage,
+  type PressObservingPage,
   type SweepFinding,
   type SweepStep,
   type SweepTabStop
@@ -1508,17 +1510,57 @@ export interface PageCheckpointStep {
   artifactFiles: string[];
 }
 
+/** A press a test made whose result a screen reader user does not hear. */
+export interface TestPress {
+  /** Its place among the controls the test pressed. */
+  sequence: number;
+  pageUrl: string;
+  /** The full-page screenshot, beside the record, taken once the press had settled. */
+  screenshot?: string;
+  findings: KeyboardPointerSweepLaneFinding[];
+}
+
+/** The evidence file of the controls a test pressed; it carries no local file paths. */
+export interface TestPressesDocument {
+  schemaVersion: "0.1.0";
+  laneId: string;
+  /** How many controls the test pressed: clicked, or pressed Enter or Space on. */
+  pressesRead: number;
+  presses: TestPress[];
+}
+
 export interface PageCheckpointLane {
   laneId: string;
   /** Captures the page as it is now; checkpoints run one at a time, in the order asked. */
   checkpoint(name: string): Promise<void>;
+  /**
+   * Runs one of the test's actions and, when it presses a control, reads what the press showed
+   * (see `observePress`). Returns what the action returns, and throws what it throws.
+   */
+  press<Result>(action: () => Promise<Result>): Promise<Result>;
   /** Waits for every checkpoint, then writes the lane's evidence manifest. */
   finish(): Promise<{
     laneId: string;
     steps: PageCheckpointStep[];
+    /** Every result of the test's presses that a screen reader user does not hear. */
+    pressFindings: KeyboardPointerSweepLaneFinding[];
     diagnostics: string[];
     manifestFile: string;
   }>;
+}
+
+type PressRecordingPage = PressObservingPage &
+  ElementLocationPage & {
+    url(): string;
+    screenshot(options: { path: string; fullPage: boolean }): Promise<unknown>;
+  };
+
+/** Whether a page's presses can be read and recorded, as a Playwright page's can. */
+function recordsPresses(page: object): page is PressRecordingPage {
+  const { evaluate, screenshot } = page as Partial<PressRecordingPage>;
+  return (
+    reportsRequests(page) && typeof evaluate === "function" && typeof screenshot === "function"
+  );
 }
 
 /**
@@ -1602,6 +1644,34 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
     }
   };
 
+  const presses: TestPress[] = [];
+  let pressesRead = 0;
+  // An action made of another, as setChecked is of check, is read once, as the outer one.
+  let pressing = false;
+  // The page as a press left it, with each element it found located on it.
+  const recordPress = async (page: PressRecordingPage, findings: SweepFinding[]) => {
+    const press: TestPress = { sequence: pressesRead, pageUrl: page.url(), findings };
+    presses.push(press);
+    const screenshot = `press-${pressesRead}.png`;
+    try {
+      await mkdir(laneOutputDir, { recursive: true });
+      await page.screenshot({ path: path.join(laneOutputDir, screenshot), fullPage: true });
+      press.screenshot = screenshot;
+      const locations = await locateElements(
+        page,
+        findings.map(({ selector }) => selector)
+      );
+      press.findings = findings.map((finding, index) => {
+        const targetBox = locations[index];
+        return targetBox ? { ...finding, targetBox } : finding;
+      });
+    } catch (error) {
+      diagnostics.push(
+        `${laneId}: the page after press ${press.sequence} was not captured: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  };
+
   return {
     laneId,
     checkpoint(name) {
@@ -1609,16 +1679,71 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
       queue = run;
       return run;
     },
+    async press(action) {
+      const page = options.page;
+      if (pressing || !recordsPresses(page)) return action();
+      pressing = true;
+      const { result, pressed, findings, unreadable } = await observePress(
+        page,
+        openRequests,
+        action
+      ).finally(() => {
+        pressing = false;
+      });
+      if (unreadable) {
+        diagnostics.push(`${laneId}: the page was not read after a press: ${unreadable}`);
+      }
+      if (pressed) pressesRead += 1;
+      if (findings.length > 0) await recordPress(page, findings);
+      return result;
+    },
     async finish() {
       await queue;
       openRequests?.stop();
       await mkdir(laneOutputDir, { recursive: true });
+      const pressesFile = path.join(laneOutputDir, "test-presses.json");
+      if (pressesRead > 0) {
+        const document: TestPressesDocument = {
+          schemaVersion: "0.1.0",
+          laneId,
+          pressesRead,
+          presses
+        };
+        assertValidSchema("testPresses", document, "test presses");
+        await writeFile(pressesFile, JSON.stringify(document, null, 2), "utf8");
+      }
       const { manifestFile } = await writeEvidenceManifest({
         assessmentId: laneId,
         rootDir: laneOutputDir,
-        lanes: [manifestLane]
+        lanes: [manifestLane],
+        supplementalFiles:
+          pressesRead > 0
+            ? [
+                { path: pressesFile, kind: "test-presses", phase: "lane", laneId },
+                ...presses.flatMap(({ sequence, screenshot }) =>
+                  screenshot
+                    ? [
+                        {
+                          path: path.join(laneOutputDir, screenshot),
+                          kind: "full-page-screenshot" as const,
+                          phase: "action" as const,
+                          laneId,
+                          actionId: `press-${sequence}`,
+                          sequence
+                        }
+                      ]
+                    : []
+                )
+              ]
+            : []
       });
-      return { laneId, steps, diagnostics, manifestFile };
+      return {
+        laneId,
+        steps,
+        pressFindings: presses.flatMap(({ findings }) => findings),
+        diagnostics,
+        manifestFile
+      };
     }
   };
 }

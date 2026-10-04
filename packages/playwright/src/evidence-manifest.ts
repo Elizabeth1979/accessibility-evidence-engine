@@ -75,6 +75,7 @@ export interface EvidenceManifestArtifact {
     | "evidence-bundle"
     | "interaction-trace"
     | "keyboard-pointer-sweep"
+    | "test-presses"
     | "focus-crop"
     | "lane-metadata"
     | "evidence-manifest"

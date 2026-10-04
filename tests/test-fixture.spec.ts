@@ -24,6 +24,8 @@ test("an existing spec with only its import swapped produces findings", async ()
   // A test that takes the page but never loads one leaves nothing to check.
   await writeFile(path.join(suiteDir, "blank.spec.ts"), BLANK_SPEC, "utf8");
   await writeFile(path.join(suiteDir, "gradients.spec.ts"), GRADIENTS_SPEC, "utf8");
+  await writeFile(path.join(suiteDir, "lab.spec.ts"), LAB_SPEC, "utf8");
+  await writeFile(path.join(suiteDir, "presses.spec.ts"), PRESSES_SPEC, "utf8");
   await writeFile(path.join(suiteDir, "late.spec.ts"), LATE_SPEC, "utf8");
   await writeFile(path.join(suiteDir, "shop.spec.ts"), SHOP_SPEC, "utf8");
   await writeFile(config, "module.exports = { testDir: __dirname };\n", "utf8");
@@ -169,7 +171,102 @@ test("an existing spec with only its import swapped produces findings", async ()
   const comment = await readFile((await assessmentComments(suiteDir, "gradients"))[0]!, "utf8");
   expect(comment).toContain("**Contrast left for a person (2):**");
   expect(comment).toContain("- `#shadow`: text over a gradient; not measured");
+
+  // What the test's own clicks show is read, and AEE presses nothing itself: on the demo page with
+  // issues, Archive's message is in no live region and Sync fails without a word; fixed, a screen
+  // reader says both.
+  for (const [title, unheard] of [
+    [
+      "clicks Archive and Sync on the demo page with issues",
+      [
+        ["status-not-announced", ["press-1"], ["#action-status"]],
+        ["failure-not-announced", ["press-2"], ["#sync-settings"]]
+      ]
+    ],
+    ["clicks Archive and Sync on the fixed demo page", []]
+  ] as const) {
+    const lab = await readAssessment(suiteDir, "lab", title);
+    expect(
+      lab.synthesis.findings
+        .filter(({ ruleId }) => ruleId.endsWith("-not-announced"))
+        .map(({ ruleId, checkpoints, instances }) => [
+          ruleId,
+          checkpoints.map(({ actionId }) => actionId),
+          instances.map(({ selector }) => selector)
+        ])
+    ).toEqual(unheard);
+    expect(await readPresses(suiteDir, "lab", title)).toMatchObject({ pressesRead: 2 });
+  }
+  const [labComment] = await assessmentComments(
+    suiteDir,
+    "lab",
+    "clicks Archive and Sync on the demo page with issues"
+  );
+  await expect(
+    readFile(path.join(path.dirname(labComment!), "aee-report.html"), "utf8")
+  ).resolves.toContain("Clicking “Sync settings” sends a request that fails (GET, status 404)");
+
+  // A key pressed on a control is read as a press, and a check box that shows more is not a
+  // message: its own state is what a screen reader says. Setting it is one press, not two.
+  const presses = await readAssessment(suiteDir, "presses");
+  expect(
+    presses.synthesis.findings
+      .filter(({ ruleId }) => ruleId.endsWith("-not-announced"))
+      .map(({ ruleId, instances }) => [ruleId, instances.map(({ detail }) => detail)])
+  ).toEqual([
+    [
+      "status-not-announced",
+      [expect.stringMatching(/^Pressing “Copy link” with Enter shows this text/)]
+    ]
+  ]);
+  expect(await readPresses(suiteDir, "presses")).toMatchObject({ pressesRead: 2 });
 });
+
+/**
+ * The demo page, with issues and fixed, served as published from a server with no API, so Sync
+ * fails. Each test clicks Archive and Sync; AEE's own keyboard and reader checks are off.
+ */
+const LAB_SPEC = `import { existsSync } from "node:fs";
+import path from "node:path";
+
+import { expect, test } from "@aee/cli/test";
+
+test.use({ aee: { keyboardAndReader: false } });
+
+test.beforeEach(async ({ page }) => {
+  await page.route("https://lab.test/**", (route) => {
+    const file = path.join("site", new URL(route.request().url()).pathname);
+    return existsSync(file) ? route.fulfill({ path: file }) : route.fulfill({ status: 404 });
+  });
+});
+
+for (const [name, query] of [
+  ["the demo page with issues", ""],
+  ["the fixed demo page", "?case=fixed"]
+]) {
+  test(\`clicks Archive and Sync on \${name}\`, async ({ page }) => {
+    await page.goto(\`https://lab.test/test-case.html\${query}\`);
+    await page.locator("#archive-project").click();
+    await expect(page.locator("#action-status")).toHaveText("Project Alpha archived. You can restore it.");
+    await page.getByRole("button", { name: "Sync settings" }).click();
+  });
+}
+`;
+
+const PRESSES_SPEC = `import { test } from "@aee/cli/test";
+
+test.use({ aee: { keyboardAndReader: false } });
+
+test("copies a link and shares with a team", async ({ page }) => {
+  await page.setContent(\`<!doctype html><html lang="en"><title>Share</title><main><h1>Share</h1>
+    <button type="button" onclick="document.querySelector('#note').textContent = 'Link copied.'">Copy link</button>
+    <p id="note"></p>
+    <label><input type="checkbox" onchange="document.querySelector('#team').hidden = !this.checked"> Share with a team</label>
+    <fieldset id="team" hidden><legend>Team</legend><label>Team name <input></label></fieldset></main></html>\`);
+  await page.getByRole("button", { name: "Copy link" }).press("Enter");
+  await page.getByLabel("Share with a team").setChecked(true);
+});
+`;
 
 /** Four texts over gradients: one passes, one fails, and two are left for a person. */
 const GRADIENTS_SPEC = `import { expect, test } from "@aee/cli/test";
@@ -277,6 +374,18 @@ async function assessmentComments(suiteDir: string, spec: string, title?: string
     })
   );
   return named.filter((file) => file !== undefined);
+}
+
+/** The record of the controls a spec's test pressed. */
+async function readPresses(suiteDir: string, spec: string, title?: string) {
+  const comments = await assessmentComments(suiteDir, spec, title);
+  expect(comments).toHaveLength(1);
+  return JSON.parse(
+    await readFile(
+      path.join(path.dirname(comments[0]!), "playwright-test", "test-presses.json"),
+      "utf8"
+    )
+  ) as { pressesRead: number };
 }
 
 /** The one assessment a spec's test wrote; each checkpoint's own run report sits below it. */
