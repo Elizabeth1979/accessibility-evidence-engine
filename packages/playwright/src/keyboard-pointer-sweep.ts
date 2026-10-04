@@ -1,6 +1,7 @@
 import { PNG } from "pngjs";
 
 import { describeFocusedElement, withCdpSession, type CdpSession } from "./accessibility-tree";
+import { locateElements, type ElementLocation } from "./element-locations";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
 import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-page";
@@ -355,11 +356,26 @@ function probeOf(page: KeyboardPointerSweepPage) {
     onLoadedPage(page, async () => (await page.evaluate(runSweepProbe, request)) as T);
 }
 
+/** A finding of a press the test made, placed on the page as the test left it after the press. */
+export interface ObservedPressFinding extends SweepFinding {
+  /** Which of the test's presses it followed, counted from 1. */
+  press: number;
+  /** Where the element is on that press's screenshot. */
+  targetBox?: ElementLocation;
+}
+
+/** The longest a press's full-page screenshot may take; the test waits for it. */
+const PRESS_SCREENSHOT_TIMEOUT_MS = 10_000;
+
 /** What the presses a test made itself showed and said, as sweep findings; AEE presses nothing. */
 export interface ObservedPresses {
   /** Each control the test pressed while it was watched. */
   pressed: string[];
-  findings: SweepFinding[];
+  findings: ObservedPressFinding[];
+  /** The page after each press with a finding, a full-page PNG, by the press's number. */
+  screenshots: Map<number, Uint8Array>;
+  /** Why the page after a press with a finding could not be captured, when it could not. */
+  diagnostics: string[];
 }
 
 /**
@@ -371,7 +387,12 @@ export interface ObservedPresses {
  */
 export function observePresses(page: KeyboardPointerSweepPage) {
   const probe = probeOf(page);
-  const observed: ObservedPresses = { pressed: [], findings: [] };
+  const observed: ObservedPresses = {
+    pressed: [],
+    findings: [],
+    screenshots: new Map(),
+    diagnostics: []
+  };
   let watching: { verb: string; failedRequests: () => string[] } | undefined;
   return {
     /** `verb` says what the test does, such as "Clicking", before the control it does it to. */
@@ -389,12 +410,35 @@ export function observePresses(page: KeyboardPointerSweepPage) {
       const newText = await probe<NewText>({ mode: "new-text" });
       if (!newText) return;
       observed.pressed.push(newText.pressed.selector);
+      const press = observed.pressed.length;
+      const findings = announcementFindings(
+        `${verb} ${describeElement(newText.pressed)} in the test`,
+        newText,
+        failed
+      );
+      if (findings.length === 0) return;
+      // The page as the test left it, before its next step, so the report shows what was missed.
+      let locations: Array<ElementLocation | null> = [];
+      try {
+        const screenshot = await page.screenshot({
+          fullPage: true,
+          timeout: PRESS_SCREENSHOT_TIMEOUT_MS
+        });
+        locations = await locateElements(
+          page,
+          findings.map(({ selector }) => selector)
+        );
+        observed.screenshots.set(press, screenshot);
+      } catch (error) {
+        observed.diagnostics.push(
+          `The page after press ${press} was not captured: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
       observed.findings.push(
-        ...announcementFindings(
-          `${verb} ${describeElement(newText.pressed)} in the test`,
-          newText,
-          failed
-        )
+        ...findings.map((finding, index) => {
+          const targetBox = locations[index];
+          return targetBox ? { ...finding, press, targetBox } : { ...finding, press };
+        })
       );
     },
     result: (): ObservedPresses => observed

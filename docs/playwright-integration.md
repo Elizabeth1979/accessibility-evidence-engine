@@ -444,7 +444,9 @@ read with whatever the test waited for after it, and the watch adds no time. Tex
 a screen reader does not say is reported as `status-not-announced`, and a request a press sends that
 fails while the page shows and says nothing as `failure-not-announced`, both advisory, as when the
 sweep presses controls in `aee run`. They are recorded as a lane of their own (`test-observed-presses`,
-marked `pressedBy: "test"`); a press inside an iframe is not read.
+marked `pressedBy: "test"`); a press inside an iframe is not read. A press with a finding is
+captured as the test left it, a full-page screenshot taken before the test's next step, so the
+report draws the element on the page it was found on.
 
 The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
 the fixture extends the runner the project already has and `aee run` launches the same Playwright:
