@@ -67,8 +67,9 @@ test("an existing spec with only its import swapped produces findings", async ()
 
   // A checkpoint does nothing to the page, so it captures it once: there is no "before".
   expect(existing.artifacts.filter(({ path: file }) => /-before\./.test(file))).toEqual([]);
-  // It captures the page once the app has drawn it: an image added 400 ms after the load is seen
-  // by the load's own checkpoint, though the test moves on to another page straight away.
+  // It captures the page once the app has drawn it: an image the app draws when its data arrives,
+  // a second after the load, is seen by the load's own checkpoint, though the test moves on to
+  // another page straight away.
   const late = await readAssessment(suiteDir, "late");
   expect(
     late.synthesis.findings.map(({ ruleId, checkpoints }) => [
@@ -189,9 +190,17 @@ test("text over gradients", async ({ page }) => {
 const LATE_SPEC = `import { test } from "@aee/cli/test";
 
 test("a gallery the app draws after it's loaded", async ({ page }) => {
+  // The gallery's photos arrive a second after the page loads, as from a slow server: far longer
+  // than a checkpoint waits for the page to stop changing, so only waiting for the data sees them.
+  await page.route("https://photos.test/gallery.json", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    await route.fulfill({ json: ["fern.jpg"], headers: { "access-control-allow-origin": "*" } });
+  });
   await page.setContent(\`<!doctype html><html lang="en"><title>Gallery</title><main><h1>Gallery</h1>
-    </main><script>setTimeout(() => document.querySelector("main").insertAdjacentHTML("beforeend",
-      '<img src="gallery/fern.jpg?size=large">'), 400);</script></html>\`);
+    </main><script>fetch("https://photos.test/gallery.json").then((response) => response.json())
+      .then((photos) => document.querySelector("main").insertAdjacentHTML("beforeend",
+        photos.map((photo) => '<img src="https://photos.test/' + photo + '">').join("")));
+    </script></html>\`);
   await page.setContent(\`<!doctype html><html lang="en"><title>Done</title><main><h1>Done</h1></main></html>\`);
 });
 `;
