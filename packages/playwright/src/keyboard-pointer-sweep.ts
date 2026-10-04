@@ -942,11 +942,18 @@ function runSweepProbe(request: ProbeRequest): unknown {
   // Elements whose text is their name, which a screen reader says as they get focus.
   const controls =
     'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"]';
+  // The page's main content, which a new view replaces, and the dialogs a press may open.
+  const mainContent = 'main, [role="main"]';
+  const dialogs = 'dialog, [role="dialog"], [role="alertdialog"]';
   // What a press changed, recorded from just before it; "new-text" reads and ends it.
   const watchKey = Symbol.for("aee.sweep.watch-changes");
   interface ChangeWatch {
     url: string;
     text: string;
+    /** The page's main content as the press began, which a new view replaces. */
+    main: Element | null;
+    /** The dialogs shown as the press began. */
+    dialogs: Element[];
     /** The control pressed and its states as the press began; unset until a watch with no
      * control sees one. */
     pressed?: { control: Element | null; selector: string; label: string };
@@ -1124,6 +1131,8 @@ function runSweepProbe(request: ProbeRequest): unknown {
       store[watchKey] = {
         url: location.href,
         text: normalized(document.body.innerText),
+        main: document.querySelector(mainContent),
+        dialogs: [...document.querySelectorAll(dialogs)].filter(isVisible),
         ...(request.selector
           ? {
               pressed: {
@@ -1151,7 +1160,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
     }
     // The text a press showed (see NewText). Text is said when it is in a live region that was
     // there before (or an alert, which is said as it is added) or focus moved to it. Controls are
-    // left out, as their text is their name, and so are dialogs, whose focus is a check of its own.
+    // left out, as their text is their name, and so is a dialog the press opened.
     case "new-text": {
       const watch = store[watchKey];
       delete store[watchKey];
@@ -1165,13 +1174,22 @@ function runSweepProbe(request: ProbeRequest): unknown {
       const control = request.selector
         ? document.querySelector(request.selector)
         : watch.pressed.control;
-      const skipped = `${controls}, dialog, [role="dialog"], [role="alertdialog"], [aria-hidden="true"]`;
+      const skipped = `${controls}, [aria-hidden="true"]`;
+      // A press that replaced the page's main content showed a new view, as a single-page app's
+      // route change does: like a page load, that is no message.
       if (
         location.href !== watch.url ||
+        (watch.main !== null && !watch.main.isConnected) ||
         JSON.stringify(statesOf(control)) !== JSON.stringify(watch.states)
       ) {
         return null;
       }
+      // Text in a dialog the press opened is the dialog's own, whose focus is a check of its own;
+      // text that appears in a dialog already open is read like any other.
+      const inOpenedDialog = (element: Element) => {
+        const dialog = element.closest(dialogs);
+        return dialog !== null && !watch.dialogs.includes(dialog);
+      };
       const active = document.activeElement;
       const saidAt = (element: Element) =>
         element.closest('[role="alert"]') !== null ||
@@ -1186,13 +1204,26 @@ function runSweepProbe(request: ProbeRequest): unknown {
         for (let node = walker.nextNode(); node; node = walker.nextNode()) {
           const text = node.textContent?.trim() ?? "";
           const parent = node.parentElement;
-          if (!text || !parent || parent.closest(skipped) || !isVisible(parent)) continue;
+          if (
+            !text ||
+            !parent ||
+            parent.closest(skipped) ||
+            inOpenedDialog(parent) ||
+            !isVisible(parent)
+          ) {
+            continue;
+          }
           parts.push({ text, parent });
         }
         return parts;
       };
       const fresh = [...watch.changed].filter((element) => {
-        if (!element.isConnected || control?.contains(element) || element.closest(skipped)) {
+        if (
+          !element.isConnected ||
+          control?.contains(element) ||
+          element.closest(skipped) ||
+          inOpenedDialog(element)
+        ) {
           return false;
         }
         return textParts(element).some(({ text }) => !watch.text.includes(normalized(text)));
