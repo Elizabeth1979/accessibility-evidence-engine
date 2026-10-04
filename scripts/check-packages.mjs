@@ -142,7 +142,11 @@ try {
       readFileSync(requireFromConsumer.resolve(`${packageName}/package.json`), "utf8")
     );
     assert.equal(manifest.license, "Apache-2.0", `${packageName} has incorrect license metadata.`);
-    assert.equal(manifest.engines?.node, ">=22", `${packageName} has an incorrect Node.js range.`);
+    assert.equal(
+      manifest.engines?.node,
+      ">=22.13",
+      `${packageName} has an incorrect Node.js range.`
+    );
     assert.equal(
       manifest.publishConfig?.access,
       "public",

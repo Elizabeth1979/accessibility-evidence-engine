@@ -20,7 +20,7 @@
     "dist/*.d.ts"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "repository": {
     "type": "git",

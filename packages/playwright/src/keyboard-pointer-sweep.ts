@@ -3,7 +3,7 @@ import { PNG } from "pngjs";
 import { describeFocusedElement, withCdpSession, type CdpSession } from "./accessibility-tree";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
-import { waitForQuietPage } from "./quiet-page";
+import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-page";
 
 /**
  * A sweep finds keyboard and pointer problems on a page without any authored steps:
@@ -138,6 +138,11 @@ export interface KeyboardPointerSweepPage {
   on(event: "requestfailed", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
   off(event: "response", listener: (response: KeyboardPointerSweepResponse) => void): unknown;
   off(event: "requestfailed", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
+  /** The requests the page has open are waited for before it is read. */
+  on(event: "request", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
+  on(event: "requestfinished", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
+  off(event: "request", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
+  off(event: "requestfinished", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
   keyboard: { press(key: string): Promise<void> };
   mouse: { move(x: number, y: number): Promise<void> };
 }
@@ -227,11 +232,25 @@ interface ActivationOutcome {
 export async function sweepKeyboardAndPointer(
   options: KeyboardPointerSweepOptions
 ): Promise<KeyboardPointerSweepResult> {
+  // Counted from before the first load, so the page is read once the data it loads has arrived.
+  const openRequests = trackOpenRequests(options.page);
+  try {
+    return await sweepPage(options, openRequests);
+  } finally {
+    openRequests.stop();
+  }
+}
+
+async function sweepPage(
+  options: KeyboardPointerSweepOptions,
+  openRequests: OpenRequests
+): Promise<KeyboardPointerSweepResult> {
   const { page, url, onStep } = options;
   const probe = probeOf(page);
-  const settle = () => onLoadedPage(page, () => waitForQuietPage(page));
+  const settle = () => onLoadedPage(page, () => waitForQuietPage(page, openRequests));
+  const loadPage = () => loadAfresh(page, url, openRequests);
 
-  await loadAfresh(page, url);
+  await loadPage();
   const findings: SweepFinding[] = (
     await withCdpSession(page.context(), page, findHeadingLookalikes)
   ).map(({ selector, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) =>
@@ -267,7 +286,7 @@ export async function sweepKeyboardAndPointer(
   }
   const stopSelectors = tabStops.map(({ selector }) => selector);
 
-  for (const target of await pointerOnlyTargets(page, probe, url, stopSelectors, onStep)) {
+  for (const target of await pointerOnlyTargets(page, probe, loadPage, stopSelectors, onStep)) {
     findings.push(
       sweepFinding(
         "pointer-only",
@@ -301,7 +320,7 @@ export async function sweepKeyboardAndPointer(
 
   const activated: string[] = [];
   if (options.activateControls) {
-    await loadAfresh(page, url);
+    await loadPage();
     for (const control of await probe<PressableControl[]>({
       mode: "pressable",
       tabStops: stopSelectors
@@ -311,7 +330,7 @@ export async function sweepKeyboardAndPointer(
         ...(await timed(
           onStep,
           () => `Press ${describeElement(control)} with ${control.key}, then click it`,
-          () => pressControl(page, probe, settle, url, control)
+          () => pressControl(page, probe, settle, loadPage, control)
         ))
       );
     }
@@ -397,7 +416,7 @@ const MAX_COMPOSITE_ITEMS = 100;
 async function pointerOnlyTargets(
   page: KeyboardPointerSweepPage,
   probe: <T>(request: ProbeRequest) => Promise<T>,
-  url: string,
+  loadPage: () => Promise<void>,
   tabStops: string[],
   onStep: KeyboardPointerSweepOptions["onStep"]
 ): Promise<ProbedElement[]> {
@@ -419,7 +438,7 @@ async function pointerOnlyTargets(
       return items;
     }
   );
-  await loadAfresh(page, url);
+  await loadPage();
   return probe<ProbedElement[]>({ mode: "pointer-only", tabStops: [...tabStops, ...reached] });
 }
 
@@ -449,10 +468,14 @@ async function walkComposite(
  * scrolls to the fragment when the page is already there, keeping whatever a check changed, so
  * such an address is reloaded.
  */
-async function loadAfresh(page: KeyboardPointerSweepPage, url: string): Promise<void> {
+async function loadAfresh(
+  page: KeyboardPointerSweepPage,
+  url: string,
+  openRequests: OpenRequests
+): Promise<void> {
   await page.goto(url);
   if (new URL(url).hash) await page.reload();
-  await waitForQuietPage(page);
+  await waitForQuietPage(page, openRequests);
 }
 
 async function readStyleSheetTexts(page: KeyboardPointerSweepPage): Promise<string[]> {
@@ -675,7 +698,7 @@ async function pressControl(
   page: KeyboardPointerSweepPage,
   probe: <T>(request: ProbeRequest) => Promise<T>,
   settle: () => Promise<void>,
-  url: string,
+  loadPage: () => Promise<void>,
   control: PressableControl
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
@@ -691,7 +714,7 @@ async function pressControl(
   // a message after a request, counts the same for keyboard and mouse.
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
-      await loadAfresh(page, url);
+      await loadPage();
       loadedDocument = await probe<number>({ mode: "document" });
     },
     performPointerInteraction: async () => {

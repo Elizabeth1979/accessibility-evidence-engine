@@ -35,7 +35,7 @@ import {
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
-import { waitForQuietPage } from "./quiet-page";
+import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
 import { describeElementContexts } from "./element-context";
 import {
   locateElements,
@@ -1550,6 +1550,8 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
   const steps: PageCheckpointStep[] = [];
   const diagnostics: string[] = [];
   let queue = Promise.resolve();
+  // Counted from before the test loads a page, so a checkpoint waits for the data it loads.
+  const openRequests = reportsRequests(options.page) ? trackOpenRequests(options.page) : undefined;
 
   const capture = async (name: string) => {
     const sequence = manifestLane.actions.length + 1;
@@ -1567,7 +1569,7 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
     };
     manifestLane.actions.push(manifestAction);
     // The checkpoint captures what a person sees once the app has drawn the page.
-    await waitForQuietPage(options.page as EvaluatablePageLike);
+    await waitForQuietPage(options.page as EvaluatablePageLike, openRequests);
     const pageUrl = options.page.url();
     try {
       const result = await runAeeOnPage({
@@ -1615,6 +1617,7 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
     },
     async finish() {
       await queue;
+      openRequests?.stop();
       await mkdir(laneOutputDir, { recursive: true });
       const { manifestFile } = await writeEvidenceManifest({
         assessmentId: laneId,
@@ -1802,8 +1805,13 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       activateControls: options.activateControls,
       onStep: (step) => steps.push(step)
     });
-    await still.goto(options.targetUrl);
-    await waitForQuietPage(still);
+    const stillRequests = trackOpenRequests(still);
+    try {
+      await still.goto(options.targetUrl);
+      await waitForQuietPage(still, stillRequests);
+    } finally {
+      stillRequests.stop();
+    }
     await still.screenshot({ path: screenshotFile, fullPage: true });
     const locations = await locateElements(
       still,
