@@ -253,6 +253,15 @@ export const imagePurposeSpecialist: Specialist<ImagePurposeContext, ImagePurpos
       ) {
         throw new Error(`"${suggestedAlternative}" is not a text alternative.`);
       }
+      const repeated = repeatedSentence(suggestedAlternative, [
+        input.nearbyHeading,
+        input.nearbyText
+      ]);
+      if (repeated) {
+        throw new Error(
+          `"${suggestedAlternative}" repeats "${repeated}" from beside the image, so a screen reader says it twice.`
+        );
+      }
     }
     return {
       classification: role,
@@ -414,6 +423,28 @@ function readCitations(value: unknown, input: object): string[] {
     throw new Error(`citedEvidenceIds names evidence that was not given: ${unfounded.join(", ")}.`);
   }
   return cited.map(String);
+}
+
+/** Fewer words than this is a shared phrase, not a repeated sentence: "Usage chart" beside "Usage" passes. */
+const REPEATED_SENTENCE_WORDS = 4;
+
+/**
+ * The first sentence or list item of the page text that the alternative repeats whole (WCAG 1.1.1,
+ * F30): an alternative that copies adjacent text is read twice and says nothing about the image.
+ */
+function repeatedSentence(alternative: string, texts: (string | undefined)[]): string | undefined {
+  const words = (text: string) => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+  const said = ` ${words(alternative).join(" ")} `;
+  return texts
+    .flatMap((text) => text?.split(/(?<=[.!?])\s+|\n+/) ?? [])
+    .map((sentence) => sentence.trim())
+    .find((sentence) => {
+      const sentenceWords = words(sentence);
+      return (
+        sentenceWords.length >= REPEATED_SENTENCE_WORDS &&
+        said.includes(` ${sentenceWords.join(" ")} `)
+      );
+    });
 }
 
 function fileName(source: string | undefined): string | undefined {
