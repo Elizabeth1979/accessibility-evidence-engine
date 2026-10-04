@@ -190,6 +190,20 @@ test("the presses a test makes are watched for what they show and do not say", a
   expect(await announcementFindings("archive on the fixed page")).toEqual([]);
   expect(await announcementFindings("sync on the fixed page")).toEqual([]);
 
+  // Each is shown on the page as the test left it after the press, with the element placed on it.
+  for (const title of ["archive on the demo page", "sync on the demo page"]) {
+    const [found] = (await readAssessment(suiteDir, "lab", title)).synthesis.findings.filter(
+      ({ ruleId }) => ruleId.endsWith("-not-announced")
+    );
+    expect(found?.checkpoints[0]?.screenshotPath).toBe("test-observed-presses/press-1.png");
+    expect(found?.instances[0]?.targetBox).toMatchObject({ width: expect.any(Number) });
+    const [pressComment] = await assessmentComments(suiteDir, "lab", title);
+    const screenshot = await readFile(
+      path.join(path.dirname(pressComment!), found!.checkpoints[0]!.screenshotPath!)
+    );
+    expect(screenshot.subarray(1, 4).toString()).toBe("PNG");
+  }
+
   // The keyboard sweep is off, so the presses were the test's own, which AEE only watched.
   const archive = await readAssessment(suiteDir, "lab", "archive on the demo page");
   expect(archive.completeness.plannedChecks.skipped).toBe("turned-off");
@@ -404,8 +418,8 @@ async function readAssessment(suiteDir: string, spec: string, title?: string) {
       reader: { commands: number; passed: number; failed: number; unknown: number };
       findings: Array<{
         ruleId: string;
-        checkpoints: Array<{ actionId: string }>;
-        instances: Array<{ selector: string; label: string; detail?: string }>;
+        checkpoints: Array<{ actionId: string; screenshotPath?: string }>;
+        instances: Array<{ selector: string; label: string; detail?: string; targetBox?: object }>;
       }>;
       undecidedContrast: Array<{ selector: string; reason: string }>;
     };

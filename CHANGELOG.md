@@ -6,6 +6,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- A finding from a press the test made comes with a picture: the page is captured as the test left it after the press, before its next step, and the report's Page view and the pull-request comment's pictures outline the element on it, such as the "Project Alpha archived" message no screen reader said. Only a press with a finding is captured.
 - A message nobody hears and a failed request nobody hears now reach Playwright tests that use the `@aee/cli/test` fixture. The fixture never presses a control on your app, so these two checks never ran there; it now watches the presses your test makes (clicks, taps, key presses, checks) and reports text a press shows that a screen reader does not say, and a request a press sends that fails while the page shows and says nothing. Each press is read when the test moves on, with whatever the test waited for, so it adds no time. Both stay advisory, under the same kinds (`status-not-announced`, `failure-not-announced`), and the report says AEE pressed nothing.
 
 ### Fixed

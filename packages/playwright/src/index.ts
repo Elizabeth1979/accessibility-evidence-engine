@@ -391,8 +391,13 @@ export type RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSwee
   };
 
 export interface KeyboardPointerSweepLaneFinding extends SweepFinding {
-  /** Where the element is on the lane's full-page screenshot. */
+  /** Where the element is on the lane's full-page screenshot, or on `screenshot` when it has one. */
   targetBox?: ElementLocation;
+  /**
+   * The full-page screenshot, beside the record, of the page as a press the test made left it,
+   * for a finding of that press; the lane has no screenshot of its own.
+   */
+  screenshot?: string;
 }
 
 export interface KeyboardPointerSweepLaneTabStop extends Omit<SweepTabStop, "focusedCrop"> {
@@ -1722,6 +1727,7 @@ export async function writeObservedPressesLane(options: {
   );
   const sweepFile = path.join(laneOutputDir, "keyboard-pointer-sweep.json");
   const manifestFile = path.join(laneOutputDir, "manifest.json");
+  const pressScreenshot = (press: number) => `press-${press}.png`;
   const laneRecord = {
     schemaVersion: "0.2.0" as const,
     laneId,
@@ -1737,17 +1743,33 @@ export async function writeObservedPressesLane(options: {
     blockedNavigations: [],
     tabStops: [],
     activated: observed.pressed,
-    findings: observed.findings
+    findings: observed.findings.map(({ press, ...finding }): KeyboardPointerSweepLaneFinding =>
+      observed.screenshots.has(press) ? { ...finding, screenshot: pressScreenshot(press) } : finding
+    ),
+    ...(observed.diagnostics.length ? { diagnostics: observed.diagnostics } : {})
   };
   assertValidSchema("keyboardPointerSweepLane", laneRecord, "observed presses lane output");
   await mkdir(laneOutputDir, { recursive: true });
   await writeFile(sweepFile, JSON.stringify(laneRecord, null, 2), "utf8");
+  for (const [press, screenshot] of observed.screenshots) {
+    await writeFile(path.join(laneOutputDir, pressScreenshot(press)), screenshot);
+  }
   await writeEvidenceManifest({
     assessmentId: laneId,
     rootDir: laneOutputDir,
     manifestFile,
     lanes: [{ id: laneId, driver: "keyboard-pointer-sweep", status: "completed", actions: [] }],
-    supplementalFiles: [{ path: sweepFile, kind: "keyboard-pointer-sweep", phase: "lane", laneId }]
+    supplementalFiles: [
+      { path: sweepFile, kind: "keyboard-pointer-sweep", phase: "lane", laneId },
+      ...[...observed.screenshots.keys()].map((press) => ({
+        path: path.join(laneOutputDir, pressScreenshot(press)),
+        kind: "full-page-screenshot" as const,
+        phase: "action" as const,
+        laneId,
+        actionId: `press-${press}`,
+        sequence: press
+      }))
+    ]
   });
   return { ...laneRecord, manifestFile };
 }

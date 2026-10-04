@@ -2153,13 +2153,18 @@ function buildFindingSynthesis(
 
 /**
  * Whether a sweep record is the sweep's own, which walks Tab and may press controls, rather than a
- * test's presses AEE only watched, which have no Tab stops or page capture.
+ * test's presses AEE only watched, which have no Tab stops, and a picture only of each press that
+ * found something.
  */
 function sweptByAee({ document }: { document?: KeyboardPointerSweepLaneDocument }): boolean {
   return document?.pressedBy !== "test";
 }
 
-/** A sweep finding, grouped like an axe rule: one checkpoint per swept page that shows it. */
+/**
+ * A sweep finding, grouped like an axe rule: one checkpoint per swept page that shows it, and per
+ * press of a test's that showed it, on the screenshot taken after that press. The checkpoint with
+ * the most elements comes first, as its screenshot is the one they are drawn on.
+ */
 function buildSweepFindingSynthesis(
   views: IntegratedHtmlViews,
   kind: SweepFindingKind,
@@ -2167,28 +2172,41 @@ function buildSweepFindingSynthesis(
 ): FindingSynthesis {
   const swept = views.sweeps.flatMap(({ path: sweepPath, screenshotPath, document }) => {
     const matches = (document?.findings ?? []).filter((candidate) => candidate.kind === kind);
-    return document && matches.length ? [{ sweepPath, screenshotPath, document, matches }] : [];
+    if (!document) return [];
+    const pictures = new Map<string | undefined, KeyboardPointerSweepLaneFinding[]>();
+    for (const match of matches) {
+      pictures.set(match.screenshot, [...(pictures.get(match.screenshot) ?? []), match]);
+    }
+    return [...pictures].map(([screenshot, matches]) => ({
+      sweepPath,
+      screenshotPath: screenshot
+        ? path.posix.join(path.posix.dirname(sweepPath), screenshot)
+        : screenshotPath,
+      actionId: screenshot ? path.posix.basename(screenshot, ".png") : "keyboard-pointer-sweep",
+      document,
+      matches
+    }));
   });
-  const checkpoints: FindingCheckpointSynthesis[] = swept.map(
-    ({ sweepPath, screenshotPath, document, matches }) => ({
-      actionId: "keyboard-pointer-sweep",
-      laneId: document.laneId,
-      runId: document.laneId,
-      driver: "keyboard-pointer-sweep",
-      behaviorVerdict: "fail",
-      behaviorSummary: matches[0]!.summary,
-      nodeCount: matches.length,
-      targets: matches.slice(0, 8).map(({ selector }) => selector),
-      htmlSamples: [],
-      screenshotPath,
-      sweepPath
-    })
-  );
   const representative = swept.reduce<(typeof swept)[number] | undefined>(
     (largest, entry) =>
       !largest || entry.matches.length > largest.matches.length ? entry : largest,
     undefined
   );
+  const checkpoints: FindingCheckpointSynthesis[] = (
+    representative ? [representative, ...swept.filter((entry) => entry !== representative)] : []
+  ).map(({ sweepPath, screenshotPath, actionId, document, matches }) => ({
+    actionId,
+    laneId: document.laneId,
+    runId: document.laneId,
+    driver: "keyboard-pointer-sweep",
+    behaviorVerdict: "fail",
+    behaviorSummary: matches[0]!.summary,
+    nodeCount: matches.length,
+    targets: matches.slice(0, 8).map(({ selector }) => selector),
+    htmlSamples: [],
+    screenshotPath,
+    sweepPath
+  }));
   const instances = (representative?.matches ?? []).map(sweepFindingInstance);
   const pages = views.sweeps.filter(sweptByAee).length;
   const maximumAffectedNodes = representative?.matches.length ?? 0;
@@ -4778,7 +4796,9 @@ function addSweepLayers(
 
 function pageStateLabel(driver: LaneDriver, actionId: string): string {
   return driver === "keyboard-pointer-sweep"
-    ? "As the keyboard and pointer sweep found it"
+    ? actionId.startsWith("press-")
+      ? `As the test's press ${actionId.slice("press-".length)} left it`
+      : "As the keyboard and pointer sweep found it"
     : driver === "portable-virtual-screen-reader"
       ? "As the virtual screen reader read it"
       : `${humanDriverName(driver)}: ${humanActionName(actionId).toLowerCase()}`;
