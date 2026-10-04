@@ -584,6 +584,8 @@ test("the sweep reports a message a press shows only when a screen reader does n
       <button id="new-alert" type="button">Delete</button>
       <button id="disclosure" type="button" aria-expanded="false">More</button>
       <p id="more" hidden>Extra settings live here.</p>
+      <label><input id="share-team" type="checkbox"> Share with a team</label>
+      <fieldset id="team" hidden><legend>Team</legend><label>Team name <input></label></fieldset>
       <button id="to-message" type="button">Check</button>
       <p id="result" tabindex="-1"></p>
       <button id="show-hidden" type="button">Load</button>
@@ -606,6 +608,7 @@ test("the sweep reports a message a press shows only when a screen reader does n
         event.currentTarget.setAttribute("aria-expanded", "true");
         document.getElementById("more").hidden = false;
       });
+      on("share-team", (event) => (document.getElementById("team").hidden = !event.currentTarget.checked));
       on("to-message", () => {
         const result = document.getElementById("result");
         result.textContent = "All checks passed.";
@@ -626,7 +629,8 @@ test("the sweep reports a message a press shows only when a screen reader does n
   const result = await sweepKeyboardAndPointer({ page, url, activateControls: true });
 
   // Said: a live region that was there before, an alert (also inside a toast with a button), a
-  // disclosure that says it expanded, and a message focus moved to. Nothing new: a list drawn again
+  // disclosure that says it expanded, a check box that says it is checked as its fields appear, and
+  // a message focus moved to. Nothing new: a list drawn again
   // with the same text. Not said: a plain paragraph, even a moment later, a region added with its
   // text, and a paragraph that was hidden.
   expect(result.findings.map(({ kind, selector, label }) => ({ kind, selector, label }))).toEqual([
