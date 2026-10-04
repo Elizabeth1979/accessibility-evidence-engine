@@ -1,6 +1,6 @@
 {
   "name": "@aee/ai-fixes",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Review-only AI fix proposals grounded in Accessibility Evidence Engine context.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -48,7 +48,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/core": "0.6.0",
+    "@aee/core": "0.7.0",
     "@anthropic-ai/sdk": "^0.131.0"
   }
 }

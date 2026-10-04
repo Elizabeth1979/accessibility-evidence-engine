@@ -1,6 +1,6 @@
 {
   "name": "@aee/reporter",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "JSON and Markdown accessibility evidence reporters for Accessibility Evidence Engine.",
   "license": "Apache-2.0",
   "type": "commonjs",
@@ -42,7 +42,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@aee/core": "0.6.0",
-    "@aee/schemas": "0.6.0"
+    "@aee/core": "0.7.0",
+    "@aee/schemas": "0.7.0"
   }
 }
