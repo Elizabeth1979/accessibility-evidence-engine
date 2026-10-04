@@ -69,6 +69,7 @@
             "looks-like-heading",
             "status-not-announced",
             "failure-not-announced",
+            "form-not-announced",
             "colour-only",
             "text-in-image"
           ]

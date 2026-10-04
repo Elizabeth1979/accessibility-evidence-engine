@@ -586,6 +586,13 @@ test("the sweep reports a message a press shows only when a screen reader does n
       <p id="more" hidden>Extra settings live here.</p>
       <label><input id="share-team" type="checkbox"> Share with a team</label>
       <fieldset id="team" hidden><legend>Team</legend><label>Team name <input></label></fieldset>
+      <button id="add-note" type="button">Add a note</button>
+      <form id="note-form" hidden><label>What is this album about? <textarea></textarea></label></form>
+      <button id="add-title" type="button">Add a title</button>
+      <form id="title-form" hidden><label>Album title <input id="title-field"></label></form>
+      <button id="delete-album" type="button">Delete album</button>
+      <p id="delete-warning" hidden>Deleting this album cannot be undone.</p>
+      <button id="keep-album" type="button" aria-describedby="delete-warning" hidden>Keep it</button>
       <button id="to-message" type="button">Check</button>
       <p id="result" tabindex="-1"></p>
       <button id="show-hidden" type="button">Load</button>
@@ -609,6 +616,17 @@ test("the sweep reports a message a press shows only when a screen reader does n
         document.getElementById("more").hidden = false;
       });
       on("share-team", (event) => (document.getElementById("team").hidden = !event.currentTarget.checked));
+      on("add-note", () => (document.getElementById("note-form").hidden = false));
+      on("add-title", () => {
+        document.getElementById("title-form").hidden = false;
+        document.getElementById("title-field").focus();
+      });
+      on("delete-album", () => {
+        document.getElementById("delete-warning").hidden = false;
+        const keep = document.getElementById("keep-album");
+        keep.hidden = false;
+        keep.focus();
+      });
       on("to-message", () => {
         const result = document.getElementById("result");
         result.textContent = "All checks passed.";
@@ -629,14 +647,17 @@ test("the sweep reports a message a press shows only when a screen reader does n
   const result = await sweepKeyboardAndPointer({ page, url, activateControls: true });
 
   // Said: a live region that was there before, an alert (also inside a toast with a button), a
-  // disclosure that says it expanded, a check box that says it is checked as its fields appear, and
-  // a message focus moved to. Nothing new: a list drawn again
-  // with the same text. Not said: a plain paragraph, even a moment later, a region added with its
-  // text, and a paragraph that was hidden.
+  // disclosure that says it expanded, a check box that says it is checked as its fields appear, a
+  // form focus moved into, a message focus moved to, and a warning that describes the button focus
+  // moved to. Nothing new: a list drawn again with the
+  // same text. Not said: a plain paragraph, even a moment later, a region added with its text and
+  // a paragraph that was hidden; and a form that opened while focus stayed on its button, which is
+  // a form to fill in, not a message.
   expect(result.findings.map(({ kind, selector, label }) => ({ kind, selector, label }))).toEqual([
     { kind: "status-not-announced", selector: "#plain", label: "Link copied." },
     { kind: "status-not-announced", selector: "#later-note", label: "Synced." },
     { kind: "status-not-announced", selector: "#shared", label: "Shared with the team." },
+    { kind: "form-not-announced", selector: "#note-form", label: "What is this album about?" },
     { kind: "status-not-announced", selector: "#hidden-note", label: "Three items loaded." }
   ]);
   expect(result.findings[0]?.summary).toContain("Pressing “Copy link” with Enter shows this text");

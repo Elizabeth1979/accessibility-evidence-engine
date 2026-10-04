@@ -17,6 +17,8 @@ import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-
  * - status-not-announced: text a press makes appear that a screen reader does not say, as it is
  *   in no live region and focus did not move to it;
  * - failure-not-announced: a request a press sends fails, and the page shows and says nothing;
+ * - form-not-announced: a press opens a form, and nothing says so: the control does not say it
+ *   expanded, and focus did not move into it;
  * - colour-only: one of a row of like items, such as links in a menu, stands out from the others
  *   by colour alone;
  * - text-in-image: an image shaped like a line of text, named in words and drawn in two flat
@@ -30,6 +32,7 @@ export type SweepFindingKind =
   | "looks-like-heading"
   | "status-not-announced"
   | "failure-not-announced"
+  | "form-not-announced"
   | "colour-only"
   | "text-in-image";
 
@@ -42,6 +45,7 @@ export const SWEEP_FINDING_CONCEPTS = {
   "looks-like-heading": "heading-structure",
   "status-not-announced": "status-messages",
   "failure-not-announced": "status-messages",
+  "form-not-announced": "focus-management",
   "colour-only": "use-of-color",
   "text-in-image": "images-of-text"
 } as const satisfies Record<SweepFindingKind, string>;
@@ -212,7 +216,12 @@ interface PressableControl extends ProbedElement {
  * not, and the control pressed. Null when the press loaded a page or changed the control's own
  * state, which a screen reader says itself, or when a watch with no control saw no press.
  */
-type NewText = { pressed: ProbedElement; said: number; unsaid: ProbedElement[] } | null;
+type NewText = {
+  pressed: ProbedElement;
+  said: number;
+  /** Each holds a field to fill in when it is a form the press opened, not a message. */
+  unsaid: Array<ProbedElement & { form: boolean }>;
+} | null;
 
 /** An item that stands out from its like neighbours by colour alone. */
 interface ColourOnlyItem extends ProbedElement {
@@ -811,12 +820,18 @@ function announcementFindings(
   failedRequests: string[]
 ): SweepFinding[] {
   if (!newText) return [];
-  const findings = newText.unsaid.map((message) =>
-    sweepFinding(
-      "status-not-announced",
-      message,
-      `${press} shows this text, but a screen reader does not say it: it is in no live region that was on the page before, and focus did not move to it.`
-    )
+  const findings = newText.unsaid.map(({ form, ...shown }) =>
+    form
+      ? sweepFinding(
+          "form-not-announced",
+          shown,
+          `${press} opens this form, but nothing says so: the control does not say it expanded, and focus did not move into the form.`
+        )
+      : sweepFinding(
+          "status-not-announced",
+          shown,
+          `${press} shows this text, but a screen reader does not say it: it is in no live region that was on the page before, and focus did not move to it.`
+        )
   );
   // A message the page shows but does not say is reported above; here the page shows nothing.
   if (failedRequests.length > 0 && newText.said === 0 && newText.unsaid.length === 0) {
@@ -942,6 +957,9 @@ function runSweepProbe(request: ProbeRequest): unknown {
   // Elements whose text is their name, which a screen reader says as they get focus.
   const controls =
     'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"]';
+  // The fields of a form, which make new content a form to fill in rather than a message.
+  const formFields =
+    'input:not([type="hidden"], [type="submit"], [type="button"], [type="reset"], [type="image"]), select, textarea, [contenteditable="true"], [role="textbox"]';
   // The page's main content, which a new view replaces, and the dialogs a press may open.
   const mainContent = 'main, [role="main"]';
   const dialogs = 'dialog, [role="dialog"], [role="alertdialog"]';
@@ -1159,8 +1177,9 @@ function runSweepProbe(request: ProbeRequest): unknown {
       return null;
     }
     // The text a press showed (see NewText). Text is said when it is in a live region that was
-    // there before (or an alert, which is said as it is added) or focus moved to it. Controls are
-    // left out, as their text is their name, and so is a dialog the press opened.
+    // there before (or an alert, which is said as it is added), when focus moved to it, or when the
+    // element focus moved to is named or described by it. Controls are left out, as their text is
+    // their name, and so is a dialog the press opened.
     case "new-text": {
       const watch = store[watchKey];
       delete store[watchKey];
@@ -1191,12 +1210,21 @@ function runSweepProbe(request: ProbeRequest): unknown {
         return dialog !== null && !watch.dialogs.includes(dialog);
       };
       const active = document.activeElement;
+      // What a screen reader says with the element focus moved to: the text its name and its
+      // description come from, such as a warning a "Keep it" button is described by.
+      const saidWithFocus =
+        active === null || active === document.body
+          ? []
+          : ["aria-labelledby", "aria-describedby"]
+              .flatMap((name) => active.getAttribute(name)?.split(/\s+/) ?? [])
+              .flatMap((id) => document.getElementById(id) ?? []);
       const saidAt = (element: Element) =>
         element.closest('[role="alert"]') !== null ||
         watch.liveRegions.some((region) => region.isConnected && region.contains(element)) ||
         (active !== null &&
           active !== document.body &&
-          (element.contains(active) || active.contains(element)));
+          (element.contains(active) || active.contains(element))) ||
+        saidWithFocus.some((source) => source.contains(element));
       // The visible text of an element outside any control, piece by piece.
       const textParts = (element: Element) => {
         const parts: Array<{ text: string; parent: Element }> = [];
@@ -1241,7 +1269,11 @@ function runSweepProbe(request: ProbeRequest): unknown {
         unsaid: shown
           .filter((element) => !said(element))
           .slice(0, 5)
-          .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }))
+          .map((element) => ({
+            selector: selectorFor(element),
+            label: labelFor(element),
+            form: [...element.querySelectorAll(formFields)].some(isVisible)
+          }))
       };
     }
     // Identifies the loaded document, so a check can tell whether a press loaded another one.

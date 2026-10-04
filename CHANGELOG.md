@@ -4,6 +4,16 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-04
+
+### Added
+
+- A form a press opens without saying so is reported as its own advisory finding, "A form opens, but nothing says so" (`form-not-announced`), not as a message nobody hears. When the new content holds a field to fill in and neither the control says it expanded nor focus moves into it, a screen-reader user hears nothing, and the fix is to move focus to the form's first field or make the control a disclosure with `aria-expanded`, not to add a live region. albums-studio's "What is this album about?" form, which opens below its button, was reported with the live-region fix before.
+
+### Fixed
+
+- Text the focused element is named or described by counts as said. A confirmation that moves focus to its safe button, such as "Keep it" with `aria-describedby` pointing at "Deleting this album cannot be undone.", has its warning read with the button, and was reported as a message nobody hears.
+
 ## [0.7.1] - 2026-10-04
 
 ### Fixed
@@ -183,6 +193,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.8.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.8.0
 [0.7.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.6.0
@@ -192,4 +203,4 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.8.0...HEAD
