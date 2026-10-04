@@ -4,10 +4,14 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Fixed
+
+- A checkpoint and the keyboard sweep read a page once the data it loads has arrived, not only once its DOM has paused. An app that draws after a slow request, such as a gallery whose photos come a second after the page loads, was read before it drew: the wait for 250 ms without a DOM change ended during the request. Now the wait first lets the page's open requests finish, then waits for the DOM to stop changing, and again if drawing sent new requests, for 3 seconds at most as before. A page with nothing loading is read as quickly as before.
+
 ### Changed
 
 - AEE needs Node 22.13 or later, up from 22.0: parse5 8, which applies a reviewed fix to an HTML file, is published only as an ES module. Node loads one from AEE's CommonJS packages from 22.12, but 22.12 prints an experimental-feature warning on every run, and 22.13 does not. CI now builds and runs the unit tests on Node 22.13 as well as 24, so the oldest Node AEE promises is tested.
-- Dependencies: parse5 8.0.1, `@anthropic-ai/sdk` 0.131, `@modelcontextprotocol/sdk` 1.32, and the latest ESLint, Prettier and typescript-eslint. Node's type definitions follow the oldest supported Node (22), so code cannot use a Node API that version lacks.
+- Dependencies: parse5 8.0.1, `@anthropic-ai/sdk` 0.131, `@modelcontextprotocol/sdk` 1.32, Playwright 1.63 for AEE's own tests, and the latest ESLint, Prettier and typescript-eslint. Node's type definitions follow the oldest supported Node (22), so code cannot use a Node API that version lacks.
 
 ## [0.6.0] - 2026-10-02
 
