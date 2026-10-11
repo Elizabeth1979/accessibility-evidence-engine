@@ -53,7 +53,7 @@
     "@aee/cli": "0.8.0",
     "@aee/playwright": "0.8.0",
     "@aee/schemas": "0.8.0",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "a11y-skills": "github:Elizabeth1979/a11y-skills#e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15",
     "zod": "^4.6.5"
   }
