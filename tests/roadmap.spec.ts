@@ -19,12 +19,20 @@ test("roadmap is generated from the plan and opens the current milestone", async
   page: browser
 }) => {
   await browser.goto(page);
+  const plan = parsePlan(await readFile("docs/MASTER-PLAN.md", "utf8"));
   const now = browser.locator(".milestone.now");
-  await expect(now).toHaveCount(1);
-  await expect(now.locator("details")).toHaveAttribute("open", "");
-  await expect(now.locator(".m-tag")).toHaveText("You are here");
+  if (plan.some(({ steps }) => steps.some(({ done }) => !done))) {
+    // The first milestone with a step open is where the plan is.
+    await expect(now).toHaveCount(1);
+    await expect(now.locator("details")).toHaveAttribute("open", "");
+    await expect(now.locator(".m-tag")).toHaveText("You are here");
+  } else {
+    // A finished plan says so, and no milestone claims to be in progress.
+    await expect(now).toHaveCount(0);
+    await expect(browser.locator(".lede")).toContainText("The plan is complete.");
+  }
   // One of each per milestone in the plan.
-  const milestones = parsePlan(await readFile("docs/MASTER-PLAN.md", "utf8")).length;
+  const milestones = plan.length;
   await expect(browser.locator(".milestone")).toHaveCount(milestones);
   await expect(browser.locator(".station")).toHaveCount(milestones);
   await expect(browser.locator(".milestone .m-outcome")).toHaveCount(milestones);
