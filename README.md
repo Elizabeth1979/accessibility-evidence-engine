@@ -300,10 +300,28 @@ The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where 
 `npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
 reads the page with AEE's virtual reader and with the real one, through
 [Guidepup](https://github.com/guidepup/guidepup), and writes the two transcripts side by side to
-`test-results/readers/comparison.md`. Once per machine, run `npx @guidepup/setup setup` first: it lets the
-terminal drive the screen reader. The real reader takes over the machine for a minute or two, so
-leave the keyboard and mouse alone. Where it cannot start, the command fails with Guidepup's reason
-and writes nothing.
+`test-results/readers/comparison.md`. A run on macOS 27 is kept in
+[`docs/examples/reader-comparison-voiceover.md`](docs/examples/reader-comparison-voiceover.md). The
+real reader takes over the machine for a minute or two, so leave the keyboard and mouse alone. Where
+it cannot start, the command fails with Guidepup's reason and writes nothing.
+
+The real reader needs the operating system's permission once per machine. On a Mac, in the terminal
+app you run the command from:
+
+1. Run `npx @guidepup/setup setup`. When VoiceOver Utility opens, tick **Allow VoiceOver to be
+   controlled with AppleScript** on its General tab. If it then says it was "unable to configure
+   automation permissions" (it needs your password for that part), do steps 2 and 3 by hand.
+2. **System Settings → Privacy & Security → Accessibility:** add your terminal app and switch it on.
+3. **System Settings → Privacy & Security → Full Disk Access:** add your terminal app and switch it
+   on, then quit the terminal and open it again. VoiceOver keeps its settings in a protected folder,
+   and Guidepup swaps in its own while it runs.
+4. Run `npx @guidepup/setup install voiceover` in this repository. It downloads VoiceOver settings
+   made for your macOS version (about 10 MB).
+5. On the first run, macOS asks whether your terminal may control VoiceOver, Google Chrome for
+   Testing and System Events. Allow each one. The run does not wait for you, so if it fails with
+   "AppleEvent timed out" while a prompt is open, allow it and run again.
+
+On Windows, `npx @guidepup/setup setup` sets up NVDA.
 
 ## Known limitations
 
