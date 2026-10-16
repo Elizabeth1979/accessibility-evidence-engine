@@ -300,7 +300,7 @@ The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where 
 `npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
 reads the page with AEE's virtual reader and with the real one, through
 [Guidepup](https://github.com/guidepup/guidepup), and writes the two transcripts side by side to
-`test-results/readers/comparison.md`. Once per machine, run `npx @guidepup/setup` first: it lets the
+`test-results/readers/comparison.md`. Once per machine, run `npx @guidepup/setup setup` first: it lets the
 terminal drive the screen reader. The real reader takes over the machine for a minute or two, so
 leave the keyboard and mouse alone. Where it cannot start, the command fails with Guidepup's reason
 and writes nothing.
