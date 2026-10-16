@@ -197,6 +197,31 @@ const NAMED_ONLY_ROLES = new Set(["form", "region", "group"]);
 const CONTENT_ROLES = new Set(["paragraph", "listitem", "status", "alert"]);
 
 /**
+ * Roles whose announcement already says the text inside them: their name comes from their content
+ * (ARIA's "name from content"), or their content is read as their text. Text inside one of these is
+ * not read again on its own.
+ */
+const SPEAKS_CONTENT_ROLES = new Set([
+  ...CONTENT_ROLES,
+  "button",
+  "checkbox",
+  "heading",
+  "link",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "radio",
+  "switch",
+  "tab",
+  "tooltip",
+  "treeitem"
+]);
+
+/** The role of text that no announced item says: it is read as it stands, with no role spoken. */
+const TEXT_ROLE = "text";
+
+/**
  * Creates a deterministic semantic navigator. It reads the page but never focuses, clicks, types,
  * or dispatches events. It is useful portable evidence, not a substitute for VoiceOver or NVDA.
  */
@@ -320,7 +345,9 @@ function describeBoundary(command: VirtualScreenReaderCommand, hasNoCursor: bool
 }
 
 function describeItem(item: VirtualScreenReaderItem): string {
-  const parts = [item.name ?? item.text, SPOKEN_INTERNAL_ROLES.get(item.role) ?? item.role];
+  const role =
+    item.role === TEXT_ROLE ? undefined : (SPOKEN_INTERNAL_ROLES.get(item.role) ?? item.role);
+  const parts = [item.name ?? item.text, role];
 
   if (item.role === "heading" && item.level) {
     parts.push(`level ${item.level}`);
@@ -364,17 +391,56 @@ async function captureSemanticState(page: VirtualScreenReaderPage): Promise<Page
   });
 }
 
+/**
+ * Every item a screen reader stops on, in reading order. Like VoiceOver and NVDA in browse mode,
+ * that includes text no announced item says, such as a bold title in a plain box: it is in the
+ * accessibility tree, so it is read.
+ */
 function readableItems(nodes: AccessibilityNode[], dom: CapturedDom): VirtualScreenReaderItem[] {
   const byId = new Map(nodes.map((node) => [node.nodeId, node]));
   const items: VirtualScreenReaderItem[] = [];
-  const visit = (node: AccessibilityNode | undefined): void => {
-    if (!node) return;
-    const item = node.ignored ? undefined : readableItem(node, byId, dom);
+  const textCount = new Map<string, number>();
+  const visit = (node: AccessibilityNode | undefined, said: boolean): void => {
+    if (!node || node.ignored) {
+      node?.childIds?.forEach((id) => visit(byId.get(id), said));
+      return;
+    }
+    if (node.role?.value === "StaticText") {
+      const item = said ? undefined : textItem(node, dom, textCount);
+      if (item) items.push(item);
+      return;
+    }
+    const item = readableItem(node, byId, dom);
     if (item) items.push(item);
-    node.childIds?.forEach((id) => visit(byId.get(id)));
+    const saysContent = said || (item !== undefined && SPEAKS_CONTENT_ROLES.has(item.role));
+    node.childIds?.forEach((id) => visit(byId.get(id), saysContent));
   };
-  visit(nodes[0]);
+  visit(nodes[0], false);
   return items;
+}
+
+/** A piece of text read on its own, placed on the element that holds it. */
+function textItem(
+  node: AccessibilityNode,
+  dom: CapturedDom,
+  textCount: Map<string, number>
+): VirtualScreenReaderItem | undefined {
+  const text = textValue(node.name)?.replace(/\s+/g, " ");
+  const element =
+    node.backendDOMNodeId === undefined ? undefined : dom.closestElement(node.backendDOMNodeId);
+  if (!text || !element) return undefined;
+  // An element can hold several pieces of text, so each gets its own key.
+  const index = textCount.get(element.nodePath) ?? 0;
+  textCount.set(element.nodePath, index + 1);
+  return {
+    key: `${element.nodePath}#text${index}`,
+    nodePath: element.nodePath,
+    tagName: element.tagName,
+    role: TEXT_ROLE,
+    text,
+    states: currentState(element),
+    ...(element.visualBounds ? { visualBounds: element.visualBounds } : {})
+  };
 }
 
 function readableItem(
@@ -440,12 +506,15 @@ function itemStates(node: AccessibilityNode, element: CapturedElement): string[]
   if (pressed === "mixed") states.push("partially pressed");
   if (propertyValue(node, "disabled") === true) states.push("disabled");
   if (propertyValue(node, "required") === true) states.push("required");
-  // The tree has no aria-current property, so it is read from the element.
-  const current = element.attribute("aria-current");
-  if (current && current !== "false") {
-    states.push(current === "true" ? "current" : `current ${current}`);
-  }
+  states.push(...currentState(element));
   return states;
+}
+
+/** The tree has no aria-current property, so it is read from the element. */
+function currentState(element: CapturedElement): string[] {
+  const current = element.attribute("aria-current");
+  if (!current || current === "false") return [];
+  return [current === "true" ? "current" : `current ${current}`];
 }
 
 function propertyValue(node: AccessibilityNode, name: string): unknown {

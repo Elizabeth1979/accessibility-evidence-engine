@@ -1431,8 +1431,13 @@ function hasPositiveVisualBounds(value: unknown): boolean {
 
 function findAccessibilitySemanticMatch(nodes: unknown, target: Record<string, unknown>): boolean {
   if (!Array.isArray(nodes)) return false;
-  const targetRole = normalizeSemanticValue(getStringField(target, "role"));
-  const targetName = normalizeSemanticValue(getStringField(target, "name"));
+  // The portable reader reads text no announced item says as role "text"; in the tree it is a
+  // StaticText node named by its words.
+  const readsText = getStringField(target, "role") === "text";
+  const targetRole = readsText
+    ? "statictext"
+    : normalizeSemanticValue(getStringField(target, "role"));
+  const targetName = normalizeSemanticValue(getStringField(target, readsText ? "text" : "name"));
   const targetLevel = getNumericField(target, "level");
 
   return nodes.some((candidate) => {

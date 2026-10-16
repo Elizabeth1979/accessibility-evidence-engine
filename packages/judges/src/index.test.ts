@@ -251,6 +251,54 @@ test("screen-reader judge fails when the checkpoint's accessibility tree lacks t
   assert.match(judgment?.summary ?? "", /not found in the tree captured at this checkpoint/);
 });
 
+function readTextBundle(semanticNodes: Array<{ role: string; name?: string }>) {
+  return createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: "Project Alpha",
+        lastItem: {
+          role: "text",
+          text: "Project Alpha",
+          nodePath: "main > article > header > strong",
+          visualBounds: { x: 20, y: 40, width: 120, height: 20 }
+        }
+      }
+    },
+    ...createSemanticSupportRecords(semanticNodes)
+  ]);
+}
+
+test("screen-reader judge matches text the reader reads on its own to the tree's StaticText", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readTextBundle([{ role: "statictext", name: "project alpha" }]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "pass");
+});
+
+test("screen-reader judge fails text the reader reads that the tree does not hold", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readTextBundle([{ role: "statictext", name: "project beta" }]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
+});
+
 test("screen-reader judge returns unknown when same-checkpoint visual evidence is absent", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const records = [
