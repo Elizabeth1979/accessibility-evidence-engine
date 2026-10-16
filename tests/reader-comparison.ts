@@ -1,93 +1,99 @@
+import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 
-import { SCREEN_READER_CLI_VERSION, screenReaderCli } from "./screen-reader-cli";
+import type { ScreenReader } from "@guidepup/guidepup";
+import type { Page } from "@playwright/test";
+
+import { createPortableVirtualScreenReader } from "@aee/playwright";
 
 export interface ReaderComparison {
   page: string;
   recordedAt: string;
-  environment: { platform: string; release: string; screenReaderCli: string };
+  environment: { platform: string; release: string; guidepup: string };
+  /** What AEE's own virtual screen reader said. */
   virtual: string[];
-  /** What the real screen reader said, or why it could not run here. */
-  real: { reader: string; phrases?: string[]; notRun?: string };
+  /** What the real screen reader on this machine said. */
+  real: { reader: string; phrases: string[] };
 }
+
+export const GUIDEPUP_VERSION = (
+  JSON.parse(readFileSync(require.resolve("@guidepup/guidepup/package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
 
 const REAL_READERS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: "VoiceOver",
-  win32: "NVDA"
+  win32: "NVDA",
+  linux: "Orca"
 };
-/** More steps than the virtual reader's 92 announcements on the demo page. */
-const REAL_READER_STEPS = "150";
 
-/** The real screen reader this platform has, by name. */
+/** The real screen reader Guidepup drives on this platform, by name. */
 export function realReaderName(platform: NodeJS.Platform = process.platform) {
   return REAL_READERS[platform] ?? "A real screen reader";
 }
 
-const cell = (phrase = "") => phrase.replaceAll("|", "\\|");
+/** AEE's virtual screen reader reads the page from top to bottom, one item per step. */
+export async function readWithVirtualReader(page: Page): Promise<string[]> {
+  const reader = createPortableVirtualScreenReader(page);
+  const phrases: string[] = [];
+  for (let entry = await reader.command("start"); entry.item;) {
+    phrases.push(entry.announcement);
+    entry = await reader.command("next-item");
+  }
+  return phrases;
+}
+
+/**
+ * The real screen reader reads on from where it entered the page, one item per step. It stops
+ * when it says nothing, when it says the same thing three times in a row (the end of the page,
+ * for readers that repeat there), or after `maxSteps`.
+ */
+export async function readWithRealReader(reader: ScreenReader, maxSteps: number) {
+  const phrases = [await reader.lastSpokenPhrase()];
+  while (phrases.length < maxSteps) {
+    await reader.next();
+    const phrase = await reader.lastSpokenPhrase();
+    if (!phrase.trim()) break;
+    phrases.push(phrase);
+    const [a, b, c] = phrases.slice(-3);
+    if (phrases.length >= 3 && a === b && b === c) break;
+  }
+  return phrases.filter((phrase) => phrase.trim());
+}
+
+const cell = (phrase = "") => phrase.replaceAll("|", "\\|").replaceAll("\n", " ");
 
 /**
  * Both transcripts as Markdown: a line on what ran where, then one row per step in reading order.
  * Rows line up by step, not by element, since each reader groups a page's content its own way.
  */
 export function sideBySide({ page, recordedAt, environment, virtual, real }: ReaderComparison) {
-  const realLine = real.phrases
-    ? `${real.reader}: ${real.phrases.length} announcements.`
-    : `${real.reader}: not run. ${real.notRun}`;
   const rows = Array.from(
-    { length: Math.max(virtual.length, real.phrases?.length ?? 0) },
-    (_, step) => `| ${step + 1} | ${cell(virtual[step])} | ${cell(real.phrases?.[step])} |`
+    { length: Math.max(virtual.length, real.phrases.length) },
+    (_, step) => `| ${step + 1} | ${cell(virtual[step])} | ${cell(real.phrases[step])} |`
   );
   return [
     `# What each screen reader said: ${page}`,
     "",
-    `Recorded ${recordedAt} on ${environment.platform} ${environment.release}, with screen-reader-cli ${environment.screenReaderCli}.`,
+    `Recorded ${recordedAt} on ${environment.platform} ${environment.release}, with Guidepup ${environment.guidepup}.`,
     "",
-    `- Virtual screen reader: ${virtual.length} announcements.`,
-    `- ${realLine}`,
+    `- AEE's virtual screen reader: ${virtual.length} announcements.`,
+    `- ${real.reader}: ${real.phrases.length} announcements.`,
     "",
     "Rows line up by step, not by element: each reader groups a page's content its own way.",
     "",
-    `| Step | Virtual screen reader | ${real.reader} |`,
+    `| Step | AEE's virtual screen reader | ${real.reader} |`,
     "| ---: | --- | --- |",
     ...rows,
     ""
   ].join("\n");
 }
 
-async function readAloud(args: string[]) {
-  const { stdout } = await screenReaderCli([...args, "--json"]);
-  return (JSON.parse(stdout) as { phrases: string[] }).phrases;
-}
-
-/**
- * Reads a page with the virtual screen reader and with the real one on this machine, through
- * screen-reader-cli, and writes both transcripts side by side to `dir`.
- */
-export async function compareReaders(page: string, dir: string): Promise<ReaderComparison> {
-  const virtual = await readAloud(["audit", page]);
-  const real: ReaderComparison["real"] = { reader: realReaderName() };
-  try {
-    real.phrases = await readAloud(["live", "read", page, "--steps", REAL_READER_STEPS]);
-  } catch (error) {
-    // screen-reader-cli says on stderr why the real reader cannot run here.
-    const { stderr, message } = error as { stderr?: string; message: string };
-    real.notRun = (stderr?.trim() || message).replace(/\s+/g, " ");
-  }
-  const comparison: ReaderComparison = {
-    page,
-    recordedAt: new Date().toISOString(),
-    environment: {
-      platform: process.platform,
-      release: os.release(),
-      screenReaderCli: SCREEN_READER_CLI_VERSION
-    },
-    virtual,
-    real
-  };
+/** Writes the comparison to `dir` as comparison.json and comparison.md. */
+export async function writeComparison(dir: string, comparison: ReaderComparison) {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "comparison.json"), `${JSON.stringify(comparison, null, 2)}\n`);
   await writeFile(path.join(dir, "comparison.md"), sideBySide(comparison));
-  return comparison;
 }

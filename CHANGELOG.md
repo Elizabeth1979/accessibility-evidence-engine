@@ -4,6 +4,19 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Changed
+
+- `npm run readers:compare` compares the real screen reader with AEE's own virtual reader, not screen-reader-cli's, and drives VoiceOver, NVDA or Orca through Guidepup's Playwright integration. It now works on macOS 27. Where the real reader cannot start, the command fails with Guidepup's reason instead of writing a one-sided comparison.
+- The homepage's screen-reader video is AEE's own virtual reader reading the demo page.
+
+### Added
+
+- `npm run reader:record` records AEE's virtual screen reader reading a page on video, with the transcript beside it. `AEE_READERS_PAGE` names the page.
+
+### Removed
+
+- The screen-reader-cli development dependency. Nothing in the published packages used it.
+
 ## [0.8.0] - 2026-10-04
 
 ### Added

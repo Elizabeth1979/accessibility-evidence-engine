@@ -9,7 +9,7 @@ import { marked } from "marked";
 import { aeeRunModelProvider } from "@aee/cli";
 
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
-import { screenReaderCli } from "./screen-reader-cli";
+import { recordVirtualReader } from "./reader-recording";
 import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
 
 // `npm run site:shots` regenerates site/shots from a real run of the test lab's demo page, so no
@@ -230,19 +230,20 @@ async function captureShot(
   });
 }
 
-/** screen-reader-cli reads the demo page aloud, step by step, and records it; what it says is the
- * video's text version. */
+/** AEE's virtual screen reader reads the demo page aloud, step by step, on video; what it says is
+ * the video's text version. */
 async function recordScreenReader(videoFile: string, textFile: string) {
   const server = await startHtmlServer(serveDirectory("site"));
+  const browser = await chromium.launch();
   try {
-    const { stdout } = await screenReaderCli([
-      "audit",
+    await recordVirtualReader(
+      browser,
       `${server.origin}/${contract.pages.issues.url}`,
-      "--record",
-      videoFile
-    ]);
-    await writeFile(textFile, stdout, "utf8");
+      videoFile,
+      textFile
+    );
   } finally {
+    await browser.close();
     await server.close();
   }
 }

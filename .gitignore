@@ -10,3 +10,6 @@ playwright-report/
 site/roadmap.html
 site/test-lab.html
 site/shots/
+
+# The design plugin's local hook cache; .impeccable/design.json is the tracked design system.
+.impeccable/hook.cache.json

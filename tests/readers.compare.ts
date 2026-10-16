@@ -1,18 +1,46 @@
+import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-import { expect, test } from "@playwright/test";
+import { screenReaderTest as test } from "@guidepup/playwright";
 
-import { compareReaders } from "./reader-comparison";
+import {
+  GUIDEPUP_VERSION,
+  readWithRealReader,
+  readWithVirtualReader,
+  realReaderName,
+  writeComparison
+} from "./reader-comparison";
 
 // The page to read: AEE_READERS_PAGE, a file or a URL, else the demo page.
 const page = process.env.AEE_READERS_PAGE ?? "site/test-case.html";
+const url = existsSync(page) ? pathToFileURL(path.resolve(page)).href : page;
 const dir = path.join("test-results", "readers");
+/** Room for the real reader to say more than the virtual one before the walk stops. */
+const EXTRA_REAL_STEPS = 30;
 
-test(`the virtual and the real screen reader read ${page}`, async () => {
-  const { real, virtual } = await compareReaders(page, dir);
+// Guidepup starts the real screen reader before the test and stops it after, and steps it into
+// the page. Where it cannot start, the test fails with Guidepup's reason, and nothing is written:
+// a comparison with one side missing compares nothing.
+test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async ({
+  page: browserPage,
+  screenReader
+}) => {
+  await browserPage.goto(url);
+  const virtual = await readWithVirtualReader(browserPage);
+
+  await screenReader.navigateToWebContent();
+  const phrases = await readWithRealReader(screenReader, virtual.length + EXTRA_REAL_STEPS);
+
+  await writeComparison(dir, {
+    page,
+    recordedAt: new Date().toISOString(),
+    environment: { platform: process.platform, release: os.release(), guidepup: GUIDEPUP_VERSION },
+    virtual,
+    real: { reader: realReaderName(), phrases }
+  });
   console.log(
-    `Wrote ${path.join(dir, "comparison.md")}: virtual reader ${virtual.length} announcements, ${real.reader} ${real.phrases ? `${real.phrases.length} announcements` : "not run"}.`
+    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length}.`
   );
-  // A comparison with one side missing compared nothing, so it is never a pass.
-  expect(real.notRun, `${real.reader} did not run`).toBeUndefined();
 });

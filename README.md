@@ -238,7 +238,7 @@ npm run demo:record
 
 ### Product shots and videos
 
-`npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature, two videos with text versions (the keyboard sweep's own recording, and a screen reader reading the page with screen-reader-cli `audit --record`) and the run's full report as a sample. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
+`npm run site:shots` runs the engine on the test lab's demo page and saves, in `site/shots/`, one highlighted crop of the report per feature, two videos with text versions (the keyboard sweep's own recording, and AEE's virtual screen reader reading the page, recorded with the same helper as `npm run reader:record`) and the run's full report as a sample. The Pages deploy regenerates them from the current code, so no shot is hand-made or stale; CI runs the same command.
 
 The homepage tells one story, from finding a problem to shipping the fix, in four chapters: Find, Show, Fix and Ship. Its feature cards come from `site/features.json`, the one list of the chapters and of what each feature is called, which chapter it sits in, what its shot shows and what its caption says; the shots are cropped from the same file. Its "what's next" section lists the master-plan milestones that still have open steps, marked "In progress" once one is done, and goes once none is left. `npm run site:generate` rebuilds them and `npm run site:check` (in CI) fails when they drift, so a change to a feature or to the plan updates its card in the same PR. The evidence flow, the remediation registry, the before-and-after examples and the accessibility experiments are on `site/how-it-works.html`.
 
@@ -289,16 +289,21 @@ Treat generated evidence as potentially sensitive. Network artifacts redact cred
 
 Review artifacts before sharing them and use test accounts and non-production environments wherever possible. See [Evidence privacy](docs/privacy.md) for the full handling guidance.
 
-## Real screen readers
+## Screen readers on video, and real ones
+
+`npm run reader:record` records AEE's virtual screen reader reading a page on video: a box around
+each item as it is read and a caption with what it says. It writes `test-results/reader/reading.webm`
+and the transcript beside it. The page is the demo page unless `AEE_READERS_PAGE` names another file
+or URL.
 
 The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where they differ, run
-`npm run readers:compare` on a Mac (VoiceOver) or a Windows machine with NVDA. It reads the demo
-page with both, through screen-reader-cli's live bridge, and writes the two transcripts side by
-side to `test-results/readers/comparison.md`; set `AEE_READERS_PAGE` to read another page or URL. Once per machine,
-run `npx @guidepup/setup` first: it lets the terminal drive the screen reader. The real reader
-takes over the machine for a minute or two, so leave the keyboard and mouse alone. Where the real
-reader cannot run, the file says why and the command exits nonzero; on recent macOS versions
-Guidepup cannot start VoiceOver yet ([guidepup#149](https://github.com/guidepup/guidepup/issues/149)).
+`npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
+reads the page with AEE's virtual reader and with the real one, through
+[Guidepup](https://github.com/guidepup/guidepup), and writes the two transcripts side by side to
+`test-results/readers/comparison.md`. Once per machine, run `npx @guidepup/setup` first: it lets the
+terminal drive the screen reader. The real reader takes over the machine for a minute or two, so
+leave the keyboard and mouse alone. Where it cannot start, the command fails with Guidepup's reason
+and writes nothing.
 
 ## Known limitations
 
