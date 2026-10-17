@@ -338,8 +338,8 @@ test("the portable reader announces the demo page's markup as HTML-AAM maps it",
       })
     );
     // HTML-AAM makes an unnamed form no landmark, and screen readers do not announce one. Guidepup's
-    // reader says "form" for it: a difference recorded in the master plan's decisions log, to fix
-    // upstream rather than around it here.
+    // reader says "form" for it: reported upstream as guidepup/virtual-screen-reader#253, to fix there
+    // rather than around it here.
   }
 });
 
