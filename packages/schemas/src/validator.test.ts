@@ -620,6 +620,8 @@ test("validateSchema accepts focus inside a frame, named with its frame", () => 
     frameId: "PAY",
     framePath: ["iframe#pay"],
     backendDOMNodeId: 4,
+    focusOrderIndex: 2,
+    focusableCount: 5,
     focusVisible: true,
     focusIndicator: indicator
   };
@@ -641,6 +643,14 @@ test("validateSchema accepts focus inside a frame, named with its frame", () => 
   assert.equal(
     validateSchema("focusState", { ...focusState, deepActiveElement: { ...button, framePath: [] } })
       .valid,
+    false
+  );
+  // A place in the page's tab order counts from 0.
+  assert.equal(
+    validateSchema("focusState", {
+      ...focusState,
+      deepActiveElement: { ...button, focusOrderIndex: -1 }
+    }).valid,
     false
   );
 });

@@ -1436,6 +1436,105 @@ test("keyboard judge passes arrow-key navigation when aria-activedescendant chan
   assert.match(judgment.summary, /ArrowDown/);
 });
 
+/**
+ * A Tab press's focus records: the focused button before and after, each with its place in the
+ * page's tab order. The page has a "Pay" button in the top document and a "Pay" and a "Cancel"
+ * button inside a frame, so two of them differ only by the frame and node they are in.
+ */
+function tabRecords(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): EvidenceBundle["records"] {
+  const button = (place: Record<string, unknown>) => ({
+    tagName: "button",
+    role: "button",
+    type: "button",
+    nodePath: "html > body > button",
+    focusableCount: 4,
+    ...place
+  });
+  return (["before", "after"] as const).map((phase) => ({
+    id: `record-focus-${phase}`,
+    runId: "run-1",
+    checkpointId: "checkpoint-1",
+    interactionId: "interaction-1",
+    observerId: "focus",
+    phase,
+    status: "ok",
+    timestamp: "2026-06-21T10:00:01.000Z",
+    meta: { focusTarget: button(phase === "before" ? before : after) }
+  }));
+}
+
+const TOP_PAY = { name: "Pay", frameId: "top", backendDOMNodeId: 7, focusOrderIndex: 0 };
+const FRAME_PAY = {
+  name: "Pay",
+  frameId: "card",
+  framePath: ["iframe#card"],
+  backendDOMNodeId: 7,
+  focusOrderIndex: 1
+};
+const FRAME_CANCEL = { ...FRAME_PAY, name: "Cancel", backendDOMNodeId: 9, focusOrderIndex: 2 };
+
+test("keyboard judge passes a Tab from the top document into a frame by the page's tab order", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(tabRecords(TOP_PAY, FRAME_PAY), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  // Both buttons are "Pay" with the same path in their own documents: only the frame tells them
+  // apart, so focus moved, and forward in the page's tab order.
+  assert.equal(judgment.verdict, "pass");
+  assert.equal(judgment.confidence, 0.95);
+  assert.match(judgment.summary, /advanced forward/);
+  assert.doesNotMatch(judgment.summary, /metadata was unavailable/);
+});
+
+test("keyboard judge passes a Shift+Tab out of a frame back to the top document", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_PAY, TOP_PAY), { kind: "shift-tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment.verdict, "pass");
+  assert.equal(judgment.confidence, 0.95);
+  assert.match(judgment.summary, /moved backward/);
+});
+
+test("keyboard judge orders two controls inside one frame by the page's tab order", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [forward] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_PAY, FRAME_CANCEL), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+  const [wrongWay] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_CANCEL, FRAME_PAY), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(forward.verdict, "pass");
+  assert.equal(forward.confidence, 0.95);
+  assert.equal(wrongWay.verdict, "fail");
+  assert.match(wrongWay.summary, /wrong direction/);
+});
+
+test("keyboard judge counts focus moving to a like-named control in the same frame as moved", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(
+      tabRecords(FRAME_PAY, { ...FRAME_PAY, backendDOMNodeId: 11, focusOrderIndex: 3 }),
+      { kind: "tab" }
+    ),
+    { runId: "run-1" }
+  );
+
+  // Two "Pay" buttons at the same path in one frame are two nodes, so focus did not stall.
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /advanced forward/);
+});
+
 test("change-response judge passes a click that presses the clicked toggle", async () => {
   const judge = createDefaultJudgePlugins(["change-response"])[0]!;
   const muteButton = { nodeId: 61, role: "button", name: "Mute" };

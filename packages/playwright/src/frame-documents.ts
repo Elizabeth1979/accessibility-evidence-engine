@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import type { CdpSession, PageFrame, PageSessions } from "./accessibility-tree";
 
 /**
@@ -27,10 +30,16 @@ export async function documentOf(
   return object.objectId;
 }
 
+/** An object in the page, such as an element, passed to a function `callOn` runs as itself. */
+export class PageObject {
+  constructor(readonly objectId: string) {}
+}
+
 /**
  * Calls a function on a frame's `document` over the DevTools protocol, so it runs in that frame's
  * own page: the protocol call Playwright's own `evaluate` makes (`Runtime.callFunctionOn`). It runs
- * as the protocol's own code, so the page's Content-Security-Policy does not apply to it.
+ * as the protocol's own code, so the page's Content-Security-Policy does not apply to it. Each
+ * argument is sent as its value, or as the page's own object when it is a `PageObject`.
  */
 export async function callOn<Value>(
   cdp: CdpSession,
@@ -41,7 +50,9 @@ export async function callOn<Value>(
   const { result, exceptionDetails } = (await cdp.send("Runtime.callFunctionOn", {
     objectId,
     functionDeclaration,
-    arguments: args.map((value) => ({ value })),
+    arguments: args.map((value) =>
+      value instanceof PageObject ? { objectId: value.objectId } : { value }
+    ),
     awaitPromise: true,
     returnByValue: true
   })) as {
@@ -71,4 +82,49 @@ export async function nodeOf(
     node: { backendNodeId: number };
   };
   return node.backendNodeId;
+}
+
+/** A library built as a plain script (`scripts/build-page-scripts.mjs`), and the global it sets. */
+export interface PageScript {
+  /** Its file next to this module in `dist`. */
+  file: string;
+  global: string;
+}
+
+export const GUIDEPUP_SCRIPT: PageScript = {
+  file: "guidepup-virtual-screen-reader.js",
+  global: "__aeeGuidepupVirtualScreenReader"
+};
+
+export const TABBABLE_SCRIPT: PageScript = { file: "tabbable.js", global: "__aeeTabbable" };
+
+const scriptSources = new Map<string, string>();
+
+/**
+ * Loads a page script into a frame's own page through its `document`, once: a page it is already
+ * in keeps it. It is evaluated over the DevTools protocol, as `@axe-core/playwright` loads axe, so
+ * the page's Content-Security-Policy does not refuse it.
+ */
+export async function loadPageScript(
+  cdp: CdpSession,
+  documentObjectId: string,
+  { file, global }: PageScript
+): Promise<void> {
+  const loaded = await callOn<boolean>(
+    cdp,
+    documentObjectId,
+    `function () { return typeof globalThis.${global} === "object"; }`
+  );
+  if (loaded) return;
+  let source = scriptSources.get(file);
+  if (source === undefined) {
+    source = readFileSync(path.join(__dirname, file), "utf8");
+    scriptSources.set(file, source);
+  }
+  // The script declares its global with `var`, which a function body keeps to itself.
+  await callOn(
+    cdp,
+    documentObjectId,
+    `function () {\n${source}\nglobalThis.${global} = ${global};\n}`
+  );
 }

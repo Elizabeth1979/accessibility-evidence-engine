@@ -2435,12 +2435,16 @@ function serializeFocusTarget(target: unknown): string {
     return "null";
   }
 
+  // The frame and the node id the browser gives the element tell apart two like-named controls,
+  // in two frames or in one; node ids repeat across frames rendered in different processes.
   const normalized = {
     tagName: typeof target.tagName === "string" ? target.tagName : null,
     id: typeof target.id === "string" ? target.id : null,
     role: typeof target.role === "string" ? target.role : null,
     name: typeof target.name === "string" ? target.name : null,
-    type: typeof target.type === "string" ? target.type : null
+    type: typeof target.type === "string" ? target.type : null,
+    frameId: typeof target.frameId === "string" ? target.frameId : null,
+    backendDOMNodeId: typeof target.backendDOMNodeId === "number" ? target.backendDOMNodeId : null
   };
 
   return JSON.stringify(normalized);
