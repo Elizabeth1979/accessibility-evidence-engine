@@ -39,7 +39,8 @@
               "keyboard",
               "portable-virtual-screen-reader",
               "keyboard-pointer-sweep",
-              "playwright-test"
+              "playwright-test",
+              "page-load"
             ]
           },
           "status": { "enum": ["completed", "blocked", "failed"] },

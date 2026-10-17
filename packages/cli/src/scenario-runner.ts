@@ -27,6 +27,7 @@ import {
   announcedWithoutName,
   runInputComparison,
   runKeyboardPointerSweepLane,
+  runStartPageLane,
   writeObservedPressesLane,
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
@@ -41,7 +42,8 @@ import {
   type KeyboardPointerSweepLaneFinding,
   type KeyboardPointerSweepLaneResult,
   type ObservedPresses,
-  type PageCheckpointStep,
+  type PageCheckpointLaneResult,
+  type StartPageLaneBrowser,
   type SweepFindingKind,
   type VirtualScreenReaderCommand,
   type VirtualScreenReaderLaneBrowser,
@@ -85,7 +87,8 @@ export interface ExecuteScenarioOptions {
 export interface ScenarioActionReport {
   journeyId: string;
   laneId: string;
-  driver: "pointer" | "keyboard" | "portable-virtual-screen-reader" | "playwright-test";
+  driver:
+    "pointer" | "keyboard" | "portable-virtual-screen-reader" | PageCheckpointLaneResult["driver"];
   actionId: string;
   sequence: number;
   runId: string;
@@ -573,6 +576,26 @@ export async function executeScenario(
     for (const journey of scenario.journeys) {
       const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
       const allowedOrigins = plan.safety.allowedOrigins;
+      // The plan's initial capture and pinned axe rules, on the start page before anything acts.
+      const startLaneId = `${journey.id}-start-page`;
+      await runLane(startLaneId, async () => {
+        const lane = await runStartPageLane({
+          browser: browser as unknown as StartPageLaneBrowser<Page>,
+          projectRoot: process.cwd(),
+          outputDir: assessmentDir,
+          laneId: startLaneId,
+          targetUrl: startUrl,
+          allowedOrigins
+        });
+        diagnostics.push(...lane.diagnostics);
+        for (const url of lane.blockedNavigations) {
+          diagnostics.push(
+            `${startLaneId}: stopped a navigation outside the allowed origins: ${url}`
+          );
+        }
+        await collectPageCheckpointActions(assessmentDir, journey.id, lane, actions, findings);
+        return lane.manifestFile;
+      });
       await runPageLanes(assessment, {
         target: { browser },
         journeyId: journey.id,
@@ -818,8 +841,13 @@ export async function finishAssessment(input: {
   report.summary.artifacts = aggregate.manifest.summary.total;
   report.completeness.missingArtifacts = aggregate.manifest.summary.missing;
   report.completeness.failedArtifacts = aggregate.manifest.summary.failed;
+  // The aggregate only sees the manifests lanes wrote, so it can add gaps but never clear one: a
+  // lane that failed before writing its manifest is missing from it, not complete.
   report.completeness.status =
-    aggregate.manifest.status === "completed" ? "complete" : "incomplete";
+    aggregate.manifest.status === "completed" &&
+    evidenceIsComplete({ ...report.completeness, diagnostics: report.diagnostics })
+      ? "complete"
+      : "incomplete";
   report.status = report.completeness.status === "complete" ? "completed" : "partial";
   if (report.completeness.status === "incomplete" && report.verdict === "pass") {
     report.verdict = "unknown";
@@ -895,12 +923,15 @@ function assertScenarioCanRun(plan: ScenarioPlan): void {
   }
 }
 
-/** Every journey is swept; authored commands and comparisons add their own lanes. */
+/**
+ * Every journey's start page is checked and swept; authored commands and comparisons add their own
+ * lanes.
+ */
 function countPlannedLanes(scenario: AeeScenario): number {
   return scenario.journeys.reduce(
     (count, journey) =>
       count +
-      1 +
+      2 +
       (journey.virtualScreenReaderCommands?.length ? 1 : 0) +
       (journey.interactionComparisons?.length ?? 0) * 2,
     0
@@ -945,11 +976,11 @@ async function collectVirtualReaderActions(
   }
 }
 
-/** A Playwright test's checkpoints, as actions of one lane, like a reader lane's commands. */
+/** A page checkpoint lane's checkpoints, as actions of one lane, like a reader lane's commands. */
 export async function collectPageCheckpointActions(
   rootDir: string,
   journeyId: string,
-  lane: { laneId: string; steps: PageCheckpointStep[] },
+  lane: Pick<PageCheckpointLaneResult, "laneId" | "driver" | "steps">,
   actions: ScenarioActionReport[],
   findings: Array<Record<string, unknown>>
 ): Promise<void> {
@@ -958,7 +989,7 @@ export async function collectPageCheckpointActions(
       rootDir,
       journeyId,
       lane.laneId,
-      "playwright-test",
+      lane.driver,
       step.actionId,
       step,
       actions,
@@ -1057,6 +1088,25 @@ async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
   return { artifacts, completedLanes, missingArtifacts, failedArtifacts };
 }
 
+/**
+ * Evidence is complete only when every planned lane completed, no artifact is missing or failed,
+ * and nothing went wrong.
+ */
+function evidenceIsComplete(input: {
+  plannedLanes: number;
+  completedLanes: number;
+  missingArtifacts: number;
+  failedArtifacts: number;
+  diagnostics: string[];
+}): boolean {
+  return (
+    input.completedLanes === input.plannedLanes &&
+    input.missingArtifacts === 0 &&
+    input.failedArtifacts === 0 &&
+    input.diagnostics.length === 0
+  );
+}
+
 function createIntegratedReport(input: {
   assessmentId: string;
   scenario: AeeScenario;
@@ -1080,17 +1130,15 @@ function createIntegratedReport(input: {
   const failed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "fail").length;
   const unknown = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "unknown").length;
   const passed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "pass").length;
-  const complete =
-    input.completedLanes === input.plannedLanes &&
-    input.missingArtifacts === 0 &&
-    input.failedArtifacts === 0 &&
-    input.diagnostics.length === 0;
+  const complete = evidenceIsComplete(input);
   // Axe failures arrive through the actions' release verdicts; sweep findings have no action.
   const sweepFailed = input.findings.some(
     (finding) => isSweepFindingKind(String(finding.ruleId)) && !isAdvisoryFinding(finding)
   );
+  // A run with no axe result checked no rules, so nothing in it can pass.
+  const rulesRan = input.artifacts.some(({ kind }) => kind === "axe-result");
   const verdict =
-    failed > 0 || sweepFailed ? "fail" : !complete || unknown > 0 ? "unknown" : "pass";
+    failed > 0 || sweepFailed ? "fail" : !complete || unknown > 0 || !rulesRan ? "unknown" : "pass";
   const report: ScenarioIntegratedReport = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     assessmentId: input.assessmentId,
@@ -1738,7 +1786,13 @@ function buildScenarioSynthesis(
   );
   const readerCounts = countVerdicts(readerJudgments.map(({ verdict }) => verdict));
   const lanes = (
-    ["keyboard", "pointer", "portable-virtual-screen-reader", "playwright-test"] as const
+    [
+      "keyboard",
+      "pointer",
+      "portable-virtual-screen-reader",
+      "playwright-test",
+      "page-load"
+    ] as const
   )
     .map((driver) => {
       const laneReports = views.actionReports.filter(({ action }) => action.driver === driver);
@@ -2065,7 +2119,8 @@ function laneSummary(
       )
     )
   ];
-  const noun = driver === "playwright-test" ? "checkpoint" : "authored action";
+  const noun =
+    driver === "playwright-test" || driver === "page-load" ? "checkpoint" : "authored action";
   return `${label} ran ${reports.length} ${noun}${reports.length === 1 ? "" : "s"}: ${counts.passed} direct checks passed, ${counts.failed} failed, and ${counts.unknown} were unresolved.${failingJudges.length ? ` Failing judges: ${failingJudges.join(", ")}.` : ""}`;
 }
 
@@ -3022,7 +3077,7 @@ function renderSuiteSummary(
           ""
         ]
       : []),
-    `### ${noun.many[0]!.toUpperCase()}${noun.many.slice(1)} (${reports.length})`,
+    `### ${sentenceCase(noun.many)} (${reports.length})`,
     "",
     ...(["fail", "unknown"] as const).flatMap((outcome) => {
       const group = withVerdict(outcome);
@@ -3189,6 +3244,11 @@ function suiteUndecidedContrast(
     }
   }
   return [...texts.values()];
+}
+
+/** The text with its first letter capitalized, to start a sentence or heading. */
+function sentenceCase(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }
 
 function verdictHeadline(report: ScenarioIntegratedReport): string {
@@ -3624,7 +3684,7 @@ ${PAGE_LAYERS.map(({ id }) => `#panel-page:has([data-layer-toggle=${id}]:not(:ch
 @media print{.report-tabs{display:none}.tab-panel[hidden]{display:block!important}.report-header{background:#fff;color:#000}.header-inner{display:block;padding:1rem 0}.header-links{padding-inline:0}.page-shell{max-width:none;padding-inline:0}.scoreboard{border:1px solid #000;color:#000;background:#fff}.score-primary{background:#fff}.score-primary strong,.score-primary p,.score-primary .score-label,.score-facts dt,.score-facts small{color:#000!important}.panel,.result-card,.scoreboard{break-inside:avoid}}
 </style></head>
 <body><a class="skip-link" href="#report-content">Skip to report content</a><header class="report-header"><div class="header-inner"><div><h1>${escapeHtml(reportName(report))}</h1><p class="lede">Accessibility review · ${escapeHtml(report.standard)} · ${report.summary.actions} tested actions</p></div><dl class="header-meta"><dt>Target</dt><dd><a href="${escapeAttribute(report.target)}">${escapeHtml(report.target)}</a></dd><dt>Assessment</dt><dd>${escapeHtml(report.completeness.status)} · ${report.completeness.completedLanes}/${report.completeness.plannedLanes} lanes</dd></dl></div><nav class="header-links" aria-label="Report downloads"><a href="${encodeURI(report.files.manifest)}">Manifest</a><a href="${encodeURI(report.files.json)}">JSON</a><a href="${encodeURI(report.files.markdown)}">Markdown</a></nav></header>
-<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : "No confirmed blocker in the tested scope"}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div>${readerStatus ? `<div><strong>${escapeHtml(readerStatus.result)}</strong><span>virtual reader</span></div>` : ""}</div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain."}</p></div></section></div>
+<main id="report-content" class="page-shell"><div class="decision-room"><section class="status-brief" aria-labelledby="status-heading"><span class="status-flag">${report.verdict === "pass" ? "Ready in tested scope" : report.verdict === "fail" ? "Release blocked in tested scope" : "Decision needs review"}</span><h2 id="status-heading">${report.summary.findings ? `Complete ${report.summary.findings} grouped fix${report.summary.findings === 1 ? "" : "es"} before release` : report.verdict === "pass" ? "No confirmed blocker in the tested scope" : sentenceCase(verdictHeadline(report))}</h2><p>${escapeHtml(statusSummary)}</p><div class="status-meta"><div><strong>${report.summary.findings}</strong><span>grouped fixes</span></div><div><strong>${report.synthesis.affectedInstancesAtLargestCheckpoint}</strong><span>affected instances at the largest checkpoint</span></div><div><strong>${escapeHtml(effortSummary.replace(" engineering hours for the identified fixes and focused regression checks.", " hours"))}</strong><span>estimated focused effort</span></div>${readerStatus ? `<div><strong>${escapeHtml(readerStatus.result)}</strong><span>virtual reader</span></div>` : ""}</div></section><section class="report-assistant" aria-labelledby="assistant-heading"><h2 id="assistant-heading">Ask this report</h2><p>Ask about status, priorities, effort, keyboard access, screen-reader behavior, or a specific finding. Answers stay local and use only captured evidence.</p><div class="question-chips"><button type="button" data-question="How bad is the accessibility of this page?">How bad is it?</button><button type="button" data-question="What should I fix first?">What first?</button><button type="button" data-question="How much effort will the fixes take?">Estimate effort</button></div><form class="ask-form" data-ask-form><label for="report-question">Ask a question about this report</label><input id="report-question" name="question" autocomplete="off" placeholder="Ask about this test…"><button type="submit">Ask</button></form><div class="assistant-answer" role="status" aria-live="polite" aria-atomic="true"><p><strong>Start here:</strong> ${report.summary.findings ? `${report.summary.findings} grouped fixes cover ${report.synthesis.affectedInstancesAtLargestCheckpoint} affected instances at the largest checkpoint. Fixing the shared components should resolve the repeated instances; verify every listed location afterward.` : report.verdict === "pass" ? "No confirmed blocker was found in the tested scope. Ask me what was tested or what remains uncertain." : `${sentenceCase(verdictHeadline(report))}. Ask me what was tested or what remains uncertain.`}</p></div></section></div>
 <nav class="report-tabs" data-tab-list aria-label="Report sections">${tabLinks.map(([id, label]) => `<a href="#panel-${id}" data-tab>${escapeHtml(label)}</a>`).join("")}</nav>
 <section id="panel-overview" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>Your accessibility status</h2><p>What passed, what failed, and what that means for the tested journey.</p></div><p><strong>Important:</strong> this is a scoped assessment, not a universal accessibility score.</p></div>${renderStatusAreas(report)}<section class="panel"><h3>Recommended fix order</h3>${renderPrioritySnapshot(report)}</section><section class="panel"><h3>What remains uncertain</h3><p>${report.synthesis.uniqueIncompleteRules.length} automated rule type${report.synthesis.uniqueIncompleteRules.length === 1 ? "" : "s"} need human review: ${report.synthesis.uniqueIncompleteRules.map(escapeHtml).join(", ")}. They are not counted as confirmed failures or passes.</p></section></section>
 <section id="panel-page" class="tab-panel" data-tab-panel><div class="section-intro"><div><h2>The page as tested</h2><p>Each issue and what the screen reader said, drawn where they were found. Select an item to see it on the page.</p></div></div>${renderPageView(report, views)}</section>
@@ -5043,20 +5103,21 @@ function reportName(report: ScenarioIntegratedReport): string {
 
 function humanActionName(actionId: string): string {
   const words = actionId.replace(/^(command|checkpoint)-\d+-/, "").replaceAll("-", " ");
-  return words.length > 0 ? `${words[0]!.toUpperCase()}${words.slice(1)}` : "Action";
+  return words.length > 0 ? sentenceCase(words) : "Action";
 }
 
 function humanDriverName(driver: LaneDriver): string {
   if (driver === "portable-virtual-screen-reader") return "Portable virtual screen reader";
   if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
   if (driver === "playwright-test") return "Playwright test";
+  if (driver === "page-load") return "Page load";
   return driver === "keyboard" ? "Keyboard" : "Pointer";
 }
 
 function behaviorLabelForDriver(driver: LaneDriver): string {
   if (driver === "portable-virtual-screen-reader") return "Reader semantic agreement";
   if (driver === "keyboard-pointer-sweep") return "Keyboard and pointer sweep";
-  if (driver === "playwright-test") return "Page checkpoint";
+  if (driver === "playwright-test" || driver === "page-load") return "Page checkpoint";
   return "Focus management";
 }
 
