@@ -26,7 +26,14 @@ import {
   type PageSessions
 } from "./accessibility-tree";
 import { focusPath, frameHeldAt } from "./dom-focus";
-import { GUIDEPUP_SCRIPT, callOn, documentOf, loadPageScript, nodeOf } from "./frame-documents";
+import {
+  GUIDEPUP_SCRIPT,
+  callOn,
+  frameDocuments,
+  loadPageScript,
+  nodeOf,
+  type FrameDocuments
+} from "./frame-documents";
 
 export type VirtualScreenReaderCommand =
   | "start"
@@ -294,7 +301,8 @@ interface Cursor {
 interface Reading {
   page: PageSessions;
   cursor: Cursor;
-  document(frame: PageFrame): Promise<string | undefined>;
+  /** Each frame's document and shadow roots, read once for this look at the page. */
+  documents: FrameDocuments;
 }
 
 /**
@@ -382,7 +390,7 @@ export function createPortableVirtualScreenReader(
     async listen() {
       await read(async (reading) => {
         const top = mainFrameOf(reading.page);
-        const document = await reading.document(top);
+        const document = await reading.documents.document(top);
         if (!document) return;
         await loadPageScript(top.session, document, GUIDEPUP_SCRIPT);
         await callOn(
@@ -441,19 +449,7 @@ function readingOf(page: PageSessions, cursor: Cursor): Reading {
     cursor.frames.splice(gone);
     delete cursor.on;
   }
-  const documents = new Map<string, Promise<string | undefined>>();
-  return {
-    page,
-    cursor,
-    document(frame) {
-      let document = documents.get(frame.frameId);
-      if (!document) {
-        document = documentOf(page, frame);
-        documents.set(frame.frameId, document);
-      }
-      return document;
-    }
-  };
+  return { page, cursor, documents: frameDocuments(page) };
 }
 
 function frameById(page: PageSessions, frameId: string): PageFrame {
@@ -627,7 +623,7 @@ const READ_STEP = `async function (action) {
  * when it is not there, and reports where it is. A frame with no document to read reads as empty.
  */
 async function guidepup(reading: Reading, frame: PageFrame, action: Action): Promise<Position> {
-  const document = await reading.document(frame);
+  const document = await reading.documents.document(frame);
   if (!document) return { frameId: frame.frameId, phrase: "", isText: false };
   await loadPageScript(frame.session, document, GUIDEPUP_SCRIPT);
   const position = await callOn<{
@@ -655,7 +651,7 @@ async function guidepup(reading: Reading, frame: PageFrame, action: Action): Pro
  */
 async function heardSinceLastRead(reading: Reading): Promise<string[]> {
   const top = mainFrameOf(reading.page);
-  const document = await reading.document(top);
+  const document = await reading.documents.document(top);
   if (!document) return [];
   return callOn<string[]>(
     top.session,
@@ -690,7 +686,7 @@ function liveRegionAnnouncement(
 }
 
 async function lastSpokenPhrase(reading: Reading, frame: PageFrame): Promise<string> {
-  const document = await reading.document(frame);
+  const document = await reading.documents.document(frame);
   return document
     ? callOn<string>(
         frame.session,
@@ -879,7 +875,7 @@ function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
 
 /** The element that has DOM focus, in whichever frame's document holds it. */
 async function focusedNode(reading: Reading): Promise<DomNodeRef | undefined> {
-  return (await focusPath(reading.page, (frame) => reading.document(frame))).at(-1);
+  return (await focusPath(reading.page, reading.documents)).at(-1);
 }
 
 /** The focused element as the DOM snapshot names it, the way an item names its element. */
