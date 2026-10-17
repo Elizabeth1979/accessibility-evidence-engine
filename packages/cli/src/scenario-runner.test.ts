@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
+import { writeEvidenceManifest } from "@aee/playwright";
+
+import { compileScenarioPlan, type AeeScenario } from "./scenario";
 import {
   aeeRunModelProvider,
   buildScenarioSynthesisForTest,
+  finishAssessment,
   renderFixesCsvForTest,
   renderIntegratedHtmlForTest,
   renderPullRequestComment,
@@ -580,6 +587,68 @@ test("a test whose page the fixture did not check says why, and only a page chec
       assert.match(row.detail, detail);
     }
   }
+});
+
+test("a run that captured no axe result is not decided, never a pass", async () => {
+  // Every planned lane finished and none failed, but no lane ran the rules: a sweep with no actions.
+  const assessmentDir = await mkdtemp(path.join(tmpdir(), "aee-no-axe-"));
+  const { manifestFile } = await writeEvidenceManifest({
+    assessmentId: "read-keyboard-pointer-sweep",
+    rootDir: path.join(assessmentDir, "read-keyboard-pointer-sweep"),
+    lanes: [
+      {
+        id: "read-keyboard-pointer-sweep",
+        driver: "keyboard-pointer-sweep",
+        status: "completed",
+        actions: []
+      }
+    ]
+  });
+  const scenario: AeeScenario = {
+    schemaVersion: "0.1.0",
+    id: "no-axe",
+    target: { url: "https://example.com/" },
+    standard: { name: "WCAG", version: "2.2", levels: ["A", "AA"] },
+    profile: "core",
+    goal: "Read the page.",
+    journeys: [
+      { id: "read", name: "Read", goal: "Read the page.", allowedActions: [], forbiddenActions: [] }
+    ],
+    approval: { required: true }
+  };
+  const result = await finishAssessment({
+    assessmentId: "no-axe-1",
+    assessmentDir,
+    scenario,
+    plan: compileScenarioPlan(scenario),
+    startedAt: new Date().toISOString(),
+    plannedLanes: 1,
+    actions: [],
+    findings: [],
+    childManifestFiles: [manifestFile],
+    diagnostics: [],
+    aiProvider: aeeRunModelProvider({})
+  });
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    verdict: string;
+  };
+
+  assert.equal(report.verdict, "unknown");
+  assert.equal(result.headline, "not decided, some evidence is missing or needs a person");
+  assert.match(
+    await readFile(result.reportFiles.prComment, "utf8"),
+    /^## Accessibility: not decided, some evidence is missing or needs a person/
+  );
+  // The report's own headline says so too, rather than "no confirmed blocker".
+  const html = await readFile(result.reportFiles.html, "utf8");
+  assert.match(
+    html,
+    /<h2 id="status-heading">Not decided, some evidence is missing or needs a person<\/h2>/
+  );
+  assert.match(
+    html,
+    /<strong>Start here:<\/strong> Not decided, some evidence is missing or needs a person\./
+  );
 });
 
 test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a key is set", () => {

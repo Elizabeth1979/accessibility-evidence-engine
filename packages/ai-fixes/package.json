@@ -27,7 +27,7 @@
     "prompts/accessibility-engineer.md"
   ],
   "engines": {
-    "node": ">=22.13"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "repository": {
     "type": "git",
@@ -49,6 +49,6 @@
   },
   "dependencies": {
     "@aee/core": "0.8.0",
-    "@anthropic-ai/sdk": "^0.131.0"
+    "@anthropic-ai/sdk": "^0.133.0"
   }
 }

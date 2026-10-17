@@ -807,13 +807,13 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
   const manifestSupplementalFiles: EvidenceManifestSupplementalFile[] = [];
   const manifestLanes: EvidenceManifestLaneSource[] = [
     {
-      id: `${comparisonId}-pointer`,
+      id: inputComparisonLaneId(comparisonId, "pointer"),
       driver: "pointer",
       status: "blocked",
       actions: []
     },
     {
-      id: `${comparisonId}-keyboard`,
+      id: inputComparisonLaneId(comparisonId, "keyboard"),
       driver: "keyboard",
       status: "blocked",
       actions: []
@@ -1000,7 +1000,7 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
-      const runId = `${comparisonId}-${driver}-${String(sequence).padStart(3, "0")}`;
+      const runId = actionRunId(inputComparisonLaneId(comparisonId, driver), sequence);
       const actionStartedAt = new Date().toISOString();
       const manifestAction: EvidenceManifestActionSource = {
         id: action.id,
@@ -1313,7 +1313,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
     for (const [index, command] of options.commands.entries()) {
       if (options.stopAtEnd && index > 0 && !(await reader.peek(command))) break;
       const sequence = index + 1;
-      const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
+      const runId = actionRunId(laneId, sequence);
       const actionStartedAt = new Date().toISOString();
       const manifestAction: EvidenceManifestActionSource = {
         id: `command-${sequence}-${command}`,
@@ -1521,12 +1521,17 @@ export function toSafeId(text: string, fallback = "item"): string {
   return (id.endsWith("-") ? id.slice(0, -1) : id) || fallback;
 }
 
+/** Who loads the page a checkpoint lane observes: a Playwright test, or AEE opening a start page. */
+export type PageCheckpointDriver = "playwright-test" | "page-load";
+
 export interface PageCheckpointLaneOptions<TPage extends PlaywrightPageLike> {
   /** The page a test is driving; checkpoints observe it and never act on it. */
   page: TPage;
   projectRoot: string;
   outputDir?: string;
   laneId?: string;
+  /** Defaults to a Playwright test. */
+  driver?: PageCheckpointDriver;
 }
 
 export interface PageCheckpointStep {
@@ -1541,17 +1546,20 @@ export interface PageCheckpointStep {
   artifactFiles: string[];
 }
 
+export interface PageCheckpointLaneResult {
+  laneId: string;
+  driver: PageCheckpointDriver;
+  steps: PageCheckpointStep[];
+  diagnostics: string[];
+  manifestFile: string;
+}
+
 export interface PageCheckpointLane {
   laneId: string;
   /** Captures the page as it is now; checkpoints run one at a time, in the order asked. */
   checkpoint(name: string): Promise<void>;
   /** Waits for every checkpoint, then writes the lane's evidence manifest. */
-  finish(): Promise<{
-    laneId: string;
-    steps: PageCheckpointStep[];
-    diagnostics: string[];
-    manifestFile: string;
-  }>;
+  finish(): Promise<PageCheckpointLaneResult>;
 }
 
 /**
@@ -1568,9 +1576,10 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
   const outputBase = options.outputDir ?? "aee-output";
   const laneOutputDir = path.resolve(options.projectRoot, outputBase, laneId);
   const runOutputDir = path.join(outputBase, laneId);
+  const driver = options.driver ?? "playwright-test";
   const manifestLane: EvidenceManifestLaneSource = {
     id: laneId,
-    driver: "playwright-test",
+    driver,
     status: "completed",
     actions: []
   };
@@ -1582,7 +1591,7 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
 
   const capture = async (name: string) => {
     const sequence = manifestLane.actions.length + 1;
-    const runId = `${laneId}-${String(sequence).padStart(3, "0")}`;
+    const runId = actionRunId(laneId, sequence);
     const actionId = `checkpoint-${sequence}-${toSafeId(name)}`;
     const manifestAction: EvidenceManifestActionSource = {
       id: actionId,
@@ -1651,9 +1660,72 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
         rootDir: laneOutputDir,
         lanes: [manifestLane]
       });
-      return { laneId, steps, diagnostics, manifestFile };
+      return { laneId, driver, steps, diagnostics, manifestFile };
     }
   };
+}
+
+export interface StartPageLanePage extends PlaywrightPageLike {
+  goto(url: string, options?: { waitUntil?: "domcontentloaded" }): Promise<unknown>;
+}
+
+export interface StartPageLaneContext<
+  TPage extends StartPageLanePage
+> extends KeyboardPointerSweepLaneRouter {
+  newPage(): Promise<TPage>;
+  close(): Promise<void>;
+}
+
+export interface StartPageLaneBrowser<TPage extends StartPageLanePage> {
+  newContext(options?: LaneBrowserContextOptions): Promise<StartPageLaneContext<TPage>>;
+}
+
+export interface RunStartPageLaneOptions<TPage extends StartPageLanePage> {
+  browser: StartPageLaneBrowser<TPage>;
+  projectRoot: string;
+  targetUrl: string;
+  allowedOrigins: string[];
+  outputDir?: string;
+  laneId?: string;
+}
+
+export interface StartPageLaneResult extends PageCheckpointLaneResult {
+  /** Navigations the lane stopped because they left the allowed origins. */
+  blockedNavigations: string[];
+}
+
+/**
+ * Opens a start page in a browser context of its own and checkpoints it once, before anything acts
+ * on it: the evidence and pinned axe rules a scenario's plan runs on every journey's start page,
+ * whatever else the journey declares. Every navigation outside the allowed origins is stopped.
+ */
+export async function runStartPageLane<TPage extends StartPageLanePage>(
+  options: RunStartPageLaneOptions<TPage>
+): Promise<StartPageLaneResult> {
+  const laneId = options.laneId ?? `start-page-${Date.now()}`;
+  assertSafeRunId(laneId);
+  const allowedOrigins = normalizeAllowedOrigins(options.allowedOrigins, "start-page lane");
+  assertAllowedOrigin(options.targetUrl, allowedOrigins, "Start-page lane");
+  const blockedNavigations: string[] = [];
+  const context = await options.browser.newContext();
+  try {
+    await context.route("**/*", navigationGuard(allowedOrigins, blockedNavigations));
+    const page = await context.newPage();
+    // Started before the load, so the checkpoint waits for the data the page loads.
+    const lane = startPageCheckpointLane({
+      page,
+      projectRoot: options.projectRoot,
+      outputDir: options.outputDir,
+      laneId,
+      driver: "page-load"
+    });
+    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
+    assertAllowedOrigin(page.url(), allowedOrigins, "Start-page lane");
+    await lane.checkpoint("start page");
+    return { ...(await lane.finish()), blockedNavigations };
+  } finally {
+    await context.close();
+  }
 }
 
 /**
@@ -2041,10 +2113,28 @@ function readLaneStepOutcome(
   };
 }
 
+/** The most characters a lane or action run id may have: each names a folder of its evidence. */
+export const MAX_RUN_ID_LENGTH = 128;
+
+const SAFE_RUN_ID = new RegExp(`^[A-Za-z0-9][A-Za-z0-9._-]{0,${MAX_RUN_ID_LENGTH - 1}}$`);
+
+/** The run id of a lane's action at a place in the lane, counted from 1: `<lane id>-001`. */
+export function actionRunId(laneId: string, sequence: number): string {
+  return `${laneId}-${String(sequence).padStart(3, "0")}`;
+}
+
+/** The id of the lane an input comparison runs its pointer or its keyboard actions in. */
+export function inputComparisonLaneId(
+  comparisonId: string,
+  driver: InputComparisonLane["driver"]
+): string {
+  return `${comparisonId}-${driver}`;
+}
+
 function assertSafeRunId(runId: string): void {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(runId) || runId === "." || runId === "..") {
+  if (!SAFE_RUN_ID.test(runId) || runId === "." || runId === "..") {
     throw new Error(
-      "Invalid runId. Use 1-128 letters, numbers, dots, underscores, or hyphens, beginning with a letter or number."
+      `Invalid runId. Use 1-${MAX_RUN_ID_LENGTH} letters, numbers, dots, underscores, or hyphens, beginning with a letter or number.`
     );
   }
 }
