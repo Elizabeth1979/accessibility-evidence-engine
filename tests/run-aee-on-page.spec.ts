@@ -1504,7 +1504,10 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
       expect.objectContaining({
         judgeId: "change-response",
         verdict: "fail",
-        summary: expect.stringContaining("No observable response followed the click interaction")
+        summary: expect.stringContaining("No observable response followed the click interaction"),
+        suggestedFix: expect.stringContaining(
+          "move focus to what it opens (not only onto the clicked control), announce the result in a live region (WCAG 4.1.3 Status Messages)"
+        )
       }),
       expect.objectContaining({
         judgeId: "release",
@@ -1579,12 +1582,16 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
       expect.objectContaining({
         judgeId: "keyboard",
         verdict: "fail",
-        summary: expect.stringContaining("no observable activation response")
+        summary: expect.stringContaining("no observable activation response"),
+        suggestedFix: expect.stringContaining(
+          "change the control's accessibility state (checked, expanded, pressed, selected, value or name) or that of what it names with aria-controls"
+        )
       }),
       expect.objectContaining({
         judgeId: "change-response",
         verdict: "fail",
-        summary: expect.stringContaining("No observable response followed the space interaction")
+        summary: expect.stringContaining("No observable response followed the space interaction"),
+        suggestedFix: expect.stringContaining("A change to the page's markup alone does not count.")
       }),
       expect.objectContaining({
         judgeId: "release",

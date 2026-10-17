@@ -881,6 +881,24 @@ function markupAfter(changed: boolean): PressRecord {
   return pressRecord("record-dom-after", "dom", "after", { changed });
 }
 
+/**
+ * A failed press's fix names what counts as a response (docs/playwright-integration.md, "What
+ * counts as a response"), not a markup change, which the judges keep as supporting evidence only.
+ */
+function assertSuggestsPerceivableResponse(suggestedFix: string | undefined): void {
+  assert.ok(suggestedFix, "expected a suggested fix");
+  assert.match(
+    suggestedFix,
+    /accessibility state \(checked, expanded, pressed, selected, value or name\)/
+  );
+  assert.match(suggestedFix, /aria-controls/);
+  assert.match(suggestedFix, /move focus to what it opens/);
+  assert.match(suggestedFix, /live region \(WCAG 4\.1\.3 Status Messages\)/);
+  assert.match(suggestedFix, /network request/);
+  assert.match(suggestedFix, /markup alone does not count/);
+  assert.doesNotMatch(suggestedFix, /\bDOM\b/);
+}
+
 function readerAfter(texts: string[]): PressRecord {
   return pressRecord("record-reader-after", "virtual-screen-reader", "after", {
     newLiveRegionAnnouncements: texts.map((text, index) => ({
@@ -1037,6 +1055,8 @@ test("keyboard judge fails a dead button even when unrelated markup changed", as
     judgment?.findings?.[0]?.message ?? "",
     /accessibility state, what it controls, focus, live regions and the network/
   );
+  assert.match(judgment?.suggestedFix ?? "", /^Ensure space activates the focused control/);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
 });
 
 test("keyboard judge leaves a press undecided when only the markup is known to have changed", async () => {
@@ -1471,6 +1491,8 @@ test("change-response judge fails a click when nothing a person perceives change
   assert.equal(judgment?.verdict, "fail");
   assert.match(judgment?.summary ?? "", /No observable response followed the click interaction/);
   assert.equal(judgment?.severity, "high");
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
+  assert.match(judgment?.suggestedFix ?? "", /not only onto the clicked control/);
 });
 
 test("change-response judge leaves a press undecided when only the markup changed", async () => {
@@ -1501,4 +1523,19 @@ test("change-response judge fails a space activation with no response and says h
   assert.equal(judgment?.verdict, "fail");
   assert.match(judgment?.summary ?? "", /No observable response followed the space interaction/);
   assert.match(judgment?.suggestedFix ?? "", /space interaction activates the target/i);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
+});
+
+test("change-response judge tells a form submission with no response what would count", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle([accessibilityAfter({ changes: [], truncated: false })], {
+    kind: "submit",
+    target: { role: "button", name: "Save" }
+  });
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.suggestedFix ?? "", /^Ensure form submission responds/);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
 });

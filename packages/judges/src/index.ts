@@ -14,8 +14,8 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 
-const KEYBOARD_JUDGE_VERSION = "0.3.0";
-const CHANGE_RESPONSE_JUDGE_VERSION = "0.2.0";
+const KEYBOARD_JUDGE_VERSION = "0.3.1";
+const CHANGE_RESPONSE_JUDGE_VERSION = "0.2.1";
 
 export const defaultJudgeManifests = [
   {
@@ -822,7 +822,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     ];
     const evidenceRecordIds = evidenceRecords.map((record) => record.id);
     const artifactIds = collectArtifactIds(evidenceRecords);
-    const suggestedFix = `Ensure ${bundle.interaction.kind} activates the focused control and produces an observable response.`;
+    const suggestedFix = `Ensure ${bundle.interaction.kind} activates the focused control and responds in a way a keyboard or screen-reader user perceives: ${describePerceivableResponses()}`;
 
     return [
       {
@@ -2086,18 +2086,27 @@ function isActionableTargetRole(role: string | undefined): boolean {
   return Boolean(role && actionableRoles.has(role));
 }
 
+/**
+ * How to fix a press with no response: the responses `collectPressResponse` counts, as
+ * docs/playwright-integration.md ("What counts as a response") lists them. A markup change is
+ * named as not counting, since the judges keep it as supporting evidence only.
+ */
+function describePerceivableResponses(focusNote = ""): string {
+  return `change the control's accessibility state (checked, expanded, pressed, selected, value or name) or that of what it names with aria-controls, move focus to what it opens${focusNote}, announce the result in a live region (WCAG 4.1.3 Status Messages), or make a network request. A change to the page's markup alone does not count.`;
+}
+
 function buildChangeResponseSuggestedFix(
   interactionKind: EvidenceBundle["interaction"]["kind"]
 ): string {
   if (interactionKind === "submit") {
-    return "Ensure form submission produces an observable response such as DOM, focus, or network activity.";
+    return `Ensure form submission responds in a way a keyboard or screen-reader user perceives: ${describePerceivableResponses(" (not only onto the submit control)")}`;
   }
 
   if (interactionKind === "enter" || interactionKind === "space") {
-    return `Ensure the ${interactionKind} interaction activates the target and produces an observable response such as DOM, focus, or network activity.`;
+    return `Ensure the ${interactionKind} interaction activates the target and responds in a way a keyboard or screen-reader user perceives: ${describePerceivableResponses()}`;
   }
 
-  return `Ensure the ${interactionKind} interaction produces an observable response such as DOM, focus, or network activity.`;
+  return `Ensure the ${interactionKind} interaction responds in a way a keyboard or screen-reader user perceives: ${describePerceivableResponses(" (not only onto the clicked control)")}`;
 }
 
 function describeTarget(target: TargetDescriptor | undefined): string {
