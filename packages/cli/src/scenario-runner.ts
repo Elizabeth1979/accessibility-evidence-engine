@@ -76,6 +76,7 @@ import {
   loadScenario,
   observedPressesLaneId,
   readerLaneId,
+  startPageLaneId,
   sweepLaneId,
   type AeeScenario,
   type ScenarioPlan,
@@ -582,7 +583,7 @@ export async function executeScenario(
       const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
       const allowedOrigins = plan.safety.allowedOrigins;
       // The plan's initial capture and pinned axe rules, on the start page before anything acts.
-      const startLaneId = `${journey.id}-start-page`;
+      const startLaneId = startPageLaneId(journey.id);
       await runLane(startLaneId, async () => {
         const lane = await runStartPageLane({
           browser: browser as unknown as StartPageLaneBrowser<Page>,

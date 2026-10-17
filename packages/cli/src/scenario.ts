@@ -240,7 +240,12 @@ const ACTION_STEP_LABELS: Record<string, string> = {
     "Let the sweep press each on-page control by keyboard and by mouse, from a fresh page each time, and compare the results and where focus lands. Links and form submit buttons are never pressed."
 };
 
-/** The id of a journey's keyboard and pointer sweep lane, which names the folder of its evidence. */
+/** The id of a journey's start-page lane, which names the folder of its evidence. */
+export function startPageLaneId(journeyId: string): string {
+  return `${journeyId}-start-page`;
+}
+
+/** The id of a journey's keyboard and pointer sweep lane. */
 export function sweepLaneId(journeyId: string): string {
   return `${journeyId}-keyboard-pointer-sweep`;
 }
@@ -541,6 +546,7 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
 function assertRunIdsFit(journey: ScenarioJourney): void {
   const commandCount = journey.virtualScreenReaderCommands?.length ?? 0;
   assertRunIdFits(`Journey “${journey.id}”`, "the journey id", [
+    ["start-page check", actionRunId(startPageLaneId(journey.id), 1)],
     ["keyboard and pointer sweep", sweepLaneId(journey.id)],
     ...(commandCount > 0
       ? [
