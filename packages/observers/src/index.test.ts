@@ -119,13 +119,14 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
     pageUrl: "https://example.com/",
     generatedAt: "2026-09-13T00:00:00.000Z",
+    // A later entry also says which frames the reader left.
     entries: [
       {
         sequence: 1,
@@ -136,7 +137,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
         domFocusAfter: "#pay",
         focusMoved: false
       }
-    ]
+    ] as Array<Record<string, unknown>>
   };
 
   try {
@@ -163,6 +164,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
       timestamp: "2026-09-13T00:00:01.000Z",
       command: "next-control",
       announcement: "Pay, button",
+      framesLeft: [{ frameId: "frame-billing", framePath: ["#billing"], name: "Billing" }],
       domFocusBefore: "#pay",
       domFocusAfter: "#pay",
       focusMoved: false
@@ -184,7 +186,11 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
     assert.ok(textPath);
     assert.equal(JSON.parse(await readFile(jsonPath, "utf8")).entries.length, 2);
     assert.match(await readFile(textPath, "utf8"), /semantic simulation; not VoiceOver, NVDA/);
-    assert.match(await readFile(textPath, "utf8"), /2\. next-control: Pay, button/);
+    // Leaving a frame is AEE's note, on its own line before the step, not part of what was said.
+    assert.match(
+      await readFile(textPath, "utf8"),
+      /\nAEE: left frame Billing\n2\. next-control: Pay, button\n/
+    );
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }

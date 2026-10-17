@@ -2,11 +2,14 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  frameNotes,
+  READER_NOTES_LEGEND,
   redactUrl,
   type ArtifactKind,
   type EvidenceRecord,
   type ObserverContext,
-  type ObserverPlugin
+  type ObserverPlugin,
+  type ReaderFrameCrossing
 } from "@aee/core";
 
 export const defaultObserverManifests = [
@@ -1061,6 +1064,7 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
     "Fidelity: semantic simulation; not VoiceOver, NVDA, or another physical assistive technology.",
     `Page: ${readString(transcript.pageUrl) ?? "unknown"}`,
     `Mode: ${readString(transcript.mode) ?? "unknown"}`,
+    READER_NOTES_LEGEND,
     ""
   ];
 
@@ -1073,6 +1077,12 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
       const announcement = readString(entry.announcement) ?? "";
       const focusBefore = readString(entry.domFocusBefore) ?? "none";
       const focusAfter = readString(entry.domFocusAfter) ?? "none";
+      lines.push(
+        ...frameNotes({
+          framesLeft: readFrameCrossings(entry.framesLeft),
+          framesEntered: readFrameCrossings(entry.framesEntered)
+        })
+      );
       lines.push(`${sequence}. ${command}: ${announcement}`);
       lines.push(
         `   DOM focus: ${focusBefore} -> ${focusAfter}; moved: ${entry.focusMoved === true ? "yes" : "no"}`
@@ -1081,6 +1091,18 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function readFrameCrossings(value: unknown): ReaderFrameCrossing[] {
+  return (Array.isArray(value) ? value.filter(isRecord) : []).map((frame) => {
+    const name = readString(frame.name);
+    return {
+      ...(name ? { name } : {}),
+      framePath: Array.isArray(frame.framePath)
+        ? frame.framePath.filter((step): step is string => typeof step === "string")
+        : []
+    };
+  });
 }
 
 function readString(value: unknown): string | undefined {
