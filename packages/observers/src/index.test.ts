@@ -10,6 +10,7 @@ import {
   createNetworkObserver,
   createVirtualScreenReaderObserver,
   createVisualObserver,
+  type AxeAnalysisOptions,
   type RuntimeObserverContext
 } from "./index";
 
@@ -111,6 +112,104 @@ test("createAccessibilityTreeObserver indexes whole tree nodes by their DOM node
       }
     ]
   });
+});
+
+test("createAccessibilityTreeObserver records what changed between before and after", async () => {
+  const observer = createAccessibilityTreeObserver();
+  let checked = "false";
+  const context: RuntimeObserverContext = {
+    runId: "run-accessibility-change",
+    page: {
+      async content() {
+        return '<input type="checkbox" aria-label="Agree">';
+      },
+      async snapshotAccessibilityTree() {
+        return {
+          nodes: [
+            {
+              nodeId: "4",
+              ignored: false,
+              role: { type: "role", value: "checkbox" },
+              name: { type: "computedString", value: "Agree" },
+              properties: [
+                { name: "focused", value: { type: "booleanOrUndefined", value: true } },
+                { name: "checked", value: { type: "tristate", value: checked } }
+              ],
+              backendDOMNodeId: 4
+            }
+          ]
+        };
+      }
+    }
+  };
+
+  const [before] = await observer.captureBefore!(context);
+  checked = "true";
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(before.meta?.accessibilityChanges, undefined);
+  assert.deepEqual(after.meta?.accessibilityChanges, {
+    focusedBefore: { nodeId: 4, role: "checkbox", name: "Agree" },
+    focusedAfter: { nodeId: 4, role: "checkbox", name: "Agree" },
+    changes: [
+      {
+        nodeId: 4,
+        role: "checkbox",
+        name: "Agree",
+        kind: "state",
+        state: "checked",
+        before: "false",
+        after: "true"
+      }
+    ],
+    truncated: false
+  });
+  assert.deepEqual(after.changes, [
+    {
+      path: "accessibility.checked",
+      summary: 'checkbox "Agree" checked changed from false to true.',
+      before: "false",
+      after: "true",
+      impact: "major"
+    }
+  ]);
+  assert.match(after.summary ?? "", /1 change, 1 of them control state/);
+});
+
+test("the virtual-reader observer listens before the press and keeps only its live-region announcements", async () => {
+  const announcement = (sequence: number, text: string) => ({
+    sequence,
+    timestamp: "2026-09-13T00:00:00.000Z",
+    politeness: "polite" as const,
+    text
+  });
+  // A message from before this press must not count as its response.
+  const transcript = { entries: [], liveRegionAnnouncements: [announcement(1, "Loaded")] };
+  let listening = false;
+  const observer = createVirtualScreenReaderObserver();
+  const context: RuntimeObserverContext = {
+    runId: "run-reader-live",
+    page: {
+      async content() {
+        return '<div role="status"></div>';
+      },
+      async listenVirtualScreenReader() {
+        listening = true;
+      },
+      async snapshotVirtualScreenReaderTranscript() {
+        return transcript;
+      }
+    }
+  };
+
+  await observer.setup!(context);
+  const [before] = await observer.captureBefore!(context);
+  transcript.liveRegionAnnouncements.push(announcement(2, "Saved"));
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(listening, true);
+  assert.equal(before.meta?.newLiveRegionAnnouncements, undefined);
+  assert.deepEqual(after.meta?.newLiveRegionAnnouncements, [announcement(2, "Saved")]);
 });
 
 test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
@@ -276,7 +375,7 @@ test("createVisualObserver captures separate viewport and full-page artifacts", 
 
 test("createAxeObserver preserves complete pinned axe output", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-axe-"));
-  let requestedTags: string[] = [];
+  let requested: AxeAnalysisOptions | undefined;
   const rawResult = {
     testEngine: { name: "axe-core", version: "4.13.0" },
     testRunner: { name: "axe" },
@@ -305,7 +404,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
           return "<button></button>";
         },
         async runAxeAnalysis(options) {
-          requestedTags = options.tags;
+          requested = options;
           return rawResult;
         }
       }
@@ -314,19 +413,19 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     const [record] = await observer.captureBefore!(context);
     const artifactPath = record.artifacts?.[0]?.path;
 
-    assert.deepEqual(requestedTags, [
-      "wcag2a",
-      "wcag2aa",
-      "wcag21a",
-      "wcag21aa",
-      "wcag22a",
-      "wcag22aa",
-      "best-practice"
-    ]);
+    const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+    assert.deepEqual(requested, {
+      tags: [...wcagTags, "best-practice"],
+      experimentalTags: wcagTags
+    });
     assert.equal(record.status, "ok");
     assert.deepEqual(record.meta, {
       engineVersion: "4.13.0",
-      ruleSelection: { type: "tag", values: requestedTags },
+      ruleSelection: {
+        type: "tag",
+        values: requested!.tags,
+        experimentalTags: requested!.experimentalTags
+      },
       explicitlyDisabledRuleIds: [],
       violations: 1,
       passes: 1,

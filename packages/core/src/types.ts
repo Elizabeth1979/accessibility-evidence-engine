@@ -109,6 +109,56 @@ export interface EvidenceRecord {
   meta?: Record<string, unknown>;
 }
 
+/** The control states a screen reader announces when they change (WAI-ARIA 1.2 states). */
+export const TRACKED_ACCESSIBILITY_STATES = [
+  "checked",
+  "expanded",
+  "pressed",
+  "selected",
+  "value"
+] as const;
+
+export type TrackedAccessibilityState = (typeof TRACKED_ACCESSIBILITY_STATES)[number];
+
+/** A node of the browser's accessibility tree, as an accessibility-tree record names it. */
+export interface AccessibilityNodeRef {
+  /** The DOM node's backend id, the same in both snapshots for as long as the node lives. */
+  nodeId: number;
+  role: string;
+  name?: string;
+}
+
+/** One change between the accessibility tree before an interaction and after it. */
+export interface AccessibilityChange extends AccessibilityNodeRef {
+  /** `state`: a tracked state changed. `shown`/`hidden`: the node entered or left the tree. `name`: its accessible name changed. */
+  kind: "state" | "shown" | "hidden" | "name";
+  state?: TrackedAccessibilityState;
+  before?: string | number | boolean | null;
+  after?: string | number | boolean | null;
+  /** The nodes whose `aria-controls` names this node, in either snapshot. */
+  controlledBy?: AccessibilityNodeRef[];
+}
+
+/** What an accessibility-tree record's `meta.accessibilityChanges` holds after an interaction. */
+export interface AccessibilityChanges {
+  /** The node that had focus before the interaction: what a key press acts on. */
+  focusedBefore?: AccessibilityNodeRef;
+  /** The node that has focus after it. */
+  focusedAfter?: AccessibilityNodeRef;
+  changes: AccessibilityChange[];
+  /** True when more nodes changed than are listed. */
+  truncated: boolean;
+}
+
+/** A live-region update Guidepup's virtual screen reader announced (WAI-ARIA 1.2 `aria-live`). */
+export interface LiveRegionAnnouncement {
+  sequence: number;
+  timestamp: IsoTimestamp;
+  politeness: "polite" | "assertive";
+  /** What the reader said, without its politeness prefix. */
+  text: string;
+}
+
 export interface CorrelationSummary {
   strategy: string;
   participatingObserverIds: string[];

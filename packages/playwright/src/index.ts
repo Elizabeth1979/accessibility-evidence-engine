@@ -4,6 +4,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import AxeBuilder from "@axe-core/playwright";
+import axe from "axe-core";
 import {
   executeRun,
   redactUrl,
@@ -20,7 +21,11 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 import { createDefaultJudgePlugins } from "@aee/judges";
-import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
+import {
+  createDefaultObserverPlugins,
+  type AxeAnalysisOptions,
+  type RuntimeObserverContext
+} from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema, conceptForAxeRule } from "@aee/schemas";
 
@@ -88,7 +93,7 @@ export interface PlaywrightPageLike {
   snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
   snapshotFocusTarget?(options?: unknown): Promise<unknown>;
   snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
-  runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+  runAxeAnalysis?(options: AxeAnalysisOptions): Promise<unknown>;
   setupNetworkTracking?(options?: unknown): Promise<void>;
   snapshotNetworkLog?(options?: unknown): Promise<unknown>;
   teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -984,6 +989,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const judgeIds = [
       ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
     ];
+    // A key press can answer only with a status message (WCAG 4.1.3), which a screen reader hears
+    // from a live region. Guidepup's reader listens through each press, so the keyboard judge
+    // counts what it announced.
+    const readerPage =
+      driver === "keyboard" ? framedCdpPage(page as typeof page & CdpEnabledPageLike) : undefined;
+    const pressListener = readerPage ? createPortableVirtualScreenReader(readerPage) : undefined;
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
@@ -1000,13 +1011,15 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
       };
       manifestLane.actions.push(manifestAction);
+      const listensToPress = Boolean(pressListener) && action.kind === "press";
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
         outputDir: runOutputDir,
         runId,
         policy: options.policy,
-        observers: observerIds,
+        observers: listensToPress ? [...observerIds, "virtual-screen-reader"] : observerIds,
+        ...(listensToPress ? { virtualScreenReader: pressListener } : {}),
         judges: [
           ...new Set([
             ...judgeIds,
@@ -2057,11 +2070,11 @@ interface CdpEnabledPageLike extends PlaywrightPageLike, Partial<FramedPage> {
 }
 
 /** The page, when it can be read frame by frame over the DevTools protocol, as a Playwright page can. */
-function framedCdpPage(
-  page: CdpEnabledPageLike
-): (FramedPage & { context(): CdpContext }) | undefined {
+function framedCdpPage<TPage extends CdpEnabledPageLike>(
+  page: TPage
+): (TPage & FramedPage & { context(): CdpContext }) | undefined {
   return page.context && page.frames && page.mainFrame
-    ? (page as FramedPage & { context(): CdpContext })
+    ? (page as TPage & FramedPage & { context(): CdpContext })
     : undefined;
 }
 
@@ -2108,6 +2121,9 @@ async function createObserverPage(
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const listenVirtualScreenReader = virtualScreenReader
+    ? async () => virtualScreenReader.listen()
+    : undefined;
   const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
     ? async () => virtualScreenReader.snapshot()
     : page.snapshotVirtualScreenReaderTranscript?.bind(page);
@@ -2567,12 +2583,14 @@ async function createObserverPage(
         }
       : undefined;
   const runAxeAnalysis = customRunAxeAnalysis
-    ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
+    ? async (options: AxeAnalysisOptions) => customRunAxeAnalysis(options)
     : evaluatablePage.evaluate
-      ? async (options: { tags: string[] }) => {
+      ? async (options: AxeAnalysisOptions) => {
+          // `options()` replaces axe's run options, so it goes before `withTags()` adds the tags.
           const axeResult = await new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
+            .options({ rules: enableExperimentalAxeRules(options.experimentalTags ?? []) })
             .withTags(options.tags)
             .analyze();
           // Contrast axe could not decide over an image or a gradient is measured from the pixels.
@@ -2653,6 +2671,7 @@ async function createObserverPage(
     snapshotScreenshot,
     runAxeAnalysis,
     snapshotVirtualScreenReaderTranscript,
+    listenVirtualScreenReader,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking
@@ -2703,6 +2722,22 @@ function byTargetKey<Result>(
       const result = results[index];
       return result ? [[key, result] as const] : [];
     })
+  );
+}
+
+/**
+ * axe runs no experimental rule unless it is enabled by id (axe-core API.md, "Example 3"). The ids
+ * come from the same axe-core release that @axe-core/playwright injects, so a rule axe adds or
+ * graduates is picked up without a hand-kept list.
+ */
+export function enableExperimentalAxeRules(
+  tags: readonly string[]
+): Record<string, { enabled: true }> {
+  return Object.fromEntries(
+    axe
+      .getRules(["experimental"])
+      .filter((rule) => rule.tags.some((tag) => tags.includes(tag)))
+      .map((rule) => [rule.ruleId, { enabled: true }])
   );
 }
 

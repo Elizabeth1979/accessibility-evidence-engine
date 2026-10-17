@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="The plan for running real NVDA on GitHub's Windows computers next to AEE's virtual screen reader, with each difference marked."
+    />
+    <title>Real NVDA next to AEE · AEE</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="real-screen-readers.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="index.html" aria-label="Accessibility Evidence Engine home">
+        <span class="brand-mark" aria-hidden="true">AEE</span
+        ><span>Accessibility Evidence Engine</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="how-it-works.html">How it works</a><a href="test-lab.html">Test lab</a
+        ><a href="roadmap.html">Roadmap</a
+        ><a href="https://github.com/Elizabeth1979/accessibility-evidence-engine">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main" tabindex="-1">
+      <section class="hero page-intro" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Planned · not built yet</p>
+          <h1 id="page-title" class="readers-title">Real NVDA, next to AEE's reader</h1>
+          <p class="lede">
+            GitHub starts a Windows computer, runs the real NVDA screen reader on the test lab page,
+            and saves exactly what NVDA said. AEE's comparison then shows its virtual reader and
+            NVDA side by side, with each difference marked.
+          </p>
+        </div>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="result-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">The result</p>
+            <h2 id="result-title">What you'll see after each run</h2>
+          </div>
+          <p>
+            Rows are matched by meaning, not by step number, and every word counts, including role
+            and state words such as “pressed” and “not checked”.
+          </p>
+        </div>
+
+        <div class="readers-run">
+          <div class="readers-run-head">
+            <strong>What each screen reader said: the test lab page</strong>
+            <span>Windows · NVDA 2026.2 · Chrome · Guidepup 0.36.3</span>
+          </div>
+          <p class="readers-sample">
+            Sample. The AEE column is AEE's real output; the NVDA column shows NVDA's usual wording
+            so you can see the layout. The first run replaces it with what NVDA actually says.
+          </p>
+          <div class="readers-scroll" role="region" aria-labelledby="sample-caption" tabindex="0">
+            <table class="readers-table">
+              <caption id="sample-caption">
+                Sample comparison of AEE's virtual reader and NVDA on the test lab page
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Row</th>
+                  <th scope="col">AEE's virtual reader</th>
+                  <th scope="col">NVDA (sample)</th>
+                  <th scope="col">What differs</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td class="say">link, Open the fixed page</td>
+                  <td class="say"><mark>banner landmark,</mark> link, Open the fixed page</td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">NVDA names the banner in the same breath.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td class="say">link, Test lab</td>
+                  <td class="say">
+                    <mark>Breadcrumb navigation landmark, list with 2 items,</mark> link, Test lab
+                  </td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">NVDA adds the list's size.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>3</td>
+                  <td class="say">heading, Workspace overview, level 1</td>
+                  <td class="say">heading, level 1, Workspace overview</td>
+                  <td>
+                    <span class="mark same">Same words</span>
+                    <span class="why">Order inside a phrase doesn't count.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>4</td>
+                  <td class="say">image, Upgrade to Team for unlimited projects</td>
+                  <td class="say"><mark>graphic</mark>, Upgrade to Team for unlimited projects</td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">NVDA says “graphic” where AEE says “image”.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>5</td>
+                  <td class="say">link</td>
+                  <td class="say">link</td>
+                  <td>
+                    <span class="mark same">Same words</span>
+                    <span class="why">The planted link with no name.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>6</td>
+                  <td class="say">button</td>
+                  <td class="say">button</td>
+                  <td>
+                    <span class="mark same">Same words</span>
+                    <span class="why">The planted button with no name.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>7</td>
+                  <td class="say">end of article</td>
+                  <td class="none">Nothing</td>
+                  <td><span class="mark only">Only AEE said this</span></td>
+                </tr>
+                <tr>
+                  <td>8</td>
+                  <td class="say">button, Toggle weekly digest, pressed</td>
+                  <td class="say"><mark>toggle</mark> button, pressed, Toggle weekly digest</td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">“pressed” is kept and compared.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>9</td>
+                  <td class="say">heading, level 2</td>
+                  <td class="say">heading, level 2</td>
+                  <td>
+                    <span class="mark same">Same words</span>
+                    <span class="why">The planted heading with no words.</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <p class="readers-note">
+          The run also saves a video of the Windows screen with NVDA's Speech Viewer open, so you
+          can watch NVDA move down the page and see each phrase as it speaks. Highlighted words are
+          the ones only one reader said.
+        </p>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="how-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">No Windows computer needed</p>
+            <h2 id="how-title">How a run works</h2>
+          </div>
+          <p>
+            GitHub lends a Windows computer for each run, free for public projects. Nobody sits at
+            it: Guidepup presses the keys and writes down what NVDA says.
+          </p>
+        </div>
+        <ol class="readers-flow">
+          <li>
+            <strong>You press Run</strong
+            ><span>In GitHub, from any device. It also runs by itself (see below).</span>
+          </li>
+          <li>
+            <strong>GitHub starts Windows</strong
+            ><span>A fresh Windows computer in GitHub's data centre, for about 15 minutes.</span>
+          </li>
+          <li>
+            <strong>NVDA reads the page</strong
+            ><span
+              >NVDA 2026.2 reads the test lab page in Chrome with the Down Arrow, the way a user
+              would. AEE's reader reads the same page.</span
+            >
+          </li>
+          <li>
+            <strong>You get the evidence</strong
+            ><span>NVDA's words, AEE's words, the side-by-side page and the video.</span>
+          </li>
+        </ol>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="choices-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Your choices</p>
+            <h2 id="choices-title">Any or all, each time you run it</h2>
+          </div>
+        </div>
+        <div class="readers-choices">
+          <figure class="readers-form">
+            <div class="readers-form-top" aria-hidden="true">
+              <strong>Run workflow</strong><span>Use workflow from: main</span>
+            </div>
+            <div class="readers-form-row" aria-hidden="true">
+              <span class="tick on">✓</span>NVDA, on a Windows computer
+            </div>
+            <div class="readers-form-row" aria-hidden="true">
+              <span class="tick"></span>VoiceOver, on a Mac computer
+            </div>
+            <div class="readers-form-row column" aria-hidden="true">
+              <span>Retries if a reader fails to start (0 to 5)</span><span class="field">2</span>
+            </div>
+            <span class="readers-form-button" aria-hidden="true">Run workflow</span>
+            <figcaption>
+              Picture of GitHub's Run workflow form: NVDA is ticked, VoiceOver is not, and retries
+              is set to 2.
+            </figcaption>
+          </figure>
+          <ul class="readers-cards">
+            <li>
+              <h3>When it runs: all three ways</h3>
+              <p>
+                By itself when a pull request changes the reader code, by itself once a week (that
+                catches a new Chrome), and whenever you press Run.
+              </p>
+            </li>
+            <li>
+              <h3>Which readers: tick any or all</h3>
+              <p>
+                NVDA is ticked by default. Tick VoiceOver as well and GitHub also starts a Mac. The
+                comparison gets a column for each reader that ran.
+              </p>
+            </li>
+            <li>
+              <h3>Retries: you pick the number</h3>
+              <p>
+                A retry never changes what a reader says, only whether the run gets going, and the
+                run page says when one was needed.
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="sources-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Precedent</p>
+            <h2 id="sources-title">Where each setup step comes from</h2>
+          </div>
+          <p>
+            Every step copies how Guidepup's own tests run screen readers on GitHub. No safety
+            setting is switched off.
+          </p>
+        </div>
+        <div class="readers-scroll" role="region" aria-labelledby="sources-caption" tabindex="0">
+          <table class="readers-table">
+            <caption id="sources-caption">
+              Each setup step and the workflow it is copied from
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Step</th>
+                <th scope="col">Copied from</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Windows computer, Node, install</td>
+                <td>
+                  Guidepup's
+                  <a
+                    href="https://github.com/guidepup/guidepup-playwright/blob/main/.github/workflows/test-nvda.yml"
+                    >test-nvda.yml</a
+                  >, plus AEE's own CI steps.
+                </td>
+              </tr>
+              <tr>
+                <td>Install NVDA</td>
+                <td>
+                  The same file. It downloads Guidepup's portable NVDA and checks its sha256
+                  fingerprint before use.
+                </td>
+              </tr>
+              <tr>
+                <td>Keep the NVDA download between runs</td>
+                <td>
+                  Guidepup's
+                  <a href="https://www.guidepup.dev/docs/getting-started/ci-cd">CI guide</a>.
+                </td>
+              </tr>
+              <tr>
+                <td>Start NVDA, move into Chrome, read</td>
+                <td>
+                  Guidepup's Playwright integration, already used for VoiceOver in
+                  <code>npm run readers:compare</code>.
+                </td>
+              </tr>
+              <tr>
+                <td>VoiceOver on a Mac, when ticked</td>
+                <td>
+                  Guidepup's
+                  <a
+                    href="https://github.com/guidepup/guidepup-playwright/blob/main/.github/workflows/test-voiceover.yml"
+                    >test-voiceover.yml</a
+                  >.
+                </td>
+              </tr>
+              <tr>
+                <td>Video of the screen</td>
+                <td>
+                  Guidepup's
+                  <a
+                    href="https://github.com/guidepup/guidepup/blob/main/.github/workflows/playwright-nvda.yml"
+                    >NVDA example</a
+                  >, which records with <code>@guidepup/record</code>.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="readers-note">
+          Only the public test lab page is read. The run takes no page address, so no private page's
+          words can reach GitHub's public logs.
+        </p>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="jaws-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Not in this plan</p>
+            <h2 id="jaws-title">JAWS</h2>
+          </div>
+        </div>
+        <div class="readers-jaws">
+          <p>
+            <strong
+              >JAWS can be driven automatically, but it needs a paid licence and a different tool
+              from Guidepup.</strong
+            >
+            Guidepup drives NVDA, VoiceOver and Orca only (<a
+              href="https://github.com/guidepup/guidepup/issues/125"
+              >guidepup#125</a
+            >
+            is still open).
+          </p>
+          <p>
+            JAWS has a built-in Remote Command Server that speaks W3C's standard protocol for
+            driving screen readers. W3C's own screen-reader test project already uses it to run JAWS
+            on GitHub's Windows computers (<a
+              href="https://github.com/bocoup/aria-at-gh-actions-helper/tree/main/JAWS"
+              >aria-at-gh-actions-helper</a
+            >), with a JAWS licence kept secret. For AEE, the first step is asking Vispero whether
+            their licence allows it.
+          </p>
+        </div>
+      </section>
+
+      <section class="section readers-section" aria-labelledby="more-title">
+        <h2 id="more-title">The research behind it</h2>
+        <p class="readers-note">
+          Every claim on this page was checked in each tool's source and docs on 17 October 2026.
+          <a
+            href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/real-screen-readers.md"
+            >Read the plan and research on GitHub</a
+          >.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>Accessibility Evidence Engine · Public preview</p>
+      <p>
+        <a
+          href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/privacy.md"
+          >Evidence privacy</a
+        >
+        ·
+        <a
+          href="https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/SECURITY.md"
+          >Security</a
+        >
+      </p>
+    </footer>
+  </body>
+</html>

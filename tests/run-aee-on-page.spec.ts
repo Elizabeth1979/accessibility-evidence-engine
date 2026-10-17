@@ -523,6 +523,57 @@ test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements"
   }
 });
 
+test("runAeeOnPage runs axe's experimental WCAG rules and blocks release on them", async ({
+  page
+}, testInfo) => {
+  // A bold paragraph styled as a title, and a data table whose cells have no headers.
+  await page.setContent(`
+    <html lang="en">
+      <head><title>Experimental rules</title></head>
+      <body>
+        <main>
+          <h1>Orders</h1>
+          <p style="font-size: 1.6em; font-weight: bold">Shipping</p>
+          <p>Parcels leave the warehouse every weekday before noon.</p>
+          <p>Each parcel is tracked from the warehouse to the door.</p>
+          <table>
+            <caption>Recent orders</caption>
+            <tr><td>Order</td><td>Item</td><td>Status</td></tr>
+            <tr><td>1001</td><td>Lamp</td><td>Sent</td></tr>
+            <tr><td>1002</td><td>Chair</td><td>Packed</td></tr>
+          </table>
+        </main>
+      </body>
+    </html>
+  `);
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-axe-experimental-output"),
+    observers: ["axe"],
+    judges: ["axe", "release"],
+    checkpointName: "axe-experimental-rules",
+    interaction: {
+      kind: "custom",
+      actor: "test",
+      target: { role: "document", name: "Experimental rules fixture" }
+    }
+  });
+
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  const axeJudgment = report.judgments.find(({ judgeId }) => judgeId === "axe");
+  expect(axeJudgment?.verdict).toBe("fail");
+  expect(axeJudgment?.summary).toContain("p-as-heading");
+  expect(axeJudgment?.summary).toContain("td-has-header");
+  expect(report.judgments).toContainEqual(
+    expect.objectContaining({ judgeId: "release", verdict: "fail" })
+  );
+});
+
 test("portable virtual reader records guide navigation without moving DOM focus", async ({
   page
 }, testInfo) => {
@@ -713,10 +764,11 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
 }, testInfo) => {
   const fixtureServer = await startHtmlServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html" });
+    // A page with no stylesheet at all leaves axe's css-orientation-lock "needs review".
     response.end(`
       <!doctype html>
       <html lang="en">
-        <head><title>Lane fixture</title></head>
+        <head><title>Lane fixture</title><style>main { margin: 1rem; }</style></head>
         <body><main><h1>Invoices</h1><button type="button">Pay invoice</button></main></body>
       </html>
     `);
@@ -958,7 +1010,7 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
         <head><title>Activation fixture</title></head>
         <body>
           <button id="open" type="button">Open details</button>
-          <p id="result">Closed</p>
+          <p id="result" role="status">Closed</p>
           <script>
             document.querySelector('#open').addEventListener('click', () => {
               document.querySelector('#result').textContent = 'Open';
@@ -1009,7 +1061,7 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
       expect.objectContaining({
         judgeId: "keyboard",
         verdict: "pass",
-        summary: expect.stringContaining("observable activation signals")
+        summary: expect.stringContaining('a live region announced "Open" (polite)')
       })
     );
   } finally {
@@ -1017,182 +1069,133 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
   }
 });
 
-test("runAeeOnPage passes keyboard judging when enter activates a focused button", async ({
-  page
-}, testInfo) => {
-  await page.setContent(`
-    <main>
-      <button id="save" type="button">Save</button>
-      <p id="status">Idle</p>
-    </main>
-  `);
-  await page.locator("#save").evaluate((button) => {
-    button.addEventListener("click", () => {
-      const status = document.querySelector("#status");
+/**
+ * The presses audit item A3 named, in Chrome. Each is judged from what the accessibility tree and
+ * Guidepup's reader report; the markup diff is recorded beside it and decides nothing.
+ */
+const pressScenarios: Array<{
+  title: string;
+  html: string;
+  script?: () => void;
+  key: "Enter" | "Space";
+  target: { role: string; name: string };
+  verdict: "pass" | "unknown";
+  summary: string;
+  markupChanged: boolean;
+}> = [
+  {
+    title:
+      "Space on a native checkbox passes from its checked state, though the markup is unchanged",
+    html: `<main><label><input id="pressed" type="checkbox"> Agree</label></main>`,
+    key: "Space",
+    target: { role: "checkbox", name: "Agree" },
+    verdict: "pass",
+    summary: 'checkbox "Agree" checked changed from false to true',
+    markupChanged: false
+  },
+  {
+    title:
+      "Enter on an aria-expanded toggle passes from its expanded state and the panel it controls",
+    html: `<main>
+      <button id="pressed" type="button" aria-expanded="false" aria-controls="details">More</button>
+      <div id="details" role="region" aria-label="Details" hidden>Shipping takes two days.</div>
+    </main>`,
+    script: () => {
+      const button = document.querySelector("#pressed")!;
+      button.addEventListener("click", () => {
+        button.setAttribute("aria-expanded", "true");
+        (document.querySelector("#details") as HTMLElement).hidden = false;
+      });
+    },
+    key: "Enter",
+    target: { role: "button", name: "More" },
+    verdict: "pass",
+    summary:
+      'button "More" expanded changed from false to true; region "Details" appeared, which button "More" controls',
+    markupChanged: true
+  },
+  {
+    title:
+      "Enter on a button whose only effect is a polite status message passes from the announcement",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <p role="status" id="status"></p>
+    </main>`,
+    script: () => {
+      document.querySelector("#pressed")!.addEventListener("click", () => {
+        document.querySelector("#status")!.textContent = "Saved";
+      });
+    },
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "pass",
+    summary: 'a live region announced "Saved" (polite)',
+    markupChanged: true
+  },
+  {
+    title: "Enter on a dead button while a clock elsewhere ticks is not a pass",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <p id="clock">0</p>
+    </main>`,
+    script: () => {
+      let ticks = 0;
+      setInterval(() => {
+        document.querySelector("#clock")!.textContent = String((ticks += 1));
+      }, 20);
+    },
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "unknown",
+    summary: "so whether the press caused it cannot be told",
+    markupChanged: true
+  }
+];
 
-      if (status) {
-        status.textContent = "Saved";
+for (const scenario of pressScenarios) {
+  test(`runAeeOnPage: ${scenario.title}`, async ({ page }, testInfo) => {
+    await page.setContent(scenario.html);
+    if (scenario.script) await page.evaluate(scenario.script);
+    await page.focus("#pressed");
+
+    const result = await runAeeOnPage({
+      page,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("aee-press-response-output"),
+      observers: ["focus", "dom", "accessibility-tree", "virtual-screen-reader"],
+      virtualScreenReader: createPortableVirtualScreenReader(page),
+      judges: ["keyboard", "change-response"],
+      interaction: {
+        kind: scenario.key === "Enter" ? "enter" : "space",
+        actor: "test",
+        target: scenario.target
+      },
+      async performInteraction({ page: interactionPage }) {
+        await interactionPage.keyboard.press(scenario.key);
       }
     });
-  });
-  await page.focus("#save");
 
-  const outputBaseDir = testInfo.outputPath("aee-enter-activation-output");
-  const result = await runAeeOnPage({
-    page,
-    projectRoot: process.cwd(),
-    outputDir: outputBaseDir,
-    observers: ["focus", "dom"],
-    judges: ["keyboard", "change-response", "release"],
-    checkpointName: "keyboard-enter-activation",
-    interaction: {
-      kind: "enter",
-      actor: "test",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    },
-    async performInteraction({ page: interactionPage }) {
-      await interactionPage.keyboard.press("Enter");
+    const report = JSON.parse(
+      await readFile(
+        result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"))!,
+        "utf8"
+      )
+    ) as JsonReport;
+    expect(
+      report.records.find(({ observerId, phase }) => observerId === "dom" && phase === "after")
+        ?.meta?.changed
+    ).toBe(scenario.markupChanged);
+    for (const judgeId of ["keyboard", "change-response"]) {
+      expect(report.judgments).toContainEqual(
+        expect.objectContaining({
+          judgeId,
+          verdict: scenario.verdict,
+          summary: expect.stringContaining(scenario.summary)
+        })
+      );
     }
   });
-
-  expect(result.reporterFiles).toHaveLength(2);
-  await expect(page.locator("#status")).toHaveText("Saved");
-  await expect(page.locator("#save")).toBeFocused();
-
-  const jsonReportPath = result.reporterFiles.find((filePath) =>
-    filePath.endsWith("aee-report.json")
-  );
-  expect(jsonReportPath).toBeTruthy();
-
-  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
-  expect(report.run.status).toBe("completed");
-  expect(report.run.results).toEqual({
-    pass: 3,
-    fail: 0,
-    unknown: 0
-  });
-  expect(report.records).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        meta: expect.objectContaining({
-          changed: true,
-          previousByteLength: expect.any(Number)
-        })
-      }),
-      expect.objectContaining({
-        observerId: "focus",
-        phase: "after",
-        status: "ok"
-      })
-    ])
-  );
-  expect(report.judgments).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        judgeId: "keyboard",
-        verdict: "pass",
-        summary: expect.stringContaining("DOM changed")
-      }),
-      expect.objectContaining({
-        judgeId: "change-response",
-        verdict: "pass",
-        summary: expect.stringContaining("enter interaction")
-      }),
-      expect.objectContaining({
-        judgeId: "release",
-        verdict: "pass"
-      })
-    ])
-  );
-});
-
-test("runAeeOnPage passes change-response judging when a click updates the DOM", async ({
-  page
-}, testInfo) => {
-  await page.setContent(`
-    <main>
-      <button id="save" type="button">Save</button>
-      <p id="status">Idle</p>
-    </main>
-  `);
-  await page.locator("#save").evaluate((button) => {
-    button.addEventListener("click", () => {
-      const status = document.querySelector("#status");
-
-      if (status) {
-        status.textContent = "Saved";
-      }
-    });
-  });
-
-  const outputBaseDir = testInfo.outputPath("aee-click-response-output");
-  const result = await runAeeOnPage({
-    page,
-    projectRoot: process.cwd(),
-    outputDir: outputBaseDir,
-    observers: ["dom"],
-    judges: ["change-response", "release"],
-    checkpointName: "click-response",
-    interaction: {
-      kind: "click",
-      actor: "test",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    },
-    async performInteraction({ page: interactionPage }) {
-      await interactionPage.click("#save");
-    }
-  });
-
-  expect(result.reporterFiles).toHaveLength(2);
-  await expect(page.locator("#status")).toHaveText("Saved");
-
-  const jsonReportPath = result.reporterFiles.find((filePath) =>
-    filePath.endsWith("aee-report.json")
-  );
-  expect(jsonReportPath).toBeTruthy();
-
-  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
-  expect(report.run.status).toBe("completed");
-  expect(report.run.results).toEqual({
-    pass: 2,
-    fail: 0,
-    unknown: 0
-  });
-  expect(report.records).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        meta: expect.objectContaining({
-          changed: true
-        })
-      })
-    ])
-  );
-  expect(report.judgments).toEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        judgeId: "change-response",
-        verdict: "pass",
-        summary: expect.stringContaining("DOM changed")
-      }),
-      expect.objectContaining({
-        judgeId: "release",
-        verdict: "pass"
-      })
-    ])
-  );
-});
+}
 
 test("runAeeOnPage captures redacted network activity around an interaction", async ({
   page
@@ -1363,7 +1366,7 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
     page,
     projectRoot: process.cwd(),
     outputDir: outputBaseDir,
-    observers: ["dom"],
+    observers: ["dom", "accessibility-tree"],
     judges: ["change-response", "release"],
     checkpointName: "click-no-response",
     interaction: {
@@ -1425,7 +1428,7 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
     page,
     projectRoot: process.cwd(),
     outputDir: outputBaseDir,
-    observers: ["focus", "dom"],
+    observers: ["focus", "dom", "accessibility-tree"],
     judges: ["keyboard", "change-response", "release"],
     checkpointName: "keyboard-space-no-activation",
     interaction: {

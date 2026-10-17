@@ -377,6 +377,81 @@ test("validateSchema rejects a virtual transcript that claims physical AT fideli
   assert.match(result.errors.join(" "), /must be equal to constant/);
 });
 
+test("validateSchema checks a transcript's live-region announcements", () => {
+  const transcript = (politeness: string) => ({
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.3.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.32.1",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-13T00:00:00.000Z",
+    entries: [],
+    liveRegionAnnouncements: [
+      { sequence: 1, timestamp: "2026-09-13T00:00:00.000Z", politeness, text: "Saved" }
+    ]
+  });
+
+  const valid = validateSchema("virtualScreenReaderTranscript", transcript("polite"));
+  assert.equal(valid.valid, true, valid.errors.join("; "));
+  // aria-live="off" is never announced, so it is never recorded as an announcement.
+  assert.equal(validateSchema("virtualScreenReaderTranscript", transcript("off")).valid, false);
+});
+
+test("validateSchema checks the accessibility changes an accessibility-tree record carries", () => {
+  const record = (kind: string) => ({
+    id: "accessibility-tree:after:1",
+    runId: "run-1",
+    observerId: "accessibility-tree",
+    phase: "after",
+    status: "ok",
+    timestamp: "2026-09-13T00:00:00.000Z",
+    meta: {
+      accessibilityChanges: {
+        focusedBefore: { nodeId: 4, role: "checkbox", name: "Agree" },
+        changes: [
+          {
+            nodeId: 4,
+            role: "checkbox",
+            name: "Agree",
+            kind,
+            state: "checked",
+            before: "false",
+            after: "true"
+          }
+        ],
+        truncated: false
+      }
+    }
+  });
+
+  const valid = validateSchema("evidenceRecord", record("state"));
+  assert.equal(valid.valid, true, valid.errors.join("; "));
+  const invalid = validateSchema("evidenceRecord", record("moved"));
+  assert.equal(invalid.valid, false);
+  assert.match(invalid.errors.join(" "), /accessibilityChanges\/changes\/0\/kind/);
+});
+
+test("validateSchema checks the new live-region announcements a reader record carries", () => {
+  const result = validateSchema("evidenceRecord", {
+    id: "virtual-screen-reader:after:1",
+    runId: "run-1",
+    observerId: "virtual-screen-reader",
+    phase: "after",
+    status: "ok",
+    timestamp: "2026-09-13T00:00:00.000Z",
+    meta: { newLiveRegionAnnouncements: [{ politeness: "polite", text: "Saved" }] }
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(
+    result.errors.join(" "),
+    /newLiveRegionAnnouncements\/0 is missing required property "sequence"/
+  );
+});
+
 test("validateSchema accepts an isolated virtual screen-reader lane", () => {
   const entry = {
     sequence: 1,

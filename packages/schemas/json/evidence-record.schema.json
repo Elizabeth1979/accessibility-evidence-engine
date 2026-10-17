@@ -89,5 +89,77 @@
       "type": "object"
     }
   },
-  "additionalProperties": false
+  "allOf": [
+    {
+      "if": {
+        "required": ["observerId"],
+        "properties": { "observerId": { "const": "accessibility-tree" } }
+      },
+      "then": {
+        "properties": {
+          "meta": {
+            "properties": { "accessibilityChanges": { "$ref": "#/$defs/accessibilityChanges" } }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["observerId"],
+        "properties": { "observerId": { "const": "virtual-screen-reader" } }
+      },
+      "then": {
+        "properties": {
+          "meta": {
+            "properties": {
+              "newLiveRegionAnnouncements": {
+                "type": "array",
+                "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "accessibilityNodeRef": {
+      "type": "object",
+      "required": ["nodeId", "role"],
+      "properties": {
+        "nodeId": { "type": "integer" },
+        "role": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "accessibilityChange": {
+      "type": "object",
+      "required": ["nodeId", "role", "kind"],
+      "properties": {
+        "nodeId": { "type": "integer" },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": { "enum": ["state", "shown", "hidden", "name"] },
+        "state": { "enum": ["checked", "expanded", "pressed", "selected", "value"] },
+        "before": { "type": ["string", "number", "boolean", "null"] },
+        "after": { "type": ["string", "number", "boolean", "null"] },
+        "controlledBy": { "type": "array", "items": { "$ref": "#/$defs/accessibilityNodeRef" } }
+      },
+      "additionalProperties": false
+    },
+    "accessibilityChanges": {
+      "description": "What changed in the browser's accessibility tree between the snapshots before and after the interaction.",
+      "type": "object",
+      "required": ["changes", "truncated"],
+      "properties": {
+        "focusedBefore": { "$ref": "#/$defs/accessibilityNodeRef" },
+        "focusedAfter": { "$ref": "#/$defs/accessibilityNodeRef" },
+        "changes": { "type": "array", "items": { "$ref": "#/$defs/accessibilityChange" } },
+        "truncated": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    }
+  }
 }
