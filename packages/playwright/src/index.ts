@@ -1522,12 +1522,17 @@ export function toSafeId(text: string, fallback = "item"): string {
   return (id.endsWith("-") ? id.slice(0, -1) : id) || fallback;
 }
 
+/** Who loads the page a checkpoint lane observes: a Playwright test, or AEE opening a start page. */
+export type PageCheckpointDriver = "playwright-test" | "page-load";
+
 export interface PageCheckpointLaneOptions<TPage extends PlaywrightPageLike> {
   /** The page a test is driving; checkpoints observe it and never act on it. */
   page: TPage;
   projectRoot: string;
   outputDir?: string;
   laneId?: string;
+  /** Defaults to a Playwright test. */
+  driver?: PageCheckpointDriver;
 }
 
 export interface PageCheckpointStep {
@@ -1542,17 +1547,20 @@ export interface PageCheckpointStep {
   artifactFiles: string[];
 }
 
+export interface PageCheckpointLaneResult {
+  laneId: string;
+  driver: PageCheckpointDriver;
+  steps: PageCheckpointStep[];
+  diagnostics: string[];
+  manifestFile: string;
+}
+
 export interface PageCheckpointLane {
   laneId: string;
   /** Captures the page as it is now; checkpoints run one at a time, in the order asked. */
   checkpoint(name: string): Promise<void>;
   /** Waits for every checkpoint, then writes the lane's evidence manifest. */
-  finish(): Promise<{
-    laneId: string;
-    steps: PageCheckpointStep[];
-    diagnostics: string[];
-    manifestFile: string;
-  }>;
+  finish(): Promise<PageCheckpointLaneResult>;
 }
 
 /**
@@ -1569,9 +1577,10 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
   const outputBase = options.outputDir ?? "aee-output";
   const laneOutputDir = path.resolve(options.projectRoot, outputBase, laneId);
   const runOutputDir = path.join(outputBase, laneId);
+  const driver = options.driver ?? "playwright-test";
   const manifestLane: EvidenceManifestLaneSource = {
     id: laneId,
-    driver: "playwright-test",
+    driver,
     status: "completed",
     actions: []
   };
@@ -1652,9 +1661,72 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
         rootDir: laneOutputDir,
         lanes: [manifestLane]
       });
-      return { laneId, steps, diagnostics, manifestFile };
+      return { laneId, driver, steps, diagnostics, manifestFile };
     }
   };
+}
+
+export interface StartPageLanePage extends PlaywrightPageLike {
+  goto(url: string, options?: { waitUntil?: "domcontentloaded" }): Promise<unknown>;
+}
+
+export interface StartPageLaneContext<
+  TPage extends StartPageLanePage
+> extends KeyboardPointerSweepLaneRouter {
+  newPage(): Promise<TPage>;
+  close(): Promise<void>;
+}
+
+export interface StartPageLaneBrowser<TPage extends StartPageLanePage> {
+  newContext(options?: LaneBrowserContextOptions): Promise<StartPageLaneContext<TPage>>;
+}
+
+export interface RunStartPageLaneOptions<TPage extends StartPageLanePage> {
+  browser: StartPageLaneBrowser<TPage>;
+  projectRoot: string;
+  targetUrl: string;
+  allowedOrigins: string[];
+  outputDir?: string;
+  laneId?: string;
+}
+
+export interface StartPageLaneResult extends PageCheckpointLaneResult {
+  /** Navigations the lane stopped because they left the allowed origins. */
+  blockedNavigations: string[];
+}
+
+/**
+ * Opens a start page in a browser context of its own and checkpoints it once, before anything acts
+ * on it: the evidence and pinned axe rules a scenario's plan runs on every journey's start page,
+ * whatever else the journey declares. Every navigation outside the allowed origins is stopped.
+ */
+export async function runStartPageLane<TPage extends StartPageLanePage>(
+  options: RunStartPageLaneOptions<TPage>
+): Promise<StartPageLaneResult> {
+  const laneId = options.laneId ?? `start-page-${Date.now()}`;
+  assertSafeRunId(laneId);
+  const allowedOrigins = normalizeAllowedOrigins(options.allowedOrigins, "start-page lane");
+  assertAllowedOrigin(options.targetUrl, allowedOrigins, "Start-page lane");
+  const blockedNavigations: string[] = [];
+  const context = await options.browser.newContext();
+  try {
+    await context.route("**/*", navigationGuard(allowedOrigins, blockedNavigations));
+    const page = await context.newPage();
+    // Started before the load, so the checkpoint waits for the data the page loads.
+    const lane = startPageCheckpointLane({
+      page,
+      projectRoot: options.projectRoot,
+      outputDir: options.outputDir,
+      laneId,
+      driver: "page-load"
+    });
+    await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
+    assertAllowedOrigin(page.url(), allowedOrigins, "Start-page lane");
+    await lane.checkpoint("start page");
+    return { ...(await lane.finish()), blockedNavigations };
+  } finally {
+    await context.close();
+  }
 }
 
 /**

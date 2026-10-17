@@ -31,7 +31,7 @@ async function switchLayersOn(page: Page) {
     await expect(toggle).not.toBeChecked();
     await toggle.focus();
     await page.keyboard.press("Space");
-    await expect(panel.locator(`section[data-layer="${layer}"]`)).toBeVisible();
+    await expect(panel.locator(`section[data-layer="${layer}"]`).first()).toBeVisible();
   }
   // Every item with a position has exactly one outline on the page.
   for (const item of await panel.locator(".marker-item[data-marker]").all()) {
@@ -41,8 +41,16 @@ async function switchLayersOn(page: Page) {
   return panel;
 }
 
+/**
+ * A layer's items on the first picture that has the layer. Headings and images are drawn on every
+ * picture they were measured with: the page as it loaded, and the page as the reader read it.
+ */
 const items = (panel: ReturnType<Page["locator"]>, layer: (typeof layers)[number]) =>
-  panel.locator(`section[data-layer="${layer}"] li`);
+  panel
+    .locator(".page-state")
+    .filter({ has: panel.page().locator(`section[data-layer="${layer}"]`) })
+    .first()
+    .locator(`section[data-layer="${layer}"] li`);
 
 for (const [device, width] of [
   ["desktop", 1280],

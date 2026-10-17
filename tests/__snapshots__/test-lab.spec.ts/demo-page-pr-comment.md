@@ -12,51 +12,6 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 ### Blocking fixes (8)
 
 <details>
-<summary><strong>Works with a mouse only</strong> · WCAG 2.1.1 · 1 element</summary>
-
-**Problem:** Keyboard users cannot reach or press it.
-
-**Elements:**
-
-- `Shows “Export report”, no accessible name` at `#export-report`
-
-**Fix:** Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space.
-
-**Pattern:** [focus-management](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/focus-management.instructions.md) (a11y-skills)
-
-</details>
-
-<details>
-<summary><strong>Shown on mouse hover only</strong> · WCAG 1.4.13 · 1 element</summary>
-
-**Problem:** Keyboard and touch-screen users never see this content.
-
-**Elements:**
-
-- `Team plan · 5 seats · renews on 1 March` at `#plan-details`
-
-**Fix:** Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element.
-
-**Pattern:** [tooltip](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/tooltip.instructions.md) (a11y-skills)
-
-</details>
-
-<details>
-<summary><strong>Focus is lost after an action</strong> · WCAG 2.4.3 · 1 element</summary>
-
-**Problem:** Keyboard and screen-reader users lose their place and have to start again from the top of the page.
-
-**Elements:**
-
-- `Archive project` at `#archive-project`
-
-**Fix:** After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control.
-
-**Pattern:** [focus-management](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/focus-management.instructions.md) (a11y-skills)
-
-</details>
-
-<details>
 <summary><strong>Buttons must have discernible text</strong> · WCAG 4.1.2 · 1 element</summary>
 
 **Problem:** The confirmed rule failure can prevent people from understanding or operating the tested page as intended.
@@ -131,7 +86,67 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 
 </details>
 
+<details>
+<summary><strong>Works with a mouse only</strong> · WCAG 2.1.1 · 1 element</summary>
+
+**Problem:** Keyboard users cannot reach or press it.
+
+**Elements:**
+
+- `Shows “Export report”, no accessible name` at `#export-report`
+
+**Fix:** Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space.
+
+**Pattern:** [focus-management](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/focus-management.instructions.md) (a11y-skills)
+
+</details>
+
+<details>
+<summary><strong>Shown on mouse hover only</strong> · WCAG 1.4.13 · 1 element</summary>
+
+**Problem:** Keyboard and touch-screen users never see this content.
+
+**Elements:**
+
+- `Team plan · 5 seats · renews on 1 March` at `#plan-details`
+
+**Fix:** Show the same content when its trigger gets keyboard focus, or put it behind a button that opens it, such as a details element.
+
+**Pattern:** [tooltip](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/tooltip.instructions.md) (a11y-skills)
+
+</details>
+
+<details>
+<summary><strong>Focus is lost after an action</strong> · WCAG 2.4.3 · 1 element</summary>
+
+**Problem:** Keyboard and screen-reader users lose their place and have to start again from the top of the page.
+
+**Elements:**
+
+- `Archive project` at `#archive-project`
+
+**Fix:** After the action, move focus to the element that replaces the one that disappeared, or to the next sensible control.
+
+**Pattern:** [focus-management](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/focus-management.instructions.md) (a11y-skills)
+
+</details>
+
 ### Advisory: reported, never blocks release (5)
+
+<details>
+<summary><strong>Headings should not be empty</strong> · 1 element</summary>
+
+**Problem:** A best-practice result: it can make the page harder to use, but it is not a WCAG failure and does not block release.
+
+**Elements:**
+
+- `Usage heading` at `#usage-heading`
+
+**Fix:** Headings should not be empty. Fix every affected element listed here, then rerun the same authored journey.
+
+**Pattern:** [headings](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/headings.instructions.md) (a11y-skills)
+
+</details>
 
 <details>
 <summary><strong>Told apart by colour alone</strong> · WCAG 1.4.1 · 1 element</summary>
@@ -190,21 +205,6 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 **Fix:** Show what failed and what to do next, inside a live region that is on the page before the failure: role=&quot;alert&quot; for an error that needs attention now.
 
 **Pattern:** [live-regions](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/live-regions.instructions.md) (a11y-skills)
-
-</details>
-
-<details>
-<summary><strong>Headings should not be empty</strong> · 1 element</summary>
-
-**Problem:** A best-practice result: it can make the page harder to use, but it is not a WCAG failure and does not block release.
-
-**Elements:**
-
-- `Usage heading` at `#usage-heading`
-
-**Fix:** Headings should not be empty. Fix every affected element listed here, then rerun the same authored journey.
-
-**Pattern:** [headings](https://github.com/Elizabeth1979/a11y-skills/blob/e0dfbeb50b453f9fd87423a1c7d4d29c9ccc4c15/patterns/headings.instructions.md) (a11y-skills)
 
 </details>
 
