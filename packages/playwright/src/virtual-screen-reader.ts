@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
 
 import {
   focusPlace,
@@ -21,14 +20,13 @@ import {
   type CapturedDom,
   type CapturedElement,
   type CdpContext,
-  type CdpSession,
   type DomNodeRef,
   type FramedPage,
   type PageFrame,
   type PageSessions
 } from "./accessibility-tree";
 import { focusPath, frameHeldAt } from "./dom-focus";
-import { callOn, documentOf, nodeOf } from "./frame-documents";
+import { GUIDEPUP_SCRIPT, callOn, documentOf, loadPageScript, nodeOf } from "./frame-documents";
 
 export type VirtualScreenReaderCommand =
   | "start"
@@ -259,8 +257,7 @@ const START_OF_DOCUMENT = "document";
 /** More single steps than any page holds; a jump that finds nothing stops here. */
 const MAX_STEPS = 10_000;
 
-const BUNDLE_FILE = path.join(__dirname, "guidepup-virtual-screen-reader.js");
-const BUNDLE_GLOBAL = "__aeeGuidepupVirtualScreenReader";
+const BUNDLE_GLOBAL = GUIDEPUP_SCRIPT.global;
 const SPEECH_ENGINE = `@guidepup/virtual-screen-reader ${
   (
     JSON.parse(
@@ -268,7 +265,6 @@ const SPEECH_ENGINE = `@guidepup/virtual-screen-reader ${
     ) as { version: string }
   ).version
 }`;
-let bundleSource: string | undefined;
 
 /** A step of Guidepup's reader in one frame's document. */
 type Action = "start" | "end" | "next" | "previous" | "current";
@@ -388,7 +384,7 @@ export function createPortableVirtualScreenReader(
         const top = mainFrameOf(reading.page);
         const document = await reading.document(top);
         if (!document) return;
-        await loadGuidepup(top.session, document);
+        await loadPageScript(top.session, document, GUIDEPUP_SCRIPT);
         await callOn(
           top.session,
           document,
@@ -633,7 +629,7 @@ const READ_STEP = `async function (action) {
 async function guidepup(reading: Reading, frame: PageFrame, action: Action): Promise<Position> {
   const document = await reading.document(frame);
   if (!document) return { frameId: frame.frameId, phrase: "", isText: false };
-  await loadGuidepup(frame.session, document);
+  await loadPageScript(frame.session, document, GUIDEPUP_SCRIPT);
   const position = await callOn<{
     phrase: string;
     isText: boolean;
@@ -651,23 +647,6 @@ async function guidepup(reading: Reading, frame: PageFrame, action: Action): Pro
     ...(text ? { text } : {}),
     ...(backendNodeId === undefined ? {} : { backendNodeId })
   };
-}
-
-/** Loads Guidepup's reader into a frame's document when it does not have it (fresh, or navigated). */
-async function loadGuidepup(cdp: CdpSession, document: string): Promise<void> {
-  const loaded = await callOn<boolean>(
-    cdp,
-    document,
-    `function () { return typeof globalThis.${BUNDLE_GLOBAL} === "object"; }`
-  );
-  if (loaded) return;
-  bundleSource ??= readFileSync(BUNDLE_FILE, "utf8");
-  // The bundle declares its global with \`var\`, which a function body keeps to itself.
-  await callOn(
-    cdp,
-    document,
-    `function () {\n${bundleSource}\nglobalThis.${BUNDLE_GLOBAL} = ${BUNDLE_GLOBAL};\n}`
-  );
 }
 
 /**
