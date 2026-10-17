@@ -203,7 +203,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     const leftAPage = loaded || page.url() !== "about:blank";
     const passed = testInfo.status === testInfo.expectedStatus && !page.isClosed() && leftAPage;
     if (passed) await checkpoint("test end");
-    const { laneId, steps, diagnostics, manifestFile } = await lane.finish();
+    const { laneId, driver, steps, diagnostics, manifestFile } = await lane.finish();
     if (steps.length === 0 && diagnostics.length === 0) return;
     const observed = presses.result();
 
@@ -230,7 +230,7 @@ export const test = base.extend<AeeTestFixtures & AeeTestOptions>({
     await collectPageCheckpointActions(
       assessmentDir,
       "test",
-      { laneId, steps },
+      { laneId, driver, steps },
       assessment.actions,
       assessment.findings
     );
