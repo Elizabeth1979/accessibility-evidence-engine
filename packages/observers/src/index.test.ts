@@ -10,6 +10,7 @@ import {
   createNetworkObserver,
   createVirtualScreenReaderObserver,
   createVisualObserver,
+  type AxeAnalysisOptions,
   type RuntimeObserverContext
 } from "./index";
 
@@ -259,7 +260,7 @@ test("createVisualObserver captures separate viewport and full-page artifacts", 
 
 test("createAxeObserver preserves complete pinned axe output", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-axe-"));
-  let requestedTags: string[] = [];
+  let requested: AxeAnalysisOptions | undefined;
   const rawResult = {
     testEngine: { name: "axe-core", version: "4.13.0" },
     testRunner: { name: "axe" },
@@ -288,7 +289,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
           return "<button></button>";
         },
         async runAxeAnalysis(options) {
-          requestedTags = options.tags;
+          requested = options;
           return rawResult;
         }
       }
@@ -297,19 +298,19 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     const [record] = await observer.captureBefore!(context);
     const artifactPath = record.artifacts?.[0]?.path;
 
-    assert.deepEqual(requestedTags, [
-      "wcag2a",
-      "wcag2aa",
-      "wcag21a",
-      "wcag21aa",
-      "wcag22a",
-      "wcag22aa",
-      "best-practice"
-    ]);
+    const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+    assert.deepEqual(requested, {
+      tags: [...wcagTags, "best-practice"],
+      experimentalTags: wcagTags
+    });
     assert.equal(record.status, "ok");
     assert.deepEqual(record.meta, {
       engineVersion: "4.13.0",
-      ruleSelection: { type: "tag", values: requestedTags },
+      ruleSelection: {
+        type: "tag",
+        values: requested!.tags,
+        experimentalTags: requested!.experimentalTags
+      },
       explicitlyDisabledRuleIds: [],
       violations: 1,
       passes: 1,

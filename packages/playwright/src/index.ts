@@ -4,6 +4,7 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import AxeBuilder from "@axe-core/playwright";
+import axe from "axe-core";
 import {
   executeRun,
   resolvePolicyConfig,
@@ -19,7 +20,11 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 import { createDefaultJudgePlugins } from "@aee/judges";
-import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
+import {
+  createDefaultObserverPlugins,
+  type AxeAnalysisOptions,
+  type RuntimeObserverContext
+} from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema, conceptForAxeRule } from "@aee/schemas";
 
@@ -83,7 +88,7 @@ export interface PlaywrightPageLike {
   snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
   snapshotFocusTarget?(options?: unknown): Promise<unknown>;
   snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
-  runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+  runAxeAnalysis?(options: AxeAnalysisOptions): Promise<unknown>;
   setupNetworkTracking?(options?: unknown): Promise<void>;
   snapshotNetworkLog?(options?: unknown): Promise<unknown>;
   teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -2384,12 +2389,14 @@ async function createObserverPage(
         }
       : undefined;
   const runAxeAnalysis = customRunAxeAnalysis
-    ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
+    ? async (options: AxeAnalysisOptions) => customRunAxeAnalysis(options)
     : evaluatablePage.evaluate
-      ? async (options: { tags: string[] }) => {
+      ? async (options: AxeAnalysisOptions) => {
+          // `options()` replaces axe's run options, so it goes before `withTags()` adds the tags.
           const axeResult = await new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
+            .options({ rules: enableExperimentalAxeRules(options.experimentalTags ?? []) })
             .withTags(options.tags)
             .analyze();
           // Contrast axe could not decide over an image or a gradient is measured from the pixels.
@@ -2556,6 +2563,22 @@ function byTargetKey<Result>(
       const result = results[index];
       return result ? [[key, result] as const] : [];
     })
+  );
+}
+
+/**
+ * axe runs no experimental rule unless it is enabled by id (axe-core API.md, "Example 3"). The ids
+ * come from the same axe-core release that @axe-core/playwright injects, so a rule axe adds or
+ * graduates is picked up without a hand-kept list.
+ */
+export function enableExperimentalAxeRules(
+  tags: readonly string[]
+): Record<string, { enabled: true }> {
+  return Object.fromEntries(
+    axe
+      .getRules(["experimental"])
+      .filter((rule) => rule.tags.some((tag) => tags.includes(tag)))
+      .map((rule) => [rule.ruleId, { enabled: true }])
   );
 }
 
