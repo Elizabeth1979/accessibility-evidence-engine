@@ -300,8 +300,13 @@ The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where 
 `npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
 reads the page with AEE's virtual reader and with the real one, driven by
 [Guidepup](https://github.com/guidepup/guidepup). It writes the two transcripts side by side to
-`test-results/readers/comparison.md`, with how much of what the real reader says the virtual reader
-also says. The
+`test-results/readers/comparison.md`. Using [jsdiff](https://github.com/kpdecker/jsdiff), it lines
+the two transcripts up both ways, phrase by phrase, and lists what each reader said that the other
+did not, word for word. Every word counts, including role and state words such as "button", "link",
+"not checked" and "expanded"; only the order of words within a phrase does not. The counts say how
+the two differ, not which one is right. The file also says why the real reader's walk ended: it
+went silent, it repeated itself at the end of the page, or it reached the step limit, in which case
+it may not have read the whole page. The
 real reader takes over the machine for about ten minutes, since each step waits until it has
 finished speaking, so leave the keyboard and mouse alone. Where it cannot start, the command fails
 with Guidepup's reason and writes nothing.
