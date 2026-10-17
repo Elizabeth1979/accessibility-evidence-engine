@@ -65,6 +65,22 @@
         "role": { "type": "string" },
         "name": { "type": "string" },
         "nodePath": { "type": "string", "minLength": 1 },
+        "frameId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The frame whose document holds the element."
+        },
+        "framePath": {
+          "description": "The <iframe> elements the element is inside, outermost first, each as its nodePath in the document that holds it. Absent in the top document.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "backendDOMNodeId": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The DOM node, as the browser session numbers it in its frame's process; recorded for the element with focus in each document. With frameId it joins the element to accessibilityFocus and to the frame's accessibility tree."
+        },
         "focusVisible": { "type": "boolean" },
         "focusIndicator": {
           "type": "object",
