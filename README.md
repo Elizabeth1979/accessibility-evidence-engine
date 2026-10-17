@@ -301,8 +301,7 @@ The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where 
 reads the page with AEE's virtual reader and with the real one, driven by
 [Guidepup](https://github.com/guidepup/guidepup). It writes the two transcripts side by side to
 `test-results/readers/comparison.md`, with how much of what the real reader says the virtual reader
-also says. A run on macOS 27 is kept in
-[`docs/examples/reader-comparison-voiceover.md`](docs/examples/reader-comparison-voiceover.md). The
+also says. The
 real reader takes over the machine for about ten minutes, since each step waits until it has
 finished speaking, so leave the keyboard and mouse alone. Where it cannot start, the command fails
 with Guidepup's reason and writes nothing.
