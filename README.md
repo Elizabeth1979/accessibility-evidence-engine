@@ -32,7 +32,7 @@ See [Architecture](docs/architecture.md) and [Observer lifecycle](docs/observer-
 
 ## Quick start
 
-AEE supports maintained Node.js releases beginning with Node 22.13. Node 24 LTS is the recommended development version and is recorded in `.nvmrc`.
+AEE supports Node.js 22.18 or later on Node 22, and 24.11 or later on Node 24, the same range as Babel 8, which `aee fix` uses to read source files. Node 24 LTS is the recommended development version and is recorded in `.nvmrc`.
 
 Clone the repository, then install and build it:
 

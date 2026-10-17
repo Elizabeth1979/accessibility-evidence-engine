@@ -25,6 +25,7 @@ import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
   announcedWithoutName,
+  inputComparisonLaneId,
   runInputComparison,
   runKeyboardPointerSweepLane,
   runStartPageLane,
@@ -70,8 +71,13 @@ import {
 } from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
+  comparisonLaneId,
   compileScenarioPlan,
   loadScenario,
+  observedPressesLaneId,
+  readerLaneId,
+  startPageLaneId,
+  sweepLaneId,
   type AeeScenario,
   type ScenarioPlan,
   type ScenarioProfile
@@ -577,7 +583,7 @@ export async function executeScenario(
       const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
       const allowedOrigins = plan.safety.allowedOrigins;
       // The plan's initial capture and pinned axe rules, on the start page before anything acts.
-      const startLaneId = `${journey.id}-start-page`;
+      const startLaneId = startPageLaneId(journey.id);
       await runLane(startLaneId, async () => {
         const lane = await runStartPageLane({
           browser: browser as unknown as StartPageLaneBrowser<Page>,
@@ -606,7 +612,7 @@ export async function executeScenario(
       });
 
       for (const comparison of journey.interactionComparisons ?? []) {
-        const comparisonId = `${journey.id}-${comparison.id}`;
+        const comparisonId = comparisonLaneId(journey.id, comparison.id);
         await runLane(comparisonId, async () => {
           const result = await runInputComparison({
             browser: browser as unknown as InteractionComparisonBrowser<Page>,
@@ -688,7 +694,7 @@ export async function recordObservedPresses(
   input: { journeyId: string; targetUrl: string; startedAt: string; observed: ObservedPresses }
 ): Promise<void> {
   const { journeyId, ...lane } = input;
-  const laneId = `${journeyId}-observed-presses`;
+  const laneId = observedPressesLaneId(journeyId);
   await laneRunner(assessment)(laneId, async () => {
     const observed = await writeObservedPressesLane({
       ...lane,
@@ -729,33 +735,33 @@ export async function runPageLanes(
     targetUrl: startUrl,
     allowedOrigins
   };
-  const sweepLaneId = `${journeyId}-keyboard-pointer-sweep`;
-  await runLane(sweepLaneId, async () => {
+  const sweepLane = sweepLaneId(journeyId);
+  await runLane(sweepLane, async () => {
     const sweep = await runKeyboardPointerSweepLane({
       ...("browser" in input.target
         ? { browser: input.target.browser as unknown as KeyboardPointerSweepLaneBrowser<Page> }
         : { page: input.target.page }),
       ...lane,
-      laneId: sweepLaneId,
+      laneId: sweepLane,
       activateControls: input.activateControls
     });
     collectSweepFindings(journeyId, sweep, findings);
     for (const url of sweep.blockedNavigations) {
-      diagnostics.push(`${sweepLaneId}: stopped a navigation outside the allowed origins: ${url}`);
+      diagnostics.push(`${sweepLane}: stopped a navigation outside the allowed origins: ${url}`);
     }
     return sweep.manifestFile;
   });
 
   let readerCommands = commands;
   if (commands.length === 0) return { readerCommands };
-  const readerLaneId = `${journeyId}-virtual-reader`;
-  await runLane(readerLaneId, async () => {
+  const readerLane = readerLaneId(journeyId);
+  await runLane(readerLane, async () => {
     const reader = await runVirtualScreenReaderLane({
       ...("browser" in input.target
         ? { browser: input.target.browser as unknown as VirtualScreenReaderLaneBrowser<Page> }
         : { page: input.target.page }),
       ...lane,
-      laneId: readerLaneId,
+      laneId: readerLane,
       commands,
       stopAtEnd: input.stopAtEnd
     });
@@ -841,8 +847,13 @@ export async function finishAssessment(input: {
   report.summary.artifacts = aggregate.manifest.summary.total;
   report.completeness.missingArtifacts = aggregate.manifest.summary.missing;
   report.completeness.failedArtifacts = aggregate.manifest.summary.failed;
+  // The aggregate only sees the manifests lanes wrote, so it can add gaps but never clear one: a
+  // lane that failed before writing its manifest is missing from it, not complete.
   report.completeness.status =
-    aggregate.manifest.status === "completed" ? "complete" : "incomplete";
+    aggregate.manifest.status === "completed" &&
+    evidenceIsComplete({ ...report.completeness, diagnostics: report.diagnostics })
+      ? "complete"
+      : "incomplete";
   report.status = report.completeness.status === "complete" ? "completed" : "partial";
   if (report.completeness.status === "incomplete" && report.verdict === "pass") {
     report.verdict = "unknown";
@@ -1001,7 +1012,7 @@ async function collectInputActions(
   findings: Array<Record<string, unknown>>
 ): Promise<void> {
   for (const lane of [result.lanes.pointer, result.lanes.keyboard]) {
-    const laneId = `${result.comparisonId}-${lane.driver}`;
+    const laneId = inputComparisonLaneId(result.comparisonId, lane.driver);
     for (const step of lane.steps) {
       await collectAction(
         rootDir,
@@ -1083,6 +1094,25 @@ async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
   return { artifacts, completedLanes, missingArtifacts, failedArtifacts };
 }
 
+/**
+ * Evidence is complete only when every planned lane completed, no artifact is missing or failed,
+ * and nothing went wrong.
+ */
+function evidenceIsComplete(input: {
+  plannedLanes: number;
+  completedLanes: number;
+  missingArtifacts: number;
+  failedArtifacts: number;
+  diagnostics: string[];
+}): boolean {
+  return (
+    input.completedLanes === input.plannedLanes &&
+    input.missingArtifacts === 0 &&
+    input.failedArtifacts === 0 &&
+    input.diagnostics.length === 0
+  );
+}
+
 function createIntegratedReport(input: {
   assessmentId: string;
   scenario: AeeScenario;
@@ -1106,11 +1136,7 @@ function createIntegratedReport(input: {
   const failed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "fail").length;
   const unknown = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "unknown").length;
   const passed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "pass").length;
-  const complete =
-    input.completedLanes === input.plannedLanes &&
-    input.missingArtifacts === 0 &&
-    input.failedArtifacts === 0 &&
-    input.diagnostics.length === 0;
+  const complete = evidenceIsComplete(input);
   // Axe failures arrive through the actions' release verdicts; sweep findings have no action.
   const sweepFailed = input.findings.some(
     (finding) => isSweepFindingKind(String(finding.ruleId)) && !isAdvisoryFinding(finding)
