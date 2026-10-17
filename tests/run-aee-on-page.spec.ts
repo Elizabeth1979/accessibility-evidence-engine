@@ -2289,7 +2289,7 @@ test("runAeeOnPage can capture backward focus movement around a shift-tab intera
   );
 });
 
-test("runAeeOnPage fails keyboard judging when tab moves focus backward", async ({
+test("runAeeOnPage leaves undecided a tab that moves focus against the predicted tab order", async ({
   page
 }, testInfo) => {
   await page.setContent(`
@@ -2346,21 +2346,18 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
   expect(report.run.status).toBe("completed");
-  expect(report.run.results).toEqual({
-    pass: 0,
-    fail: 2,
-    unknown: 0
-  });
+  // The browser's Tab is what a user gets and the predicted order a model of it, so a
+  // disagreement is left for review rather than failed (audit A4).
   expect(report.judgments).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         judgeId: "keyboard",
-        verdict: "fail",
-        summary: expect.stringContaining("wrong direction")
+        verdict: "unknown",
+        summary: expect.stringContaining("disagrees with the tab order AEE predicts")
       }),
       expect.objectContaining({
         judgeId: "release",
-        verdict: "fail"
+        verdict: "unknown"
       })
     ])
   );
