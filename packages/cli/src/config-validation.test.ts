@@ -68,7 +68,11 @@ async function loadExampleWith(change: (scenario: ExampleScenario) => void) {
 
 interface ExampleScenario {
   target: { url: string; allowedOrigins?: string[] };
-  journeys: Array<{ startPath?: string }>;
+  journeys: Array<{
+    id: string;
+    startPath?: string;
+    interactionComparisons?: Array<{ id: string }>;
+  }>;
 }
 
 test("loadScenario refuses a journey whose startPath leads to a site the scenario may not visit", async () => {
@@ -102,6 +106,48 @@ test("loadScenario accepts a startPath that leads to another site the scenario l
   });
 
   assert.equal(scenario.journeys[0]?.startPath, "//other.example/");
+});
+
+test("loadScenario refuses a journey id too long to name the evidence its lanes write", async () => {
+  // The sweep lane's evidence folder is named "<journey id>-keyboard-pointer-sweep".
+  const journeyId = `explore-${"a".repeat(98)}`;
+
+  await assert.rejects(
+    () => loadExampleWith(({ journeys }) => (journeys[0]!.id = journeyId)),
+    new Error(
+      `Journey “${journeyId}” makes an evidence folder name that is too long: its keyboard and pointer sweep would be named “${journeyId}-keyboard-pointer-sweep”, which is 129 characters, and the most is 128. Shorten the journey id by at least 1 character.`
+    )
+  );
+});
+
+test("loadScenario refuses a comparison whose ids together are too long to name its actions' evidence", async () => {
+  // Each keyboard action's folder is named "<journey id>-<comparison id>-keyboard-<number>".
+  const comparisonId = `nav-${"a".repeat(88)}`;
+  const runId = `explore-public-homepage-${comparisonId}-keyboard-001`;
+
+  await assert.rejects(
+    () =>
+      loadExampleWith(({ journeys }) => {
+        journeys[0]!.interactionComparisons![0]!.id = comparisonId;
+      }),
+    new Error(
+      `Journey “explore-public-homepage” comparison “${comparisonId}” makes an evidence folder name that is too long: its keyboard action 1 would be named “${runId}”, which is 129 characters, and the most is 128. Shorten the journey id or the comparison id by at least 1 character.`
+    )
+  );
+});
+
+test("loadScenario accepts ids that name every lane's evidence within the limit", async () => {
+  const comparisonId = `nav-${"a".repeat(87)}`;
+  const scenario = await loadExampleWith(({ journeys }) => {
+    journeys[0]!.interactionComparisons![0]!.id = comparisonId;
+  });
+
+  assert.equal(
+    `explore-public-homepage-${comparisonId}-keyboard-001`.length,
+    128,
+    "the longest name is exactly at the limit"
+  );
+  assert.equal(scenario.journeys[0]?.interactionComparisons?.[0]?.id, comparisonId);
 });
 
 test("loadScenario rejects duplicate YAML keys", async () => {
