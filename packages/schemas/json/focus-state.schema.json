@@ -42,6 +42,7 @@
         "status": { "enum": ["matched", "not-exposed", "failed", "unsupported"] },
         "nodeId": { "type": "string", "minLength": 1 },
         "backendDOMNodeId": { "type": "integer", "minimum": 0 },
+        "frameId": { "type": "string", "minLength": 1 },
         "role": { "type": ["string", "null"] },
         "name": { "type": ["string", "null"] },
         "diagnostics": {

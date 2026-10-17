@@ -1,14 +1,18 @@
 import {
   capturePageDom,
+  domNodeOf,
   fetchAccessibilityTree,
   type AccessibilityNode,
   type CapturedElement,
-  type CdpSession
+  type PageSessions
 } from "./accessibility-tree";
 
 /** A line of text styled like a heading that the accessibility tree does not expose as one. */
 export interface HeadingLookalike {
+  /** Where it is in the document that holds it. */
   selector: string;
+  /** Inside a frame: the `<iframe>` elements it is inside, outermost first. */
+  framePath?: string[];
   text: string;
   fontSize: number;
   fontWeight: number;
@@ -71,32 +75,36 @@ const CONTROL_ROLES = new Set([
  * Compares two pillars: how text looks (computed font size and weight, from a DOM snapshot) and
  * what assistive technology gets (the browser's accessibility tree). A standalone line styled as
  * a title with no heading in its accessibility-tree ancestry cannot be reached with a screen
- * reader's heading key.
+ * reader's heading key. Every frame is read; body text is measured across the whole page.
  */
-export async function findHeadingLookalikes(session: CdpSession): Promise<HeadingLookalike[]> {
+export async function findHeadingLookalikes(page: PageSessions): Promise<HeadingLookalike[]> {
   const [tree, dom] = await Promise.all([
-    fetchAccessibilityTree(session),
-    capturePageDom(session, ["font-size", "font-weight", "display"])
+    fetchAccessibilityTree(page),
+    capturePageDom(page, ["font-size", "font-weight", "display"])
   ]);
+  // Node ids repeat across frames rendered in different processes, so each is kept with its frame.
+  const key = (frameId: string | undefined, nodeId: string) => `${frameId}\u0000${nodeId}`;
   const parent = new Map<string, AccessibilityNode>();
   for (const node of tree.nodes) {
-    for (const child of node.childIds ?? []) parent.set(child, node);
+    for (const child of node.childIds ?? []) parent.set(key(node.frameId, child), node);
   }
+  const parentOf = (node: AccessibilityNode) => parent.get(key(node.frameId, node.nodeId));
   const roleOf = (node: AccessibilityNode) => String(node.role?.value ?? "");
 
   const runs = tree.nodes.flatMap((node) => {
     const text = typeof node.name?.value === "string" ? node.name.value.trim() : "";
     if (node.ignored || roleOf(node) !== "StaticText" || !text) return [];
-    const elements = dom.ancestorElements(node.backendDOMNodeId ?? -1);
+    const ref = domNodeOf(node);
+    const elements = ref ? dom.ancestorElements(ref) : [];
     const fontSize = Number.parseFloat(elements[0]?.style["font-size"] ?? "");
     const fontWeight = Number.parseFloat(elements[0]?.style["font-weight"] ?? "");
     const line = elements.find(({ style }) => isOwnLine(style.display));
     if (!line || !(fontSize > 0) || !(fontWeight > 0)) return [];
     let inTextRole = false;
-    let control: string | undefined;
-    for (let above = parent.get(node.nodeId); above; above = parent.get(above.nodeId)) {
+    let control: AccessibilityNode | undefined;
+    for (let above = parentOf(node); above; above = parentOf(above)) {
       inTextRole ||= TEXT_ROLES.has(roleOf(above));
-      if (!control && CONTROL_ROLES.has(roleOf(above))) control = above.nodeId;
+      if (!control && CONTROL_ROLES.has(roleOf(above))) control = above;
     }
     return [{ text, fontSize, fontWeight, line, inTextRole, control }];
   });
@@ -107,21 +115,16 @@ export async function findHeadingLookalikes(session: CdpSession): Promise<Headin
       ({ size, weight }) =>
         run.fontSize >= bodyFontSize * size && run.fontWeight - bodyFontWeight >= weight
     );
-  const controlLines = new Map<string, Set<string>>();
+  const controlLines = new Map<AccessibilityNode, Set<CapturedElement>>();
   for (const { control, line } of runs) {
-    if (control)
-      controlLines.set(control, (controlLines.get(control) ?? new Set()).add(line.nodePath));
+    if (control) controlLines.set(control, (controlLines.get(control) ?? new Set()).add(line));
   }
   const isControlName = (run: (typeof runs)[number]) =>
     run.control !== undefined && controlLines.get(run.control)!.size === 1;
 
-  const lines = new Map<string, { line: CapturedElement; runs: typeof runs }>();
-  for (const run of runs) {
-    const entry = lines.get(run.line.nodePath) ?? { line: run.line, runs: [] };
-    entry.runs.push(run);
-    lines.set(run.line.nodePath, entry);
-  }
-  return [...lines.values()].flatMap(({ line, runs: lineRuns }) => {
+  const lines = new Map<CapturedElement, typeof runs>();
+  for (const run of runs) lines.set(run.line, [...(lines.get(run.line) ?? []), run]);
+  return [...lines].flatMap(([line, lineRuns]) => {
     const text = lineRuns.map((run) => run.text).join(" ");
     const shown = (line.visualBounds?.width ?? 0) > 1 && (line.visualBounds?.height ?? 0) > 1;
     const title = lineRuns[0]!;
@@ -133,6 +136,7 @@ export async function findHeadingLookalikes(session: CdpSession): Promise<Headin
       ? [
           {
             selector: line.nodePath,
+            ...(line.framePath.length ? { framePath: line.framePath } : {}),
             text,
             fontSize: title.fontSize,
             fontWeight: title.fontWeight,
