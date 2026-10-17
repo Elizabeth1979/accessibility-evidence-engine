@@ -28,7 +28,7 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   screenReader
 }) => {
   await browserPage.goto(url);
-  const virtual = await readWithVirtualReader(browserPage);
+  const { phrases: virtual, speechEngine } = await readWithVirtualReader(browserPage);
 
   await screenReader.navigateToWebContent();
   const phrases = await readWithRealReader(screenReader, virtual.length + EXTRA_REAL_STEPS);
@@ -36,7 +36,12 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   await writeComparison(dir, {
     page,
     recordedAt: new Date().toISOString(),
-    environment: { platform: process.platform, release: os.release(), guidepup: GUIDEPUP_VERSION },
+    environment: {
+      platform: process.platform,
+      release: os.release(),
+      guidepup: GUIDEPUP_VERSION,
+      speechEngine
+    },
     virtual,
     real: { reader: realReaderName(), phrases }
   });

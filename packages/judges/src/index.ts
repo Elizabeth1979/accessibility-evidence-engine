@@ -1393,6 +1393,29 @@ function createScreenReaderJudge(): JudgePlugin {
         ];
       }
 
+      // Guidepup's reader works out an element's name itself, and the browser works it out too.
+      // When the announcement leaves out the name the browser gives the element, the two disagree,
+      // so what a screen reader would say here is not decided.
+      const browserName = getStringField(lastItem, "name");
+      const announced = normalizeSemanticValue(lastAnnouncement) ?? "";
+      if (browserName && !announced.includes(normalizeSemanticValue(browserName) ?? "")) {
+        const role = getStringField(lastItem, "role") ?? "element";
+        return [
+          {
+            id: `screen-reader:${bundle.interaction.id}`,
+            judgeId: "screen-reader",
+            judgeVersion: "0.2.0",
+            scope: "interaction",
+            verdict: "unknown",
+            summary: `The portable reader announced “${lastAnnouncement}”, but the browser names this ${role} “${browserName}”: the two disagree on its accessible name, so what a screen reader says here is not decided.`,
+            severity: "medium",
+            confidence: 1,
+            evidenceRecordIds: correlatedRecords.map(({ id }) => id),
+            artifactIds: collectArtifactIds(correlatedRecords)
+          }
+        ];
+      }
+
       return [
         {
           id: `screen-reader:${bundle.interaction.id}`,

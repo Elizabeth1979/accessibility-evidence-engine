@@ -567,7 +567,7 @@ test("portable virtual reader records guide navigation without moving DOM focus"
       entries: [
         expect.objectContaining({
           command: "next-heading",
-          announcement: "Invoices, heading, level 1",
+          announcement: "heading, Invoices, level 1",
           domFocusBefore: "#pay",
           domFocusAfter: "#pay",
           focusMoved: false
@@ -593,14 +593,14 @@ test("portable virtual reader supports item, heading, landmark, control, and cur
   const reader = createPortableVirtualScreenReader(page);
 
   expect((await reader.command("start")).item?.role).toBe("main");
-  expect((await reader.command("next-heading")).announcement).toBe("Dashboard, heading, level 1");
-  expect((await reader.command("next-heading")).announcement).toBe("Invoices, heading, level 2");
+  expect((await reader.command("next-heading")).announcement).toBe("heading, Dashboard, level 1");
+  expect((await reader.command("next-heading")).announcement).toBe("heading, Invoices, level 2");
   expect((await reader.command("previous-heading")).announcement).toBe(
-    "Dashboard, heading, level 1"
+    "heading, Dashboard, level 1"
   );
-  expect((await reader.command("next-landmark")).announcement).toBe("Account, navigation");
-  expect((await reader.command("next-control")).announcement).toBe("Profile, link");
-  expect((await reader.command("read-current")).announcement).toBe("Profile, link");
+  expect((await reader.command("next-landmark")).announcement).toBe("navigation, Account");
+  expect((await reader.command("next-control")).announcement).toBe("link, Profile");
+  expect((await reader.command("read-current")).announcement).toBe("link, Profile");
   expect((await reader.command("previous-item")).item?.role).toBe("navigation");
   expect((await reader.command("next-item")).item?.role).toBe("link");
   await expect(page.locator("#stable-focus")).toBeFocused();
@@ -641,8 +641,8 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
     expect(lane.isolation).toBe("dedicated-browser-context");
     expect(lane.steps).toHaveLength(2);
     expect(lane.transcript.entries.map(({ announcement }) => announcement)).toEqual([
-      "Invoices, heading, level 1",
-      "Pay invoice, button"
+      "heading, Invoices, level 1",
+      "button, Pay invoice"
     ]);
     expect(lane.transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
     expect(
