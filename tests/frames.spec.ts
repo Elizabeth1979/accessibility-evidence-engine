@@ -7,8 +7,11 @@ import {
   createPortableVirtualScreenReader,
   fetchAccessibilityTree,
   findHeadingLookalikes,
+  renderPortableVirtualScreenReaderTranscript,
   runAeeOnPage,
-  withPageSessions
+  withPageSessions,
+  type PortableVirtualScreenReader,
+  type VirtualScreenReaderEntry
 } from "@aee/playwright";
 
 import { startHtmlServer } from "./scenario-helpers";
@@ -230,28 +233,284 @@ test("focus and the saved accessibility tree reach inside a cross-site frame", a
   }
 });
 
-test("Guidepup's reader reads each frame as one item and does not enter it", async ({ page }) => {
+/** Reads on until the reader says `announcement`, as a user arrows down to it. */
+async function readTo(reader: PortableVirtualScreenReader, announcement: string) {
+  for (let step = 0; step < 50; step++) {
+    const entry = await reader.command("next-item");
+    if (entry.announcement === announcement) return entry;
+    if (!entry.item) break;
+  }
+  throw new Error(`The reader never said "${announcement}"`);
+}
+
+/** Every step from the top of the page to its end, one item at a time. */
+async function readThrough(reader: PortableVirtualScreenReader) {
+  const entries = [await reader.command("start")];
+  while (entries.at(-1)!.item && entries.length < 100) {
+    entries.push(await reader.command("next-item"));
+  }
+  return entries;
+}
+
+/** Where an item is: the frame whose document holds it, and the frame elements it is inside. */
+function placeOf({ item }: VirtualScreenReaderEntry) {
+  return item && `${item.frameId} ${item.key}`;
+}
+
+const INSIDE_A_FRAME = [
+  "heading, Billing details, level 2",
+  "Payment method",
+  "paragraph",
+  "Cards and bank transfers are accepted for every invoice on the account.",
+  "end of paragraph",
+  "button, Pay now"
+];
+
+test("the reader reads each frame where it sits, the cross-site one in its own process", async ({
+  page,
+  context
+}) => {
+  const { server, cross } = await framedPage(page);
+  try {
+    const reader = createPortableVirtualScreenReader(page);
+    const entries = await readThrough(reader);
+    const { frames } = await withPageSessions(context, page, fetchAccessibilityTree);
+    const [top, same, other] = frames!;
+    const said = entries.map(({ announcement }) => announcement);
+
+    // Before, the reader said each frame's title and moved past it. Now it reads each frame's
+    // content in place, as NVDA and JAWS do, and Guidepup still says every word.
+    expect(said.slice(said.indexOf("Billing, same origin"))).toEqual([
+      "Billing, same origin",
+      ...INSIDE_A_FRAME,
+      "Billing, other site",
+      ...INSIDE_A_FRAME,
+      "heading, After the frames, level 2",
+      "end of main",
+      "end of document"
+    ]);
+    // Each item names the frame whose document holds it, and the frame elements it is inside.
+    const at = (announcement: string, nth = 0) =>
+      entries.filter((entry) => entry.announcement === announcement)[nth]!;
+    expect(at("Billing, same origin").item).toEqual(
+      expect.objectContaining({ role: "Iframe", frameId: top!.frameId })
+    );
+    expect(at("Billing, same origin").item?.framePath).toBeUndefined();
+    for (const [title, frame, framePath] of [
+      ["Billing, same origin", same!, ["#same"]],
+      ["Billing, other site", other!, ["#cross"]]
+    ] as const) {
+      const first = entries.indexOf(at(title)) + 1;
+      for (const { item } of entries.slice(first, first + INSIDE_A_FRAME.length)) {
+        expect(item).toEqual(expect.objectContaining({ frameId: frame.frameId, framePath }));
+      }
+    }
+    // The item joins to its own frame's accessibility tree, though node ids repeat across processes.
+    const { nodes } = await withPageSessions(context, page, fetchAccessibilityTree);
+    for (const nth of [0, 1]) {
+      const { item } = at("button, Pay now", nth);
+      const node = nodes.find(
+        ({ frameId, backendDOMNodeId }) =>
+          frameId === item!.frameId && backendDOMNodeId === item!.backendDOMNodeId
+      );
+      expect({ role: node?.role?.value, name: node?.name?.value }).toEqual({
+        role: "button",
+        name: "Pay now"
+      });
+    }
+    expect(at("button, Pay now", 1).item?.visualBounds).toEqual(await pageBox(cross, "button"));
+
+    // Where the reader goes into a frame and comes out of it, and what AEE notes in the transcript.
+    const sameFrame = {
+      frameId: same!.frameId,
+      framePath: ["#same"],
+      name: "Billing, same origin"
+    };
+    const otherFrame = {
+      frameId: other!.frameId,
+      framePath: ["#cross"],
+      name: "Billing, other site"
+    };
+    expect(
+      entries
+        .filter(({ framesLeft, framesEntered }) => framesLeft || framesEntered)
+        .map(({ announcement, framesLeft, framesEntered }) => ({
+          announcement,
+          framesLeft,
+          framesEntered
+        }))
+    ).toEqual([
+      { announcement: INSIDE_A_FRAME[0], framesLeft: undefined, framesEntered: [sameFrame] },
+      { announcement: "Billing, other site", framesLeft: [sameFrame], framesEntered: undefined },
+      { announcement: INSIDE_A_FRAME[0], framesLeft: undefined, framesEntered: [otherFrame] },
+      {
+        announcement: "heading, After the frames, level 2",
+        framesLeft: [otherFrame],
+        framesEntered: undefined
+      }
+    ]);
+    const transcript = renderPortableVirtualScreenReaderTranscript(await reader.snapshot());
+    expect(transcript).toMatch(
+      /\nAEE: left frame Billing, other site\n\d+\. next-item: heading, After the frames, level 2\n/
+    );
+    expect(transcript).toMatch(
+      /\nAEE: entered frame Billing, same origin\n\d+\. next-item: heading, Billing details, level 2\n/
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("a step back retraces every step through the frames, and peeking leaves the reader in place", async ({
+  page
+}) => {
   const { server } = await framedPage(page);
   try {
     const reader = createPortableVirtualScreenReader(page);
-    const said: string[] = [(await reader.command("start")).announcement];
-    for (let step = 0; step < 20; step++) {
-      const entry = await reader.command("next-item");
-      if (!entry.item) break;
-      said.push(entry.announcement);
+    const forward = (await readThrough(reader)).map(placeOf).filter(Boolean);
+    const back: string[] = [];
+    for (let entry = await reader.command("previous-item"); entry.item;) {
+      back.push(placeOf(entry)!);
+      entry = await reader.command("previous-item");
     }
-    const frames = (await reader.snapshot()).entries.filter(({ item }) => item?.role === "Iframe");
+    // Back from below a frame goes in at its last item; back from its first item, out to its element.
+    expect(back).toEqual(forward.reverse());
 
-    // @guidepup/virtual-screen-reader 0.32 walks childNodes, so a frame's document is never read:
-    // it says the frame's title and moves on. NVDA and JAWS read a frame's content in place.
-    expect(frames.map(({ announcement }) => announcement)).toEqual([
-      "Billing, same origin",
-      "Billing, other site"
+    await reader.command("start");
+    await readTo(reader, "Billing, same origin");
+    expect(await reader.peek("next-item")).toEqual(
+      expect.objectContaining({ name: "Billing details", framePath: ["#same"] })
+    );
+    expect((await reader.command("read-current")).announcement).toBe("Billing, same origin");
+
+    await readTo(reader, "button, Pay now");
+    expect(await reader.peek("next-item")).toEqual(
+      expect.objectContaining({ role: "Iframe", name: "Billing, other site" })
+    );
+    expect((await reader.command("read-current")).item?.framePath).toEqual(["#same"]);
+
+    await readTo(reader, "heading, After the frames, level 2");
+    expect(await reader.peek("previous-item")).toEqual(
+      expect.objectContaining({ name: "Pay now", framePath: ["#cross"] })
+    );
+    expect((await reader.command("read-current")).announcement).toBe(
+      "heading, After the frames, level 2"
+    );
+    // The step after the peeks goes where it would have gone without them.
+    expect((await reader.command("previous-item")).item).toEqual(
+      expect.objectContaining({ name: "Pay now", framePath: ["#cross"] })
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("a heading jump goes into each frame and out again, both ways", async ({ page }) => {
+  const { server } = await framedPage(page);
+  try {
+    const reader = createPortableVirtualScreenReader(page);
+    await reader.command("start");
+    const jump = async (command: "next-heading" | "previous-heading") => {
+      const visited = [];
+      for (let entry = await reader.command(command); entry.item;) {
+        visited.push({
+          said: entry.announcement,
+          framePath: entry.item.framePath,
+          left: entry.framesLeft?.map(({ name }) => name),
+          entered: entry.framesEntered?.map(({ name }) => name)
+        });
+        entry = await reader.command(command);
+      }
+      return visited;
+    };
+
+    expect(await jump("next-heading")).toEqual([
+      { said: "heading, Invoices, level 1" },
+      {
+        said: "heading, Billing details, level 2",
+        framePath: ["#same"],
+        entered: ["Billing, same origin"]
+      },
+      {
+        said: "heading, Billing details, level 2",
+        framePath: ["#cross"],
+        left: ["Billing, same origin"],
+        entered: ["Billing, other site"]
+      },
+      { said: "heading, After the frames, level 2", left: ["Billing, other site"] }
     ]);
-    expect(said).not.toContain("heading, Billing details, level 2");
-    // Each item names its frame, so it joins to that frame's accessibility tree and no other.
-    expect(new Set(frames.map(({ item }) => item?.frameId)).size).toBe(1);
-    expect(frames[0]?.item?.visualBounds).toEqual({ x: 40, y: 220, width: 444, height: 284 });
+    expect((await jump("previous-heading")).map(({ framePath }) => framePath)).toEqual([
+      undefined,
+      ["#cross"],
+      ["#same"],
+      undefined
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("a frame inside a frame is read in place, and an empty frame is stepped over", async ({
+  page,
+  context
+}) => {
+  const server = await startHtmlServer((request, response) => {
+    const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Account</title></head><body>
+        <h1>Account</h1>
+        <iframe id="outer" title="Settings" src="/settings"></iframe>
+        <iframe id="empty" title="Nothing here" srcdoc=""></iframe>
+        <h2>Done</h2>
+      </body></html>`,
+      "/settings": `<!doctype html><html lang="en"><head><title>Settings</title></head><body>
+        <h2>Settings</h2>
+        <iframe id="inner" title="Card" src="${otherSite}/card"></iframe>
+        <h3>Saved</h3>
+      </body></html>`,
+      "/card": `<!doctype html><html lang="en"><head><title>Card</title></head><body>
+        <button type="button">Update card</button>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    await frameAt(page, "localhost", "/card").locator("button").waitFor();
+    const reader = createPortableVirtualScreenReader(page);
+    const entries = await readThrough(reader);
+    const { frames } = await withPageSessions(context, page, fetchAccessibilityTree);
+    const card = frames!.find(({ url }) => url.includes("localhost"))!;
+
+    expect(
+      entries.map(({ announcement, item, framesLeft, framesEntered }) => ({
+        said: announcement,
+        framePath: item?.framePath,
+        left: framesLeft?.map(({ name }) => name),
+        entered: framesEntered?.map(({ name }) => name)
+      }))
+    ).toEqual([
+      { said: "heading, Account, level 1" },
+      { said: "Settings" },
+      { said: "heading, Settings, level 2", framePath: ["#outer"], entered: ["Settings"] },
+      { said: "Card", framePath: ["#outer"] },
+      { said: "button, Update card", framePath: ["#outer", "#inner"], entered: ["Card"] },
+      { said: "heading, Saved, level 3", framePath: ["#outer"], left: ["Card"] },
+      // The empty frame is read as its element; the step after it goes on past it.
+      { said: "Nothing here", left: ["Settings"] },
+      { said: "heading, Done, level 2" },
+      { said: "end of document" }
+    ]);
+    expect(entries[4]!.item?.frameId).toBe(card.frameId);
+    expect(entries[4]!.framesEntered?.[0]?.framePath).toEqual(["#outer", "#inner"]);
+
+    const back: string[] = [];
+    for (let entry = await reader.command("previous-item"); entry.item;) {
+      back.push(placeOf(entry)!);
+      entry = await reader.command("previous-item");
+    }
+    expect(back).toEqual(entries.map(placeOf).filter(Boolean).reverse());
   } finally {
     await server.close();
   }
