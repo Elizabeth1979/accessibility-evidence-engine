@@ -81,6 +81,16 @@
           "minimum": 0,
           "description": "The DOM node, as the browser session numbers it in its frame's process; recorded for the element with focus in each document. With frameId it joins the element to accessibilityFocus and to the frame's accessibility tree."
         },
+        "focusOrderIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The element's place in the page's tab order, counted from 0 across the top document and every frame: each document's tab stops as tabbable orders them, and each frame's tab stops at its <iframe> element's place, as Chrome's Tab moves through them. Places compare across frames. Absent when the element is not a tab stop, or when a frame's place or tab stops could not be read."
+        },
+        "focusableCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many tab stops the page has, across the top document and every frame. Present with focusOrderIndex."
+        },
         "focusVisible": { "type": "boolean" },
         "focusIndicator": {
           "type": "object",
