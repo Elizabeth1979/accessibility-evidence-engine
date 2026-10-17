@@ -27,6 +27,8 @@ import {
   type PageFrame,
   type PageSessions
 } from "./accessibility-tree";
+import { focusPath, frameHeldAt } from "./dom-focus";
+import { callOn, documentOf, nodeOf } from "./frame-documents";
 
 export type VirtualScreenReaderCommand =
   | "start"
@@ -467,19 +469,6 @@ function innerFrame({ page, cursor }: Reading): PageFrame {
   return frameById(page, cursor.frames.at(-1) ?? mainFrameOf(page).frameId);
 }
 
-/** The frame whose element the reader, or focus, is on, when it is on one. */
-function frameHeldAt(
-  page: PageSessions,
-  node: Pick<Position, "frameId" | "backendNodeId"> | undefined
-): PageFrame | undefined {
-  return node?.backendNodeId === undefined
-    ? undefined
-    : page.frames.find(
-        (frame) =>
-          frame.parentFrameId === node.frameId && frame.ownerBackendNodeId === node.backendNodeId
-      );
-}
-
 function forward(command: VirtualScreenReaderCommand): boolean {
   return command !== "previous-item" && command !== "previous-heading";
 }
@@ -909,106 +898,9 @@ function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
   };
 }
 
-/**
- * The frame's `document` as a protocol object, to run code on in the frame's own page. A frame at
- * the top of its process is its session's own page; a frame its parent's process renders is its
- * element's content document. Undefined when the frame has no document to read.
- */
-async function documentOf(page: PageSessions, frame: PageFrame): Promise<string | undefined> {
-  const parent = page.frames.find(({ frameId }) => frameId === frame.parentFrameId);
-  if (!parent || parent.session !== frame.session) {
-    const { result } = (await frame.session.send("Runtime.evaluate", {
-      expression: "document"
-    })) as { result: { objectId?: string } };
-    return result.objectId;
-  }
-  if (frame.ownerBackendNodeId === undefined) return undefined;
-  const { node } = (await frame.session.send("DOM.describeNode", {
-    backendNodeId: frame.ownerBackendNodeId
-  })) as { node: { contentDocument?: { backendNodeId: number } } };
-  if (!node.contentDocument) return undefined;
-  const { object } = (await frame.session.send("DOM.resolveNode", {
-    backendNodeId: node.contentDocument.backendNodeId
-  })) as { object: { objectId?: string } };
-  return object.objectId;
-}
-
-/**
- * Calls a function on a frame's `document` over the DevTools protocol, so it runs in that frame's
- * own page: the protocol call Playwright's own `evaluate` makes (`Runtime.callFunctionOn`). It runs
- * as the protocol's own code, so the page's Content-Security-Policy does not apply to it.
- */
-async function callOn<Value>(
-  cdp: CdpSession,
-  objectId: string,
-  functionDeclaration: string,
-  args: unknown[] = []
-): Promise<Value> {
-  const { result, exceptionDetails } = (await cdp.send("Runtime.callFunctionOn", {
-    objectId,
-    functionDeclaration,
-    arguments: args.map((value) => ({ value })),
-    awaitPromise: true,
-    returnByValue: true
-  })) as {
-    result: { value?: Value };
-    exceptionDetails?: { exception?: { description?: string }; text?: string };
-  };
-  if (exceptionDetails) {
-    throw new Error(
-      `Virtual screen reader failed in the page: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`
-    );
-  }
-  return result.value as Value;
-}
-
-/** The DOM node a function on the frame's `document` returns, as the DOM snapshot numbers it. */
-async function nodeOf(
-  cdp: CdpSession,
-  objectId: string,
-  functionDeclaration: string
-): Promise<number | undefined> {
-  const { result } = (await cdp.send("Runtime.callFunctionOn", {
-    objectId,
-    functionDeclaration
-  })) as { result: { objectId?: string } };
-  if (!result.objectId) return undefined;
-  const { node } = (await cdp.send("DOM.describeNode", { objectId: result.objectId })) as {
-    node: { backendNodeId: number };
-  };
-  return node.backendNodeId;
-}
-
-/**
- * The element focus is on in the frame's document, found the way the page sees it: its
- * `activeElement`, and on into each open shadow root's, as the focus observer follows them.
- */
-const ACTIVE_ELEMENT = `function () {
-  let element = document.activeElement;
-  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
-  return element;
-}`;
-
-/**
- * The element that has DOM focus, in whichever frame's document holds it. A document whose focus
- * is in one of its frames names the frame's element as its active element (HTML's
- * `activeElement`), so focus is followed into that frame's own document, through the frame's own
- * session as the reader reads it, so a cross-site frame in another process is followed too. A
- * frame that loses focus loses its own active element, so only the frames that hold focus are
- * followed. Undefined when no element has focus.
- */
+/** The element that has DOM focus, in whichever frame's document holds it. */
 async function focusedNode(reading: Reading): Promise<DomNodeRef | undefined> {
-  let focused: DomNodeRef | undefined;
-  for (let frame: PageFrame | undefined = mainFrameOf(reading.page); frame;) {
-    const document = await reading.document(frame);
-    const backendNodeId = document
-      ? await nodeOf(frame.session, document, ACTIVE_ELEMENT)
-      : undefined;
-    if (backendNodeId === undefined) break;
-    focused = { frameId: frame.frameId, backendNodeId };
-    frame = frameHeldAt(reading.page, focused);
-  }
-  return focused;
+  return (await focusPath(reading.page, (frame) => reading.document(frame))).at(-1);
 }
 
 /** The focused element as the DOM snapshot names it, the way an item names its element. */

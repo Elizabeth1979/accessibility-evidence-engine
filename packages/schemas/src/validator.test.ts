@@ -596,6 +596,55 @@ test("validateSchema accepts a deep focus-state artifact", () => {
   assert.deepEqual(result, { valid: true, errors: [] });
 });
 
+test("validateSchema accepts focus inside a frame, named with its frame", () => {
+  const indicator = {
+    visible: false,
+    outlineStyle: "none",
+    outlineWidth: "0px",
+    boxShadow: "none"
+  };
+  const frameElement = {
+    tagName: "iframe",
+    id: "pay",
+    nodePath: "iframe#pay",
+    frameId: "TOP",
+    backendDOMNodeId: 9,
+    focusVisible: false,
+    focusIndicator: indicator
+  };
+  const button = {
+    tagName: "button",
+    role: "button",
+    name: "Pay now",
+    nodePath: "html > body > button",
+    frameId: "PAY",
+    framePath: ["iframe#pay"],
+    backendDOMNodeId: 4,
+    focusVisible: true,
+    focusIndicator: indicator
+  };
+  const focusState = {
+    schemaVersion: "0.1.0",
+    captureType: "deep-focus-state",
+    ...button,
+    documentActiveElement: frameElement,
+    deepActiveElement: button,
+    activeElementChain: [
+      { context: "document", ...frameElement },
+      { context: "iframe-document", ...button }
+    ],
+    accessibilityFocus: { status: "matched", backendDOMNodeId: 4, frameId: "PAY" }
+  };
+
+  assert.deepEqual(validateSchema("focusState", focusState), { valid: true, errors: [] });
+  // A frame path names at least one frame; an element in the top document has none.
+  assert.equal(
+    validateSchema("focusState", { ...focusState, deepActiveElement: { ...button, framePath: [] } })
+      .valid,
+    false
+  );
+});
+
 test("validateSchema rejects input actions whose operation is ambiguous", () => {
   const result = validateSchema("interactionComparisonRequest", {
     id: "ambiguous-menu",
