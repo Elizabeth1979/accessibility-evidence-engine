@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import { actionRunId, inputComparisonLaneId, MAX_RUN_ID_LENGTH } from "@aee/playwright";
 import type { VirtualScreenReaderCommand } from "@aee/playwright";
 import type {
   AssessmentProfile,
@@ -238,6 +239,26 @@ const ACTION_STEP_LABELS: Record<string, string> = {
   [ACTIVATE_PAGE_CONTROLS]:
     "Let the sweep press each on-page control by keyboard and by mouse, from a fresh page each time, and compare the results and where focus lands. Links and form submit buttons are never pressed."
 };
+
+/** The id of a journey's keyboard and pointer sweep lane, which names the folder of its evidence. */
+export function sweepLaneId(journeyId: string): string {
+  return `${journeyId}-keyboard-pointer-sweep`;
+}
+
+/** The id of a journey's virtual screen-reader lane. */
+export function readerLaneId(journeyId: string): string {
+  return `${journeyId}-virtual-reader`;
+}
+
+/** The id of the lane that records the presses a test made itself on a journey's page. */
+export function observedPressesLaneId(journeyId: string): string {
+  return `${journeyId}-observed-presses`;
+}
+
+/** The id of one of a journey's interaction comparisons, the parent of its pointer and keyboard lanes. */
+export function comparisonLaneId(journeyId: string, comparisonId: string): string {
+  return `${journeyId}-${comparisonId}`;
+}
 
 export async function loadScenario(scenarioPath: string): Promise<AeeScenario> {
   const raw = await readFile(scenarioPath, "utf8");
@@ -480,6 +501,8 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
       );
     }
 
+    assertRunIdsFit(journey);
+
     for (const comparison of journey.interactionComparisons ?? []) {
       for (const [lane, actions] of [
         ["pointer", comparison.pointerActions],
@@ -507,6 +530,60 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
       }
     }
   }
+}
+
+/**
+ * Refuses a journey whose ids are too long to name its evidence. Each lane and each action in it
+ * writes its evidence to a folder named after its run id, built from the journey and comparison
+ * ids, and a lane refuses a run id longer than MAX_RUN_ID_LENGTH. Checked for the longest id each
+ * lane builds, its last action's, so the scenario is refused before anything runs, not mid-run.
+ */
+function assertRunIdsFit(journey: ScenarioJourney): void {
+  const commandCount = journey.virtualScreenReaderCommands?.length ?? 0;
+  assertRunIdFits(`Journey “${journey.id}”`, "the journey id", [
+    ["keyboard and pointer sweep", sweepLaneId(journey.id)],
+    ...(commandCount > 0
+      ? [
+          [
+            `virtual screen-reader command ${commandCount}`,
+            actionRunId(readerLaneId(journey.id), commandCount)
+          ] as const
+        ]
+      : [])
+  ]);
+
+  for (const comparison of journey.interactionComparisons ?? []) {
+    const comparisonId = comparisonLaneId(journey.id, comparison.id);
+    assertRunIdFits(
+      `Journey “${journey.id}” comparison “${comparison.id}”`,
+      "the journey id or the comparison id",
+      (
+        [
+          ["pointer", comparison.pointerActions.length],
+          ["keyboard", comparison.keyboardActions.length]
+        ] as const
+      ).map(([driver, count]) => [
+        `${driver} action ${count}`,
+        actionRunId(inputComparisonLaneId(comparisonId, driver), count)
+      ])
+    );
+  }
+}
+
+/** Throws, naming the longest of these run ids and what to shorten, if it is over the limit. */
+function assertRunIdFits(
+  subject: string,
+  idsToShorten: string,
+  runIds: ReadonlyArray<readonly [what: string, runId: string]>
+): void {
+  const [what, runId] = runIds.reduce((longest, entry) =>
+    entry[1].length > longest[1].length ? entry : longest
+  );
+  const excess = runId.length - MAX_RUN_ID_LENGTH;
+  if (excess <= 0) return;
+  throw new Error(
+    `${subject} makes an evidence folder name that is too long: its ${what} would be named “${runId}”, which is ${runId.length} characters, and the most is ${MAX_RUN_ID_LENGTH}. Shorten ${idsToShorten} by at least ${excess} character${excess === 1 ? "" : "s"}.`
+  );
 }
 
 function capability(

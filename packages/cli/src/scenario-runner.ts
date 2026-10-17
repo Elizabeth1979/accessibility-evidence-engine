@@ -25,6 +25,7 @@ import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
   announcedWithoutName,
+  inputComparisonLaneId,
   runInputComparison,
   runKeyboardPointerSweepLane,
   writeObservedPressesLane,
@@ -68,8 +69,12 @@ import {
 } from "./comment-images";
 import {
   ACTIVATE_PAGE_CONTROLS,
+  comparisonLaneId,
   compileScenarioPlan,
   loadScenario,
+  observedPressesLaneId,
+  readerLaneId,
+  sweepLaneId,
   type AeeScenario,
   type ScenarioPlan,
   type ScenarioProfile
@@ -583,7 +588,7 @@ export async function executeScenario(
       });
 
       for (const comparison of journey.interactionComparisons ?? []) {
-        const comparisonId = `${journey.id}-${comparison.id}`;
+        const comparisonId = comparisonLaneId(journey.id, comparison.id);
         await runLane(comparisonId, async () => {
           const result = await runInputComparison({
             browser: browser as unknown as InteractionComparisonBrowser<Page>,
@@ -665,7 +670,7 @@ export async function recordObservedPresses(
   input: { journeyId: string; targetUrl: string; startedAt: string; observed: ObservedPresses }
 ): Promise<void> {
   const { journeyId, ...lane } = input;
-  const laneId = `${journeyId}-observed-presses`;
+  const laneId = observedPressesLaneId(journeyId);
   await laneRunner(assessment)(laneId, async () => {
     const observed = await writeObservedPressesLane({
       ...lane,
@@ -706,33 +711,33 @@ export async function runPageLanes(
     targetUrl: startUrl,
     allowedOrigins
   };
-  const sweepLaneId = `${journeyId}-keyboard-pointer-sweep`;
-  await runLane(sweepLaneId, async () => {
+  const sweepLane = sweepLaneId(journeyId);
+  await runLane(sweepLane, async () => {
     const sweep = await runKeyboardPointerSweepLane({
       ...("browser" in input.target
         ? { browser: input.target.browser as unknown as KeyboardPointerSweepLaneBrowser<Page> }
         : { page: input.target.page }),
       ...lane,
-      laneId: sweepLaneId,
+      laneId: sweepLane,
       activateControls: input.activateControls
     });
     collectSweepFindings(journeyId, sweep, findings);
     for (const url of sweep.blockedNavigations) {
-      diagnostics.push(`${sweepLaneId}: stopped a navigation outside the allowed origins: ${url}`);
+      diagnostics.push(`${sweepLane}: stopped a navigation outside the allowed origins: ${url}`);
     }
     return sweep.manifestFile;
   });
 
   let readerCommands = commands;
   if (commands.length === 0) return { readerCommands };
-  const readerLaneId = `${journeyId}-virtual-reader`;
-  await runLane(readerLaneId, async () => {
+  const readerLane = readerLaneId(journeyId);
+  await runLane(readerLane, async () => {
     const reader = await runVirtualScreenReaderLane({
       ...("browser" in input.target
         ? { browser: input.target.browser as unknown as VirtualScreenReaderLaneBrowser<Page> }
         : { page: input.target.page }),
       ...lane,
-      laneId: readerLaneId,
+      laneId: readerLane,
       commands,
       stopAtEnd: input.stopAtEnd
     });
@@ -975,7 +980,7 @@ async function collectInputActions(
   findings: Array<Record<string, unknown>>
 ): Promise<void> {
   for (const lane of [result.lanes.pointer, result.lanes.keyboard]) {
-    const laneId = `${result.comparisonId}-${lane.driver}`;
+    const laneId = inputComparisonLaneId(result.comparisonId, lane.driver);
     for (const step of lane.steps) {
       await collectAction(
         rootDir,
