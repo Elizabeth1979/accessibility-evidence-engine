@@ -1,14 +1,21 @@
 import {
   DEFAULT_POLICY,
+  spokenRoleOf,
+  TEXT_ROLE,
+  type AccessibilityChange,
+  type AccessibilityChanges,
+  type AccessibilityNodeRef,
   type EvidenceBundle,
   type EvidenceRecord,
   type Finding,
   type JudgePlugin,
   type Judgment,
+  type LiveRegionAnnouncement,
   type TargetDescriptor
 } from "@aee/core";
 
-const KEYBOARD_JUDGE_VERSION = "0.2.0";
+const KEYBOARD_JUDGE_VERSION = "0.3.0";
+const CHANGE_RESPONSE_JUDGE_VERSION = "0.2.0";
 
 export const defaultJudgeManifests = [
   {
@@ -21,7 +28,7 @@ export const defaultJudgeManifests = [
   {
     id: "keyboard",
     displayName: "Keyboard Judge",
-    version: "0.2.0",
+    version: KEYBOARD_JUDGE_VERSION,
     kind: "judge" as const,
     capabilities: [
       "focus-order",
@@ -47,7 +54,7 @@ export const defaultJudgeManifests = [
   {
     id: "screen-reader",
     displayName: "Screen Reader Judge",
-    version: "0.2.0",
+    version: "0.3.0",
     kind: "judge" as const,
     capabilities: [
       "virtual-cursor-focus-separation",
@@ -66,7 +73,7 @@ export const defaultJudgeManifests = [
   {
     id: "change-response",
     displayName: "Change Response Judge",
-    version: "0.1.0",
+    version: CHANGE_RESPONSE_JUDGE_VERSION,
     kind: "judge" as const,
     capabilities: ["observable-change-detection"]
   },
@@ -785,17 +792,36 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  const activationSignals = collectActivationSignals(
-    bundle.records,
-    beforeRecord,
-    afterRecord,
-    beforeKey,
-    afterKey
-  );
+  const response = collectPressResponse(bundle);
+  const activationSignals = response.signals;
+  const undecided = activationSignals.length === 0 ? describeUndecidedPress(response) : undefined;
+
+  if (undecided) {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `Keyboard ${bundle.interaction.kind} on ${describeFocusTarget(beforeTarget)} showed no response of its own. ${undecided}${describeMarkupEvidence(response)}`,
+        "medium",
+        0.7,
+        [
+          beforeRecord.id,
+          afterRecord.id,
+          ...response.unattributed.evidenceRecordIds,
+          ...response.markupRecords.map((record) => record.id)
+        ]
+      )
+    ];
+  }
 
   if (activationSignals.length === 0) {
-    const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
-    const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
+    const evidenceRecords = [
+      beforeRecord,
+      afterRecord,
+      ...(response.accessibilityRecord ? [response.accessibilityRecord] : []),
+      ...response.markupRecords
+    ];
+    const evidenceRecordIds = evidenceRecords.map((record) => record.id);
+    const artifactIds = collectArtifactIds(evidenceRecords);
     const suggestedFix = `Ensure ${bundle.interaction.kind} activates the focused control and produces an observable response.`;
 
     return [
@@ -805,7 +831,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
         judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
-        summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.`,
+        summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.${describeMarkupEvidence(response)}`,
         severity: "high",
         confidence: 0.9,
         evidenceRecordIds,
@@ -813,7 +839,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
         findings: [
           {
             id: `keyboard:${bundle.interaction.id}:activation-no-response`,
-            message: `Expected ${bundle.interaction.kind} to activate the focused control, but no focus, DOM, or network response was observed.`,
+            message: `Expected ${bundle.interaction.kind} to activate the focused control, but its accessibility state, what it controls, focus, live regions and the network all stayed the same.`,
             severity: "high",
             ruleId: "keyboard-activation-response",
             evidenceRecordIds,
@@ -842,7 +868,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
       judgeVersion: KEYBOARD_JUDGE_VERSION,
       scope: "interaction",
       verdict: "pass",
-      summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}`,
+      summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}${describeMarkupEvidence(response)}`,
       severity: "info",
       confidence: 0.9,
       evidenceRecordIds,
@@ -1094,7 +1120,7 @@ function createChangeResponseJudge(): JudgePlugin {
           {
             id: `change-response:${bundle.interaction.id}`,
             judgeId: "change-response",
-            judgeVersion: "0.1.0",
+            judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1111,7 +1137,7 @@ function createChangeResponseJudge(): JudgePlugin {
           {
             id: `change-response:${bundle.interaction.id}`,
             judgeId: "change-response",
-            judgeVersion: "0.1.0",
+            judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1123,42 +1149,40 @@ function createChangeResponseJudge(): JudgePlugin {
         ];
       }
 
-      const observedSignals = collectChangeResponseSignals(bundle.records);
-      const relevantObserverIds = new Set(["dom", "network", "focus"]);
-      const availableEvidenceRecords = bundle.records.filter(
-        (record) => relevantObserverIds.has(record.observerId) && record.status === "ok"
-      );
-
-      if (availableEvidenceRecords.length === 0) {
-        return [
-          {
-            id: `change-response:${bundle.interaction.id}`,
-            judgeId: "change-response",
-            judgeVersion: "0.1.0",
-            scope: "interaction",
-            verdict: "unknown",
-            summary:
-              "Change-response judge requires DOM, network, or focus evidence to evaluate the interaction outcome.",
-            severity: "medium",
-            confidence: 0.7,
-            evidenceRecordIds: bundle.records.map((record) => record.id)
-          }
-        ];
-      }
+      const response = collectPressResponse(bundle);
+      const observedSignals = response.signals;
 
       if (observedSignals.length === 0) {
-        const evidenceRecordIds = availableEvidenceRecords.map((record) => record.id);
-        const artifactIds = collectArtifactIds(availableEvidenceRecords);
+        const undecided = describeUndecidedPress(response);
+        if (undecided) {
+          return [
+            {
+              id: `change-response:${bundle.interaction.id}`,
+              judgeId: "change-response",
+              judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
+              scope: "interaction",
+              verdict: "unknown",
+              summary: `No response of its own followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}. ${undecided}${describeMarkupEvidence(response)}`,
+              severity: "medium",
+              confidence: 0.7,
+              evidenceRecordIds: bundle.records.map((record) => record.id)
+            }
+          ];
+        }
+
+        const evidenceRecords = [response.accessibilityRecord!, ...response.markupRecords];
+        const evidenceRecordIds = evidenceRecords.map((record) => record.id);
+        const artifactIds = collectArtifactIds(evidenceRecords);
         const suggestedFix = buildChangeResponseSuggestedFix(bundle.interaction.kind);
 
         return [
           {
             id: `change-response:${bundle.interaction.id}`,
             judgeId: "change-response",
-            judgeVersion: "0.1.0",
+            judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
             scope: "interaction",
             verdict: "fail",
-            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.`,
+            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.${describeMarkupEvidence(response)}`,
             severity: "high",
             confidence: 0.9,
             evidenceRecordIds,
@@ -1166,7 +1190,7 @@ function createChangeResponseJudge(): JudgePlugin {
             findings: [
               {
                 id: `change-response:${bundle.interaction.id}:no-response`,
-                message: `Expected ${bundle.interaction.kind} to trigger a visible, focus, or network response, but no supported observer detected one.`,
+                message: `Expected ${bundle.interaction.kind} to change the control's accessibility state, what it controls, focus, a live region or the network, but none of them changed.`,
                 severity: "high",
                 ruleId: "interaction-response-observable",
                 evidenceRecordIds,
@@ -1183,10 +1207,10 @@ function createChangeResponseJudge(): JudgePlugin {
         {
           id: `change-response:${bundle.interaction.id}`,
           judgeId: "change-response",
-          judgeVersion: "0.1.0",
+          judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
           scope: "interaction",
           verdict: "pass",
-          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).`,
+          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).${describeMarkupEvidence(response)}`,
           severity: "info",
           confidence: 0.9,
           evidenceRecordIds: [
@@ -1221,7 +1245,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1248,7 +1272,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "fail",
             summary: `The virtual-reader command moved DOM focus during ${focusMovedCount} transcript entr${focusMovedCount === 1 ? "y" : "ies"}; virtual cursor movement and focus movement must remain separate.`,
@@ -1267,7 +1291,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1302,7 +1326,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: lastItem
@@ -1322,7 +1346,7 @@ function createScreenReaderJudge(): JudgePlugin {
       const domSnapshotPresent = recordHasArtifact(domRecord, "dom-snapshot");
       const fullPageVisualPresent = recordHasArtifactPath(visualRecord, "full-page");
       const renderedBoundsPresent = hasPositiveVisualBounds(lastItem.visualBounds);
-      const accessibilityMatch = findAccessibilitySemanticMatch(
+      const treeComparison = compareWithCheckpointNode(
         accessibilityRecord.meta?.semanticNodes,
         lastItem
       );
@@ -1338,7 +1362,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: `The portable-reader target could not be fully correlated because ${unavailable.join(", ")} evidence was unavailable.`,
@@ -1350,25 +1374,34 @@ function createScreenReaderJudge(): JudgePlugin {
         ];
       }
 
-      if (!accessibilityMatch) {
+      if (treeComparison.kind !== "same") {
         const role = getStringField(lastItem, "role") ?? "unknown role";
         const name = getStringField(lastItem, "name");
-        const summary = accessibilityIndexTruncated
-          ? `The accessibility-tree semantic index was truncated before the portable-reader target ${role}${name ? ` “${name}”` : ""} could be matched.`
-          : `The portable reader read ${role}${name ? ` “${name}”` : ""} from the browser's accessibility tree, but the same role, name, and heading level were not found in the tree captured at this checkpoint.`;
+        const read = `${role}${name ? ` “${name}”` : ""}`;
+        const undecided =
+          treeComparison.kind === "unjoinable" ||
+          (treeComparison.kind === "missing" && accessibilityIndexTruncated);
+        const summary =
+          treeComparison.kind === "unjoinable"
+            ? `The portable reader read ${read}, but its record names no DOM node, so it cannot be compared with that same element in the tree captured at this checkpoint.`
+            : treeComparison.kind === "missing"
+              ? accessibilityIndexTruncated
+                ? `The accessibility-tree semantic index was truncated before the element the portable reader read (${read}) could be found.`
+                : `The portable reader read ${read} from the browser's accessibility tree, but that element is not in the tree captured at this checkpoint.`
+              : `The portable reader read ${read} from the browser's accessibility tree, but the tree captured at this checkpoint describes that same element differently: ${treeComparison.differences.join("; ")}.`;
         return [
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
-            verdict: accessibilityIndexTruncated ? "unknown" : "fail",
+            verdict: undecided ? "unknown" : "fail",
             summary,
-            severity: accessibilityIndexTruncated ? "medium" : "high",
+            severity: undecided ? "medium" : "high",
             confidence: 1,
             evidenceRecordIds: correlatedRecords.map(({ id }) => id),
             artifactIds: collectArtifactIds(correlatedRecords),
-            ...(!accessibilityIndexTruncated
+            ...(!undecided
               ? {
                   findings: [
                     {
@@ -1404,7 +1437,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: `The portable reader announced “${lastAnnouncement}”, but the browser names this ${role} “${browserName}”: the two disagree on its accessible name, so what a screen reader says here is not decided.`,
@@ -1420,10 +1453,10 @@ function createScreenReaderJudge(): JudgePlugin {
         {
           id: `screen-reader:${bundle.interaction.id}`,
           judgeId: "screen-reader",
-          judgeVersion: "0.2.0",
+          judgeVersion: "0.3.0",
           scope: "interaction",
           verdict: "pass",
-          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus; the role, name, and heading level it read from the browser's accessibility tree still match the tree captured at this checkpoint, and non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
+          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus. The element it read has the same role, name, description, value and states in the accessibility tree captured at this checkpoint, and its non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
           severity: "info",
           confidence: 1,
           evidenceRecordIds: correlatedRecords.map(({ id }) => id),
@@ -1452,25 +1485,81 @@ function hasPositiveVisualBounds(value: unknown): boolean {
   );
 }
 
-function findAccessibilitySemanticMatch(nodes: unknown, target: Record<string, unknown>): boolean {
-  if (!Array.isArray(nodes)) return false;
-  // The portable reader reads text no announced item says as role "text"; in the tree it is a
-  // StaticText node named by its words.
-  const readsText = getStringField(target, "role") === "text";
-  const targetRole = readsText
-    ? "statictext"
-    : normalizeSemanticValue(getStringField(target, "role"));
-  const targetName = normalizeSemanticValue(getStringField(target, readsText ? "text" : "name"));
-  const targetLevel = getNumericField(target, "level");
+/** How the element the reader read compares with the same element in the checkpoint's tree. */
+type TreeComparison =
+  | { kind: "same" }
+  /** The reader's item names no DOM node, so the same element cannot be found. */
+  | { kind: "unjoinable" }
+  | { kind: "missing" }
+  | { kind: "different"; differences: string[] };
 
-  return nodes.some((candidate) => {
-    if (!isRecord(candidate)) return false;
-    if (normalizeSemanticValue(getStringField(candidate, "role")) !== targetRole) return false;
-    if (targetName && normalizeSemanticValue(getStringField(candidate, "name")) !== targetName) {
-      return false;
+/**
+ * Finds the node the reader read in the checkpoint's accessibility tree by its DOM node and the
+ * frame holding it (node ids repeat across frames rendered in other processes), and
+ * compares what the reader recorded about it with what the tree says: role, name, description,
+ * value and every state and property, and whether the tree leaves it out.
+ */
+function compareWithCheckpointNode(
+  nodes: unknown,
+  target: Record<string, unknown>
+): TreeComparison {
+  const nodeId = getNumericField(target, "backendDOMNodeId");
+  if (nodeId === undefined || !Array.isArray(nodes)) return { kind: "unjoinable" };
+  const frameId = getStringField(target, "frameId");
+  const node: unknown = nodes.find(
+    (candidate) =>
+      isRecord(candidate) &&
+      candidate.backendDOMNodeId === nodeId &&
+      (frameId === undefined || candidate.frameId === undefined || candidate.frameId === frameId)
+  );
+  if (!isRecord(node)) return { kind: "missing" };
+
+  const differences: string[] = [];
+  const compare = (what: string, read: unknown, tree: unknown) => {
+    const shown = (value: unknown) =>
+      value === undefined || value === "" ? "none" : `“${String(value)}”`;
+    const comparable = (value: unknown) =>
+      value === undefined ? "" : (normalizeSemanticValue(String(value)) ?? "");
+    if (comparable(read) !== comparable(tree)) {
+      differences.push(`${what} ${shown(read)} when read, ${shown(tree)} in the tree`);
     }
-    return targetLevel === undefined || getNumericField(candidate, "level") === targetLevel;
-  });
+  };
+  // The reader reads a piece of text on its own; in the tree it is a StaticText named by its words.
+  const readsText = getStringField(target, "role") === TEXT_ROLE;
+  compare("role", target.role, spokenRoleOf(getStringField(node, "role") ?? ""));
+  compare("name", readsText ? target.text : target.name, node.name);
+  if (!readsText) {
+    compare("description", target.description, node.description);
+    compare("value", target.value, node.value);
+  }
+  if (Array.isArray(target.properties)) {
+    const read = propertiesByName(target.properties);
+    const tree = propertiesByName(node.properties);
+    for (const name of new Set([...read.keys(), ...tree.keys()])) {
+      if (read.get(name) !== tree.get(name)) {
+        differences.push(
+          `${name} ${read.get(name) ?? "absent"} when read, ${tree.get(name) ?? "absent"} in the tree`
+        );
+      }
+    }
+  }
+  if (node.ignored === true) {
+    const reasons = Array.isArray(node.ignoredReasons) ? node.ignoredReasons.join(", ") : "";
+    differences.push(`the tree leaves it out${reasons ? ` (${reasons})` : ""}`);
+  }
+  return differences.length ? { kind: "different", differences } : { kind: "same" };
+}
+
+/** Each state or property by name, its value written out so two can be compared. */
+function propertiesByName(properties: unknown): Map<string, string> {
+  if (!Array.isArray(properties)) return new Map();
+  return new Map(
+    properties.flatMap((property) =>
+      isRecord(property) && typeof property.name === "string"
+        ? [[property.name, JSON.stringify(property.value)] as const]
+        : []
+    )
+  );
 }
 
 function normalizeSemanticValue(value: string | undefined): string | undefined {
@@ -1756,118 +1845,195 @@ function buildKeyboardUnknownJudgment(
   };
 }
 
-function collectActivationSignals(
-  records: EvidenceRecord[],
-  beforeRecord: EvidenceRecord,
-  afterRecord: EvidenceRecord,
-  beforeKey: string,
-  afterKey: string
-): ActivationSignal[] {
-  const signals: ActivationSignal[] = [];
-
-  if (beforeKey !== afterKey) {
-    signals.push({
-      label: "focus moved",
-      evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-      artifactIds: collectArtifactIds([beforeRecord, afterRecord])
-    });
-  }
-
-  const domRecords = records.filter(
-    (record) =>
-      record.observerId === "dom" &&
-      record.phase === "after" &&
-      record.status === "ok" &&
-      hasDomChange(record)
-  );
-
-  if (domRecords.length > 0) {
-    signals.push({
-      label: "DOM changed",
-      evidenceRecordIds: domRecords.map((record) => record.id),
-      artifactIds: collectArtifactIds(domRecords)
-    });
-  }
-
-  const networkRecords = records.filter(
-    (record) =>
-      record.observerId === "network" &&
-      record.phase === "after" &&
-      record.status === "ok" &&
-      (getNumericMetaField(record, "newInterestingEventCount") ?? 0) > 0
-  );
-
-  if (networkRecords.length > 0) {
-    signals.push({
-      label: "network activity",
-      evidenceRecordIds: networkRecords.map((record) => record.id),
-      artifactIds: collectArtifactIds(networkRecords)
-    });
-  }
-
-  return signals;
+/** What followed a press: what it changed, what changed elsewhere, and the evidence for both. */
+interface PressResponse {
+  /** Changes the press made: each is something a keyboard or screen-reader user perceives. */
+  signals: ActivationSignal[];
+  /** Accessibility-tree changes away from the pressed control and what it controls. */
+  unattributed: { count: number; descriptions: string[]; evidenceRecordIds: string[] };
+  /** The accessibility-tree record that compared the tree before the press with after it. */
+  accessibilityRecord?: EvidenceRecord;
+  /** Records whose markup changed: supporting evidence, never a response on its own. */
+  markupRecords: EvidenceRecord[];
 }
 
-function collectChangeResponseSignals(records: EvidenceRecord[]): ActivationSignal[] {
+/**
+ * Decides what a press (Enter, Space, a click or a submit) did from what the browser and
+ * Guidepup's reader report, not from the page's markup:
+ * - the pressed control's state in Chrome's accessibility tree (checked, expanded, pressed,
+ *   selected, value, its name, or it leaving the page), and the same for what it names with
+ *   `aria-controls`;
+ * - focus moving;
+ * - a live-region update Guidepup's virtual screen reader announced (a status message, WCAG 4.1.3);
+ * - network activity.
+ * Any other change in the tree, such as a clock ticking, cannot be tied to the press. A change in
+ * the markup is kept as supporting evidence only: a native checkbox ticks without changing it, and
+ * an unrelated script changes it without anything responding.
+ */
+function collectPressResponse(bundle: EvidenceBundle): PressResponse {
+  const { records, interaction } = bundle;
   const signals: ActivationSignal[] = [];
-  const domRecords = records.filter(
+  const accessibilityRecord = records.find(
     (record) =>
-      record.observerId === "dom" &&
+      record.observerId === "accessibility-tree" &&
       record.phase === "after" &&
       record.status === "ok" &&
-      hasDomChange(record)
+      readAccessibilityChanges(record) !== undefined
   );
-  const networkRecords = records.filter(
-    (record) =>
-      record.observerId === "network" &&
-      record.phase === "after" &&
-      record.status === "ok" &&
-      (getNumericMetaField(record, "newInterestingEventCount") ?? 0) > 0
-  );
-  const beforeFocusRecord = findFocusRecord(records, "before");
-  const afterFocusRecord = findFocusRecord(records, "after");
+  const accessibilityChanges = accessibilityRecord && readAccessibilityChanges(accessibilityRecord);
+  const unattributed: string[] = [];
 
-  if (domRecords.length > 0) {
-    signals.push({
-      label: "DOM changed",
-      evidenceRecordIds: domRecords.map((record) => record.id),
-      artifactIds: collectArtifactIds(domRecords)
-    });
-  }
-
-  if (networkRecords.length > 0) {
-    signals.push({
-      label: "network activity",
-      evidenceRecordIds: networkRecords.map((record) => record.id),
-      artifactIds: collectArtifactIds(networkRecords)
-    });
-  }
-
-  if (beforeFocusRecord && afterFocusRecord) {
-    const beforeKey = serializeFocusTarget(getFocusTarget(beforeFocusRecord));
-    const afterKey = serializeFocusTarget(getFocusTarget(afterFocusRecord));
-
-    if (beforeKey !== afterKey) {
+  if (accessibilityRecord && accessibilityChanges) {
+    const pressed = (node: AccessibilityNodeRef) =>
+      isPressedNode(node, interaction, accessibilityChanges);
+    const attributed: string[] = [];
+    for (const change of accessibilityChanges.changes) {
+      const controller = change.controlledBy?.find(pressed);
+      if (pressed(change)) attributed.push(describeAccessibilityChange(change));
+      else if (controller)
+        attributed.push(
+          `${describeAccessibilityChange(change)}, which ${describeAccessibilityNode(controller)} controls`
+        );
+      else unattributed.push(describeAccessibilityChange(change));
+    }
+    if (attributed.length > 0) {
       signals.push({
-        label: "focus moved",
-        evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
-        artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
+        label: attributed.join("; "),
+        evidenceRecordIds: [accessibilityRecord.id],
+        artifactIds: collectArtifactIds([accessibilityRecord])
       });
     }
   }
 
-  return signals;
-}
-
-function hasDomChange(record: EvidenceRecord): boolean {
-  if (getBooleanMetaField(record, "changed") === true) {
-    return true;
+  const beforeFocusRecord = findFocusRecord(records, "before");
+  const afterFocusRecord = findFocusRecord(records, "after");
+  if (
+    beforeFocusRecord &&
+    afterFocusRecord &&
+    serializeFocusTarget(getFocusTarget(beforeFocusRecord)) !==
+      serializeFocusTarget(getFocusTarget(afterFocusRecord))
+  ) {
+    signals.push({
+      label: "focus moved",
+      evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
+      artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
+    });
   }
 
-  return (
-    record.changes?.some((change) => change.path === "dom.html" && change.impact !== "none") ??
-    false
+  const readerRecords = records.filter(
+    (record) =>
+      record.observerId === "virtual-screen-reader" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      readNewLiveRegionAnnouncements(record).length > 0
   );
+  if (readerRecords.length > 0) {
+    const announced = readerRecords
+      .flatMap(readNewLiveRegionAnnouncements)
+      .map(({ politeness, text }) => `"${text}" (${politeness})`);
+    signals.push({
+      label: `a live region announced ${announced.join(", ")}`,
+      evidenceRecordIds: readerRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(readerRecords)
+    });
+  }
+
+  const networkRecords = records.filter(
+    (record) =>
+      record.observerId === "network" &&
+      record.phase === "after" &&
+      record.status === "ok" &&
+      (getNumericMetaField(record, "newInterestingEventCount") ?? 0) > 0
+  );
+  if (networkRecords.length > 0) {
+    signals.push({
+      label: "network activity",
+      evidenceRecordIds: networkRecords.map((record) => record.id),
+      artifactIds: collectArtifactIds(networkRecords)
+    });
+  }
+
+  return {
+    signals,
+    unattributed: {
+      count: unattributed.length,
+      descriptions: unattributed.slice(0, 3),
+      evidenceRecordIds:
+        accessibilityRecord && unattributed.length > 0 ? [accessibilityRecord.id] : []
+    },
+    ...(accessibilityRecord ? { accessibilityRecord } : {}),
+    markupRecords: records.filter(
+      (record) =>
+        record.observerId === "dom" &&
+        record.phase === "after" &&
+        record.status === "ok" &&
+        getBooleanMetaField(record, "changed") === true
+    )
+  };
+}
+
+/**
+ * The control a press acts on. A key press acts on the element that had focus; a click or submit
+ * on its target, found by role and name, or, with neither given, on what the click focused.
+ */
+function isPressedNode(
+  node: AccessibilityNodeRef,
+  interaction: EvidenceBundle["interaction"],
+  changes: AccessibilityChanges
+): boolean {
+  if ((interaction.kind === "enter" || interaction.kind === "space") && changes.focusedBefore) {
+    return node.nodeId === changes.focusedBefore.nodeId;
+  }
+  const { role, name } = interaction.target ?? {};
+  if (!role && !name) return node.nodeId === changes.focusedAfter?.nodeId;
+  return (
+    (!role || normalizeSemanticValue(role) === normalizeSemanticValue(node.role)) &&
+    (!name || normalizeSemanticValue(name) === normalizeSemanticValue(node.name))
+  );
+}
+
+function readAccessibilityChanges(record: EvidenceRecord): AccessibilityChanges | undefined {
+  const changes = isRecord(record.meta) ? record.meta.accessibilityChanges : undefined;
+  return isRecord(changes) && Array.isArray(changes.changes)
+    ? (changes as unknown as AccessibilityChanges)
+    : undefined;
+}
+
+function readNewLiveRegionAnnouncements(record: EvidenceRecord): LiveRegionAnnouncement[] {
+  const announcements = isRecord(record.meta) ? record.meta.newLiveRegionAnnouncements : undefined;
+  return Array.isArray(announcements) ? (announcements as LiveRegionAnnouncement[]) : [];
+}
+
+function describeAccessibilityNode({ role, name }: AccessibilityNodeRef): string {
+  return name ? `${role} "${name}"` : role;
+}
+
+function describeAccessibilityChange(change: AccessibilityChange): string {
+  const node = describeAccessibilityNode(change);
+  if (change.kind === "state") {
+    return `${node} ${change.state} changed from ${String(change.before ?? "none")} to ${String(change.after ?? "none")}`;
+  }
+  if (change.kind === "name") {
+    return `${change.role} name changed from "${change.before ?? ""}" to "${change.after ?? ""}"`;
+  }
+  return `${node} ${change.kind === "shown" ? "appeared" : "disappeared"}`;
+}
+
+/** Why a press with no response of its own is left undecided rather than failed, or nothing. */
+function describeUndecidedPress(response: PressResponse): string | undefined {
+  if (!response.accessibilityRecord) {
+    return "Telling whether the press responded needs the accessibility tree before and after it (the accessibility-tree observer).";
+  }
+  if (response.unattributed.count === 0) return undefined;
+  const more = response.unattributed.count - response.unattributed.descriptions.length;
+  return `The page changed elsewhere (${response.unattributed.descriptions.join("; ")}${more > 0 ? `; and ${more} more` : ""}), but not the pressed control, what it controls, focus, a live-region announcement or the network, so whether the press caused it cannot be told.`;
+}
+
+/** The markup change, said as what it is: supporting evidence, not a response. */
+function describeMarkupEvidence(response: PressResponse): string {
+  return response.markupRecords.length > 0
+    ? " The page's markup changed, which is kept as supporting evidence only."
+    : "";
 }
 
 function supportsChangeResponseInteraction(

@@ -247,9 +247,9 @@ The homepage tells one story, from finding a problem to shipping the fix, in fou
 | Area                    | Implemented                                                                                                                                    | Current scope                                                                                                                                                                                                                                                                                                                           |
 | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Observers               | DOM, accessibility tree, focus, viewport/full-page screenshots, axe 4.13, network                                                              | Before/after capture with raw artifacts; DOM and network change summaries                                                                                                                                                                                                                                                               |
-| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                                                                                            | Fails violations and preserves incomplete checks as unresolved review work; contrast axe cannot measure over a gradient or image is first measured from the screenshot; best-practice results are reported as advisory and never block                                                                                                  |
+| axe judge               | WCAG 2.0/2.1/2.2 A/AA result gating                                                                                                            | Fails violations and preserves incomplete checks as unresolved review work; axe's experimental WCAG A/AA rules run and block like the rest; contrast axe cannot measure over a gradient or image is first measured from the screenshot; best-practice results are reported as advisory and never block                                  |
 | Portable virtual reader | Guide-mode navigation through [Guidepup's virtual screen reader](https://github.com/guidepup/virtual-screen-reader), with JSON/TXT transcripts | Keeps its virtual cursor separate from DOM focus; announces every state Guidepup knows; explicitly not VoiceOver, NVDA or JAWS fidelity                                                                                                                                                                                                 |
-| Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                                                                                      | Matches role, name, and heading level and requires rendered bounds plus a full-page screenshot; pixel meaning remains review work                                                                                                                                                                                                       |
+| Screen-reader judge     | Focus separation plus DOM/AOM/rendered-presence agreement                                                                                      | Finds the element read in the checkpoint's tree by its DOM node and compares its role, name, description, value and every state; requires rendered bounds plus a full-page screenshot; pixel meaning remains review work                                                                                                                |
 | Keyboard judge          | Tab, shift-tab, role-aware enter/space, composite arrows/Home/End                                                                              | Evaluates user-authored keys against a bounded role/orientation matrix, deep focus, `aria-activedescendant`, and observable activation                                                                                                                                                                                                  |
 | Focus-management judge  | Modal opening                                                                                                                                  | Verifies an explicit `inside-dialog` focus expectation using before/after focus evidence                                                                                                                                                                                                                                                |
 | Change-response judge   | Click, enter, space, submit                                                                                                                    | Detects observable DOM, focus, or network outcomes                                                                                                                                                                                                                                                                                      |
@@ -300,8 +300,13 @@ The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where 
 `npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
 reads the page with AEE's virtual reader and with the real one, driven by
 [Guidepup](https://github.com/guidepup/guidepup). It writes the two transcripts side by side to
-`test-results/readers/comparison.md`, with how much of what the real reader says the virtual reader
-also says. The
+`test-results/readers/comparison.md`. Using [jsdiff](https://github.com/kpdecker/jsdiff), it lines
+the two transcripts up both ways, phrase by phrase, and lists what each reader said that the other
+did not, word for word. Every word counts, including role and state words such as "button", "link",
+"not checked" and "expanded"; only the order of words within a phrase does not. The counts say how
+the two differ, not which one is right. The file also says why the real reader's walk ended: it
+went silent, it repeated itself at the end of the page, or it reached the step limit, in which case
+it may not have read the whole page. The
 real reader takes over the machine for about ten minutes, since each step waits until it has
 finished speaking, so leave the keyboard and mouse alone. Where it cannot start, the command fails
 with Guidepup's reason and writes nothing.
@@ -322,7 +327,11 @@ app you run the command from:
    Testing and System Events. Allow each one. The run does not wait for you, so if it fails with
    "AppleEvent timed out" while a prompt is open, allow it and run again.
 
-On Windows, `npx @guidepup/setup setup` sets up NVDA.
+On Windows, `npx @guidepup/setup install` downloads the portable NVDA that Guidepup drives; its `setup` command only prepares macOS.
+
+### Real NVDA without a Windows computer (planned)
+
+The next step is to run real NVDA on one of GitHub's own Windows computers, free for public repositories, so nobody needs a Windows machine. You press **Run workflow** in GitHub, NVDA reads the test lab page in Chrome, and the run saves NVDA's words, a side-by-side page with AEE's reader and a video. JAWS is not part of it: Guidepup does not drive JAWS, and JAWS's own automation server needs a paid licence. [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md) has the picture of how it works, the research behind each step and the choices you get when you run it.
 
 ## Known limitations
 
@@ -353,6 +362,7 @@ See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-en
 - [Evidence privacy](docs/privacy.md)
 - [AI fix proposals](docs/ai-fixes.md)
 - [QA and designer view (design spec)](docs/qa-designer-view.md)
+- [Real NVDA on GitHub's Windows computers (plan and research)](docs/real-screen-readers.md)
 - [Architecture decision records](docs/adr/README.md)
 
 ## Contributing and security

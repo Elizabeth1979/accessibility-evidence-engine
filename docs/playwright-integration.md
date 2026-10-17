@@ -69,7 +69,7 @@ The scenario author chooses every action. AEE does not infer which controls or k
 
 | Context                                  | Evaluated authored keys | Deterministic evidence check                                                                                                  |
 | ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Button                                   | Enter, Space            | An observable focus, DOM, or network response follows activation                                                              |
+| Button                                   | Enter, Space            | An observable response follows activation (see [What counts as a response](#what-counts-as-a-response))                       |
 | Link                                     | Enter                   | An observable response follows activation; Space remains `unknown`                                                            |
 | Checkbox, radio, switch                  | Space                   | An observable response follows activation                                                                                     |
 | Menu item                                | Enter, Space            | An observable response follows activation                                                                                     |
@@ -83,9 +83,23 @@ The matrix follows the keyboard conventions in the [WAI-ARIA Authoring Practices
 
 Context-dependent behavior remains explicit. For example, Space selection in a listbox depends on its selection model, and Left/Right on a tree can expand, collapse, or move focus. These combinations return `unknown` unless the scenario supplies a specific outcome assertion.
 
+## What counts as a response
+
+The keyboard and change-response judges decide whether a press (Enter, Space, a click or a submit) did something from what a keyboard or screen-reader user can perceive, as the browser and Guidepup's virtual screen reader report it:
+
+- the pressed control's state in Chrome's accessibility tree changed: checked, expanded, pressed, selected, its value or its name, or it left the page. A key press acts on the element that had focus; a click on its target, found by role and name;
+- the same for anything the control names with `aria-controls`, such as the panel a disclosure opens;
+- focus moved;
+- Guidepup's virtual screen reader announced a live-region update, as a status message does ([WCAG 4.1.3](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html)). The reader listens through the press only when the `virtual-screen-reader` observer runs with a reader; the keyboard lane of `runInputComparison` always has one;
+- network activity.
+
+The page's markup is compared too, and kept in the record as supporting evidence only. It never decides: Space on a native checkbox ticks it without changing the markup, and a clock or an injected script changes the markup while a dead button does nothing.
+
+A press with none of these responses fails only when the accessibility tree was compared and nothing in it changed. When something else in the tree changed, such as a ticking clock or a paragraph that is not a live region, the judges return `unknown` and name what changed: it may be the press's doing, but nothing ties it to the press. Without the `accessibility-tree` observer the judges cannot tell, and also return `unknown`.
+
 ## Keyboard activation example
 
-The keyboard judge evaluates supported `enter` and `space` activation when focus evidence identifies the control and another observer captures an observable response.
+The keyboard judge evaluates supported `enter` and `space` activation when focus evidence identifies the control and the accessibility tree is captured before and after.
 
 ```ts
 await page.focus("#save");
@@ -93,7 +107,7 @@ await page.focus("#save");
 await runAeeOnPage({
   page,
   projectRoot: process.cwd(),
-  observers: ["focus", "dom"],
+  observers: ["focus", "dom", "accessibility-tree"],
   judges: ["keyboard", "release"],
   interaction: {
     kind: "enter",
@@ -165,13 +179,13 @@ await runAeeOnPage({
 
 ## Change-response example
 
-The change-response judge can evaluate whether a click, enter, space, or submit interaction produced an observable outcome when paired with DOM, network, or focus evidence.
+The change-response judge evaluates whether a click, enter, space, or submit interaction produced an observable outcome, by the same rules as the keyboard judge ([What counts as a response](#what-counts-as-a-response)).
 
 ```ts
 await runAeeOnPage({
   page,
   projectRoot: process.cwd(),
-  observers: ["dom"],
+  observers: ["dom", "accessibility-tree", "focus", "network"],
   judges: ["change-response", "release"],
   interaction: {
     kind: "click",
@@ -237,7 +251,7 @@ This produces `visual-viewport-before.png`, `visual-full-page-before.png`, match
 
 ## Portable virtual screen-reader example
 
-The portable reader provides deterministic guide-mode navigation without requiring installed assistive technology. Give it a dedicated Playwright page or test so it forms an isolated lane. Its virtual cursor reads the page but does not focus or activate anything. What it says comes from [Guidepup's virtual screen reader](https://github.com/guidepup/virtual-screen-reader), which follows the W3C mappings (ARIA, accname, Core-AAM, HTML-AAM) and is tested against the Web Platform Tests: every state and property it knows, such as invalid, read-only, a description or an error message, a value, a list position or a sort order. AEE loads it into the page as a plain script over the Chrome DevTools Protocol, the way `@axe-core/playwright` loads axe, so a page's Content-Security-Policy does not refuse it. For each step, AEE adds the element's path and position from a DOM snapshot and the role and name Chromium's accessibility tree gives it, so the screen-reader judge can cross-check the two. It therefore needs a Chromium page.
+The portable reader provides deterministic guide-mode navigation without requiring installed assistive technology. Give it a dedicated Playwright page or test so it forms an isolated lane. Its virtual cursor reads the page but does not focus or activate anything. What it says comes from [Guidepup's virtual screen reader](https://github.com/guidepup/virtual-screen-reader), which follows the W3C mappings (ARIA, accname, Core-AAM, HTML-AAM) and is tested against the Web Platform Tests: every state and property it knows, such as invalid, read-only, a description or an error message, a value, a list position or a sort order. AEE loads it into the page as a plain script over the Chrome DevTools Protocol, the way `@axe-core/playwright` loads axe, so a page's Content-Security-Policy does not refuse it. For each step, AEE adds the element's path and position from a DOM snapshot and the role and name Chromium's accessibility tree gives it, so the screen-reader judge can cross-check the two. It therefore needs a Chromium page. Guidepup's reader (0.32) builds its tree from each node's children, so on its own it never enters a frame's document. AEE runs one Guidepup reader in each frame's own document, the way `@axe-core/playwright` runs axe in every frame, and reads each frame in place, as NVDA and JAWS do. The frame's element comes first (Guidepup says its title), then the frame's content, then whatever follows the frame. A step back retraces this exactly, so it goes into a frame from below at its last item. A frame Chrome renders in a process of its own, as it does a cross-site payment or video frame, is read through that process's DevTools session, so frames the page's own scripts cannot see into are read too. Each item records its `frameId` and `framePath`. Each step records the frames it left (`framesLeft`) and entered (`framesEntered`). Guidepup says nothing as it leaves a frame, where NVDA says "Out of frame", so the text transcript adds a line in AEE's own words, such as `AEE: left frame Card payment`, and never changes what Guidepup said.
 
 ```ts
 import { createPortableVirtualScreenReader, runAeeOnPage } from "@aee/playwright";
@@ -542,16 +556,17 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - Without `outputDir`, `runAeeOnPage(...)` still returns in-memory `reportArtifacts`.
 - `policy.capture` filters incompatible observer requests before execution and records the applied capture policy in the emitted run config.
 - The DOM observer relies on `page.content()`.
-- The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP via `Accessibility.getFullAXTree` for real Playwright pages.
-- The focus observer snapshots `document.activeElement`, the deepest active element through open shadow roots and same-origin frames, the complete focus chain, focus-visible computed styles, `aria-activedescendant`, and the browser accessibility tree's focused node.
+- The accessibility-tree observer uses a direct snapshot hook when available and falls back to Chromium CDP for real Playwright pages: `Accessibility.getFullAXTree` for every frame `Page.getFrameTree` lists, and for each frame Chrome renders in a process of its own (a cross-site frame under site isolation) through a session Playwright opens on that frame (`browserContext.newCDPSession(frame)`). Every node keeps its `frameId`, and the snapshot lists each frame with the `<iframe>` element that holds it (`DOM.getFrameOwner`). The element map and the heading look-alike check read every frame the same way, with each frame's DOM snapshot joined to its `<iframe>` element; an element inside a frame carries a `framePath` (the `<iframe>` elements it is inside, outermost first, as axe-core lists them) and a box in the full-page screenshot's coordinates.
+- The focus observer snapshots `document.activeElement`, the deepest active element through open shadow roots and same-origin frames, the complete focus chain, focus-visible computed styles, `aria-activedescendant`, and the browser accessibility tree's focused node in whichever frame holds it, cross-site frames included.
 - Focus snapshots include the containing dialog context when the active element is inside a native or ARIA dialog.
 - The focus-management judge supports explicit `inside-dialog`, `preserve`, and `target` expectations. Pointer hover is required to preserve focus; an authored focus action must resolve to its requested target.
 - The keyboard judge relies on deep focus evidence for tab order, role- and orientation-aware composite navigation, `aria-activedescendant`, and role-aware Enter/Space activation. It evaluates only user-authored actions; unsupported or context-dependent combinations return `unknown`.
-- The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
+- The change-response judge currently evaluates click, enter, space, and submit interactions. It needs the accessibility-tree observer to fail one; the DOM observer's markup diff is supporting evidence only.
+- After an interaction, the accessibility-tree record lists what changed in Chrome's tree (`meta.accessibilityChanges`: the focused node before and after, each tracked state, name, shown or hidden node, and which control names it with `aria-controls`). The reader record lists the live-region announcements Guidepup made during it (`meta.newLiveRegionAnnouncements`). Both are checked by `evidence-record.schema.json`.
 - The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.
 - The axe observer pins `@axe-core/playwright` 4.13.0, runs the cumulative WCAG 2.0/2.1/2.2 A/AA tag selection, and retains every raw result category.
 - The portable virtual reader speaks through Guidepup's virtual screen reader in the page, validates its canonical transcript against JSON Schema, and records DOM focus before and after every command.
-- The screen-reader judge requires transcript presence and focus separation, then matches the virtual target's normalized role, name, and heading level against the same-checkpoint accessibility tree. It also requires a full DOM snapshot, non-zero rendered bounds, and a full-page screenshot. Missing inputs return `unknown`; an untruncated DOM/AOM contradiction fails. This verifies deterministic semantic agreement and visual presence, not pixel meaning.
+- The screen-reader judge requires transcript presence and focus separation, then finds the element the reader read in the same-checkpoint accessibility tree by its DOM node (`backendDOMNodeId` with its `frameId`, since node ids repeat across frames in other processes) and compares it whole: role, name, description, value, every state and property Chrome reports, and whether the tree leaves it out (with Chrome's reason). A different element with the same role and name does not count. It also requires a full DOM snapshot, non-zero rendered bounds, and a full-page screenshot. Missing inputs return `unknown`; an untruncated DOM/AOM contradiction fails. This verifies deterministic semantic agreement and visual presence, not pixel meaning.
 - The network observer tracks request and response events between `setup` and `teardown`, snapshots the accumulated log before and after the interaction boundary, and summarizes new request/response activity in record metadata.
 - Before network artifacts are persisted, AEE removes URL credentials and fragments, redacts all query and header values, replaces request bodies, and drops unknown event fields. URL paths remain visible. See [Evidence privacy](privacy.md).
 - The markdown reporter now opens with triage sections for blocking judgments, unresolved signals, and suggested fixes.

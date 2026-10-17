@@ -75,11 +75,14 @@ for (const [device, width] of [
       "--depth:2"
     );
 
-    // Images: the chart with no text alternative is flagged; the decorative logo is not.
+    // Images: the chart with no text alternative is flagged; the decorative logo, which Chrome
+    // leaves out for its empty alt, is not.
     const images = items(panel, "images");
     await expect(images.filter({ hasText: "No alt" })).toHaveCount(1);
     await expect(images.filter({ hasText: "#usage-chart" })).toContainText("No alt");
-    await expect(images.filter({ hasText: "Decorative" }).locator(".marker-flag")).toHaveCount(0);
+    const skipped = images.filter({ hasText: "Screen readers skip it (Chrome: emptyAlt)" });
+    await expect(skipped).toHaveCount(1);
+    await expect(skipped.locator(".marker-flag")).toHaveCount(0);
 
     // Tab order: each keyboard issue the sweep found, on the stop it affects or listed where Tab
     // never goes.

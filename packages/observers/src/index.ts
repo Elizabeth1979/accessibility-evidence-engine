@@ -1,7 +1,25 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { ArtifactKind, EvidenceRecord, ObserverContext, ObserverPlugin } from "@aee/core";
+import {
+  focusPlace,
+  frameNotes,
+  READER_NOTES_LEGEND,
+  readerFocusOf,
+  redactUrl,
+  type AccessibilityChanges,
+  type AccessibilityNodeRef,
+  type ArtifactKind,
+  type EvidenceRecord,
+  type LiveRegionAnnouncement,
+  type ObserverContext,
+  type ObserverPlugin,
+  type ReaderFrameCrossing
+} from "@aee/core";
+
+import { diffAccessibilityTrees } from "./accessibility-changes";
+
+export { diffAccessibilityTrees } from "./accessibility-changes";
 
 export const defaultObserverManifests = [
   {
@@ -75,6 +93,12 @@ export const defaultObserverManifests = [
   }
 ];
 
+/** Which axe rules to run: every rule with one of `tags`, plus axe's experimental rules with one of `experimentalTags`. */
+export interface AxeAnalysisOptions {
+  tags: string[];
+  experimentalTags?: string[];
+}
+
 export interface RuntimeObserverContext extends ObserverContext {
   page?: {
     content(): Promise<string>;
@@ -82,8 +106,10 @@ export interface RuntimeObserverContext extends ObserverContext {
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
     snapshotElementMap?(): Promise<unknown>;
     snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
-    runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+    runAxeAnalysis?(options: AxeAnalysisOptions): Promise<unknown>;
     snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
+    /** Starts the virtual reader hearing the page's live regions. */
+    listenVirtualScreenReader?(): Promise<void>;
     setupNetworkTracking?(options?: unknown): Promise<void>;
     snapshotNetworkLog?(options?: unknown): Promise<unknown>;
     teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -92,9 +118,13 @@ export interface RuntimeObserverContext extends ObserverContext {
   captureLabel?: string;
   runtimeState?: {
     domBeforeHtml?: string;
+    /** The accessibility tree as it was before the interaction, to compare the after tree with. */
+    accessibilityTreeBefore?: unknown;
     networkBeforeSummary?: NetworkLogSummary;
     /** How many entries the transcript held as the run started. */
     virtualScreenReaderBaselineEntryCount?: number;
+    /** How many live-region announcements the transcript held as the run started. */
+    virtualScreenReaderBaselineLiveCount?: number;
   };
 }
 
@@ -405,7 +435,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "unsupported",
       timestamp: getTimestamp(),
@@ -424,7 +454,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "observer_error",
       timestamp: getTimestamp(),
@@ -438,6 +468,13 @@ async function captureAccessibilityRecord(
 
   const content = JSON.stringify(snapshot ?? null, null, 2);
   const semanticIndex = buildAccessibilitySemanticIndex(snapshot);
+  const accessibilityChanges =
+    phase === "after" && context.runtimeState?.accessibilityTreeBefore !== undefined
+      ? diffAccessibilityTrees(context.runtimeState.accessibilityTreeBefore, snapshot)
+      : undefined;
+  if (phase === "before") {
+    context.runtimeState = { ...(context.runtimeState ?? {}), accessibilityTreeBefore: snapshot };
+  }
   const artifact = await maybeWriteArtifact(
     context,
     "accessibility-tree",
@@ -454,92 +491,108 @@ async function captureAccessibilityRecord(
     checkpointId: context.checkpointId,
     interactionId: context.interactionId,
     observerId: "accessibility-tree",
-    observerVersion: "0.2.0",
+    observerVersion: "0.3.0",
     phase,
     status: "ok",
     timestamp: getTimestamp(),
-    summary: `Captured accessibility tree ${phase} state.`,
+    summary: accessibilityChanges
+      ? `Captured accessibility tree after state; ${describeAccessibilityChanges(accessibilityChanges)}.`
+      : `Captured accessibility tree ${phase} state.`,
     ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
     artifacts: artifact ? [artifact] : [],
+    ...(accessibilityChanges
+      ? {
+          changes: accessibilityChanges.changes
+            .filter((change) => change.kind === "state")
+            .map((change) => ({
+              path: `accessibility.${change.state}`,
+              summary: `${describeNodeRef(change)} ${change.state} changed from ${String(change.before)} to ${String(change.after)}.`,
+              before: change.before,
+              after: change.after,
+              impact: "major" as const
+            }))
+        }
+      : {}),
     meta: {
       semanticNodeCount: semanticIndex.nodes.length,
       semanticIndexTruncated: semanticIndex.truncated,
-      semanticNodes: semanticIndex.nodes
+      semanticNodes: semanticIndex.nodes,
+      ...(accessibilityChanges ? { accessibilityChanges } : {})
     }
   };
 }
 
-interface AccessibilitySemanticNode {
-  role: string;
-  name?: string;
-  level?: number;
+function describeAccessibilityChanges({ changes, truncated }: AccessibilityChanges): string {
+  if (changes.length === 0) return "nothing a screen reader reports changed";
+  const states = changes.filter((change) => change.kind === "state").length;
+  return `${changes.length}${truncated ? "+" : ""} change${changes.length === 1 ? "" : "s"}, ${states} of them control state${states === 1 ? "" : "s"}`;
 }
 
+function describeNodeRef({ role, name }: AccessibilityNodeRef): string {
+  return name ? `${role} "${name}"` : role;
+}
+
+/**
+ * One node of the checkpoint's accessibility tree, whole: everything the browser says about it
+ * except its links to other tree nodes. `backendDOMNodeId` and `frameId` are the DOM node it
+ * belongs to and the frame holding it, which join it to what the virtual reader read in the same
+ * browser session.
+ */
+interface AccessibilitySemanticNode {
+  backendDOMNodeId: number;
+  frameId?: string;
+  role: string;
+  name?: string;
+  description?: string;
+  value?: string | number;
+  ignored: boolean;
+  /** Chrome's own reasons for leaving an ignored node out, such as `ariaHiddenElement`. */
+  ignoredReasons?: string[];
+  properties: Array<{ name: string; value: unknown }>;
+}
+
+/** The tree's nodes that belong to a DOM node, in tree order, up to a size a record can carry. */
 function buildAccessibilitySemanticIndex(snapshot: unknown): {
   nodes: AccessibilitySemanticNode[];
   truncated: boolean;
 } {
   const maximumNodes = 5_000;
-  const nodes: AccessibilitySemanticNode[] = [];
-  const seen = new Set<string>();
-  const visited = new WeakSet<object>();
-  let truncated = false;
-
-  const visit = (value: unknown): void => {
-    if (nodes.length >= maximumNodes) {
-      truncated = true;
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!isRecord(value) || visited.has(value)) return;
-    visited.add(value);
-
-    const role = readAccessibilityValue(value.role);
-    if (role) {
-      const name = readAccessibilityValue(value.name);
-      const level = readAccessibilityLevel(value);
-      const normalizedRole = normalizeSemanticText(role);
-      const normalizedName = name ? normalizeSemanticText(name) : undefined;
-      const key = `${normalizedRole}\u0000${normalizedName ?? ""}\u0000${level ?? ""}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        nodes.push({
-          role: normalizedRole,
-          ...(normalizedName ? { name: normalizedName } : {}),
-          ...(level !== undefined ? { level } : {})
-        });
+  const treeNodes = isRecord(snapshot) && Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
+  const nodes = treeNodes.flatMap((node): AccessibilitySemanticNode[] => {
+    if (!isRecord(node) || typeof node.backendDOMNodeId !== "number") return [];
+    const name = readAccessibilityValue(node.name);
+    const description = readAccessibilityValue(node.description);
+    const value = isRecord(node.value) ? node.value.value : undefined;
+    const ignoredReasons = Array.isArray(node.ignoredReasons)
+      ? node.ignoredReasons.flatMap((reason) =>
+          isRecord(reason) && typeof reason.name === "string" ? [reason.name] : []
+        )
+      : [];
+    return [
+      {
+        backendDOMNodeId: node.backendDOMNodeId,
+        ...(typeof node.frameId === "string" ? { frameId: node.frameId } : {}),
+        role: readAccessibilityValue(node.role) ?? "",
+        ...(name ? { name } : {}),
+        ...(description ? { description } : {}),
+        ...(typeof value === "string" || typeof value === "number" ? { value } : {}),
+        ignored: node.ignored === true,
+        ...(ignoredReasons.length ? { ignoredReasons } : {}),
+        properties: Array.isArray(node.properties)
+          ? node.properties.flatMap((property) =>
+              isRecord(property) && typeof property.name === "string"
+                ? [{ name: property.name, value: property.value }]
+                : []
+            )
+          : []
       }
-    }
-
-    Object.values(value).forEach(visit);
-  };
-
-  visit(snapshot);
-  return { nodes, truncated };
+    ];
+  });
+  return { nodes: nodes.slice(0, maximumNodes), truncated: nodes.length > maximumNodes };
 }
 
 function readAccessibilityValue(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (isRecord(value) && typeof value.value === "string") return value.value;
-  return undefined;
-}
-
-function readAccessibilityLevel(node: Record<string, unknown>): number | undefined {
-  if (typeof node.level === "number" && Number.isFinite(node.level)) return node.level;
-  if (!Array.isArray(node.properties)) return undefined;
-  const property = node.properties.find(
-    (candidate) => isRecord(candidate) && candidate.name === "level"
-  );
-  if (!isRecord(property)) return undefined;
-  const value = isRecord(property.value) ? property.value.value : property.value;
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function normalizeSemanticText(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+  return isRecord(value) && typeof value.value === "string" ? value.value : undefined;
 }
 
 async function captureFocusRecord(
@@ -759,6 +812,11 @@ async function captureVisualRecord(
 const AXE_WCAG_22_A_AA_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
 /** axe's best-practice rules run too; they are not WCAG requirements, so their results are advisory. */
 const AXE_RULE_TAGS = [...AXE_WCAG_22_A_AA_TAGS, "best-practice"];
+/**
+ * axe switches off its experimental rules by default. The ones filed under a WCAG A/AA criterion
+ * run too and block a release like any other WCAG rule (owner's decision, 2026-10-17).
+ */
+const AXE_EXPERIMENTAL_RULE_TAGS = AXE_WCAG_22_A_AA_TAGS;
 
 /** An axe rule is advisory only when axe files it as best practice and under no WCAG criterion. */
 export function isAdvisoryAxeRule(tags: readonly unknown[]): boolean {
@@ -802,7 +860,10 @@ async function captureAxeRecord(
   }
 
   try {
-    const result = await runAxeAnalysis({ tags: AXE_RULE_TAGS });
+    const result = await runAxeAnalysis({
+      tags: AXE_RULE_TAGS,
+      experimentalTags: AXE_EXPERIMENTAL_RULE_TAGS
+    });
     const normalized = isRecord(result) ? result : {};
     const violationGroups = splitAdvisory(normalized.violations);
     const violations = violationGroups.blocking.length;
@@ -846,7 +907,11 @@ async function captureAxeRecord(
       artifacts: artifact ? [artifact] : [],
       meta: {
         engineVersion: readNestedString(normalized, "testEngine", "version"),
-        ruleSelection: { type: "tag", values: AXE_RULE_TAGS },
+        ruleSelection: {
+          type: "tag",
+          values: AXE_RULE_TAGS,
+          experimentalTags: AXE_EXPERIMENTAL_RULE_TAGS
+        },
         explicitlyDisabledRuleIds: [],
         violations,
         passes,
@@ -874,6 +939,15 @@ async function captureAxeRecord(
       ]
     };
   }
+}
+
+/** The transcript's live-region announcements; a transcript from before they were recorded has none. */
+function readLiveRegionAnnouncements(
+  transcript: Record<string, unknown>
+): LiveRegionAnnouncement[] {
+  return Array.isArray(transcript.liveRegionAnnouncements)
+    ? (transcript.liveRegionAnnouncements as LiveRegionAnnouncement[])
+    : [];
 }
 
 function arrayLength(value: unknown): number {
@@ -907,11 +981,15 @@ async function recordVirtualScreenReaderBaseline(context: RuntimeObserverContext
   );
   if (!snapshotTranscript) return;
   try {
+    // A screen reader hears a live region only while it runs, so it listens before the interaction.
+    await context.page?.listenVirtualScreenReader?.();
     const transcript = await snapshotTranscript();
     if (isRecord(transcript) && Array.isArray(transcript.entries)) {
       context.runtimeState ??= {};
       context.runtimeState.virtualScreenReaderBaselineEntryCount =
         transcript.entries.filter(isRecord).length;
+      context.runtimeState.virtualScreenReaderBaselineLiveCount =
+        readLiveRegionAnnouncements(transcript).length;
     }
   } catch {
     // The capture reads the transcript again and records what went wrong as its evidence; a
@@ -944,6 +1022,12 @@ async function captureVirtualScreenReaderRecord(
     const newEntries = entries.slice(previousEntryCount);
     const focusMovedCount = newEntries.filter((entry) => entry.focusMoved === true).length;
     const lastEntry = newEntries.at(-1);
+    const newLiveRegionAnnouncements =
+      phase === "after"
+        ? readLiveRegionAnnouncements(transcript).slice(
+            context.runtimeState?.virtualScreenReaderBaselineLiveCount ?? 0
+          )
+        : [];
 
     const jsonArtifact = await maybeWriteArtifact(
       context,
@@ -999,7 +1083,8 @@ async function captureVirtualScreenReaderRecord(
         focusMovedCount,
         lastAnnouncement: readString(lastEntry?.announcement),
         lastCommand: readString(lastEntry?.command),
-        lastItem: isRecord(lastEntry?.item) ? lastEntry.item : undefined
+        lastItem: isRecord(lastEntry?.item) ? lastEntry.item : undefined,
+        ...(phase === "after" ? { newLiveRegionAnnouncements } : {})
       }
     };
   } catch (error) {
@@ -1047,6 +1132,7 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
     "Fidelity: semantic simulation; not VoiceOver, NVDA, or another physical assistive technology.",
     `Page: ${readString(transcript.pageUrl) ?? "unknown"}`,
     `Mode: ${readString(transcript.mode) ?? "unknown"}`,
+    READER_NOTES_LEGEND,
     ""
   ];
 
@@ -1057,8 +1143,14 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
       const sequence = typeof entry.sequence === "number" ? entry.sequence : index + 1;
       const command = readString(entry.command) ?? "unknown-command";
       const announcement = readString(entry.announcement) ?? "";
-      const focusBefore = readString(entry.domFocusBefore) ?? "none";
-      const focusAfter = readString(entry.domFocusAfter) ?? "none";
+      const focusBefore = focusPlace(readerFocusOf(entry.domFocusBefore));
+      const focusAfter = focusPlace(readerFocusOf(entry.domFocusAfter));
+      lines.push(
+        ...frameNotes({
+          framesLeft: readFrameCrossings(entry.framesLeft),
+          framesEntered: readFrameCrossings(entry.framesEntered)
+        })
+      );
       lines.push(`${sequence}. ${command}: ${announcement}`);
       lines.push(
         `   DOM focus: ${focusBefore} -> ${focusAfter}; moved: ${entry.focusMoved === true ? "yes" : "no"}`
@@ -1067,6 +1159,18 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
   }
 
   return `${lines.join("\n")}\n`;
+}
+
+function readFrameCrossings(value: unknown): ReaderFrameCrossing[] {
+  return (Array.isArray(value) ? value.filter(isRecord) : []).map((frame) => {
+    const name = readString(frame.name);
+    return {
+      ...(name ? { name } : {}),
+      framePath: Array.isArray(frame.framePath)
+        ? frame.framePath.filter((step): step is string => typeof step === "string")
+        : []
+    };
+  });
 }
 
 function readString(value: unknown): string | undefined {
@@ -1228,7 +1332,7 @@ function sanitizeNetworkEvent(event: unknown): Record<string, unknown> | undefin
   copyBooleanField(event, sanitized, "fromServiceWorker");
 
   if (typeof event.url === "string") {
-    sanitized.url = redactNetworkUrl(event.url);
+    sanitized.url = redactUrl(event.url);
   }
 
   if (isRecord(event.headers)) {
@@ -1283,23 +1387,6 @@ function copyBooleanField(
 ): void {
   if (typeof source[field] === "boolean") {
     target[field] = source[field];
-  }
-}
-
-function redactNetworkUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-
-    for (const name of new Set(url.searchParams.keys())) {
-      url.searchParams.set(name, "[REDACTED]");
-    }
-
-    return url.toString();
-  } catch {
-    return "[REDACTED]";
   }
 }
 

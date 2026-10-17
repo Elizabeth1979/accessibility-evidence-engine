@@ -10,10 +10,11 @@ import {
   createNetworkObserver,
   createVirtualScreenReaderObserver,
   createVisualObserver,
+  type AxeAnalysisOptions,
   type RuntimeObserverContext
 } from "./index";
 
-test("createAccessibilityTreeObserver builds a normalized semantic index", async () => {
+test("createAccessibilityTreeObserver indexes whole tree nodes by their DOM node", async () => {
   const observer = createAccessibilityTreeObserver();
   const [record] = await observer.captureAfter!({
     runId: "run-accessibility",
@@ -27,11 +28,44 @@ test("createAccessibilityTreeObserver builds a normalized semantic index", async
         return {
           nodes: [
             {
+              nodeId: "1",
+              ignored: false,
+              backendDOMNodeId: 7,
               role: { type: "role", value: "heading" },
               name: { type: "computedString", value: "  Invoices  " },
-              properties: [{ name: "level", value: { type: "integer", value: 1 } }]
+              description: { type: "computedString", value: "Unpaid this month" },
+              properties: [{ name: "level", value: { type: "integer", value: 1 } }],
+              childIds: ["2"]
             },
-            { role: "button", name: "PAY NOW" }
+            {
+              nodeId: "2",
+              ignored: true,
+              ignoredReasons: [
+                { name: "ariaHiddenElement", value: { type: "boolean", value: true } }
+              ],
+              backendDOMNodeId: 8,
+              role: { type: "role", value: "none" }
+            },
+            {
+              nodeId: "3",
+              ignored: false,
+              backendDOMNodeId: 9,
+              role: { type: "role", value: "textbox" },
+              name: { type: "computedString", value: "Search" },
+              value: { type: "string", value: "invoices" },
+              properties: [
+                { name: "focusable", value: { type: "booleanOrUndefined", value: true } },
+                {
+                  name: "describedby",
+                  value: {
+                    type: "nodeList",
+                    relatedNodes: [{ backendDOMNodeId: 10, idref: "hint", text: "Press Enter" }]
+                  }
+                }
+              ]
+            },
+            // A node no DOM node backs cannot be joined to what the reader read.
+            { nodeId: "4", ignored: false, role: { type: "internalRole", value: "RootWebArea" } }
           ]
         };
       }
@@ -39,15 +73,143 @@ test("createAccessibilityTreeObserver builds a normalized semantic index", async
   } as RuntimeObserverContext);
 
   assert.equal(record.status, "ok");
-  assert.equal(record.observerVersion, "0.2.0");
+  assert.equal(record.observerVersion, "0.3.0");
   assert.deepEqual(record.meta, {
-    semanticNodeCount: 2,
+    semanticNodeCount: 3,
     semanticIndexTruncated: false,
     semanticNodes: [
-      { role: "heading", name: "invoices", level: 1 },
-      { role: "button", name: "pay now" }
+      {
+        backendDOMNodeId: 7,
+        role: "heading",
+        name: "  Invoices  ",
+        description: "Unpaid this month",
+        ignored: false,
+        properties: [{ name: "level", value: { type: "integer", value: 1 } }]
+      },
+      {
+        backendDOMNodeId: 8,
+        role: "none",
+        ignored: true,
+        ignoredReasons: ["ariaHiddenElement"],
+        properties: []
+      },
+      {
+        backendDOMNodeId: 9,
+        role: "textbox",
+        name: "Search",
+        value: "invoices",
+        ignored: false,
+        properties: [
+          { name: "focusable", value: { type: "booleanOrUndefined", value: true } },
+          {
+            name: "describedby",
+            value: {
+              type: "nodeList",
+              relatedNodes: [{ backendDOMNodeId: 10, idref: "hint", text: "Press Enter" }]
+            }
+          }
+        ]
+      }
     ]
   });
+});
+
+test("createAccessibilityTreeObserver records what changed between before and after", async () => {
+  const observer = createAccessibilityTreeObserver();
+  let checked = "false";
+  const context: RuntimeObserverContext = {
+    runId: "run-accessibility-change",
+    page: {
+      async content() {
+        return '<input type="checkbox" aria-label="Agree">';
+      },
+      async snapshotAccessibilityTree() {
+        return {
+          nodes: [
+            {
+              nodeId: "4",
+              ignored: false,
+              role: { type: "role", value: "checkbox" },
+              name: { type: "computedString", value: "Agree" },
+              properties: [
+                { name: "focused", value: { type: "booleanOrUndefined", value: true } },
+                { name: "checked", value: { type: "tristate", value: checked } }
+              ],
+              backendDOMNodeId: 4
+            }
+          ]
+        };
+      }
+    }
+  };
+
+  const [before] = await observer.captureBefore!(context);
+  checked = "true";
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(before.meta?.accessibilityChanges, undefined);
+  assert.deepEqual(after.meta?.accessibilityChanges, {
+    focusedBefore: { nodeId: 4, role: "checkbox", name: "Agree" },
+    focusedAfter: { nodeId: 4, role: "checkbox", name: "Agree" },
+    changes: [
+      {
+        nodeId: 4,
+        role: "checkbox",
+        name: "Agree",
+        kind: "state",
+        state: "checked",
+        before: "false",
+        after: "true"
+      }
+    ],
+    truncated: false
+  });
+  assert.deepEqual(after.changes, [
+    {
+      path: "accessibility.checked",
+      summary: 'checkbox "Agree" checked changed from false to true.',
+      before: "false",
+      after: "true",
+      impact: "major"
+    }
+  ]);
+  assert.match(after.summary ?? "", /1 change, 1 of them control state/);
+});
+
+test("the virtual-reader observer listens before the press and keeps only its live-region announcements", async () => {
+  const announcement = (sequence: number, text: string) => ({
+    sequence,
+    timestamp: "2026-09-13T00:00:00.000Z",
+    politeness: "polite" as const,
+    text
+  });
+  // A message from before this press must not count as its response.
+  const transcript = { entries: [], liveRegionAnnouncements: [announcement(1, "Loaded")] };
+  let listening = false;
+  const observer = createVirtualScreenReaderObserver();
+  const context: RuntimeObserverContext = {
+    runId: "run-reader-live",
+    page: {
+      async content() {
+        return '<div role="status"></div>';
+      },
+      async listenVirtualScreenReader() {
+        listening = true;
+      },
+      async snapshotVirtualScreenReaderTranscript() {
+        return transcript;
+      }
+    }
+  };
+
+  await observer.setup!(context);
+  const [before] = await observer.captureBefore!(context);
+  transcript.liveRegionAnnouncements.push(announcement(2, "Saved"));
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(listening, true);
+  assert.equal(before.meta?.newLiveRegionAnnouncements, undefined);
+  assert.deepEqual(after.meta?.newLiveRegionAnnouncements, [announcement(2, "Saved")]);
 });
 
 test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
@@ -55,24 +217,25 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
     pageUrl: "https://example.com/",
     generatedAt: "2026-09-13T00:00:00.000Z",
+    // A later entry also says which frames the reader left.
     entries: [
       {
         sequence: 1,
         timestamp: "2026-09-13T00:00:00.000Z",
         command: "next-heading",
         announcement: "heading, Invoices, level 1",
-        domFocusBefore: "#pay",
-        domFocusAfter: "#pay",
+        domFocusBefore: { nodePath: "#pay", backendDOMNodeId: 7, frameId: "frame-top" },
+        domFocusAfter: { nodePath: "#pay", backendDOMNodeId: 7, frameId: "frame-top" },
         focusMoved: false
       }
-    ]
+    ] as Array<Record<string, unknown>>
   };
 
   try {
@@ -94,13 +257,21 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
 
     await observer.setup!(context);
     const [before] = await observer.captureBefore!(context);
+    // Focus on a button inside a frame is named by the frame element and the button's own path.
+    const inBilling = {
+      nodePath: "button",
+      backendDOMNodeId: 4,
+      frameId: "frame-billing",
+      framePath: ["#billing"]
+    };
     transcript.entries.push({
       sequence: 2,
       timestamp: "2026-09-13T00:00:01.000Z",
       command: "next-control",
       announcement: "Pay, button",
-      domFocusBefore: "#pay",
-      domFocusAfter: "#pay",
+      framesLeft: [{ frameId: "frame-billing", framePath: ["#billing"], name: "Billing" }],
+      domFocusBefore: inBilling,
+      domFocusAfter: inBilling,
       focusMoved: false
     });
     const [after] = await observer.captureAfter!(context);
@@ -120,7 +291,15 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
     assert.ok(textPath);
     assert.equal(JSON.parse(await readFile(jsonPath, "utf8")).entries.length, 2);
     assert.match(await readFile(textPath, "utf8"), /semantic simulation; not VoiceOver, NVDA/);
-    assert.match(await readFile(textPath, "utf8"), /2\. next-control: Pay, button/);
+    // Leaving a frame is AEE's note, on its own line before the step, not part of what was said.
+    assert.match(
+      await readFile(textPath, "utf8"),
+      /\nAEE: left frame Billing\n2\. next-control: Pay, button\n/
+    );
+    assert.match(
+      await readFile(textPath, "utf8"),
+      /\n {3}DOM focus: #billing >>> button -> #billing >>> button; moved: no\n/
+    );
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }
@@ -196,7 +375,7 @@ test("createVisualObserver captures separate viewport and full-page artifacts", 
 
 test("createAxeObserver preserves complete pinned axe output", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-axe-"));
-  let requestedTags: string[] = [];
+  let requested: AxeAnalysisOptions | undefined;
   const rawResult = {
     testEngine: { name: "axe-core", version: "4.13.0" },
     testRunner: { name: "axe" },
@@ -225,7 +404,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
           return "<button></button>";
         },
         async runAxeAnalysis(options) {
-          requestedTags = options.tags;
+          requested = options;
           return rawResult;
         }
       }
@@ -234,19 +413,19 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     const [record] = await observer.captureBefore!(context);
     const artifactPath = record.artifacts?.[0]?.path;
 
-    assert.deepEqual(requestedTags, [
-      "wcag2a",
-      "wcag2aa",
-      "wcag21a",
-      "wcag21aa",
-      "wcag22a",
-      "wcag22aa",
-      "best-practice"
-    ]);
+    const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+    assert.deepEqual(requested, {
+      tags: [...wcagTags, "best-practice"],
+      experimentalTags: wcagTags
+    });
     assert.equal(record.status, "ok");
     assert.deepEqual(record.meta, {
       engineVersion: "4.13.0",
-      ruleSelection: { type: "tag", values: requestedTags },
+      ruleSelection: {
+        type: "tag",
+        values: requested!.tags,
+        experimentalTags: requested!.experimentalTags
+      },
       explicitlyDisabledRuleIds: [],
       violations: 1,
       passes: 1,

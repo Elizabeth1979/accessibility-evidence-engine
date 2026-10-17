@@ -4,8 +4,10 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 
 import AxeBuilder from "@axe-core/playwright";
+import axe from "axe-core";
 import {
   executeRun,
+  redactUrl,
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
@@ -19,7 +21,11 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 import { createDefaultJudgePlugins } from "@aee/judges";
-import { createDefaultObserverPlugins, type RuntimeObserverContext } from "@aee/observers";
+import {
+  createDefaultObserverPlugins,
+  type AxeAnalysisOptions,
+  type RuntimeObserverContext
+} from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
 import { assertValidSchema, conceptForAxeRule } from "@aee/schemas";
 
@@ -32,7 +38,12 @@ import {
   type VirtualScreenReaderPage,
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
-import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import {
+  fetchAccessibilityTree,
+  withPageSessions,
+  type CdpContext,
+  type FramedPage
+} from "./accessibility-tree";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
@@ -68,6 +79,7 @@ export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
+export * from "./heading-lookalikes";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
 export * from "./pointer-keyboard-comparison";
@@ -81,7 +93,7 @@ export interface PlaywrightPageLike {
   snapshotAccessibilityTree?(options?: unknown): Promise<unknown>;
   snapshotFocusTarget?(options?: unknown): Promise<unknown>;
   snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
-  runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+  runAxeAnalysis?(options: AxeAnalysisOptions): Promise<unknown>;
   setupNetworkTracking?(options?: unknown): Promise<void>;
   snapshotNetworkLog?(options?: unknown): Promise<unknown>;
   teardownNetworkTracking?(options?: unknown): Promise<void>;
@@ -977,6 +989,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const judgeIds = [
       ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
     ];
+    // A key press can answer only with a status message (WCAG 4.1.3), which a screen reader hears
+    // from a live region. Guidepup's reader listens through each press, so the keyboard judge
+    // counts what it announced.
+    const readerPage =
+      driver === "keyboard" ? framedCdpPage(page as typeof page & CdpEnabledPageLike) : undefined;
+    const pressListener = readerPage ? createPortableVirtualScreenReader(readerPage) : undefined;
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
@@ -993,13 +1011,15 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
       };
       manifestLane.actions.push(manifestAction);
+      const listensToPress = Boolean(pressListener) && action.kind === "press";
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
         outputDir: runOutputDir,
         runId,
         policy: options.policy,
-        observers: observerIds,
+        observers: listensToPress ? [...observerIds, "virtual-screen-reader"] : observerIds,
+        ...(listensToPress ? { virtualScreenReader: pressListener } : {}),
         judges: [
           ...new Set([
             ...judgeIds,
@@ -2117,8 +2137,17 @@ function waitFor(durationMs: number): Promise<void> {
   });
 }
 
-interface CdpEnabledPageLike extends PlaywrightPageLike {
+interface CdpEnabledPageLike extends PlaywrightPageLike, Partial<FramedPage> {
   context?(): CdpContext;
+}
+
+/** The page, when it can be read frame by frame over the DevTools protocol, as a Playwright page can. */
+function framedCdpPage<TPage extends CdpEnabledPageLike>(
+  page: TPage
+): (TPage & FramedPage & { context(): CdpContext }) | undefined {
+  return page.context && page.frames && page.mainFrame
+    ? (page as TPage & FramedPage & { context(): CdpContext })
+    : undefined;
 }
 
 interface EvaluatablePageLike extends PlaywrightPageLike {
@@ -2159,11 +2188,14 @@ async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader
 ): Promise<RuntimeObserverContext["page"]> {
-  const cdpPage = page as CdpEnabledPageLike;
+  const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const listenVirtualScreenReader = virtualScreenReader
+    ? async () => virtualScreenReader.listen()
+    : undefined;
   const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
     ? async () => virtualScreenReader.snapshot()
     : page.snapshotVirtualScreenReaderTranscript?.bind(page);
@@ -2185,8 +2217,8 @@ async function createObserverPage(
   const networkTracker = createNetworkTracker(eventedPage);
   const snapshotAccessibilityTree = page.snapshotAccessibilityTree
     ? async () => page.snapshotAccessibilityTree?.()
-    : cdpPage.context
-      ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
+    : cdpPage
+      ? async () => withPageSessions(cdpPage.context(), cdpPage, fetchAccessibilityTree)
       : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
@@ -2588,8 +2620,8 @@ async function createObserverPage(
               return undefined;
             }
           });
-          const accessibilityFocus = cdpPage.context
-            ? await captureAccessibilityFocus(cdpPage.context(), page)
+          const accessibilityFocus = cdpPage
+            ? await captureAccessibilityFocus(cdpPage)
             : { status: "unsupported" as const };
 
           const focusState =
@@ -2623,12 +2655,14 @@ async function createObserverPage(
         }
       : undefined;
   const runAxeAnalysis = customRunAxeAnalysis
-    ? async (options: { tags: string[] }) => customRunAxeAnalysis(options)
+    ? async (options: AxeAnalysisOptions) => customRunAxeAnalysis(options)
     : evaluatablePage.evaluate
-      ? async (options: { tags: string[] }) => {
+      ? async (options: AxeAnalysisOptions) => {
+          // `options()` replaces axe's run options, so it goes before `withTags()` adds the tags.
           const axeResult = await new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
+            .options({ rules: enableExperimentalAxeRules(options.experimentalTags ?? []) })
             .withTags(options.tags)
             .analyze();
           // Contrast axe could not decide over an image or a gradient is measured from the pixels.
@@ -2698,9 +2732,9 @@ async function createObserverPage(
       return page.content();
     },
     snapshotAccessibilityTree,
-    snapshotElementMap: cdpPage.context
+    snapshotElementMap: cdpPage
       ? async () => {
-          const elementMap = await withCdpSession(cdpPage.context!(), page, captureElementMap);
+          const elementMap = await withPageSessions(cdpPage.context(), cdpPage, captureElementMap);
           assertValidSchema("elementMap", elementMap, "element map");
           return elementMap;
         }
@@ -2709,20 +2743,19 @@ async function createObserverPage(
     snapshotScreenshot,
     runAxeAnalysis,
     snapshotVirtualScreenReaderTranscript,
+    listenVirtualScreenReader,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking
   };
 }
 
+/** Where the accessibility tree has focus, in whichever frame holds it. */
 async function captureAccessibilityFocus(
-  context: CdpContext | undefined,
-  page: PlaywrightPageLike
+  page: FramedPage & { context(): CdpContext }
 ): Promise<Record<string, unknown>> {
-  if (!context) return { status: "unsupported" };
-
   try {
-    const { nodes } = await withCdpSession(context, page, fetchAccessibilityTree);
+    const { nodes } = await withPageSessions(page.context(), page, fetchAccessibilityTree);
     const focusedNodes = nodes.filter((node) =>
       node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
     );
@@ -2735,6 +2768,7 @@ async function captureAccessibilityFocus(
       status: "matched",
       nodeId: focusedNode.nodeId,
       backendDOMNodeId: focusedNode.backendDOMNodeId,
+      frameId: focusedNode.frameId,
       role: focusedNode.role?.value,
       name: focusedNode.name?.value
     };
@@ -2763,6 +2797,22 @@ function byTargetKey<Result>(
   );
 }
 
+/**
+ * axe runs no experimental rule unless it is enabled by id (axe-core API.md, "Example 3"). The ids
+ * come from the same axe-core release that @axe-core/playwright injects, so a rule axe adds or
+ * graduates is picked up without a hand-kept list.
+ */
+export function enableExperimentalAxeRules(
+  tags: readonly string[]
+): Record<string, { enabled: true }> {
+  return Object.fromEntries(
+    axe
+      .getRules(["experimental"])
+      .filter((rule) => rule.tags.some((tag) => tags.includes(tag)))
+      .map((rule) => [rule.ruleId, { enabled: true }])
+  );
+}
+
 function createNetworkTracker(page: EventedPageLike) {
   if (!page.on) {
     return undefined;
@@ -2780,7 +2830,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "request",
       requestId,
-      url: redactNetworkUrl(request.url()),
+      url: redactUrl(request.url()),
       method: request.method(),
       resourceType: request.resourceType(),
       headers: redactHeaderValues(request.headers()),
@@ -2795,7 +2845,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "response",
       requestId,
-      url: redactNetworkUrl(response.url()),
+      url: redactUrl(response.url()),
       status: response.status(),
       statusText: response.statusText(),
       ok: response.ok(),
@@ -2839,23 +2889,6 @@ function createNetworkTracker(page: EventedPageLike) {
 
 function redactHeaderValues(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.keys(headers).map((name) => [name, "[REDACTED]"]));
-}
-
-function redactNetworkUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-
-    for (const name of new Set(url.searchParams.keys())) {
-      url.searchParams.set(name, "[REDACTED]");
-    }
-
-    return url.toString();
-  } catch {
-    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
-  }
 }
 
 async function renderReports(input: ReporterInput): Promise<ReporterArtifact[]> {

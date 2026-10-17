@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEFAULT_POLICY, type EvidenceBundle, type Judgment } from "@aee/core";
+import {
+  DEFAULT_POLICY,
+  type AccessibilityChanges,
+  type EvidenceBundle,
+  type Judgment
+} from "@aee/core";
 
 import { createDefaultJudgePlugins } from "./index";
 
@@ -60,9 +65,24 @@ function createJudgment(overrides: Partial<Judgment>): Judgment {
   };
 }
 
-function createSemanticSupportRecords(
-  semanticNodes: Array<{ role: string; name?: string; level?: number }>
-): EvidenceBundle["records"] {
+interface TreeNode {
+  backendDOMNodeId: number;
+  role: string;
+  name?: string;
+  description?: string;
+  ignored?: boolean;
+  ignoredReasons?: string[];
+  properties?: Array<{ name: string; value: { type: string; value?: unknown } }>;
+}
+
+const LEVEL_1 = [{ name: "level", value: { type: "integer", value: 1 } }];
+
+function createSemanticSupportRecords(treeNodes: TreeNode[]): EvidenceBundle["records"] {
+  const semanticNodes = treeNodes.map(({ ignored = false, properties = [], ...node }) => ({
+    ...node,
+    ignored,
+    properties
+  }));
   return [
     {
       id: "record-dom-after",
@@ -203,22 +223,29 @@ test("screen-reader judge passes virtual navigation that does not move DOM focus
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }])
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /without moving DOM focus/);
-  assert.match(judgment?.summary ?? "", /still match the tree captured at this checkpoint/);
+  assert.match(
+    judgment?.summary ?? "",
+    /The element it read has the same role, name, description, value and states in the accessibility tree captured at this checkpoint/
+  );
   assert.match(judgment?.summary ?? "", /not pixel meaning or VoiceOver\/NVDA fidelity/);
 });
 
-test("screen-reader judge fails when the checkpoint's accessibility tree lacks the read item", async () => {
+test("screen-reader judge fails when the same element is named differently, even if another node has the name", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const bundle = createBundle([
     {
@@ -237,21 +264,162 @@ test("screen-reader judge fails when the checkpoint's accessibility tree lacks t
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "Payments", level: 1 }])
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Payments", properties: LEVEL_1 },
+      // A different element with the read name and level does not stand in for the one read.
+      { backendDOMNodeId: 8, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
 
   assert.equal(judgment?.verdict, "fail");
   assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
-  assert.match(judgment?.summary ?? "", /not found in the tree captured at this checkpoint/);
+  assert.match(
+    judgment?.summary ?? "",
+    /describes that same element differently: name “Invoices” when read, “Payments” in the tree/
+  );
 });
 
-function readTextBundle(semanticNodes: Array<{ role: string; name?: string }>) {
+function readButtonBundle(
+  item: Record<string, unknown>,
+  treeNodes: TreeNode[],
+  announcement = "Filters, button, collapsed"
+) {
+  return createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: announcement,
+        lastItem: {
+          role: "button",
+          name: "Filters",
+          nodePath: "main > button",
+          visualBounds: { x: 20, y: 40, width: 120, height: 32 },
+          ...item
+        }
+      }
+    },
+    ...createSemanticSupportRecords(treeNodes)
+  ]);
+}
+
+const COLLAPSED = [{ name: "expanded", value: { type: "booleanOrUndefined", value: false } }];
+const EXPANDED = [{ name: "expanded", value: { type: "booleanOrUndefined", value: true } }];
+
+test("screen-reader judge fails when a state of the element read differs in the tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: COLLAPSED }, [
+      { backendDOMNodeId: 3, role: "button", name: "Filters", properties: EXPANDED }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /expanded \{"type":"booleanOrUndefined","value":false\} when read, \{"type":"booleanOrUndefined","value":true\} in the tree/
+  );
+});
+
+test("screen-reader judge fails when the description of the element read differs in the tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle(
+      { backendDOMNodeId: 3, description: "Opens the filter panel", properties: [] },
+      [{ backendDOMNodeId: 3, role: "button", name: "Filters" }]
+    ),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /description “Opens the filter panel” when read, none in the tree/
+  );
+});
+
+test("screen-reader judge fails when the tree leaves out the element read, with Chrome's reason", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: [] }, [
+      {
+        backendDOMNodeId: 3,
+        role: "button",
+        name: "Filters",
+        ignored: true,
+        ignoredReasons: ["ariaHiddenElement"]
+      }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /the tree leaves it out \(ariaHiddenElement\)/);
+});
+
+test("screen-reader judge fails when the element read is not in the checkpoint's tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: [] }, [
+      { backendDOMNodeId: 4, role: "button", name: "Filters" }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /that element is not in the tree captured at this checkpoint/
+  );
+});
+
+test("screen-reader judge leaves undecided an item that names no DOM node", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ properties: [] }, [
+      { backendDOMNodeId: 3, role: "button", name: "Filters" }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /names no DOM node/);
+});
+
+test("screen-reader judge matches a summary the reader calls a button to Chromium's DisclosureTriangle", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: COLLAPSED }, [
+      { backendDOMNodeId: 3, role: "DisclosureTriangle", name: "Filters", properties: COLLAPSED }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "pass");
+});
+
+function readTextBundle(treeNodes: TreeNode[]) {
   return createBundle([
     {
       id: "record-reader-after",
@@ -268,11 +436,12 @@ function readTextBundle(semanticNodes: Array<{ role: string; name?: string }>) {
           role: "text",
           text: "Project Alpha",
           nodePath: "main > article > header > strong",
-          visualBounds: { x: 20, y: 40, width: 120, height: 20 }
+          visualBounds: { x: 20, y: 40, width: 120, height: 20 },
+          backendDOMNodeId: 12
         }
       }
     },
-    ...createSemanticSupportRecords(semanticNodes)
+    ...createSemanticSupportRecords(treeNodes)
   ]);
 }
 
@@ -280,7 +449,7 @@ test("screen-reader judge matches text the reader reads on its own to the tree's
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
 
   const [judgment] = await judge!.judge(
-    readTextBundle([{ role: "statictext", name: "project alpha" }]),
+    readTextBundle([{ backendDOMNodeId: 12, role: "StaticText", name: "Project  Alpha" }]),
     { runId: "run-1" }
   );
 
@@ -291,7 +460,7 @@ test("screen-reader judge fails text the reader reads that the tree does not hol
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
 
   const [judgment] = await judge!.judge(
-    readTextBundle([{ role: "statictext", name: "project beta" }]),
+    readTextBundle([{ backendDOMNodeId: 12, role: "StaticText", name: "Project Beta" }]),
     { runId: "run-1" }
   );
 
@@ -317,11 +486,13 @@ test("screen-reader judge leaves undecided an announcement that disagrees with t
           role: "button",
           name: "Pay invoice",
           nodePath: "main > button",
-          visualBounds: { x: 20, y: 40, width: 120, height: 32 }
+          visualBounds: { x: 20, y: 40, width: 120, height: 32 },
+          backendDOMNodeId: 5,
+          properties: []
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "button", name: "pay invoice" }])
+    ...createSemanticSupportRecords([{ backendDOMNodeId: 5, role: "button", name: "Pay invoice" }])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
@@ -349,13 +520,15 @@ test("screen-reader judge returns unknown when same-checkpoint visual evidence i
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }]).filter(
-      ({ observerId }) => observerId !== "visual"
-    )
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ]).filter(({ observerId }) => observerId !== "visual")
   ];
 
   const [judgment] = await judge!.judge(createBundle(records), { runId: "run-1" });
@@ -669,170 +842,237 @@ test("release judge ignores low-confidence blockers and can fail on unresolved u
   assert.deepEqual(judgment.evidenceRecordIds, ["record-screen-reader"]);
 });
 
-test("keyboard judge passes enter activation when an activatable control produces DOM change", async () => {
-  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+type PressRecord = EvidenceBundle["records"][number];
+
+function pressRecord(
+  id: string,
+  observerId: string,
+  phase: PressRecord["phase"],
+  meta?: Record<string, unknown>
+): PressRecord {
+  return {
+    id,
+    runId: "run-1",
+    checkpointId: "checkpoint-1",
+    interactionId: "interaction-1",
+    observerId,
+    phase,
+    status: "ok",
+    timestamp: phase === "before" ? "2026-06-21T10:00:01.000Z" : "2026-06-21T10:00:01.100Z",
+    ...(meta ? { meta } : {})
+  };
+}
+
+/** Focus stays on the pressed control, as it does for a checkbox, a toggle or a Save button. */
+function focusStaysOn(focusTarget: Record<string, unknown>): PressRecord[] {
+  return [
+    pressRecord("record-focus-before", "focus", "before", { focusTarget }),
+    pressRecord("record-focus-after", "focus", "after", { focusTarget })
+  ];
+}
+
+function accessibilityAfter(accessibilityChanges: AccessibilityChanges): PressRecord {
+  return pressRecord("record-accessibility-after", "accessibility-tree", "after", {
+    accessibilityChanges
+  });
+}
+
+function markupAfter(changed: boolean): PressRecord {
+  return pressRecord("record-dom-after", "dom", "after", { changed });
+}
+
+function readerAfter(texts: string[]): PressRecord {
+  return pressRecord("record-reader-after", "virtual-screen-reader", "after", {
+    newLiveRegionAnnouncements: texts.map((text, index) => ({
+      sequence: index + 1,
+      timestamp: "2026-06-21T10:00:01.050Z",
+      politeness: "polite",
+      text
+    }))
+  });
+}
+
+const agreeCheckbox = { nodeId: 11, role: "checkbox", name: "Agree" };
+const moreButton = { nodeId: 21, role: "button", name: "More" };
+const saveButton = { nodeId: 31, role: "button", name: "Save" };
+
+/** The four presses AEE's audit item A3 named, as the observers record them in Chrome. */
+const pressScenarios: Array<{
+  title: string;
+  kind: "enter" | "space";
+  focusTarget: Record<string, unknown>;
+  records: PressRecord[];
+}> = [
+  {
+    title: "Space on a native checkbox ticks it; the markup does not change",
+    kind: "space",
+    focusTarget: { tagName: "input", type: "checkbox", role: "checkbox", name: "Agree" },
+    records: [
+      accessibilityAfter({
+        focusedBefore: agreeCheckbox,
+        focusedAfter: agreeCheckbox,
+        changes: [
+          { ...agreeCheckbox, kind: "state", state: "checked", before: "false", after: "true" }
+        ],
+        truncated: false
+      }),
+      markupAfter(false)
+    ]
+  },
+  {
+    title: "Enter on an aria-expanded toggle opens the panel it controls",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "More" },
+    records: [
+      accessibilityAfter({
+        focusedBefore: moreButton,
+        focusedAfter: moreButton,
+        changes: [
+          { ...moreButton, kind: "state", state: "expanded", before: false, after: true },
+          {
+            nodeId: 22,
+            role: "region",
+            name: "Details",
+            kind: "shown",
+            controlledBy: [moreButton]
+          },
+          { nodeId: 23, role: "StaticText", name: "Shipping takes two days", kind: "shown" }
+        ],
+        truncated: false
+      }),
+      markupAfter(true)
+    ]
+  },
+  {
+    title: "Enter on a button whose only effect is a polite status message",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [{ nodeId: 32, role: "StaticText", name: "Saved", kind: "shown" }],
+        truncated: false
+      }),
+      readerAfter(["Saved"]),
+      markupAfter(true)
+    ]
+  },
+  {
+    title: "Enter on a dead button while a clock elsewhere ticks",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [
+          { nodeId: 42, role: "StaticText", name: "10:01", kind: "shown" },
+          { nodeId: 41, role: "StaticText", name: "10:00", kind: "hidden" }
+        ],
+        truncated: false
+      }),
+      markupAfter(true)
+    ]
+  }
+];
+
+const expectedPressOutcomes: Array<{ verdict: Judgment["verdict"]; summary: RegExp }> = [
+  { verdict: "pass", summary: /checkbox "Agree" checked changed from false to true/ },
+  {
+    verdict: "pass",
+    summary:
+      /button "More" expanded changed from false to true; region "Details" appeared, which button "More" controls/
+  },
+  { verdict: "pass", summary: /a live region announced "Saved" \(polite\)/ },
+  // Not a fail: the page did change, and nothing says the press did not cause it. Not a pass:
+  // nothing ties the change to the press. The judge says what changed and leaves it undecided.
+  { verdict: "unknown", summary: /StaticText "10:01" appeared.*cannot be told/ }
+];
+
+for (const judgeId of ["keyboard", "change-response"]) {
+  pressScenarios.forEach((scenario, index) => {
+    const expected = expectedPressOutcomes[index]!;
+    test(`${judgeId} judge: ${scenario.title} -> ${expected.verdict}`, async () => {
+      const judge = createDefaultJudgePlugins([judgeId])[0]!;
+      const bundle = createBundle([...focusStaysOn(scenario.focusTarget), ...scenario.records], {
+        kind: scenario.kind,
+        target: { role: String(scenario.focusTarget.role), name: String(scenario.focusTarget.name) }
+      });
+
+      const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+      assert.equal(judgment?.verdict, expected.verdict);
+      assert.match(judgment?.summary ?? "", expected.summary);
+      if (expected.verdict === "pass") {
+        assert.ok(
+          judgment?.evidenceRecordIds.some((id) =>
+            ["record-accessibility-after", "record-reader-after"].includes(id)
+          )
+        );
+      }
+    });
+  });
+}
+
+test("keyboard judge fails a dead button even when unrelated markup changed", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
   const bundle = createBundle(
     [
-      {
-        id: "record-focus-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "focus",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z",
-        meta: {
-          focusTarget: {
-            tagName: "button",
-            id: "save",
-            name: "Save"
-          }
-        }
-      },
-      {
-        id: "record-dom-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.010Z"
-      },
-      {
-        id: "record-focus-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "focus",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          focusTarget: {
-            tagName: "button",
-            id: "save",
-            name: "Save"
-          }
-        }
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.120Z",
-        meta: {
-          changed: true
-        },
-        changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup changed after the interaction.",
-            impact: "major"
-          }
-        ]
-      }
+      ...focusStaysOn({ tagName: "div", role: "button", name: "Save" }),
+      accessibilityAfter({ focusedBefore: saveButton, changes: [], truncated: false }),
+      // An injected script tag changes the markup and nothing a person perceives.
+      markupAfter(true)
     ],
-    {
-      kind: "enter",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
+    { kind: "space", target: { role: "button", name: "Save" } }
   );
 
-  const [judgment] = await keyboardJudge!.judge(bundle, {
-    runId: "run-1"
-  });
+  const [judgment] = await keyboardJudge.judge(bundle, { runId: "run-1" });
 
-  assert.equal(judgment.verdict, "pass");
-  assert.match(judgment.summary, /DOM changed/);
-  assert.match(judgment.summary, /Focus stayed/);
+  assert.equal(judgment?.verdict, "fail");
+  assert.equal(judgment?.severity, "high");
+  assert.match(judgment?.summary ?? "", /no observable activation response/);
+  assert.match(judgment?.summary ?? "", /supporting evidence only/);
+  assert.match(
+    judgment?.findings?.[0]?.message ?? "",
+    /accessibility state, what it controls, focus, live regions and the network/
+  );
 });
 
-test("keyboard judge fails space activation when an activatable control has no observable response", async () => {
-  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+test("keyboard judge leaves a press undecided when only the markup is known to have changed", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
   const bundle = createBundle(
-    [
-      {
-        id: "record-focus-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "focus",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z",
-        meta: {
-          focusTarget: {
-            tagName: "div",
-            id: "custom-button",
-            role: "button",
-            name: "Save"
-          }
-        }
-      },
-      {
-        id: "record-focus-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "focus",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          focusTarget: {
-            tagName: "div",
-            id: "custom-button",
-            role: "button",
-            name: "Save"
-          }
-        }
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.120Z",
-        meta: {
-          changed: false
-        },
-        changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup did not change after the interaction.",
-            impact: "none"
-          }
-        ]
-      }
-    ],
-    {
-      kind: "space",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
+    [...focusStaysOn({ tagName: "button", id: "save", name: "Save" }), markupAfter(true)],
+    { kind: "enter", target: { role: "button", name: "Save" } }
   );
 
-  const [judgment] = await keyboardJudge!.judge(bundle, {
-    runId: "run-1"
-  });
+  const [judgment] = await keyboardJudge.judge(bundle, { runId: "run-1" });
 
-  assert.equal(judgment.verdict, "fail");
-  assert.match(judgment.summary, /no observable activation response/);
-  assert.equal(judgment.severity, "high");
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /needs the accessibility tree before and after/);
+  assert.ok(judgment?.evidenceRecordIds.includes("record-dom-after"));
+});
+
+test("keyboard judge passes a press that renames the pressed control", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
+  const playButton = { nodeId: 51, role: "button", name: "Pause" };
+  const bundle = createBundle(
+    [
+      ...focusStaysOn({ tagName: "button", name: "Play" }),
+      accessibilityAfter({
+        focusedBefore: playButton,
+        changes: [{ ...playButton, kind: "name", before: "Play", after: "Pause" }],
+        truncated: false
+      })
+    ],
+    { kind: "space", target: { role: "button", name: "Play" } }
+  );
+
+  const [judgment] = await keyboardJudge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /button name changed from "Play" to "Pause"/);
+  assert.match(judgment?.summary ?? "", /Focus stayed/);
 });
 
 test("keyboard judge leaves Space on a link untested instead of reporting a false failure", async () => {
@@ -1195,213 +1435,70 @@ test("keyboard judge passes arrow-key navigation when aria-activedescendant chan
   assert.match(judgment.summary, /ArrowDown/);
 });
 
-test("change-response judge passes when a click interaction changes the DOM", async () => {
-  const judge = createDefaultJudgePlugins(["change-response"])[0];
+test("change-response judge passes a click that presses the clicked toggle", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const muteButton = { nodeId: 61, role: "button", name: "Mute" };
   const bundle = createBundle(
     [
-      {
-        id: "record-dom-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z"
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          changed: true
-        },
+      accessibilityAfter({
+        focusedAfter: muteButton,
         changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup changed after the interaction.",
-            impact: "major"
-          }
-        ]
-      }
+          { ...muteButton, kind: "state", state: "pressed", before: "false", after: "true" }
+        ],
+        truncated: false
+      }),
+      markupAfter(true)
     ],
-    {
-      kind: "click",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
+    { kind: "click", target: { role: "button", name: "Mute" } }
   );
 
-  const [judgment] = await judge!.judge(bundle, {
-    runId: "run-1"
-  });
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
 
-  assert.equal(judgment.verdict, "pass");
-  assert.match(judgment.summary, /DOM changed/);
+  assert.equal(judgment?.verdict, "pass");
+  assert.match(judgment?.summary ?? "", /button "Mute" pressed changed from false to true/);
+  assert.match(judgment?.summary ?? "", /supporting evidence only/);
 });
 
-test("change-response judge fails when a click interaction has no observable response", async () => {
-  const judge = createDefaultJudgePlugins(["change-response"])[0];
+test("change-response judge fails a click when nothing a person perceives changed", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
   const bundle = createBundle(
-    [
-      {
-        id: "record-dom-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z"
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          changed: false
-        },
-        changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup did not change after the interaction.",
-            impact: "none"
-          }
-        ]
-      }
-    ],
-    {
-      kind: "click",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
+    [accessibilityAfter({ changes: [], truncated: false }), markupAfter(false)],
+    { kind: "click", target: { role: "button", name: "Save" } }
   );
 
-  const [judgment] = await judge!.judge(bundle, {
-    runId: "run-1"
-  });
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
 
-  assert.equal(judgment.verdict, "fail");
-  assert.match(judgment.summary, /No observable response followed the click interaction/);
-  assert.equal(judgment.severity, "high");
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /No observable response followed the click interaction/);
+  assert.equal(judgment?.severity, "high");
 });
 
-test("change-response judge passes when an enter activation changes the DOM", async () => {
-  const judge = createDefaultJudgePlugins(["change-response"])[0];
-  const bundle = createBundle(
-    [
-      {
-        id: "record-dom-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z"
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          changed: true
-        },
-        changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup changed after the interaction.",
-            impact: "major"
-          }
-        ]
-      }
-    ],
-    {
-      kind: "enter",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
-  );
-
-  const [judgment] = await judge!.judge(bundle, {
-    runId: "run-1"
+test("change-response judge leaves a press undecided when only the markup changed", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle([markupAfter(true)], {
+    kind: "click",
+    target: { role: "button", name: "Save" }
   });
 
-  assert.equal(judgment.verdict, "pass");
-  assert.match(judgment.summary, /enter interaction/);
-  assert.match(judgment.summary, /DOM changed/);
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /needs the accessibility tree before and after/);
 });
 
-test("change-response judge fails when a space activation has no observable response", async () => {
-  const judge = createDefaultJudgePlugins(["change-response"])[0];
+test("change-response judge fails a space activation with no response and says how to fix it", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
   const bundle = createBundle(
     [
-      {
-        id: "record-dom-before",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "before",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.000Z"
-      },
-      {
-        id: "record-dom-after",
-        runId: "run-1",
-        checkpointId: "checkpoint-1",
-        interactionId: "interaction-1",
-        observerId: "dom",
-        phase: "after",
-        status: "ok",
-        timestamp: "2026-06-21T10:00:01.100Z",
-        meta: {
-          changed: false
-        },
-        changes: [
-          {
-            path: "dom.html",
-            summary: "DOM markup did not change after the interaction.",
-            impact: "none"
-          }
-        ]
-      }
+      ...focusStaysOn({ tagName: "div", role: "button", name: "Save" }),
+      accessibilityAfter({ focusedBefore: saveButton, changes: [], truncated: false })
     ],
-    {
-      kind: "space",
-      target: {
-        role: "button",
-        name: "Save"
-      }
-    }
+    { kind: "space", target: { role: "button", name: "Save" } }
   );
 
-  const [judgment] = await judge!.judge(bundle, {
-    runId: "run-1"
-  });
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
 
-  assert.equal(judgment.verdict, "fail");
-  assert.match(judgment.summary, /No observable response followed the space interaction/);
-  assert.match(judgment.suggestedFix ?? "", /space interaction activates the target/i);
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /No observable response followed the space interaction/);
+  assert.match(judgment?.suggestedFix ?? "", /space interaction activates the target/i);
 });
