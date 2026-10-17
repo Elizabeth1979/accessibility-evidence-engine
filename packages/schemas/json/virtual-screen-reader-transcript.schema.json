@@ -29,6 +29,10 @@
     "entries": {
       "type": "array",
       "items": { "$ref": "#/$defs/entry" }
+    },
+    "liveRegionAnnouncements": {
+      "type": "array",
+      "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
     }
   },
   "$defs": {

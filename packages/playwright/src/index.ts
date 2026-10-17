@@ -989,6 +989,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const judgeIds = [
       ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
     ];
+    // A key press can answer only with a status message (WCAG 4.1.3), which a screen reader hears
+    // from a live region. Guidepup's reader listens through each press, so the keyboard judge
+    // counts what it announced.
+    const readerPage =
+      driver === "keyboard" ? framedCdpPage(page as typeof page & CdpEnabledPageLike) : undefined;
+    const pressListener = readerPage ? createPortableVirtualScreenReader(readerPage) : undefined;
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
@@ -1005,13 +1011,15 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
       };
       manifestLane.actions.push(manifestAction);
+      const listensToPress = Boolean(pressListener) && action.kind === "press";
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
         outputDir: runOutputDir,
         runId,
         policy: options.policy,
-        observers: observerIds,
+        observers: listensToPress ? [...observerIds, "virtual-screen-reader"] : observerIds,
+        ...(listensToPress ? { virtualScreenReader: pressListener } : {}),
         judges: [
           ...new Set([
             ...judgeIds,
@@ -2062,11 +2070,11 @@ interface CdpEnabledPageLike extends PlaywrightPageLike, Partial<FramedPage> {
 }
 
 /** The page, when it can be read frame by frame over the DevTools protocol, as a Playwright page can. */
-function framedCdpPage(
-  page: CdpEnabledPageLike
-): (FramedPage & { context(): CdpContext }) | undefined {
+function framedCdpPage<TPage extends CdpEnabledPageLike>(
+  page: TPage
+): (TPage & FramedPage & { context(): CdpContext }) | undefined {
   return page.context && page.frames && page.mainFrame
-    ? (page as FramedPage & { context(): CdpContext })
+    ? (page as TPage & FramedPage & { context(): CdpContext })
     : undefined;
 }
 
@@ -2113,6 +2121,9 @@ async function createObserverPage(
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const listenVirtualScreenReader = virtualScreenReader
+    ? async () => virtualScreenReader.listen()
+    : undefined;
   const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
     ? async () => virtualScreenReader.snapshot()
     : page.snapshotVirtualScreenReaderTranscript?.bind(page);
@@ -2660,6 +2671,7 @@ async function createObserverPage(
     snapshotScreenshot,
     runAxeAnalysis,
     snapshotVirtualScreenReaderTranscript,
+    listenVirtualScreenReader,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking

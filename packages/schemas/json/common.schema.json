@@ -11,6 +11,18 @@
       "type": "string",
       "format": "date-time"
     },
+    "liveRegionAnnouncement": {
+      "description": "A live-region update Guidepup's virtual screen reader announced (WAI-ARIA 1.2 aria-live).",
+      "type": "object",
+      "required": ["sequence", "timestamp", "politeness", "text"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 1 },
+        "timestamp": { "$ref": "#/$defs/isoTimestamp" },
+        "politeness": { "enum": ["polite", "assertive"] },
+        "text": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
     "artifactKind": {
       "type": "string",
       "enum": [
