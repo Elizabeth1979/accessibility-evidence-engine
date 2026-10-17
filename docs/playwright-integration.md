@@ -359,12 +359,15 @@ aee run scenario.yml --open
 aee run scenario.yml --ci
 ```
 
-The compiled digest must match `approval.approvedPlanDigest`. Every journey's start page gets the
-keyboard and pointer sweep; beyond it, execution is limited to concrete `virtualScreenReaderCommands`
+The compiled digest must match `approval.approvedPlanDigest`. Every journey's start page is
+checkpointed once before anything acts on it (screenshots, DOM, accessibility tree, focus and the
+pinned axe rules, as the `page-load` lane `<journey>-start-page`) and gets the keyboard and pointer
+sweep; beyond those, execution is limited to concrete `virtualScreenReaderCommands`
 and `interactionComparisons`. `allowedActions` define the safety boundary, and only one of them acts
 on its own: `activate-page-controls` lets the sweep press on-page controls. The result includes `aee-report.html`, `aee-report.json`, `aee-report.md`, the compiled
 plan, and one scenario-level `manifest.json` that validates and re-hashes the child-lane evidence.
-Verdict and evidence completeness are reported separately, and incomplete evidence cannot pass.
+Verdict and evidence completeness are reported separately, and incomplete evidence cannot pass;
+nor can a run with no axe result, which reads "not decided".
 
 `aee-pr-comment.md` is the same report as one pull-request comment. It opens with the verdict and
 the four status rows, then lists the blocking fixes, then the advisory results, then any AI
