@@ -61,9 +61,6 @@ jobs:
     runs-on: windows-2025
     # Each attempt has 20 minutes (playwright.readers.config.ts); room for the retries the form allows.
     timeout-minutes: 120
-    env:
-      # Guidepup keeps the NVDA it installs here, so the cache below can keep it between runs.
-      GUIDEPUP_SCREEN_READERS_PATH: ${{ runner.temp }}/guidepup
 
     steps:
       - name: Check out repository
@@ -88,12 +85,13 @@ jobs:
       - name: Install Chromium
         run: npx playwright install chromium
 
-      # Keyed on Guidepup's manifest, which names the NVDA build and its sha256 (guidepup.dev's
-      # CI guide caches by version). `guidepup install` checks the fingerprint either way.
+      # Guidepup's own install folder on Windows (%LOCALAPPDATA%\guidepup), keyed on its manifest,
+      # which names the NVDA build and its sha256 (guidepup.dev's CI guide caches by version).
+      # `guidepup install` checks the fingerprint either way.
       - name: Restore NVDA from the cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ runner.temp }}/guidepup
+          path: ~/AppData/Local/guidepup
           key: guidepup-nvda-${{ hashFiles('node_modules/@guidepup/guidepup/manifest.json') }}
 
       - name: Install NVDA
