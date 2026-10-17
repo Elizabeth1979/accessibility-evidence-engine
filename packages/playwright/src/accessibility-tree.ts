@@ -8,9 +8,21 @@ export interface CdpContext {
   newCDPSession(page: unknown): Promise<CdpSession>;
 }
 
+/** A value in the browser's accessibility tree (CDP `Accessibility.AXValue`). */
 export interface AccessibilityValue {
   type: string;
   value?: unknown;
+  /** The elements a relation such as `labelledby` or `controls` points to, with their text. */
+  relatedNodes?: Array<{ backendDOMNodeId: number; idref?: string; text?: string }>;
+}
+
+/**
+ * One state or property of a node (CDP `Accessibility.AXProperty`), such as `expanded`,
+ * `invalid`, `hasPopup` or `describedby`.
+ */
+export interface AccessibilityProperty {
+  name: string;
+  value: AccessibilityValue;
 }
 
 /** One node of the browser's accessibility tree (CDP `Accessibility.AXNode`). */
@@ -18,11 +30,15 @@ export interface AccessibilityNode {
   nodeId: string;
   ignored: boolean;
   /** Why an ignored node is left out, such as `notRendered` or `emptyAlt`. */
-  ignoredReasons?: Array<{ name: string }>;
+  ignoredReasons?: AccessibilityProperty[];
   /** `type` is `role` for an ARIA role and `internalRole` for Chromium's own names. */
   role?: AccessibilityValue;
   name?: AccessibilityValue;
-  properties?: Array<{ name: string; value: AccessibilityValue }>;
+  /** The accessible description, such as from `aria-describedby` or `title`. */
+  description?: AccessibilityValue;
+  /** The value, such as a text field's text or a slider's position. */
+  value?: AccessibilityValue;
+  properties?: AccessibilityProperty[];
   childIds?: string[];
   /** Set on the nodes a partial tree returns, so its ancestors can be walked. */
   parentId?: string;
@@ -82,6 +98,22 @@ export function accessibleElementOf(node: AccessibilityNode): AccessibleElement 
 }
 
 /**
+ * The browser's accessibility node for one DOM node. Unlike the full tree, which leaves out some
+ * ignored nodes (an `alt=""` image in a paragraph), this always answers, with Chrome's reasons
+ * when the node is ignored.
+ */
+export async function fetchAccessibilityNode(
+  session: CdpSession,
+  backendNodeId: number
+): Promise<AccessibilityNode | undefined> {
+  const { nodes } = (await session.send("Accessibility.getPartialAXTree", {
+    backendNodeId,
+    fetchRelatives: false
+  })) as AccessibilityTree;
+  return nodes.find((node) => node.backendDOMNodeId === backendNodeId) ?? nodes[0];
+}
+
+/**
  * The focused element as the accessibility tree has it, which is what a screen reader announces
  * when focus arrives. Nothing when focus is on no element.
  */
@@ -133,6 +165,8 @@ export interface CapturedElement {
   visualBounds?: { x: number; y: number; width: number; height: number };
   /** Its box whenever the page lays it out, even with no area, as an empty heading has. */
   layoutBounds?: { x: number; y: number; width: number; height: number };
+  /** Its place in document order. */
+  order: number;
 }
 
 export interface CapturedDom {
@@ -141,6 +175,8 @@ export interface CapturedDom {
   closestElement(backendNodeId: number): CapturedElement | undefined;
   /** The closest element and each element above it, nearest first. */
   ancestorElements(backendNodeId: number): CapturedElement[];
+  /** The backend node ids of the elements with this tag, in document order. */
+  elementIds(tagName: string): number[];
 }
 
 interface DomSnapshot {
@@ -218,6 +254,7 @@ export async function capturePageDom(
     const element: CapturedElement = {
       tagName: tagName(index),
       nodePath: nodePath(index),
+      order: index,
       attribute: (name) => attribute(index, name),
       style: Object.fromEntries(
         computedStyles.map((name, at) => [name, strings[styles[at] ?? -1] ?? ""])
@@ -246,6 +283,8 @@ export async function capturePageDom(
       return index === undefined || !isElement(index) ? undefined : capture(index);
     },
     closestElement: (backendNodeId) => ancestorElements(backendNodeId)[0],
-    ancestorElements
+    ancestorElements,
+    elementIds: (wanted) =>
+      nodes.backendNodeId.filter((_id, index) => isElement(index) && tagName(index) === wanted)
   };
 }

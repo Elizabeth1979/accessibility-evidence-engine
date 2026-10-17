@@ -1,7 +1,9 @@
 import {
+  capturePageDom,
   describeSelectedElement,
   fetchAccessibilityTree,
   type AccessibilityTree,
+  type CapturedDom,
   type CdpSession
 } from "./accessibility-tree";
 import type { ElementLocationPage } from "./element-locations";
@@ -68,6 +70,7 @@ export async function describeElementContexts(
   const facts = await pageFacts(page, selectors);
   if (facts.every((fact) => fact === null)) return facts as null[];
   const tree = await fetchAccessibilityTree(session);
+  const dom = await capturePageDom(session);
   const contexts: Array<ElementContext | null> = [];
   for (const [index, fact] of facts.entries()) {
     const element = fact && (await describeSelectedElement(session, selectors[index]!));
@@ -79,7 +82,7 @@ export async function describeElementContexts(
     const nearbyHeading =
       element.backendNodeId === undefined
         ? undefined
-        : nearbyHeadingIn(tree, element.backendNodeId);
+        : nearbyHeadingIn(tree, dom, element.backendNodeId);
     contexts.push({
       ...rest,
       role: element.role,
@@ -93,41 +96,33 @@ export async function describeElementContexts(
 }
 
 /**
- * The name of the heading before the element in the closest container that has one, in the
- * tree's reading order. An empty heading there is the answer too: a heading from another section
- * would mislabel the element.
+ * The name of the heading before the element in the closest container that has one. Headings and
+ * their names are the tree's, so `role="heading"` counts and a heading made presentational does
+ * not; containers and order are the DOM's, which holds every element, including an ignored image
+ * the full tree leaves out. An empty heading there is the answer too: a heading from another
+ * section would mislabel the element.
  */
-function nearbyHeadingIn({ nodes }: AccessibilityTree, backendNodeId: number): string | undefined {
-  const byId = new Map(nodes.map((node) => [node.nodeId, node]));
-  const parentOf = new Map<string, string>();
-  for (const node of nodes)
-    for (const child of node.childIds ?? []) parentOf.set(child, node.nodeId);
-  // Reading order: each node before its children, children in their order.
-  const order = new Map<string, number>();
-  const pending = nodes.filter(({ nodeId }) => !parentOf.has(nodeId)).reverse();
-  while (pending.length > 0) {
-    const node = pending.pop()!;
-    order.set(node.nodeId, order.size);
-    for (const child of [...(node.childIds ?? [])].reverse()) {
-      const childNode = byId.get(child);
-      if (childNode) pending.push(childNode);
-    }
-  }
-  const target = nodes.find((node) => node.backendDOMNodeId === backendNodeId);
-  const at = target && order.get(target.nodeId);
-  if (!target || at === undefined) return undefined;
+function nearbyHeadingIn(
+  { nodes }: AccessibilityTree,
+  dom: CapturedDom,
+  backendNodeId: number
+): string | undefined {
+  const target = dom.element(backendNodeId);
+  if (!target) return undefined;
   const headings = nodes
     .filter((node) => !node.ignored && node.role?.value === "heading")
-    .map((node) => ({ node, at: order.get(node.nodeId) ?? -1 }))
-    .sort((first, second) => first.at - second.at);
-  for (let scope = parentOf.get(target.nodeId); scope; scope = parentOf.get(scope)) {
-    const from = order.get(scope) ?? 0;
-    const before = headings.filter((heading) => heading.at > from && heading.at < at);
+    .flatMap(({ name, backendDOMNodeId }) => {
+      const element = backendDOMNodeId === undefined ? undefined : dom.element(backendDOMNodeId);
+      return element && element.order < target.order
+        ? [{ name, element, containers: dom.ancestorElements(backendDOMNodeId!) }]
+        : [];
+    })
+    .sort((first, second) => first.element.order - second.element.order);
+  for (const container of dom.ancestorElements(backendNodeId).slice(1)) {
+    const before = headings.filter(({ containers }) => containers.includes(container));
     const last = before[before.length - 1];
     if (last)
-      return typeof last.node.name?.value === "string"
-        ? last.node.name.value.trim() || undefined
-        : undefined;
+      return typeof last.name?.value === "string" ? last.name.value.trim() || undefined : undefined;
   }
   return undefined;
 }

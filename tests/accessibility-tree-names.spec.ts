@@ -232,12 +232,19 @@ test("an image with alt='' and aria-label is not decorative, as WAI-ARIA's confl
       <img id="chart" alt="" aria-label="Revenue chart" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
       <img id="spacer" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
       <div aria-hidden="true"><img id="hidden" alt="Logo" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>
+      <p>Revenue rose. <img id="inline" alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></p>
     </section>
   `);
 
-  const [chart, spacer, hidden] = await withCdpSession(page.context(), page, (session) =>
-    describeElementContexts(page, session, ["#chart", "#spacer", "#hidden"])
+  const [chart, spacer, hidden, inline] = await withCdpSession(page.context(), page, (session) =>
+    describeElementContexts(page, session, ["#chart", "#spacer", "#hidden", "#inline"])
   );
+  // The full tree leaves some ignored images out, as one inside a paragraph; the heading above
+  // a decorative image is found all the same.
+  for (const decorative of [spacer, hidden, inline]) {
+    expect(decorative?.nearbyHeading).toBe("Quarterly results");
+  }
+  expect(inline?.ignoredReasons).toEqual(["emptyAlt"]);
 
   expect(chart).toEqual(
     expect.objectContaining({

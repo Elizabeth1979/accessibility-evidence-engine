@@ -1,5 +1,7 @@
 import {
   DEFAULT_POLICY,
+  spokenRoleOf,
+  TEXT_ROLE,
   type EvidenceBundle,
   type EvidenceRecord,
   type Finding,
@@ -47,7 +49,7 @@ export const defaultJudgeManifests = [
   {
     id: "screen-reader",
     displayName: "Screen Reader Judge",
-    version: "0.2.0",
+    version: "0.3.0",
     kind: "judge" as const,
     capabilities: [
       "virtual-cursor-focus-separation",
@@ -1227,7 +1229,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1254,7 +1256,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "fail",
             summary: `The virtual-reader command moved DOM focus during ${focusMovedCount} transcript entr${focusMovedCount === 1 ? "y" : "ies"}; virtual cursor movement and focus movement must remain separate.`,
@@ -1273,7 +1275,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary:
@@ -1308,7 +1310,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: lastItem
@@ -1328,7 +1330,7 @@ function createScreenReaderJudge(): JudgePlugin {
       const domSnapshotPresent = recordHasArtifact(domRecord, "dom-snapshot");
       const fullPageVisualPresent = recordHasArtifactPath(visualRecord, "full-page");
       const renderedBoundsPresent = hasPositiveVisualBounds(lastItem.visualBounds);
-      const accessibilityMatch = findAccessibilitySemanticMatch(
+      const treeComparison = compareWithCheckpointNode(
         accessibilityRecord.meta?.semanticNodes,
         lastItem
       );
@@ -1344,7 +1346,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: `The portable-reader target could not be fully correlated because ${unavailable.join(", ")} evidence was unavailable.`,
@@ -1356,25 +1358,34 @@ function createScreenReaderJudge(): JudgePlugin {
         ];
       }
 
-      if (!accessibilityMatch) {
+      if (treeComparison.kind !== "same") {
         const role = getStringField(lastItem, "role") ?? "unknown role";
         const name = getStringField(lastItem, "name");
-        const summary = accessibilityIndexTruncated
-          ? `The accessibility-tree semantic index was truncated before the portable-reader target ${role}${name ? ` “${name}”` : ""} could be matched.`
-          : `The portable reader read ${role}${name ? ` “${name}”` : ""} from the browser's accessibility tree, but the same role, name, and heading level were not found in the tree captured at this checkpoint.`;
+        const read = `${role}${name ? ` “${name}”` : ""}`;
+        const undecided =
+          treeComparison.kind === "unjoinable" ||
+          (treeComparison.kind === "missing" && accessibilityIndexTruncated);
+        const summary =
+          treeComparison.kind === "unjoinable"
+            ? `The portable reader read ${read}, but its record names no DOM node, so it cannot be compared with that same element in the tree captured at this checkpoint.`
+            : treeComparison.kind === "missing"
+              ? accessibilityIndexTruncated
+                ? `The accessibility-tree semantic index was truncated before the element the portable reader read (${read}) could be found.`
+                : `The portable reader read ${read} from the browser's accessibility tree, but that element is not in the tree captured at this checkpoint.`
+              : `The portable reader read ${read} from the browser's accessibility tree, but the tree captured at this checkpoint describes that same element differently: ${treeComparison.differences.join("; ")}.`;
         return [
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
-            verdict: accessibilityIndexTruncated ? "unknown" : "fail",
+            verdict: undecided ? "unknown" : "fail",
             summary,
-            severity: accessibilityIndexTruncated ? "medium" : "high",
+            severity: undecided ? "medium" : "high",
             confidence: 1,
             evidenceRecordIds: correlatedRecords.map(({ id }) => id),
             artifactIds: collectArtifactIds(correlatedRecords),
-            ...(!accessibilityIndexTruncated
+            ...(!undecided
               ? {
                   findings: [
                     {
@@ -1410,7 +1421,7 @@ function createScreenReaderJudge(): JudgePlugin {
           {
             id: `screen-reader:${bundle.interaction.id}`,
             judgeId: "screen-reader",
-            judgeVersion: "0.2.0",
+            judgeVersion: "0.3.0",
             scope: "interaction",
             verdict: "unknown",
             summary: `The portable reader announced “${lastAnnouncement}”, but the browser names this ${role} “${browserName}”: the two disagree on its accessible name, so what a screen reader says here is not decided.`,
@@ -1426,10 +1437,10 @@ function createScreenReaderJudge(): JudgePlugin {
         {
           id: `screen-reader:${bundle.interaction.id}`,
           judgeId: "screen-reader",
-          judgeVersion: "0.2.0",
+          judgeVersion: "0.3.0",
           scope: "interaction",
           verdict: "pass",
-          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus; the role, name, and heading level it read from the browser's accessibility tree still match the tree captured at this checkpoint, and non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
+          summary: `The portable virtual reader announced “${lastAnnouncement}” without moving DOM focus. The element it read has the same role, name, description, value and states in the accessibility tree captured at this checkpoint, and its non-zero rendered bounds are covered by the full-page screenshot. This verifies deterministic semantic agreement and visual presence, not pixel meaning or VoiceOver/NVDA fidelity.`,
           severity: "info",
           confidence: 1,
           evidenceRecordIds: correlatedRecords.map(({ id }) => id),
@@ -1458,25 +1469,76 @@ function hasPositiveVisualBounds(value: unknown): boolean {
   );
 }
 
-function findAccessibilitySemanticMatch(nodes: unknown, target: Record<string, unknown>): boolean {
-  if (!Array.isArray(nodes)) return false;
-  // The portable reader reads text no announced item says as role "text"; in the tree it is a
-  // StaticText node named by its words.
-  const readsText = getStringField(target, "role") === "text";
-  const targetRole = readsText
-    ? "statictext"
-    : normalizeSemanticValue(getStringField(target, "role"));
-  const targetName = normalizeSemanticValue(getStringField(target, readsText ? "text" : "name"));
-  const targetLevel = getNumericField(target, "level");
+/** How the element the reader read compares with the same element in the checkpoint's tree. */
+type TreeComparison =
+  | { kind: "same" }
+  /** The reader's item names no DOM node, so the same element cannot be found. */
+  | { kind: "unjoinable" }
+  | { kind: "missing" }
+  | { kind: "different"; differences: string[] };
 
-  return nodes.some((candidate) => {
-    if (!isRecord(candidate)) return false;
-    if (normalizeSemanticValue(getStringField(candidate, "role")) !== targetRole) return false;
-    if (targetName && normalizeSemanticValue(getStringField(candidate, "name")) !== targetName) {
-      return false;
+/**
+ * Finds the node the reader read in the checkpoint's accessibility tree by its DOM node, and
+ * compares what the reader recorded about it with what the tree says: role, name, description,
+ * value and every state and property, and whether the tree leaves it out.
+ */
+function compareWithCheckpointNode(
+  nodes: unknown,
+  target: Record<string, unknown>
+): TreeComparison {
+  const nodeId = getNumericField(target, "backendDOMNodeId");
+  if (nodeId === undefined || !Array.isArray(nodes)) return { kind: "unjoinable" };
+  const node: unknown = nodes.find(
+    (candidate) => isRecord(candidate) && candidate.backendDOMNodeId === nodeId
+  );
+  if (!isRecord(node)) return { kind: "missing" };
+
+  const differences: string[] = [];
+  const compare = (what: string, read: unknown, tree: unknown) => {
+    const shown = (value: unknown) =>
+      value === undefined || value === "" ? "none" : `“${String(value)}”`;
+    const comparable = (value: unknown) =>
+      value === undefined ? "" : (normalizeSemanticValue(String(value)) ?? "");
+    if (comparable(read) !== comparable(tree)) {
+      differences.push(`${what} ${shown(read)} when read, ${shown(tree)} in the tree`);
     }
-    return targetLevel === undefined || getNumericField(candidate, "level") === targetLevel;
-  });
+  };
+  // The reader reads a piece of text on its own; in the tree it is a StaticText named by its words.
+  const readsText = getStringField(target, "role") === TEXT_ROLE;
+  compare("role", target.role, spokenRoleOf(getStringField(node, "role") ?? ""));
+  compare("name", readsText ? target.text : target.name, node.name);
+  if (!readsText) {
+    compare("description", target.description, node.description);
+    compare("value", target.value, node.value);
+  }
+  if (Array.isArray(target.properties)) {
+    const read = propertiesByName(target.properties);
+    const tree = propertiesByName(node.properties);
+    for (const name of new Set([...read.keys(), ...tree.keys()])) {
+      if (read.get(name) !== tree.get(name)) {
+        differences.push(
+          `${name} ${read.get(name) ?? "absent"} when read, ${tree.get(name) ?? "absent"} in the tree`
+        );
+      }
+    }
+  }
+  if (node.ignored === true) {
+    const reasons = Array.isArray(node.ignoredReasons) ? node.ignoredReasons.join(", ") : "";
+    differences.push(`the tree leaves it out${reasons ? ` (${reasons})` : ""}`);
+  }
+  return differences.length ? { kind: "different", differences } : { kind: "same" };
+}
+
+/** Each state or property by name, its value written out so two can be compared. */
+function propertiesByName(properties: unknown): Map<string, string> {
+  if (!Array.isArray(properties)) return new Map();
+  return new Map(
+    properties.flatMap((property) =>
+      isRecord(property) && typeof property.name === "string"
+        ? [[property.name, JSON.stringify(property.value)] as const]
+        : []
+    )
+  );
 }
 
 function normalizeSemanticValue(value: string | undefined): string | undefined {

@@ -1,10 +1,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { spokenRoleOf, TEXT_ROLE } from "@aee/core";
+
 import {
   capturePageDom,
+  fetchAccessibilityNode,
   withCdpSession,
   type AccessibilityNode,
+  type AccessibilityProperty,
   type AccessibilityValue,
   type CapturedElement,
   type CdpContext,
@@ -29,10 +33,25 @@ export interface VirtualScreenReaderItem {
   role: string;
   /** The accessible name the browser computed. */
   name?: string;
+  /** The accessible description the browser computed, such as from `aria-describedby`. */
+  description?: string;
+  /** The value the browser exposes, such as a text field's text or a slider's position. */
+  value?: string | number;
   /** The words of a piece of text the reader stopped on. */
   text?: string;
   level?: number;
+  /** The states a screen reader says aloud, in words. */
   states: string[];
+  /**
+   * Every state and property the browser's accessibility tree gives the element, exactly as
+   * Chrome reports them (CDP `AXProperty`): `focusable`, `invalid`, `hasPopup`, `describedby`…
+   */
+  properties?: AccessibilityProperty[];
+  /**
+   * The DOM node the reader is on, as this browser session numbers it. It joins the item to the
+   * accessibility tree and DOM snapshot taken in the same session, node for node.
+   */
+  backendDOMNodeId?: number;
   /** Page coordinates; absent when the element has no rendered box. */
   visualBounds?: {
     x: number;
@@ -152,12 +171,6 @@ export function announcedWithoutName(
 ): boolean {
   return NAME_REQUIRED_ROLES.has(item.role) && !item.name;
 }
-
-/** Chromium's own role names that platforms expose as an ARIA role; HTML-AAM maps summary to a button. */
-const INTERNAL_ROLES = new Map([["DisclosureTriangle", "button"]]);
-
-/** The role of a piece of text the reader stops on. */
-const TEXT_ROLE = "text";
 
 /** What Guidepup's reader says at each end of what it reads. */
 const END_OF_DOCUMENT = "end of document";
@@ -426,7 +439,8 @@ async function itemAt(
   const at = {
     nodePath: element.nodePath,
     tagName: element.tagName,
-    ...(element.visualBounds ? { visualBounds: element.visualBounds } : {})
+    ...(element.visualBounds ? { visualBounds: element.visualBounds } : {}),
+    backendDOMNodeId: position.backendNodeId
   };
   if (position.isText) {
     return {
@@ -437,9 +451,11 @@ async function itemAt(
       states: currentState(element)
     };
   }
-  const node = await accessibilityNode(cdp, position.backendNodeId);
+  const node = await fetchAccessibilityNode(cdp, position.backendNodeId);
   const role = roleOf(node);
   const name = textValue(node?.name);
+  const description = textValue(node?.description);
+  const value = node?.value?.value;
   const level = role === "heading" && node ? propertyValue(node, "level") : undefined;
   return {
     // The same element is read as it begins and as it ends ("end of list"), so the phrase is part
@@ -448,31 +464,21 @@ async function itemAt(
     ...at,
     role,
     ...(name ? { name } : {}),
+    ...(description ? { description } : {}),
+    ...(typeof value === "string" || typeof value === "number" ? { value } : {}),
     ...(typeof level === "number" ? { level } : {}),
-    states: node ? itemStates(node, element) : currentState(element)
+    states: node ? itemStates(node, element) : currentState(element),
+    ...(node?.properties ? { properties: node.properties } : {})
   };
 }
 
 async function roleAt(cdp: CdpSession, position: Position): Promise<string> {
   if (position.isText || position.backendNodeId === undefined) return TEXT_ROLE;
-  return roleOf(await accessibilityNode(cdp, position.backendNodeId));
+  return roleOf(await fetchAccessibilityNode(cdp, position.backendNodeId));
 }
 
 function roleOf(node: AccessibilityNode | undefined): string {
-  const role = textValue(node?.role) ?? "generic";
-  return INTERNAL_ROLES.get(role) ?? role;
-}
-
-/** The browser's accessibility node for a DOM node. */
-async function accessibilityNode(
-  cdp: CdpSession,
-  backendNodeId: number
-): Promise<AccessibilityNode | undefined> {
-  const { nodes } = (await cdp.send("Accessibility.getPartialAXTree", {
-    backendNodeId,
-    fetchRelatives: false
-  })) as { nodes: AccessibilityNode[] };
-  return nodes.find((node) => node.backendDOMNodeId === backendNodeId) ?? nodes[0];
+  return spokenRoleOf(textValue(node?.role) ?? "generic");
 }
 
 function itemStates(node: AccessibilityNode, element: CapturedElement): string[] {
@@ -513,6 +519,7 @@ function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
   return {
     ...item,
     states: [...item.states],
+    ...(item.properties ? { properties: structuredClone(item.properties) } : {}),
     ...(item.visualBounds ? { visualBounds: { ...item.visualBounds } } : {})
   };
 }
