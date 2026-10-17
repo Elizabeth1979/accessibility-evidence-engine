@@ -61,7 +61,9 @@
     "dist/virtual-screen-reader.js.map",
     "dist/virtual-screen-reader.d.ts",
     "dist/guidepup-virtual-screen-reader.js",
-    "dist/guidepup-virtual-screen-reader.LICENSE"
+    "dist/guidepup-virtual-screen-reader.LICENSE",
+    "dist/tabbable.js",
+    "dist/tabbable.LICENSE"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.11.0"
@@ -94,6 +96,7 @@
     "@axe-core/playwright": "4.13.0",
     "axe-core": "4.13.0",
     "pngjs": "7.0.0",
-    "@guidepup/virtual-screen-reader": "0.32.1"
+    "@guidepup/virtual-screen-reader": "0.32.1",
+    "tabbable": "6.5.0"
   }
 }
