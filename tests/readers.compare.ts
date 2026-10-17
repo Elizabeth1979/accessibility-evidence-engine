@@ -7,6 +7,8 @@ import { screenReaderTest as test } from "@guidepup/playwright";
 
 import {
   GUIDEPUP_VERSION,
+  GUIDEPUP_VIRTUAL_VERSION,
+  readWithGuidepupVirtualReader,
   readWithRealReader,
   readWithVirtualReader,
   realReaderName,
@@ -32,15 +34,23 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
 
   await screenReader.navigateToWebContent();
   const phrases = await readWithRealReader(screenReader, virtual.length + EXTRA_REAL_STEPS);
+  // Last, on a reloaded page: Guidepup's virtual reader runs inside the page.
+  const guidepupVirtual = await readWithGuidepupVirtualReader(browserPage);
 
   await writeComparison(dir, {
     page,
     recordedAt: new Date().toISOString(),
-    environment: { platform: process.platform, release: os.release(), guidepup: GUIDEPUP_VERSION },
+    environment: {
+      platform: process.platform,
+      release: os.release(),
+      guidepup: GUIDEPUP_VERSION,
+      guidepupVirtualScreenReader: GUIDEPUP_VIRTUAL_VERSION
+    },
     virtual,
+    guidepupVirtual,
     real: { reader: realReaderName(), phrases }
   });
   console.log(
-    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length}.`
+    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, Guidepup's virtual reader ${guidepupVirtual.length}, ${realReaderName()} ${phrases.length}.`
   );
 });

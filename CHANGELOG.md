@@ -10,6 +10,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Changed
 
+- `npm run readers:compare` also reads the page with Guidepup's virtual screen reader, and scores how much of what the real reader says each virtual reader also says. Each real-reader step waits until the reader has finished speaking, so a slow reader no longer ends the walk halfway, and VoiceOver's usage hints are cut from what it said.
 - `npm run readers:compare` compares the real screen reader with AEE's own virtual reader, not screen-reader-cli's, and drives VoiceOver, NVDA or Orca through Guidepup's Playwright integration. It now works on macOS 27. Where the real reader cannot start, the command fails with Guidepup's reason instead of writing a one-sided comparison.
 - The homepage's screen-reader video is AEE's own virtual reader reading the demo page.
 

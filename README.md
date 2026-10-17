@@ -298,12 +298,15 @@ or URL.
 
 The virtual reader runs anywhere, but it is not VoiceOver or NVDA. To see where they differ, run
 `npm run readers:compare` on a Mac (VoiceOver), a Windows machine with NVDA, or Linux with Orca. It
-reads the page with AEE's virtual reader and with the real one, through
-[Guidepup](https://github.com/guidepup/guidepup), and writes the two transcripts side by side to
-`test-results/readers/comparison.md`. A run on macOS 27 is kept in
+reads the page with AEE's virtual reader, with
+[Guidepup's virtual screen reader](https://github.com/guidepup/virtual-screen-reader) and with the
+real one, driven by [Guidepup](https://github.com/guidepup/guidepup). It writes the three
+transcripts side by side to `test-results/readers/comparison.md`, with how much of what the real
+reader says each virtual reader also says. A run on macOS 27 is kept in
 [`docs/examples/reader-comparison-voiceover.md`](docs/examples/reader-comparison-voiceover.md). The
-real reader takes over the machine for a minute or two, so leave the keyboard and mouse alone. Where
-it cannot start, the command fails with Guidepup's reason and writes nothing.
+real reader takes over the machine for about ten minutes, since each step waits until it has
+finished speaking, so leave the keyboard and mouse alone. Where it cannot start, the command fails
+with Guidepup's reason and writes nothing.
 
 The real reader needs the operating system's permission once per machine. On a Mac, in the terminal
 app you run the command from:
