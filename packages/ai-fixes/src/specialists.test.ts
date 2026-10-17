@@ -8,7 +8,7 @@ import {
   askSpecialist,
   colorMeaningSpecialist,
   imagePurposeSpecialist,
-  imageRoleFromMarkup,
+  imageRoleFromTree,
   judgeColorMeaning,
   proposeImageAlternativeFix,
   SPECIALISTS,
@@ -107,13 +107,27 @@ test("a request lets an answer cite only the fields its input holds", async () =
   }
 });
 
-test("the markup decides an image's role only when it says so", () => {
-  assert.equal(imageRoleFromMarkup({ soleContentOfLinkOrButton: true, alt: "" }), "functional");
-  assert.equal(imageRoleFromMarkup({ ariaHidden: true }), "decorative");
-  assert.equal(imageRoleFromMarkup({ role: "presentation" }), "decorative");
-  assert.equal(imageRoleFromMarkup({ alt: "" }), "decorative");
+test("the accessibility tree decides an image's role only when it leaves the image out as decorative", () => {
+  assert.equal(
+    imageRoleFromTree({ soleContentOfLinkOrButton: true, ignoredReasons: ["emptyAlt"] }),
+    "functional"
+  );
+  for (const reason of [
+    "emptyAlt",
+    "presentationalRole",
+    "ariaHiddenElement",
+    "ariaHiddenSubtree"
+  ]) {
+    assert.equal(imageRoleFromTree({ ignoredReasons: [reason] }), "decorative", reason);
+  }
+  // Hidden or inert is not decorative: the image is just not on screen now.
+  assert.equal(imageRoleFromTree({ ignoredReasons: ["notRendered"] }), undefined);
+  assert.equal(imageRoleFromTree({ ignoredReasons: ["inertSubtree"] }), undefined);
+  // <img alt="" aria-label="Revenue chart">: by WAI-ARIA's conflict rule the tree exposes it, so
+  // whether it informs is the question, not settled as decorative.
+  assert.equal(imageRoleFromTree({ ignoredReasons: [] }), undefined);
   // A missing alt is the defect, not a sign the image is decorative.
-  assert.equal(imageRoleFromMarkup({}), undefined);
+  assert.equal(imageRoleFromTree({}), undefined);
 });
 
 const chartContext: ImagePurposeContext = {
@@ -171,7 +185,7 @@ test("an image answer keeps the markup's role and a real alternative", () => {
     "Line chart of requests per day, Monday to Friday"
   );
   assert.throws(
-    () => parse({}, { ...chartContext, markupRole: "functional" }),
+    () => parse({}, { ...chartContext, treeRole: "functional" }),
     /makes this image functional; the answer said complex/
   );
 });
@@ -198,8 +212,8 @@ test("an image alternative is proposed for review, never applied", async () => {
     '#usage-chart: set alt="Bar chart of requests per day this month"'
   ]);
   await assert.rejects(
-    proposeImageAlternativeFix({ selector: "#logo", markupRole: "decorative" }, provider),
-    /already marks the image decorative/
+    proposeImageAlternativeFix({ selector: "#logo", treeRole: "decorative" }, provider),
+    /already leaves the image out as decorative/
   );
 });
 

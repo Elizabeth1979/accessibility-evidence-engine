@@ -18,7 +18,7 @@ Tested `http://127.0.0.1:PORT/` against WCAG 2.2 A/AA. Evidence: complete.
 
 **Elements:**
 
-- `Export report` at `#export-report`
+- `Shows “Export report”, no accessible name` at `#export-report`
 
 **Fix:** Use a native button, or a link if it goes to another page, so it is in the Tab order and works with Enter and Space.
 

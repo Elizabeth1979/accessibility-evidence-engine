@@ -63,6 +63,24 @@
         "id": { "type": "string" },
         "role": { "type": "string" },
         "name": { "type": "string" },
+        "selected": { "type": "boolean" },
+        "checked": { "enum": [true, false, "mixed"] },
+        "dialogContext": {
+          "type": "object",
+          "required": ["tagName", "role", "name", "modal"],
+          "properties": {
+            "tagName": { "type": "string", "minLength": 1 },
+            "id": { "type": "string", "minLength": 1 },
+            "role": { "enum": ["dialog", "alertdialog"] },
+            "name": { "type": "string" },
+            "modal": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "compositeRole": { "type": "string", "minLength": 1 },
+        "compositeOrientation": { "enum": ["horizontal", "vertical"] },
+        "compositeItemIndex": { "type": "integer", "minimum": 0 },
+        "compositeItemCount": { "type": "integer", "minimum": 1 },
         "nodePath": { "type": "string", "minLength": 1 },
         "focusVisible": { "type": "boolean" },
         "focusIndicator": {

@@ -491,8 +491,14 @@ function focusMatchesTarget(
 ): boolean | undefined {
   const target = getDeepFocusTarget(focusTarget);
   if (!isRecord(target) || !expectedTarget) return undefined;
-  if (expectedTarget.role && getStringField(target, "role") !== expectedTarget.role) return false;
-  if (expectedTarget.name && getStringField(target, "name") !== expectedTarget.name) return false;
+  // Role and name come from the accessibility tree; without it, whether they match is unknown.
+  const role = getStringField(target, "role");
+  const name = getStringField(target, "name");
+  if ((expectedTarget.role && role === undefined) || (expectedTarget.name && name === undefined)) {
+    return undefined;
+  }
+  if (expectedTarget.role && role !== expectedTarget.role) return false;
+  if (expectedTarget.name && name !== expectedTarget.name) return false;
   if (expectedTarget.selector) {
     if (expectedTarget.selector.startsWith("#")) {
       return getStringField(target, "id") === expectedTarget.selector.slice(1);
@@ -741,8 +747,8 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
 
   if (
     isRecord(beforeTarget) &&
-    ((beforeTarget.role === "tab" && beforeTarget.ariaSelected === true) ||
-      (beforeTarget.role === "radio" && beforeTarget.ariaChecked === true))
+    ((beforeTarget.role === "tab" && beforeTarget.selected === true) ||
+      (beforeTarget.role === "radio" && beforeTarget.checked === true))
   ) {
     return [
       buildKeyboardUnknownJudgment(

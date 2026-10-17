@@ -33,6 +33,7 @@ import {
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
 import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import { describeFocusElements } from "./focus-accessibility";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
@@ -68,6 +69,7 @@ export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
+export * from "./focus-accessibility";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
 export * from "./pointer-keyboard-comparison";
@@ -2120,7 +2122,7 @@ async function createObserverPage(
     ? async () => page.snapshotFocusTarget?.()
     : evaluatablePage.evaluate
       ? async () => {
-          const domFocus = await evaluatablePage.evaluate?.(() => {
+          const domFocus = await evaluatablePage.evaluate?.((elementsKey: string | undefined) => {
             const globalRef = globalThis as unknown as {
               document?: {
                 activeElement?: unknown;
@@ -2195,125 +2197,6 @@ async function createObserverPage(
               activeElementSources.push(nextActive);
               activeElement = nextActive.element;
             }
-            const compositeRoles = [
-              "tablist",
-              "radiogroup",
-              "listbox",
-              "menu",
-              "menubar",
-              "tree",
-              "grid"
-            ];
-            const itemRoleSelectors: Record<string, string> = {
-              tablist: '[role="tab"]',
-              radiogroup: '[role="radio"]',
-              listbox: '[role="option"]',
-              menu: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-              menubar: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-              tree: '[role="treeitem"]',
-              grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
-            };
-            const getCompositeRole = (
-              element:
-                | {
-                    parentElement?: unknown;
-                    getAttribute?: (name: string) => string | null;
-                  }
-                | undefined
-            ) => {
-              let current = element?.parentElement;
-
-              while (isElementLike(current)) {
-                const currentRole = current.getAttribute?.("role");
-
-                if (typeof currentRole === "string" && compositeRoles.includes(currentRole)) {
-                  return {
-                    compositeRole: currentRole,
-                    compositeElement: current
-                  };
-                }
-
-                current = isElementLike(current.parentElement) ? current.parentElement : undefined;
-              }
-
-              return {
-                compositeRole: undefined,
-                compositeElement: undefined
-              };
-            };
-            const getBooleanAttribute = (
-              element: {
-                getAttribute?: (name: string) => string | null;
-              },
-              name: string
-            ) => {
-              const value = element.getAttribute?.(name);
-
-              if (value === "true") {
-                return true;
-              }
-
-              if (value === "false") {
-                return false;
-              }
-
-              return undefined;
-            };
-            const getDialogContext = (
-              element:
-                | {
-                    tagName?: unknown;
-                    id?: unknown;
-                    textContent?: unknown;
-                    parentElement?: unknown;
-                    getAttribute?: (name: string) => string | null;
-                  }
-                | undefined
-            ) => {
-              let current = element;
-
-              while (isElementLike(current)) {
-                const currentRole = current.getAttribute?.("role");
-                const currentTagName =
-                  typeof current.tagName === "string" ? current.tagName.toLowerCase() : undefined;
-
-                if (
-                  currentTagName === "dialog" ||
-                  currentRole === "dialog" ||
-                  currentRole === "alertdialog"
-                ) {
-                  const labelledById = current.getAttribute?.("aria-labelledby");
-                  const labelledBy = labelledById
-                    ? documentRef?.getElementById?.(labelledById)
-                    : undefined;
-                  const labelledByText =
-                    isElementLike(labelledBy) && typeof labelledBy.textContent === "string"
-                      ? labelledBy.textContent.trim()
-                      : undefined;
-                  const ownText =
-                    typeof current.textContent === "string"
-                      ? current.textContent.trim().slice(0, 120)
-                      : undefined;
-
-                  return {
-                    tagName: currentTagName,
-                    id:
-                      typeof current.id === "string" && current.id.length > 0
-                        ? current.id
-                        : undefined,
-                    role: currentRole ?? (currentTagName === "dialog" ? "dialog" : undefined),
-                    name:
-                      current.getAttribute?.("aria-label") ??
-                      (labelledByText && labelledByText.length > 0 ? labelledByText : ownText),
-                    ariaModal: getBooleanAttribute(current, "aria-modal")
-                  };
-                }
-
-                current = isElementLike(current.parentElement) ? current.parentElement : undefined;
-              }
-
-              return undefined;
-            };
             const getElementSummary = (element: {
               tagName?: unknown;
               id?: unknown;
@@ -2331,20 +2214,8 @@ async function createObserverPage(
             }) => {
               const tagName =
                 typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
-              const role = element.getAttribute?.("role") ?? getImplicitRole(element, tagName);
               const id =
                 typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
-              const canUseTextAsName =
-                Boolean(role) ||
-                ["a", "button", "label", "option", "summary", "td", "th"].includes(tagName ?? "");
-              const name =
-                element.getAttribute?.("aria-label") ??
-                element.getAttribute?.("name") ??
-                (canUseTextAsName &&
-                typeof element.textContent === "string" &&
-                element.textContent.trim().length > 0
-                  ? element.textContent.trim().slice(0, 120)
-                  : undefined);
               const type =
                 typeof element.type === "string" && element.type.length > 0
                   ? element.type
@@ -2364,22 +2235,10 @@ async function createObserverPage(
                 style.outlineStyle !== "none" &&
                 style.outlineWidth !== "0px";
               const shadowVisible = style?.boxShadow !== undefined && style.boxShadow !== "none";
-              const compositeContext = getCompositeRole(element);
-              const compositeSelector = compositeContext.compositeRole
-                ? itemRoleSelectors[compositeContext.compositeRole]
-                : undefined;
-              const compositeItems = compositeSelector
-                ? Array.from(
-                    compositeContext.compositeElement?.querySelectorAll?.(compositeSelector) ?? []
-                  ).filter(isElementLike)
-                : [];
-              const compositeItemIndex = compositeItems.indexOf(element);
 
               return {
                 tagName,
                 id,
-                role: role ?? undefined,
-                name,
                 type,
                 tabIndex,
                 disabled,
@@ -2392,19 +2251,6 @@ async function createObserverPage(
                   outlineWidth: style?.outlineWidth,
                   boxShadow: style?.boxShadow
                 },
-                ariaSelected: getBooleanAttribute(element, "aria-selected"),
-                ariaChecked: getBooleanAttribute(element, "aria-checked"),
-                compositeRole: compositeContext.compositeRole,
-                compositeOrientation: compositeContext.compositeRole
-                  ? (compositeContext.compositeElement?.getAttribute?.("aria-orientation") ??
-                    (compositeContext.compositeRole === "tablist" ||
-                    compositeContext.compositeRole === "menubar"
-                      ? "horizontal"
-                      : "vertical"))
-                  : undefined,
-                compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
-                compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
-                dialogContext: getDialogContext(element),
                 focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
                 focusableCount: focusableElements.length
               };
@@ -2458,6 +2304,13 @@ async function createObserverPage(
                 : undefined;
             const activeElementSummary = getElementSummary(activeElement);
             const documentActiveElementSummary = getElementSummary(documentActiveElement);
+            // Left for the accessibility tree to describe, in the order the summaries are merged.
+            if (elementsKey) {
+              (globalThis as unknown as Record<symbol, unknown>)[Symbol.for(elementsKey)] = [
+                ...activeElementSources.map(({ element }) => element),
+                activeDescendant ? activeDescendantCandidate : null
+              ];
+            }
 
             return {
               schemaVersion: "0.1.0",
@@ -2492,37 +2345,17 @@ async function createObserverPage(
 
               return segments.length > 0 ? segments.join(" > ") : undefined;
             }
-
-            function getImplicitRole(
-              element: {
-                type?: unknown;
-                getAttribute?: (name: string) => string | null;
-              },
-              tagName: string | undefined
-            ): string | undefined {
-              if (tagName === "a" && element.getAttribute?.("href")) return "link";
-              if (tagName === "button" || tagName === "summary") return "button";
-              if (tagName === "textarea") return "textbox";
-              if (tagName === "select")
-                return element.getAttribute?.("multiple") !== null ? "listbox" : "combobox";
-              if (tagName !== "input") return undefined;
-              const type = typeof element.type === "string" ? element.type.toLowerCase() : "text";
-              if (type === "checkbox") return "checkbox";
-              if (type === "radio") return "radio";
-              if (["button", "image", "reset", "submit"].includes(type)) return "button";
-              if (type === "range") return "slider";
-              if (type === "number") return "spinbutton";
-              if (["email", "search", "tel", "text", "url"].includes(type)) return "textbox";
-              return undefined;
-            }
-          });
-          const accessibilityFocus = cdpPage.context
-            ? await captureAccessibilityFocus(cdpPage.context(), page)
-            : { status: "unsupported" as const };
+          }, cdpPage.context && FOCUS_ELEMENTS_KEY);
 
           const focusState =
             typeof domFocus === "object" && domFocus !== null
-              ? { ...domFocus, accessibilityFocus }
+              ? cdpPage.context
+                ? await withAccessibilityFocus(
+                    cdpPage.context(),
+                    page,
+                    domFocus as Record<string, unknown>
+                  )
+                : { ...domFocus, accessibilityFocus: { status: "unsupported" as const } }
               : domFocus;
           if (
             typeof focusState === "object" &&
@@ -2580,12 +2413,18 @@ async function createObserverPage(
               targets.map(({ selector }) => selector)
             )
           );
+          // An AI specialist is asked only with the element as the accessibility tree has it.
           const contextByKey = byTargetKey(
             contextTargets,
-            await describeElementContexts(
-              locatablePage,
-              contextTargets.map(({ selector }) => selector)
-            )
+            cdpPage.context && contextTargets.length > 0
+              ? await withCdpSession(cdpPage.context(), page, (session) =>
+                  describeElementContexts(
+                    locatablePage,
+                    session,
+                    contextTargets.map(({ selector }) => selector)
+                  )
+                )
+              : []
           );
           return {
             ...result,
@@ -2643,37 +2482,66 @@ async function createObserverPage(
   };
 }
 
-async function captureAccessibilityFocus(
-  context: CdpContext | undefined,
-  page: PlaywrightPageLike
+/** Where the focus capture leaves the elements it summarised, for the tree to describe. */
+const FOCUS_ELEMENTS_KEY = "aee.focus-state.elements";
+
+/**
+ * Adds what the accessibility tree says about each captured element, which is what NVDA and JAWS
+ * receive from Chrome: its role, name and states, and the dialog and composite widget it sits in.
+ * Without the tree, the capture says why and has no role or name, rather than a guess at one.
+ */
+async function withAccessibilityFocus(
+  context: CdpContext,
+  page: PlaywrightPageLike,
+  domFocus: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
-  if (!context) return { status: "unsupported" };
-
   try {
-    const { nodes } = await withCdpSession(context, page, fetchAccessibilityTree);
-    const focusedNodes = nodes.filter((node) =>
-      node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
+    const described = await withCdpSession(context, page, (session) =>
+      describeFocusElements(
+        session,
+        `(() => { const key = Symbol.for(${JSON.stringify(FOCUS_ELEMENTS_KEY)}); const elements = globalThis[key]; delete globalThis[key]; return elements; })()`
+      )
     );
-    const focusedNode =
-      focusedNodes.find((node) => !["RootWebArea", "WebArea"].includes(String(node.role?.value))) ??
-      focusedNodes.at(-1);
-
-    if (!focusedNode) return { status: "not-exposed" };
+    const chain = Array.isArray(domFocus.activeElementChain)
+      ? (domFocus.activeElementChain as Array<Record<string, unknown>>)
+      : [];
+    const deepIndex = chain.length - 1;
+    const withFacts = (summary: unknown, index: number) => ({
+      ...(summary as Record<string, unknown>),
+      ...described[index]?.accessibility
+    });
+    const deep = described[deepIndex];
     return {
-      status: "matched",
-      nodeId: focusedNode.nodeId,
-      backendDOMNodeId: focusedNode.backendDOMNodeId,
-      role: focusedNode.role?.value,
-      name: focusedNode.name?.value
+      ...withFacts(domFocus, deepIndex),
+      documentActiveElement: withFacts(domFocus.documentActiveElement, 0),
+      deepActiveElement: withFacts(domFocus.deepActiveElement, deepIndex),
+      activeElementChain: chain.map(withFacts),
+      ...(domFocus.activeDescendant
+        ? { activeDescendant: withFacts(domFocus.activeDescendant, chain.length) }
+        : {}),
+      accessibilityFocus: deep
+        ? {
+            status: "matched",
+            nodeId: deep.nodeId,
+            ...(deep.backendDOMNodeId === undefined
+              ? {}
+              : { backendDOMNodeId: deep.backendDOMNodeId }),
+            role: deep.accessibility.role,
+            name: deep.accessibility.name
+          }
+        : { status: "not-exposed" }
     };
   } catch (error) {
     return {
-      status: "failed",
-      diagnostics: [
-        error instanceof Error
-          ? `Accessibility focus capture failed: ${error.message}`
-          : "Accessibility focus capture failed."
-      ]
+      ...domFocus,
+      accessibilityFocus: {
+        status: "failed",
+        diagnostics: [
+          error instanceof Error
+            ? `Accessibility focus capture failed: ${error.message}`
+            : "Accessibility focus capture failed."
+        ]
+      }
     };
   }
 }
