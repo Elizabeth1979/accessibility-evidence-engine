@@ -14,8 +14,8 @@ import {
   type TargetDescriptor
 } from "@aee/core";
 
-const KEYBOARD_JUDGE_VERSION = "0.3.0";
-const CHANGE_RESPONSE_JUDGE_VERSION = "0.2.0";
+const KEYBOARD_JUDGE_VERSION = "0.4.0";
+const CHANGE_RESPONSE_JUDGE_VERSION = "0.3.0";
 
 export const defaultJudgeManifests = [
   {
@@ -515,6 +515,71 @@ function getDeepFocusTarget(focusTarget: unknown): unknown {
     : focusTarget;
 }
 
+/**
+ * Where focus landed, as a focus record shows it. When no element of a document has focus, the
+ * browser names the document's `<body>` (or `<html>`) as its active element (HTML's
+ * `activeElement`), so a `<body>` alone does not say that anything has focus:
+ * - `element`: an element has focus, or a `<body>` with a place in the tab order, such as a frame
+ *   with nothing to focus, which Chrome's Tab stops on and whose `<body>` is then active;
+ * - `lost`: no element has focus while the page still has it: nothing was recorded, or a `<body>`
+ *   with no place in the counted tab order while `document.hasFocus()` is true;
+ * - `left-page`: a `<body>` while the page itself has no focus (`document.hasFocus()` false), as
+ *   after Tab from the last tab stop moves focus to the browser's own controls;
+ * - `undecided`: a `<body>` the record cannot tell apart from those.
+ */
+type FocusLanding =
+  | { kind: "element" }
+  | { kind: "lost" }
+  | { kind: "left-page" }
+  | { kind: "undecided"; reason: string };
+
+function focusLandingOf(focusTarget: unknown): FocusLanding {
+  if (!isRecord(focusTarget)) return { kind: "lost" };
+  const element = getDeepFocusTarget(focusTarget);
+  const tagName = getStringField(element, "tagName");
+  if (tagName !== "body" && tagName !== "html") return { kind: "element" };
+  if (getNumericField(element, "focusOrderIndex") !== undefined) return { kind: "element" };
+  if (focusTarget.documentHasFocus === false) return { kind: "left-page" };
+  if (focusTarget.documentHasFocus !== true) {
+    return {
+      kind: "undecided",
+      reason:
+        "The focus record does not say whether the page still had focus, so focus on a document's <body> cannot be told apart from focus leaving the page for the browser's own controls."
+    };
+  }
+  if (getNumericField(element, "focusableCount") === undefined) {
+    return {
+      kind: "undecided",
+      reason:
+        "The page's tab order could not be counted, so whether this <body> is a tab stop (a frame with nothing to focus) or focus was lost cannot be told."
+    };
+  }
+  return { kind: "lost" };
+}
+
+/** What a focus record's `<body>` stands for, which its tag alone does not say. */
+function describeFocusLanding(focusTarget: Record<string, unknown>): string {
+  const landing = focusLandingOf(focusTarget);
+  if (landing.kind === "lost") return " (no element has focus)";
+  if (landing.kind === "left-page") return " (the page no longer has focus)";
+  const element = getDeepFocusTarget(focusTarget);
+  if (
+    landing.kind !== "element" ||
+    !["body", "html"].includes(getStringField(element, "tagName") ?? "")
+  ) {
+    return "";
+  }
+  return isRecord(element) && Array.isArray(element.framePath)
+    ? " (its frame has nothing to focus, so the frame is a tab stop itself)"
+    : " (a tab stop itself)";
+}
+
+function describeUndecidedLanding(landing: Exclude<FocusLanding, { kind: "element" | "lost" }>) {
+  return landing.kind === "left-page"
+    ? "The page no longer had focus, so where focus went cannot be told from the page."
+    : landing.reason;
+}
+
 function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
   const beforeRecord = findFocusRecord(bundle.records, "before");
   const afterRecord = findFocusRecord(bundle.records, "after");
@@ -540,7 +605,9 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
     getNumericField(beforeTarget, "focusableCount") ??
     getNumericField(afterTarget, "focusableCount");
 
-  if (afterTarget === null) {
+  const landing = focusLandingOf(afterTarget);
+
+  if (landing.kind === "lost") {
     const finding: Finding = {
       id: `keyboard:${bundle.interaction.id}:focus-lost`,
       message: "Keyboard interaction left the page without a focused target.",
@@ -558,7 +625,7 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
         judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
-        summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        summary: `Keyboard interaction lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
         severity: "high",
         confidence: 0.95,
         evidenceRecordIds: [beforeRecord.id, afterRecord.id],
@@ -567,6 +634,22 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
         suggestedFix: finding.suggestedFix
       }
     ];
+  }
+
+  if (landing.kind === "undecided") {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `Keyboard focus moved from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}. ${landing.reason}`,
+        "medium",
+        0.75,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (landing.kind === "left-page") {
+    return judgeTabOutOfPage(bundle, beforeRecord, afterRecord, beforeOrderIndex, focusableCount);
   }
 
   if (beforeKey === afterKey) {
@@ -607,30 +690,13 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
 
   if (directionVerdict === "wrong-direction") {
     return [
-      {
-        id: `keyboard:${bundle.interaction.id}`,
-        judgeId: "keyboard",
-        judgeVersion: KEYBOARD_JUDGE_VERSION,
-        scope: "interaction",
-        verdict: "fail",
-        summary: `Keyboard focus moved in the wrong direction. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
-        severity: "high",
-        confidence: 0.95,
-        evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-        artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-        findings: [
-          {
-            id: `keyboard:${bundle.interaction.id}:wrong-direction`,
-            message: `Expected ${bundle.interaction.kind} to move focus ${bundle.interaction.kind === "tab" ? "forward" : "backward"}, but it moved differently.`,
-            severity: "high",
-            ruleId: "keyboard-focus-direction",
-            evidenceRecordIds: [beforeRecord.id, afterRecord.id],
-            artifactIds: collectArtifactIds([beforeRecord, afterRecord]),
-            suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
-          }
-        ],
-        suggestedFix: `Ensure ${bundle.interaction.kind} follows the page's tabbable order.`
-      }
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `${describeTabKey(bundle)} moved focus from ${describeFocusTarget(beforeTarget)} at ${describeTabPlace(beforeOrderIndex!, focusableCount!)} to ${describeFocusTarget(afterTarget)} at ${describeTabPlace(afterOrderIndex!, focusableCount!)}. That disagrees with the tab order AEE predicts. ${TAB_ORDER_PREDICTION_LIMITS}`,
+        "medium",
+        0.6,
+        [beforeRecord.id, afterRecord.id]
+      )
     ];
   }
 
@@ -654,6 +720,78 @@ function judgeTabFocusTransition(bundle: EvidenceBundle): Judgment[] {
       evidenceRecordIds: [beforeRecord.id, afterRecord.id],
       artifactIds: collectArtifactIds([beforeRecord, afterRecord])
     }
+  ];
+}
+
+/**
+ * Why a Tab that disagrees with the predicted tab order is left undecided rather than failed: the
+ * browser's Tab is what a keyboard user gets, and the prediction is a model of it.
+ */
+const TAB_ORDER_PREDICTION_LIMITS =
+  "The browser's Tab is what a keyboard user gets, and the prediction can be wrong: Chrome, for one, puts a popover's content right after the control that opened it, where tabbable keeps document order. Whether the page moved focus out of order cannot be told from this evidence.";
+
+function describeTabKey(bundle: EvidenceBundle): "Tab" | "Shift+Tab" {
+  return bundle.interaction.kind === "shift-tab" ? "Shift+Tab" : "Tab";
+}
+
+function describeTabPlace(orderIndex: number, focusableCount: number): string {
+  return `place ${orderIndex + 1} of ${focusableCount} in the tab order`;
+}
+
+/**
+ * Judges a Tab or Shift+Tab after which the page no longer has focus. The browser's Tab moves
+ * focus out of the page, to its own controls, from the last tab stop, and Shift+Tab from the
+ * first, so either is the page's tab order working. From any other tab stop it disagrees with the
+ * predicted order.
+ */
+function judgeTabOutOfPage(
+  bundle: EvidenceBundle,
+  beforeRecord: EvidenceRecord,
+  afterRecord: EvidenceRecord,
+  beforeOrderIndex: number | undefined,
+  focusableCount: number | undefined
+): Judgment[] {
+  const beforeTarget = getFocusTarget(beforeRecord);
+  const key = describeTabKey(bundle);
+  const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
+  const pass = (summary: string, confidence: number): Judgment[] => [
+    {
+      id: `keyboard:${bundle.interaction.id}`,
+      judgeId: "keyboard",
+      judgeVersion: KEYBOARD_JUDGE_VERSION,
+      scope: "interaction",
+      verdict: "pass",
+      summary,
+      severity: "info",
+      confidence,
+      evidenceRecordIds,
+      artifactIds: collectArtifactIds([beforeRecord, afterRecord])
+    }
+  ];
+
+  if (beforeOrderIndex === undefined || focusableCount === undefined) {
+    return pass(
+      `Keyboard focus left the page for the browser's own controls after ${key} from ${describeFocusTarget(beforeTarget)}. Focus order metadata was unavailable, so whether that was the page's ${key === "Tab" ? "last" : "first"} tab stop was not checked.`,
+      0.75
+    );
+  }
+
+  const edge = key === "Tab" ? focusableCount - 1 : 0;
+  if (beforeOrderIndex === edge) {
+    return pass(
+      `Keyboard focus left the page for the browser's own controls ${key === "Tab" ? "after the page's last" : "before the page's first"} tab stop (place ${edge + 1} of ${focusableCount}), as the browser's ${key} does. Before: ${describeFocusTarget(beforeTarget)}.`,
+      0.95
+    );
+  }
+
+  return [
+    buildKeyboardUnknownJudgment(
+      bundle,
+      `${key} moved focus out of the page, to the browser's own controls, from ${describeFocusTarget(beforeTarget)} at ${describeTabPlace(beforeOrderIndex, focusableCount)}. That disagrees with the tab order AEE predicts, which has more tab stops ${key === "Tab" ? "after" : "before"} it. ${TAB_ORDER_PREDICTION_LIMITS}`,
+      "medium",
+      0.6,
+      evidenceRecordIds
+    )
   ];
 }
 
@@ -762,7 +900,21 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  if (afterTarget === null) {
+  const landing = focusLandingOf(afterTarget);
+
+  if (landing.kind === "undecided" || landing.kind === "left-page") {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `After keyboard ${bundle.interaction.kind} on ${describeFocusTarget(beforeTarget)}, focus was on ${describeFocusTarget(afterTarget)}. ${describeUndecidedLanding(landing)}`,
+        "medium",
+        0.7,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (landing.kind === "lost") {
     const finding: Finding = {
       id: `keyboard:${bundle.interaction.id}:activation-focus-lost`,
       message: "Keyboard activation left the page without a focused target.",
@@ -781,7 +933,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
         judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
-        summary: `Keyboard activation lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        summary: `Keyboard activation lost focus. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
         severity: "high",
         confidence: 0.95,
         evidenceRecordIds: [beforeRecord.id, afterRecord.id],
@@ -947,7 +1099,22 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
     ];
   }
 
-  if (afterTarget === null) {
+  // Where DOM focus landed, which an active descendant is a place inside.
+  const landing = focusLandingOf(getFocusTarget(afterRecord));
+
+  if (landing.kind === "undecided" || landing.kind === "left-page") {
+    return [
+      buildKeyboardUnknownJudgment(
+        bundle,
+        `After ${arrowKey} in the ${compositeRole}, focus was on ${describeFocusTarget(afterTarget)}. ${describeUndecidedLanding(landing)}`,
+        "medium",
+        0.7,
+        [beforeRecord.id, afterRecord.id]
+      )
+    ];
+  }
+
+  if (landing.kind === "lost") {
     const finding: Finding = {
       id: `keyboard:${bundle.interaction.id}:composite-focus-lost`,
       message: "Arrow-key navigation left the composite widget without a focused target.",
@@ -966,7 +1133,7 @@ function judgeCompositeArrowNavigation(bundle: EvidenceBundle): Judgment[] {
         judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
-        summary: `Arrow-key navigation lost focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: no focused element.`,
+        summary: `Arrow-key navigation lost focus within the ${compositeRole}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}.`,
         severity: "high",
         confidence: 0.95,
         evidenceRecordIds: [beforeRecord.id, afterRecord.id],
@@ -1162,7 +1329,7 @@ function createChangeResponseJudge(): JudgePlugin {
               judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
               scope: "interaction",
               verdict: "unknown",
-              summary: `No response of its own followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}. ${undecided}${describeMarkupEvidence(response)}`,
+              summary: `No response of its own followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}. ${undecided}${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
               severity: "medium",
               confidence: 0.7,
               evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -1182,7 +1349,7 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
             scope: "interaction",
             verdict: "fail",
-            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.${describeMarkupEvidence(response)}`,
+            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
             severity: "high",
             confidence: 0.9,
             evidenceRecordIds,
@@ -1210,7 +1377,7 @@ function createChangeResponseJudge(): JudgePlugin {
           judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
           scope: "interaction",
           verdict: "pass",
-          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).${describeMarkupEvidence(response)}`,
+          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
           severity: "info",
           confidence: 0.9,
           evidenceRecordIds: [
@@ -1855,6 +2022,11 @@ interface PressResponse {
   accessibilityRecord?: EvidenceRecord;
   /** Records whose markup changed: supporting evidence, never a response on its own. */
   markupRecords: EvidenceRecord[];
+  /**
+   * Where focus went when it moved but no element has it: lost, which is not a response, or
+   * somewhere the record cannot tell from lost.
+   */
+  focusLanding?: Exclude<FocusLanding, { kind: "element" }>;
 }
 
 /**
@@ -1907,17 +2079,23 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
 
   const beforeFocusRecord = findFocusRecord(records, "before");
   const afterFocusRecord = findFocusRecord(records, "after");
+  let focusLanding: PressResponse["focusLanding"];
   if (
     beforeFocusRecord &&
     afterFocusRecord &&
     serializeFocusTarget(getFocusTarget(beforeFocusRecord)) !==
       serializeFocusTarget(getFocusTarget(afterFocusRecord))
   ) {
-    signals.push({
-      label: "focus moved",
-      evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
-      artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
-    });
+    const landing = focusLandingOf(getFocusTarget(afterFocusRecord));
+    if (landing.kind === "element") {
+      signals.push({
+        label: "focus moved",
+        evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
+        artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
+      });
+    } else {
+      focusLanding = landing;
+    }
   }
 
   const readerRecords = records.filter(
@@ -1968,7 +2146,8 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
         record.phase === "after" &&
         record.status === "ok" &&
         getBooleanMetaField(record, "changed") === true
-    )
+    ),
+    ...(focusLanding ? { focusLanding } : {})
   };
 }
 
@@ -2020,9 +2199,19 @@ function describeAccessibilityChange(change: AccessibilityChange): string {
 }
 
 /** Why a press with no response of its own is left undecided rather than failed, or nothing. */
+/** Says when focus was lost after the press: a change, but not a response. */
+function describeFocusLoss(response: PressResponse, kind: string): string {
+  return response.focusLanding?.kind === "lost"
+    ? ` Focus was lost: after the ${kind} no element had focus, which is not a response.`
+    : "";
+}
+
 function describeUndecidedPress(response: PressResponse): string | undefined {
   if (!response.accessibilityRecord) {
     return "Telling whether the press responded needs the accessibility tree before and after it (the accessibility-tree observer).";
+  }
+  if (response.focusLanding && response.focusLanding.kind !== "lost") {
+    return `Focus moved to a document's <body>. ${describeUndecidedLanding(response.focusLanding)}`;
   }
   if (response.unattributed.count === 0) return undefined;
   const more = response.unattributed.count - response.unattributed.descriptions.length;
@@ -2387,6 +2576,8 @@ function describeFocusTarget(target: unknown): string {
     return "no focused element";
   }
 
+  const landingNote = describeFocusLanding(target);
+
   const tagName = typeof target.tagName === "string" ? target.tagName : "unknown";
   const id = typeof target.id === "string" && target.id.length > 0 ? `#${target.id}` : undefined;
   const role =
@@ -2394,7 +2585,7 @@ function describeFocusTarget(target: unknown): string {
   const name =
     typeof target.name === "string" && target.name.length > 0 ? `"${target.name}"` : undefined;
 
-  return [tagName, id, role, name].filter(Boolean).join(" ");
+  return `${[tagName, id, role, name].filter(Boolean).join(" ")}${landingNote}`;
 }
 
 function getNumericField(target: unknown, field: string): number | undefined {
