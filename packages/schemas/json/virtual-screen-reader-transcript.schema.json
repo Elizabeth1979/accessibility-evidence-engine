@@ -80,6 +80,34 @@
       },
       "additionalProperties": false
     },
+    "focus": {
+      "description": "The element that has DOM focus, named as an item names its element. When focus is inside a frame it is the focused element in that frame's own document, not the <iframe>.",
+      "type": "object",
+      "required": ["nodePath", "backendDOMNodeId", "frameId"],
+      "properties": {
+        "nodePath": {
+          "description": "Its path in the document that holds it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "backendDOMNodeId": {
+          "description": "The DOM node, as the browser session numbers it in its frame's process.",
+          "type": "integer"
+        },
+        "frameId": {
+          "description": "The frame whose document holds it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "framePath": {
+          "description": "The <iframe> elements it is inside, outermost first, each as a path in the document that holds it. Absent in the top document.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
     "frame": {
       "description": "A frame the reader went into or came out of.",
       "type": "object",
@@ -162,9 +190,18 @@
           "items": { "$ref": "#/$defs/frame" }
         },
         "item": { "$ref": "#/$defs/item" },
-        "domFocusBefore": { "type": "string" },
-        "domFocusAfter": { "type": "string" },
-        "focusMoved": { "type": "boolean" }
+        "domFocusBefore": {
+          "description": "The element that had DOM focus before the command, in whichever frame holds it.",
+          "$ref": "#/$defs/focus"
+        },
+        "domFocusAfter": {
+          "description": "The element that had DOM focus after the command, in whichever frame holds it.",
+          "$ref": "#/$defs/focus"
+        },
+        "focusMoved": {
+          "description": "Whether DOM focus is on another element after the command, in any frame.",
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
     }

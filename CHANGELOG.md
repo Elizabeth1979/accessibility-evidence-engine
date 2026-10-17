@@ -10,6 +10,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - `npm run readers:compare` scores how much of what the real reader says the virtual reader also says. Each real-reader step waits until the reader has finished speaking, so a slow reader no longer ends the walk halfway, and VoiceOver's usage hints are cut from what it said.
 - `npm run readers:compare` compares the real screen reader with AEE's own virtual reader, not screen-reader-cli's, and drives VoiceOver, NVDA or Orca through Guidepup's Playwright integration. It now works on macOS 27. Where the real reader cannot start, the command fails with Guidepup's reason instead of writing a one-sided comparison.
 - The homepage's screen-reader video is AEE's own virtual reader reading the demo page.
+- Each virtual-reader step's DOM focus (`domFocusBefore`, `domFocusAfter`) names the focused element in whichever frame holds it, including a cross-site frame Chrome renders in another process, instead of the `<iframe>` element the top document reports. Focus is followed the way the page sees it: each document's `activeElement`, into each open shadow root's, and into the frame's own document through that frame's DevTools session. Each is now an object, `{ nodePath, backendDOMNodeId, frameId, framePath }`, named as the step's item is, and the text transcript writes it as `#cross >>> html > body > button`. `focusMoved` is true when focus moves between two controls inside one frame, which was reported as no move.
 
 ### Added
 
