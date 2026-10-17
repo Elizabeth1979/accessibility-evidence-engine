@@ -4,6 +4,23 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Fixed
+
+- The virtual screen reader reads text that no announced item says, such as a card's bold title, a field's visible label, or a box styled as a button, as plain text without a role, the way VoiceOver and NVDA do in browse mode. It used to pass over it, though it was in the accessibility tree, so the transcript left out what a screen-reader user hears. Text a link, heading, button or paragraph already says is not read twice. The screen-reader judge matches these items to the tree's text, so they are cross-checked like every other item.
+
+### Changed
+
+- `npm run readers:compare` compares the real screen reader with AEE's own virtual reader, not screen-reader-cli's, and drives VoiceOver, NVDA or Orca through Guidepup's Playwright integration. It now works on macOS 27. Where the real reader cannot start, the command fails with Guidepup's reason instead of writing a one-sided comparison.
+- The homepage's screen-reader video is AEE's own virtual reader reading the demo page.
+
+### Added
+
+- `npm run reader:record` records AEE's virtual screen reader reading a page on video, with the transcript beside it. `AEE_READERS_PAGE` names the page.
+
+### Removed
+
+- The screen-reader-cli development dependency. Nothing in the published packages used it.
+
 ## [0.8.0] - 2026-10-04
 
 ### Added

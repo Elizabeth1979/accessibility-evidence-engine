@@ -336,6 +336,33 @@ test("the portable reader announces the demo page's markup as HTML-AAM maps it",
   }
 });
 
+test("the portable reader reads text that no announced item says, as VoiceOver does", async ({
+  page
+}) => {
+  for (const labPage of Object.values(contract.pages)) {
+    await open(page, labPage);
+    const reader = createPortableVirtualScreenReader(page);
+    const items: VirtualScreenReaderItem[] = [];
+    for (let entry = await reader.command("start"); entry.item;) {
+      items.push(entry.item);
+      entry = await reader.command("next-item");
+    }
+    const texts = items.filter(({ role }) => role === "text").map(({ text }) => text);
+
+    // Bold titles in plain boxes and a field's visible label: in the tree, so read, without a role.
+    expect(texts, labPage.url).toEqual(
+      expect.arrayContaining(["Search projects", "Project Alpha", "Weekly digest"])
+    );
+    // On the demo page "Export report" is a box styled as a button: its words are all a screen
+    // reader can say. On the fixed page it is a button, so it is not read again as text.
+    expect(texts.includes("Export report"), labPage.url).toBe(labPage !== contract.pages.fixed);
+    // Text a link, heading or paragraph already says is not read a second time.
+    expect(texts, labPage.url).not.toContain("Test lab");
+    expect(texts, labPage.url).not.toContain("Workspace overview");
+    expect(texts, labPage.url).not.toContain("Manage your projects and workspace preferences.");
+  }
+});
+
 test("the lab page lists both pages and every issue, and fits desktop and phone", async ({
   page
 }) => {

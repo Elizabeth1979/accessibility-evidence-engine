@@ -30,7 +30,9 @@ function renderPage() {
     mainClass: "roadmap",
     body: `      <h1>Roadmap</h1>
       <p class="lede">${doneCount} of ${allSteps.length} steps done.${
-        current ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.` : ""
+        current
+          ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.`
+          : " <strong>The plan is complete.</strong>"
       }</p>
       <p>
         <label for="progress">Progress</label>
