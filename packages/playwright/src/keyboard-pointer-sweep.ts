@@ -4,7 +4,9 @@ import {
   describeFocusedElement,
   describeSelectedElement,
   withCdpSession,
-  type CdpSession
+  withPageSessions,
+  type CdpSession,
+  type FramedPage
 } from "./accessibility-tree";
 import { locateElements, type ElementLocation } from "./element-locations";
 import { findHeadingLookalikes } from "./heading-lookalikes";
@@ -59,6 +61,8 @@ export interface SweepFinding {
   kind: SweepFindingKind;
   concept: (typeof SWEEP_FINDING_CONCEPTS)[SweepFindingKind];
   selector: string;
+  /** Inside a frame: the `<iframe>` elements it is inside, outermost first. */
+  framePath?: string[];
   label: string;
   /** The text it shows, when the accessibility tree gives it no name: what a sighted person sees. */
   text?: string;
@@ -126,7 +130,7 @@ export interface KeyboardPointerSweepResponse {
   request(): KeyboardPointerSweepRequest;
 }
 
-export interface KeyboardPointerSweepPage {
+export interface KeyboardPointerSweepPage extends FramedPage {
   context(): { newCDPSession(page: unknown): Promise<KeyboardPointerSweepCdpSession> };
   /** Playwright's page screenshot: the sweep cuts each Tab stop's frame from a viewport capture. */
   screenshot(options: {
@@ -284,14 +288,15 @@ async function sweepPage(
 
   await loadPage();
   const findings: SweepFinding[] = (
-    await withCdpSession(page.context(), page, findHeadingLookalikes)
-  ).map(({ selector, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) =>
-    sweepFinding(
+    await withPageSessions(page.context(), page, findHeadingLookalikes)
+  ).map(({ selector, framePath, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) => ({
+    ...sweepFinding(
       "looks-like-heading",
       { selector, label: text },
       `Styled like a heading (${fontSize}px, weight ${fontWeight}, against body text at ${bodyFontSize}px, weight ${bodyFontWeight}), but the accessibility tree does not expose it as a heading.`
-    )
-  );
+    ),
+    ...(framePath ? { framePath } : {})
+  }));
   for (const item of await probe<ColourOnlyItem[]>({ mode: "colour-only" })) {
     const marked = item.state
       ? ` It is marked ${item.state}, so a screen reader says it, but a person who cannot tell these colours apart does not see it.`

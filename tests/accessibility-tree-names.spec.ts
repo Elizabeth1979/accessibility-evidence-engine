@@ -7,7 +7,7 @@ import {
   describeElementContexts,
   runAeeOnPage,
   sweepKeyboardAndPointer,
-  withCdpSession
+  withPageSessions
 } from "@aee/playwright";
 
 // Each example is one the home-grown-code audit found AEE reading wrong from the markup. The
@@ -236,8 +236,8 @@ test("an image with alt='' and aria-label is not decorative, as WAI-ARIA's confl
     </section>
   `);
 
-  const [chart, spacer, hidden, inline] = await withCdpSession(page.context(), page, (session) =>
-    describeElementContexts(page, session, ["#chart", "#spacer", "#hidden", "#inline"])
+  const [chart, spacer, hidden, inline] = await withPageSessions(page.context(), page, (sessions) =>
+    describeElementContexts(page, sessions, ["#chart", "#spacer", "#hidden", "#inline"])
   );
   // The full tree leaves some ignored images out, as one inside a paragraph; the heading above
   // a decorative image is found all the same.

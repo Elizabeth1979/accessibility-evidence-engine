@@ -18,7 +18,7 @@
   "properties": {
     "schemaVersion": { "const": "0.1.0" },
     "engine": { "const": "aee-portable-virtual-screen-reader" },
-    "engineVersion": { "const": "0.2.0" },
+    "engineVersion": { "const": "0.3.0" },
     "speechEngine": { "type": "string", "minLength": 1 },
     "mode": { "const": "guide" },
     "fidelity": { "const": "semantic-simulation" },
@@ -29,6 +29,10 @@
     "entries": {
       "type": "array",
       "items": { "$ref": "#/$defs/entry" }
+    },
+    "liveRegionAnnouncements": {
+      "type": "array",
+      "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
     }
   },
   "$defs": {
@@ -55,6 +59,17 @@
           "description": "The DOM node the reader is on, as the browser session numbers it; joins the item to the accessibility tree captured in the same session.",
           "type": "integer"
         },
+        "frameId": {
+          "description": "The frame whose document holds the node; with backendDOMNodeId it names the node across every frame, since node ids repeat in frames rendered in other processes.",
+          "type": "string",
+          "minLength": 1
+        },
+        "framePath": {
+          "description": "The <iframe> elements the node is inside, outermost first, each as a path in the document that holds it. Absent in the top document.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
         "visualBounds": {
           "type": "object",
           "additionalProperties": false,
@@ -65,6 +80,28 @@
             "width": { "type": "number", "exclusiveMinimum": 0 },
             "height": { "type": "number", "exclusiveMinimum": 0 }
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "frame": {
+      "description": "A frame the reader went into or came out of.",
+      "type": "object",
+      "required": ["frameId", "framePath"],
+      "properties": {
+        "frameId": {
+          "description": "The frame's id: the frameId of every item read inside it.",
+          "type": "string",
+          "minLength": 1
+        },
+        "framePath": {
+          "description": "The <iframe> elements that hold the frame's document, outermost first and ending with its own: the framePath of every item read inside it.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "name": {
+          "description": "The frame element's accessible name, as the browser computes it.",
+          "type": "string"
         }
       },
       "additionalProperties": false
@@ -116,6 +153,18 @@
           ]
         },
         "announcement": { "type": "string" },
+        "framesLeft": {
+          "description": "The frames this command came out of, innermost first.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/frame" }
+        },
+        "framesEntered": {
+          "description": "The frames this command went into, outermost first.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/frame" }
+        },
         "item": { "$ref": "#/$defs/item" },
         "domFocusBefore": { "type": "string" },
         "domFocusAfter": { "type": "string" },

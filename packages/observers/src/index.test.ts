@@ -114,18 +114,117 @@ test("createAccessibilityTreeObserver indexes whole tree nodes by their DOM node
   });
 });
 
+test("createAccessibilityTreeObserver records what changed between before and after", async () => {
+  const observer = createAccessibilityTreeObserver();
+  let checked = "false";
+  const context: RuntimeObserverContext = {
+    runId: "run-accessibility-change",
+    page: {
+      async content() {
+        return '<input type="checkbox" aria-label="Agree">';
+      },
+      async snapshotAccessibilityTree() {
+        return {
+          nodes: [
+            {
+              nodeId: "4",
+              ignored: false,
+              role: { type: "role", value: "checkbox" },
+              name: { type: "computedString", value: "Agree" },
+              properties: [
+                { name: "focused", value: { type: "booleanOrUndefined", value: true } },
+                { name: "checked", value: { type: "tristate", value: checked } }
+              ],
+              backendDOMNodeId: 4
+            }
+          ]
+        };
+      }
+    }
+  };
+
+  const [before] = await observer.captureBefore!(context);
+  checked = "true";
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(before.meta?.accessibilityChanges, undefined);
+  assert.deepEqual(after.meta?.accessibilityChanges, {
+    focusedBefore: { nodeId: 4, role: "checkbox", name: "Agree" },
+    focusedAfter: { nodeId: 4, role: "checkbox", name: "Agree" },
+    changes: [
+      {
+        nodeId: 4,
+        role: "checkbox",
+        name: "Agree",
+        kind: "state",
+        state: "checked",
+        before: "false",
+        after: "true"
+      }
+    ],
+    truncated: false
+  });
+  assert.deepEqual(after.changes, [
+    {
+      path: "accessibility.checked",
+      summary: 'checkbox "Agree" checked changed from false to true.',
+      before: "false",
+      after: "true",
+      impact: "major"
+    }
+  ]);
+  assert.match(after.summary ?? "", /1 change, 1 of them control state/);
+});
+
+test("the virtual-reader observer listens before the press and keeps only its live-region announcements", async () => {
+  const announcement = (sequence: number, text: string) => ({
+    sequence,
+    timestamp: "2026-09-13T00:00:00.000Z",
+    politeness: "polite" as const,
+    text
+  });
+  // A message from before this press must not count as its response.
+  const transcript = { entries: [], liveRegionAnnouncements: [announcement(1, "Loaded")] };
+  let listening = false;
+  const observer = createVirtualScreenReaderObserver();
+  const context: RuntimeObserverContext = {
+    runId: "run-reader-live",
+    page: {
+      async content() {
+        return '<div role="status"></div>';
+      },
+      async listenVirtualScreenReader() {
+        listening = true;
+      },
+      async snapshotVirtualScreenReaderTranscript() {
+        return transcript;
+      }
+    }
+  };
+
+  await observer.setup!(context);
+  const [before] = await observer.captureBefore!(context);
+  transcript.liveRegionAnnouncements.push(announcement(2, "Saved"));
+  const [after] = await observer.captureAfter!(context);
+
+  assert.equal(listening, true);
+  assert.equal(before.meta?.newLiveRegionAnnouncements, undefined);
+  assert.deepEqual(after.meta?.newLiveRegionAnnouncements, [announcement(2, "Saved")]);
+});
+
 test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-virtual-reader-"));
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
     pageUrl: "https://example.com/",
     generatedAt: "2026-09-13T00:00:00.000Z",
+    // A later entry also says which frames the reader left.
     entries: [
       {
         sequence: 1,
@@ -136,7 +235,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
         domFocusAfter: "#pay",
         focusMoved: false
       }
-    ]
+    ] as Array<Record<string, unknown>>
   };
 
   try {
@@ -163,6 +262,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
       timestamp: "2026-09-13T00:00:01.000Z",
       command: "next-control",
       announcement: "Pay, button",
+      framesLeft: [{ frameId: "frame-billing", framePath: ["#billing"], name: "Billing" }],
       domFocusBefore: "#pay",
       domFocusAfter: "#pay",
       focusMoved: false
@@ -184,7 +284,11 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
     assert.ok(textPath);
     assert.equal(JSON.parse(await readFile(jsonPath, "utf8")).entries.length, 2);
     assert.match(await readFile(textPath, "utf8"), /semantic simulation; not VoiceOver, NVDA/);
-    assert.match(await readFile(textPath, "utf8"), /2\. next-control: Pay, button/);
+    // Leaving a frame is AEE's note, on its own line before the step, not part of what was said.
+    assert.match(
+      await readFile(textPath, "utf8"),
+      /\nAEE: left frame Billing\n2\. next-control: Pay, button\n/
+    );
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }

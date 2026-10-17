@@ -17,7 +17,10 @@
   "files": [
     "dist/index.js",
     "dist/index.js.map",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/accessibility-changes.js",
+    "dist/accessibility-changes.js.map",
+    "dist/accessibility-changes.d.ts"
   ],
   "engines": {
     "node": ">=22.13"

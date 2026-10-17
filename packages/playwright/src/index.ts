@@ -7,6 +7,7 @@ import AxeBuilder from "@axe-core/playwright";
 import axe from "axe-core";
 import {
   executeRun,
+  redactUrl,
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
@@ -37,7 +38,14 @@ import {
   type VirtualScreenReaderPage,
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
-import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import {
+  fetchAccessibilityTree,
+  mainFrameOf,
+  withPageSessions,
+  type AccessibilityTree,
+  type CdpContext,
+  type FramedPage
+} from "./accessibility-tree";
 import { describeFocusElements } from "./focus-accessibility";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
@@ -75,6 +83,7 @@ export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
 export * from "./focus-accessibility";
+export * from "./heading-lookalikes";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
 export * from "./pointer-keyboard-comparison";
@@ -984,6 +993,12 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const judgeIds = [
       ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
     ];
+    // A key press can answer only with a status message (WCAG 4.1.3), which a screen reader hears
+    // from a live region. Guidepup's reader listens through each press, so the keyboard judge
+    // counts what it announced.
+    const readerPage =
+      driver === "keyboard" ? framedCdpPage(page as typeof page & CdpEnabledPageLike) : undefined;
+    const pressListener = readerPage ? createPortableVirtualScreenReader(readerPage) : undefined;
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
@@ -1000,13 +1015,15 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
       };
       manifestLane.actions.push(manifestAction);
+      const listensToPress = Boolean(pressListener) && action.kind === "press";
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
         outputDir: runOutputDir,
         runId,
         policy: options.policy,
-        observers: observerIds,
+        observers: listensToPress ? [...observerIds, "virtual-screen-reader"] : observerIds,
+        ...(listensToPress ? { virtualScreenReader: pressListener } : {}),
         judges: [
           ...new Set([
             ...judgeIds,
@@ -2052,8 +2069,17 @@ function waitFor(durationMs: number): Promise<void> {
   });
 }
 
-interface CdpEnabledPageLike extends PlaywrightPageLike {
+interface CdpEnabledPageLike extends PlaywrightPageLike, Partial<FramedPage> {
   context?(): CdpContext;
+}
+
+/** The page, when it can be read frame by frame over the DevTools protocol, as a Playwright page can. */
+function framedCdpPage<TPage extends CdpEnabledPageLike>(
+  page: TPage
+): (TPage & FramedPage & { context(): CdpContext }) | undefined {
+  return page.context && page.frames && page.mainFrame
+    ? (page as TPage & FramedPage & { context(): CdpContext })
+    : undefined;
 }
 
 interface EvaluatablePageLike extends PlaywrightPageLike {
@@ -2094,11 +2120,14 @@ async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader
 ): Promise<RuntimeObserverContext["page"]> {
-  const cdpPage = page as CdpEnabledPageLike;
+  const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const listenVirtualScreenReader = virtualScreenReader
+    ? async () => virtualScreenReader.listen()
+    : undefined;
   const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
     ? async () => virtualScreenReader.snapshot()
     : page.snapshotVirtualScreenReaderTranscript?.bind(page);
@@ -2120,8 +2149,8 @@ async function createObserverPage(
   const networkTracker = createNetworkTracker(eventedPage);
   const snapshotAccessibilityTree = page.snapshotAccessibilityTree
     ? async () => page.snapshotAccessibilityTree?.()
-    : cdpPage.context
-      ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
+    : cdpPage
+      ? async () => withPageSessions(cdpPage.context(), cdpPage, fetchAccessibilityTree)
       : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
@@ -2350,16 +2379,12 @@ async function createObserverPage(
 
               return segments.length > 0 ? segments.join(" > ") : undefined;
             }
-          }, cdpPage.context && FOCUS_ELEMENTS_KEY);
+          }, cdpPage && FOCUS_ELEMENTS_KEY);
 
           const focusState =
             typeof domFocus === "object" && domFocus !== null
-              ? cdpPage.context
-                ? await withAccessibilityFocus(
-                    cdpPage.context(),
-                    page,
-                    domFocus as Record<string, unknown>
-                  )
+              ? cdpPage
+                ? await withAccessibilityFocus(cdpPage, domFocus as Record<string, unknown>)
                 : { ...domFocus, accessibilityFocus: { status: "unsupported" as const } }
               : domFocus;
           if (
@@ -2423,11 +2448,11 @@ async function createObserverPage(
           // An AI specialist is asked only with the element as the accessibility tree has it.
           const contextByKey = byTargetKey(
             contextTargets,
-            cdpPage.context && contextTargets.length > 0
-              ? await withCdpSession(cdpPage.context(), page, (session) =>
+            cdpPage && contextTargets.length > 0
+              ? await withPageSessions(cdpPage.context(), cdpPage, (sessions) =>
                   describeElementContexts(
                     locatablePage,
-                    session,
+                    sessions,
                     contextTargets.map(({ selector }) => selector)
                   )
                 )
@@ -2472,9 +2497,9 @@ async function createObserverPage(
       return page.content();
     },
     snapshotAccessibilityTree,
-    snapshotElementMap: cdpPage.context
+    snapshotElementMap: cdpPage
       ? async () => {
-          const elementMap = await withCdpSession(cdpPage.context!(), page, captureElementMap);
+          const elementMap = await withPageSessions(cdpPage.context(), cdpPage, captureElementMap);
           assertValidSchema("elementMap", elementMap, "element map");
           return elementMap;
         }
@@ -2483,6 +2508,7 @@ async function createObserverPage(
     snapshotScreenshot,
     runAxeAnalysis,
     snapshotVirtualScreenReaderTranscript,
+    listenVirtualScreenReader,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking
@@ -2495,20 +2521,22 @@ const FOCUS_ELEMENTS_KEY = "aee.focus-state.elements";
 /**
  * Adds what the accessibility tree says about each captured element, which is what NVDA and JAWS
  * receive from Chrome: its role, name and states, and the dialog and composite widget it sits in.
- * Without the tree, the capture says why and has no role or name, rather than a guess at one.
+ * Where focus is in the tree is read from every frame, including one Chrome renders in a process
+ * of its own, which the page's active-element chain cannot enter. Without the tree, the capture
+ * says why and has no role or name, rather than a guess at one.
  */
 async function withAccessibilityFocus(
-  context: CdpContext,
-  page: PlaywrightPageLike,
+  page: FramedPage & { context(): CdpContext },
   domFocus: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   try {
-    const described = await withCdpSession(context, page, (session) =>
-      describeFocusElements(
-        session,
+    const { described, tree } = await withPageSessions(page.context(), page, async (sessions) => ({
+      described: await describeFocusElements(
+        mainFrameOf(sessions).session,
         `(() => { const key = Symbol.for(${JSON.stringify(FOCUS_ELEMENTS_KEY)}); const elements = globalThis[key]; delete globalThis[key]; return elements; })()`
-      )
-    );
+      ),
+      tree: await fetchAccessibilityTree(sessions)
+    }));
     const chain = Array.isArray(domFocus.activeElementChain)
       ? (domFocus.activeElementChain as Array<Record<string, unknown>>)
       : [];
@@ -2517,7 +2545,6 @@ async function withAccessibilityFocus(
       ...(summary as Record<string, unknown>),
       ...described[index]?.accessibility
     });
-    const deep = described[deepIndex];
     return {
       ...withFacts(domFocus, deepIndex),
       documentActiveElement: withFacts(domFocus.documentActiveElement, 0),
@@ -2526,17 +2553,7 @@ async function withAccessibilityFocus(
       ...(domFocus.activeDescendant
         ? { activeDescendant: withFacts(domFocus.activeDescendant, chain.length) }
         : {}),
-      accessibilityFocus: deep
-        ? {
-            status: "matched",
-            nodeId: deep.nodeId,
-            ...(deep.backendDOMNodeId === undefined
-              ? {}
-              : { backendDOMNodeId: deep.backendDOMNodeId }),
-            role: deep.accessibility.role,
-            name: deep.accessibility.name
-          }
-        : { status: "not-exposed" }
+      accessibilityFocus: focusInTree(tree)
     };
   } catch (error) {
     return {
@@ -2551,6 +2568,26 @@ async function withAccessibilityFocus(
       }
     };
   }
+}
+
+/** Where the accessibility tree has focus, in whichever frame holds it. */
+function focusInTree({ nodes }: AccessibilityTree): Record<string, unknown> {
+  const focusedNodes = nodes.filter((node) =>
+    node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
+  );
+  const focusedNode =
+    focusedNodes.find((node) => !["RootWebArea", "WebArea"].includes(String(node.role?.value))) ??
+    focusedNodes.at(-1);
+
+  if (!focusedNode) return { status: "not-exposed" };
+  return {
+    status: "matched",
+    nodeId: focusedNode.nodeId,
+    backendDOMNodeId: focusedNode.backendDOMNodeId,
+    frameId: focusedNode.frameId,
+    role: focusedNode.role?.value,
+    name: focusedNode.name?.value
+  };
 }
 
 /** Pairs each target's key with its result, dropping the targets the page could not find. */
@@ -2599,7 +2636,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "request",
       requestId,
-      url: redactNetworkUrl(request.url()),
+      url: redactUrl(request.url()),
       method: request.method(),
       resourceType: request.resourceType(),
       headers: redactHeaderValues(request.headers()),
@@ -2614,7 +2651,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "response",
       requestId,
-      url: redactNetworkUrl(response.url()),
+      url: redactUrl(response.url()),
       status: response.status(),
       statusText: response.statusText(),
       ok: response.ok(),
@@ -2658,23 +2695,6 @@ function createNetworkTracker(page: EventedPageLike) {
 
 function redactHeaderValues(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.keys(headers).map((name) => [name, "[REDACTED]"]));
-}
-
-function redactNetworkUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-
-    for (const name of new Set(url.searchParams.keys())) {
-      url.searchParams.set(name, "[REDACTED]");
-    }
-
-    return url.toString();
-  } catch {
-    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
-  }
 }
 
 async function renderReports(input: ReporterInput): Promise<ReporterArtifact[]> {

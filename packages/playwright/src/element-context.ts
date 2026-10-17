@@ -1,10 +1,13 @@
 import {
   capturePageDom,
   describeSelectedElement,
+  domNodeOf,
   fetchAccessibilityTree,
+  mainFrameOf,
   type AccessibilityTree,
   type CapturedDom,
-  type CdpSession
+  type DomNodeRef,
+  type PageSessions
 } from "./accessibility-tree";
 import type { ElementLocationPage } from "./element-locations";
 
@@ -64,13 +67,15 @@ const IMAGE_ROLE = "image";
  */
 export async function describeElementContexts(
   page: ElementLocationPage,
-  session: CdpSession,
+  sessions: PageSessions,
   selectors: string[]
 ): Promise<Array<ElementContext | null>> {
   const facts = await pageFacts(page, selectors);
   if (facts.every((fact) => fact === null)) return facts as null[];
-  const tree = await fetchAccessibilityTree(session);
-  const dom = await capturePageDom(session);
+  // The selectors are axe's, which point into the top document.
+  const { frameId, session } = mainFrameOf(sessions);
+  const tree = await fetchAccessibilityTree(sessions);
+  const dom = await capturePageDom(sessions);
   const contexts: Array<ElementContext | null> = [];
   for (const [index, fact] of facts.entries()) {
     const element = fact && (await describeSelectedElement(session, selectors[index]!));
@@ -82,7 +87,7 @@ export async function describeElementContexts(
     const nearbyHeading =
       element.backendNodeId === undefined
         ? undefined
-        : nearbyHeadingIn(tree, dom, element.backendNodeId);
+        : nearbyHeadingIn(tree, dom, { frameId, backendNodeId: element.backendNodeId });
     contexts.push({
       ...rest,
       role: element.role,
@@ -105,20 +110,21 @@ export async function describeElementContexts(
 function nearbyHeadingIn(
   { nodes }: AccessibilityTree,
   dom: CapturedDom,
-  backendNodeId: number
+  targetNode: DomNodeRef
 ): string | undefined {
-  const target = dom.element(backendNodeId);
+  const target = dom.element(targetNode);
   if (!target) return undefined;
   const headings = nodes
     .filter((node) => !node.ignored && node.role?.value === "heading")
-    .flatMap(({ name, backendDOMNodeId }) => {
-      const element = backendDOMNodeId === undefined ? undefined : dom.element(backendDOMNodeId);
-      return element && element.order < target.order
-        ? [{ name, element, containers: dom.ancestorElements(backendDOMNodeId!) }]
+    .flatMap((node) => {
+      const headingNode = domNodeOf(node);
+      const element = headingNode && dom.element(headingNode);
+      return headingNode && element && element.order < target.order
+        ? [{ name: node.name, element, containers: dom.ancestorElements(headingNode) }]
         : [];
     })
     .sort((first, second) => first.element.order - second.element.order);
-  for (const container of dom.ancestorElements(backendNodeId).slice(1)) {
+  for (const container of dom.ancestorElements(targetNode).slice(1)) {
     const before = headings.filter(({ containers }) => containers.includes(container));
     const last = before[before.length - 1];
     if (last)
