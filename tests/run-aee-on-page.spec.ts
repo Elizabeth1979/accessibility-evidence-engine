@@ -309,8 +309,8 @@ approval:
     ]);
     expect(report.completeness).toMatchObject({
       status: "incomplete",
-      plannedLanes: 4,
-      completedLanes: 2
+      plannedLanes: 5,
+      completedLanes: 3
     });
     expect(report.status).toBe("partial");
     expect(report.verdict).toBe("unknown");
@@ -319,7 +319,7 @@ approval:
     expect(await readFile(result.reportFiles.markdown, "utf8")).toContain(
       "**Evidence completeness:** INCOMPLETE"
     );
-    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 2/4 lanes");
+    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 3/5 lanes");
   } finally {
     await server.close();
   }
