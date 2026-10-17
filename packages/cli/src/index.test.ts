@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -288,6 +288,43 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
         assert.match(output.stderr ?? "", /until plan sha256:[a-f0-9]+ is approved/);
         return true;
       }
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI run refuses a scenario whose ids are too long to name its evidence before running anything", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-long-id-"));
+  const longIdScenarioPath = path.join(tempRoot, "scenario.yml");
+  const journeyId = `explore-${"a".repeat(120)}`;
+  const scenarioYaml = await readFile(scenarioPath, "utf8");
+  await writeFile(
+    longIdScenarioPath,
+    scenarioYaml.replace("id: explore-public-homepage", `id: ${journeyId}`),
+    "utf8"
+  );
+
+  try {
+    await assert.rejects(
+      () =>
+        execFileAsync(process.execPath, [cliPath, "run", longIdScenarioPath], { cwd: tempRoot }),
+      (error: unknown) => {
+        const output = error as { stderr?: string };
+        assert.match(
+          output.stderr ?? "",
+          new RegExp(`Journey “${journeyId}” makes an evidence folder name that is too long`)
+        );
+        assert.match(output.stderr ?? "", /Shorten the journey id by at least 23 characters\./);
+        return true;
+      }
+    );
+    assert.equal(
+      await stat(path.join(tempRoot, "aee-output")).catch(() => undefined),
+      undefined,
+      "no lane ran, so no evidence was written"
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Browser } from "@playwright/test";
 
 import {
   captureElementMap,
@@ -250,9 +250,24 @@ test("a lane that fails before writing any evidence keeps the report incomplete 
       <main><h1>Account overview</h1><button type="button">Show details</button></main>
     </body></html>`);
   });
-  // The scenario accepts this journey id, but the comparison lane's id built from it is longer than
-  // a lane id may be, so that lane throws before it writes a manifest. The other lanes complete.
-  const journeyId = `read-${"a".repeat(100)}`;
+  // The browser cannot open the first lane's context, as when it crashes, disconnects or runs out
+  // of memory, so the start-page lane throws before it writes a manifest. The other lanes complete.
+  // This relies on the start-page lane opening its context before it can record a failure: if that
+  // lane learns to write a "failed" manifest there too, this test needs another trigger.
+  const journeyId = "read-page";
+  let contextsOpened = 0;
+  const failsFirstContext = new Proxy(browser, {
+    get(target, property) {
+      if (property === "newContext") {
+        return (...args: Parameters<Browser["newContext"]>) =>
+          contextsOpened++ === 0
+            ? Promise.reject(new Error("The browser could not open a context."))
+            : target.newContext(...args);
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
   const scenarioYaml = `schemaVersion: 0.1.0
 id: lane-fails-early
 target:
@@ -296,7 +311,7 @@ approval:
 `;
 
   try {
-    const result = await runApprovedScenario(browser, scenarioYaml, testInfo);
+    const result = await runApprovedScenario(failsFirstContext, scenarioYaml, testInfo);
     const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
       status: string;
       verdict: string;
@@ -305,12 +320,14 @@ approval:
     };
 
     expect(report.diagnostics).toEqual([
-      expect.stringMatching(new RegExp(`^${journeyId}-show-details-hover-focus: Invalid runId`))
+      expect.stringMatching(
+        new RegExp(`^${journeyId}-start-page: The browser could not open a context`)
+      )
     ]);
     expect(report.completeness).toMatchObject({
       status: "incomplete",
       plannedLanes: 5,
-      completedLanes: 3
+      completedLanes: 4
     });
     expect(report.status).toBe("partial");
     expect(report.verdict).toBe("unknown");
@@ -319,7 +336,7 @@ approval:
     expect(await readFile(result.reportFiles.markdown, "utf8")).toContain(
       "**Evidence completeness:** INCOMPLETE"
     );
-    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 3/5 lanes");
+    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 4/5 lanes");
   } finally {
     await server.close();
   }
