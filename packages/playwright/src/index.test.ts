@@ -9,6 +9,7 @@ import type { EvidenceRecord, Judgment } from "@aee/core";
 import {
   aggregateEvidenceManifests,
   comparePointerAndKeyboardOutcomes,
+  enableExperimentalAxeRules,
   measureAgainstPixels,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
@@ -20,6 +21,20 @@ import {
   verifyMotionControl,
   type PlaywrightPageLike
 } from "./index";
+
+test("enableExperimentalAxeRules switches on axe's experimental rules filed under WCAG A/AA", () => {
+  const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
+
+  // axe-core 4.13's five; its experimental best-practice rules stay off.
+  assert.deepEqual(enableExperimentalAxeRules(wcagTags), {
+    "css-orientation-lock": { enabled: true },
+    "label-content-name-mismatch": { enabled: true },
+    "p-as-heading": { enabled: true },
+    "table-fake-caption": { enabled: true },
+    "td-has-header": { enabled: true }
+  });
+  assert.deepEqual(enableExperimentalAxeRules([]), {});
+});
 
 interface JsonReport {
   run: {

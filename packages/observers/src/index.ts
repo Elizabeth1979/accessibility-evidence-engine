@@ -75,6 +75,12 @@ export const defaultObserverManifests = [
   }
 ];
 
+/** Which axe rules to run: every rule with one of `tags`, plus axe's experimental rules with one of `experimentalTags`. */
+export interface AxeAnalysisOptions {
+  tags: string[];
+  experimentalTags?: string[];
+}
+
 export interface RuntimeObserverContext extends ObserverContext {
   page?: {
     content(): Promise<string>;
@@ -82,7 +88,7 @@ export interface RuntimeObserverContext extends ObserverContext {
     snapshotFocusTarget?(options?: unknown): Promise<unknown>;
     snapshotElementMap?(): Promise<unknown>;
     snapshotScreenshot?(options?: { fullPage?: boolean }): Promise<Uint8Array>;
-    runAxeAnalysis?(options: { tags: string[] }): Promise<unknown>;
+    runAxeAnalysis?(options: AxeAnalysisOptions): Promise<unknown>;
     snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
     setupNetworkTracking?(options?: unknown): Promise<void>;
     snapshotNetworkLog?(options?: unknown): Promise<unknown>;
@@ -759,6 +765,11 @@ async function captureVisualRecord(
 const AXE_WCAG_22_A_AA_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
 /** axe's best-practice rules run too; they are not WCAG requirements, so their results are advisory. */
 const AXE_RULE_TAGS = [...AXE_WCAG_22_A_AA_TAGS, "best-practice"];
+/**
+ * axe switches off its experimental rules by default. The ones filed under a WCAG A/AA criterion
+ * run too and block a release like any other WCAG rule (owner's decision, 2026-10-17).
+ */
+const AXE_EXPERIMENTAL_RULE_TAGS = AXE_WCAG_22_A_AA_TAGS;
 
 /** An axe rule is advisory only when axe files it as best practice and under no WCAG criterion. */
 export function isAdvisoryAxeRule(tags: readonly unknown[]): boolean {
@@ -802,7 +813,10 @@ async function captureAxeRecord(
   }
 
   try {
-    const result = await runAxeAnalysis({ tags: AXE_RULE_TAGS });
+    const result = await runAxeAnalysis({
+      tags: AXE_RULE_TAGS,
+      experimentalTags: AXE_EXPERIMENTAL_RULE_TAGS
+    });
     const normalized = isRecord(result) ? result : {};
     const violationGroups = splitAdvisory(normalized.violations);
     const violations = violationGroups.blocking.length;
@@ -846,7 +860,11 @@ async function captureAxeRecord(
       artifacts: artifact ? [artifact] : [],
       meta: {
         engineVersion: readNestedString(normalized, "testEngine", "version"),
-        ruleSelection: { type: "tag", values: AXE_RULE_TAGS },
+        ruleSelection: {
+          type: "tag",
+          values: AXE_RULE_TAGS,
+          experimentalTags: AXE_EXPERIMENTAL_RULE_TAGS
+        },
         explicitlyDisabledRuleIds: [],
         violations,
         passes,
