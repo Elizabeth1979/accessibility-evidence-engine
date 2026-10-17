@@ -1633,7 +1633,7 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
   return value.filter(isRecord).map((rule) => {
     const rawNodes = Array.isArray(rule.nodes) ? rule.nodes.filter(isRecord) : [];
     const nodes = rawNodes.map((node) => ({
-      target: Array.isArray(node.target) ? node.target.map(String).join(" → ") : "",
+      target: Array.isArray(node.target) ? framedSelector(node.target.map(String)) : "",
       html: optionalStringField(node, "html"),
       failureSummary: optionalStringField(node, "failureSummary"),
       targetBox: axeTargetBox(node.aeeTarget),
@@ -2261,10 +2261,18 @@ function sweepFindingInstance(
   return {
     component: affectedComponentName(finding.selector),
     label: finding.label || elementLabel(undefined, finding.selector, index),
-    selector: finding.selector,
+    selector: framedSelector([...(finding.framePath ?? []), finding.selector]),
     targetBox: finding.targetBox,
     detail: finding.summary
   };
+}
+
+/**
+ * An element's path through the frames it is in, outermost `<iframe>` first, as the report shows
+ * axe-core's frame-crossing targets.
+ */
+function framedSelector(path: string[]): string {
+  return path.join(" → ");
 }
 
 function actionArtifactPath(
@@ -4734,7 +4742,7 @@ function addElementMapLayers(state: PageState, map: ElementMap): void {
             : element.alt === "ignored"
               ? `Screen readers skip it (Chrome: ${element.ignoredReasons?.join(", ") || "ignored"})`
               : "No text alternative",
-        detail: element.selector,
+        detail: framedSelector([...(element.framePath ?? []), element.selector]),
         tone: element.alt === "missing" ? "fail" : "neutral",
         ...(element.alt === "missing" ? { flag: "No alt" } : {})
       });

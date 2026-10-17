@@ -471,11 +471,13 @@ async function captureAccessibilityRecord(
 
 /**
  * One node of the checkpoint's accessibility tree, whole: everything the browser says about it
- * except its links to other tree nodes. `backendDOMNodeId` is the DOM node it belongs to, which
- * joins it to what the virtual reader read in the same browser session.
+ * except its links to other tree nodes. `backendDOMNodeId` and `frameId` are the DOM node it
+ * belongs to and the frame holding it, which join it to what the virtual reader read in the same
+ * browser session.
  */
 interface AccessibilitySemanticNode {
   backendDOMNodeId: number;
+  frameId?: string;
   role: string;
   name?: string;
   description?: string;
@@ -506,6 +508,7 @@ function buildAccessibilitySemanticIndex(snapshot: unknown): {
     return [
       {
         backendDOMNodeId: node.backendDOMNodeId,
+        ...(typeof node.frameId === "string" ? { frameId: node.frameId } : {}),
         role: readAccessibilityValue(node.role) ?? "",
         ...(name ? { name } : {}),
         ...(description ? { description } : {}),

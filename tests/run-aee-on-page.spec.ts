@@ -11,7 +11,7 @@ import {
   runInputComparison,
   runAeeOnPage,
   runVirtualScreenReaderLane,
-  withCdpSession
+  withPageSessions
 } from "@aee/playwright";
 
 import { runApprovedScenario, startHtmlServer } from "./scenario-helpers";
@@ -658,7 +658,7 @@ test("element map lists each image screen readers skip, with Chrome's exact reas
   `);
 
   // The full tree leaves these images out in a paragraph; each is asked about on its own.
-  const map = await withCdpSession(page.context(), page, captureElementMap);
+  const map = await withPageSessions(page.context(), page, captureElementMap);
 
   expect(
     map.elements

@@ -32,7 +32,12 @@ import {
   type VirtualScreenReaderPage,
   type VirtualScreenReaderTranscript
 } from "./virtual-screen-reader";
-import { fetchAccessibilityTree, withCdpSession, type CdpContext } from "./accessibility-tree";
+import {
+  fetchAccessibilityTree,
+  withPageSessions,
+  type CdpContext,
+  type FramedPage
+} from "./accessibility-tree";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
@@ -68,6 +73,7 @@ export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
+export * from "./heading-lookalikes";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
 export * from "./pointer-keyboard-comparison";
@@ -2045,8 +2051,17 @@ function waitFor(durationMs: number): Promise<void> {
   });
 }
 
-interface CdpEnabledPageLike extends PlaywrightPageLike {
+interface CdpEnabledPageLike extends PlaywrightPageLike, Partial<FramedPage> {
   context?(): CdpContext;
+}
+
+/** The page, when it can be read frame by frame over the DevTools protocol, as a Playwright page can. */
+function framedCdpPage(
+  page: CdpEnabledPageLike
+): (FramedPage & { context(): CdpContext }) | undefined {
+  return page.context && page.frames && page.mainFrame
+    ? (page as FramedPage & { context(): CdpContext })
+    : undefined;
 }
 
 interface EvaluatablePageLike extends PlaywrightPageLike {
@@ -2087,7 +2102,7 @@ async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader
 ): Promise<RuntimeObserverContext["page"]> {
-  const cdpPage = page as CdpEnabledPageLike;
+  const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
@@ -2113,8 +2128,8 @@ async function createObserverPage(
   const networkTracker = createNetworkTracker(eventedPage);
   const snapshotAccessibilityTree = page.snapshotAccessibilityTree
     ? async () => page.snapshotAccessibilityTree?.()
-    : cdpPage.context
-      ? async () => withCdpSession(cdpPage.context!(), page, fetchAccessibilityTree)
+    : cdpPage
+      ? async () => withPageSessions(cdpPage.context(), cdpPage, fetchAccessibilityTree)
       : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
@@ -2516,8 +2531,8 @@ async function createObserverPage(
               return undefined;
             }
           });
-          const accessibilityFocus = cdpPage.context
-            ? await captureAccessibilityFocus(cdpPage.context(), page)
+          const accessibilityFocus = cdpPage
+            ? await captureAccessibilityFocus(cdpPage)
             : { status: "unsupported" as const };
 
           const focusState =
@@ -2626,9 +2641,9 @@ async function createObserverPage(
       return page.content();
     },
     snapshotAccessibilityTree,
-    snapshotElementMap: cdpPage.context
+    snapshotElementMap: cdpPage
       ? async () => {
-          const elementMap = await withCdpSession(cdpPage.context!(), page, captureElementMap);
+          const elementMap = await withPageSessions(cdpPage.context(), cdpPage, captureElementMap);
           assertValidSchema("elementMap", elementMap, "element map");
           return elementMap;
         }
@@ -2643,14 +2658,12 @@ async function createObserverPage(
   };
 }
 
+/** Where the accessibility tree has focus, in whichever frame holds it. */
 async function captureAccessibilityFocus(
-  context: CdpContext | undefined,
-  page: PlaywrightPageLike
+  page: FramedPage & { context(): CdpContext }
 ): Promise<Record<string, unknown>> {
-  if (!context) return { status: "unsupported" };
-
   try {
-    const { nodes } = await withCdpSession(context, page, fetchAccessibilityTree);
+    const { nodes } = await withPageSessions(page.context(), page, fetchAccessibilityTree);
     const focusedNodes = nodes.filter((node) =>
       node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
     );
@@ -2663,6 +2676,7 @@ async function captureAccessibilityFocus(
       status: "matched",
       nodeId: focusedNode.nodeId,
       backendDOMNodeId: focusedNode.backendDOMNodeId,
+      frameId: focusedNode.frameId,
       role: focusedNode.role?.value,
       name: focusedNode.name?.value
     };
