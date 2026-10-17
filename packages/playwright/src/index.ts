@@ -697,6 +697,11 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
           )
       : undefined,
     interactionReadsOnly: options.interactionReadsOnly,
+    // The watch tells a live region the page updates on its own from one the press updates; with
+    // the reader not listening, no announcement is judged and there is nothing to tell apart.
+    ...(selectedObservers.includes("virtual-screen-reader")
+      ? { watchWithoutInputMs: resolvedPolicy.capture.watchWithoutInputMs }
+      : {}),
     environment: {
       mode: "playwright-page"
     },

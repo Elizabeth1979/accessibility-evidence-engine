@@ -37,6 +37,12 @@ export interface RunExecutionInput {
    * to compare, the page is captured once, after it, as for a run with no interaction.
    */
   interactionReadsOnly?: boolean;
+  /**
+   * How long to watch the page untouched before an interaction that can change it, so what the
+   * page does on its own in that time (a live region announcing a clock's time) is evidence of its
+   * own and not taken for the interaction's response.
+   */
+  watchWithoutInputMs?: number;
 }
 
 export interface RunExecutionResult {
@@ -68,10 +74,18 @@ export async function executeRun(input: RunExecutionInput): Promise<RunExecution
 
     // "Before" is only there to compare with "after" around an interaction that can change the
     // page; with none, or one that only reads it, the page is captured once, as it is.
-    const beforeRecords =
-      input.executeInteraction && !input.interactionReadsOnly
-        ? await capturePhase(input.observerPlugins, "before", input.observerContext)
-        : [];
+    const changesPage = Boolean(input.executeInteraction) && !input.interactionReadsOnly;
+    if (changesPage && input.watchWithoutInputMs) {
+      await runObserverLifecycle(
+        input.observerPlugins,
+        "startWatchWithoutInput",
+        input.observerContext
+      );
+      await new Promise((resolve) => setTimeout(resolve, input.watchWithoutInputMs));
+    }
+    const beforeRecords = changesPage
+      ? await capturePhase(input.observerPlugins, "before", input.observerContext)
+      : [];
 
     if (input.executeInteraction) {
       await input.executeInteraction({
@@ -177,16 +191,8 @@ async function runJudges(
 
 async function runObserverLifecycle(
   observerPlugins: ObserverPlugin[],
-  phase: "setup" | "teardown",
+  phase: "setup" | "startWatchWithoutInput" | "teardown",
   context: ObserverContext
 ): Promise<void> {
-  await Promise.all(
-    observerPlugins.map((plugin) => {
-      if (phase === "setup") {
-        return plugin.setup ? plugin.setup(context) : Promise.resolve();
-      }
-
-      return plugin.teardown ? plugin.teardown(context) : Promise.resolve();
-    })
-  );
+  await Promise.all(observerPlugins.map((plugin) => plugin[phase]?.(context)));
 }

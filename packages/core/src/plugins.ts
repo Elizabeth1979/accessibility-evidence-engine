@@ -67,6 +67,11 @@ export interface ProposedFix {
 export interface ObserverPlugin {
   manifest: BasePluginManifest;
   setup?(context: ObserverContext): Promise<void>;
+  /**
+   * Called when the run starts watching the page untouched before the interaction; the "before"
+   * capture ends the watch. Only a run given `watchWithoutInputMs` watches.
+   */
+  startWatchWithoutInput?(context: ObserverContext): Promise<void>;
   captureBefore?(context: ObserverContext): Promise<EvidenceRecord[]>;
   captureAfter?(context: ObserverContext): Promise<EvidenceRecord[]>;
   teardown?(context: ObserverContext): Promise<void>;

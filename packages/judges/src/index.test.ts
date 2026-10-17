@@ -881,16 +881,57 @@ function markupAfter(changed: boolean): PressRecord {
   return pressRecord("record-dom-after", "dom", "after", { changed });
 }
 
+function politeAnnouncements(texts: string[]) {
+  return texts.map((text, index) => ({
+    sequence: index + 1,
+    timestamp: "2026-06-21T10:00:01.050Z",
+    politeness: "polite",
+    text
+  }));
+}
+
 function readerAfter(texts: string[]): PressRecord {
   return pressRecord("record-reader-after", "virtual-screen-reader", "after", {
-    newLiveRegionAnnouncements: texts.map((text, index) => ({
-      sequence: index + 1,
-      timestamp: "2026-06-21T10:00:01.050Z",
-      politeness: "polite",
-      text
-    }))
+    newLiveRegionAnnouncements: politeAnnouncements(texts)
   });
 }
+
+/** What the reader heard while the page was left untouched before the press. */
+function readerBefore(texts: string[]): PressRecord {
+  return pressRecord("record-reader-before", "virtual-screen-reader", "before", {
+    liveRegionAnnouncementsWithoutInput: politeAnnouncements(texts)
+  });
+}
+
+/** What Chrome's tree showed changing on its own while the page was left untouched. */
+function accessibilityBefore(accessibilityChangesWithoutInput: AccessibilityChanges): PressRecord {
+  return pressRecord("record-accessibility-before", "accessibility-tree", "before", {
+    accessibilityChangesWithoutInput
+  });
+}
+
+/** A polite clock, `<p aria-live="polite" aria-label="Clock">`, showing the given time. */
+function clockRegion(time: string) {
+  return {
+    nodeId: 51,
+    role: "paragraph",
+    name: "Clock",
+    politeness: "polite" as const,
+    text: time
+  };
+}
+
+/** The clock ticking from one time to the next, as Chrome's tree reports it. */
+function clockTicks(from: string, to: string): AccessibilityChanges["changes"] {
+  return [{ nodeId: 52, role: "StaticText", name: to, kind: "name", before: from, after: to }];
+}
+
+const statusRegion = {
+  nodeId: 61,
+  role: "status",
+  politeness: "polite" as const,
+  text: "Saved"
+};
 
 const agreeCheckbox = { nodeId: 11, role: "checkbox", name: "Agree" };
 const moreButton = { nodeId: 21, role: "button", name: "More" };
@@ -974,6 +1015,69 @@ const pressScenarios: Array<{
       }),
       markupAfter(true)
     ]
+  },
+  {
+    title: "Enter on a dead button while a polite clock announces on its own",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: clockTicks("10:00:02", "10:00:03"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03")]
+      }),
+      readerAfter(["10:00:03"]),
+      markupAfter(true)
+    ]
+  },
+  {
+    title: "Enter on a Save button whose status message appears while a polite clock ticks",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [
+          ...clockTicks("10:00:02", "10:00:03"),
+          { nodeId: 62, role: "StaticText", name: "Saved", kind: "shown" }
+        ],
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03"), statusRegion]
+      }),
+      readerAfter(["10:00:03", "Saved"]),
+      markupAfter(true)
+    ]
+  },
+  {
+    title:
+      "Enter on a dead button after the page announced on its own, with no tree to place the announcement",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["Ticker: 3 new"]),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [],
+        truncated: false
+      }),
+      readerAfter(["Ticker: 4 new"])
+    ]
   }
 ];
 
@@ -987,7 +1091,24 @@ const expectedPressOutcomes: Array<{ verdict: Judgment["verdict"]; summary: RegE
   { verdict: "pass", summary: /a live region announced "Saved" \(polite\)/ },
   // Not a fail: the page did change, and nothing says the press did not cause it. Not a pass:
   // nothing ties the change to the press. The judge says what changed and leaves it undecided.
-  { verdict: "unknown", summary: /StaticText "10:01" appeared.*cannot be told/ }
+  { verdict: "unknown", summary: /StaticText "10:01" appeared.*cannot be told/ },
+  // The clock's announcement is named and not counted; with nothing else, the press is undecided.
+  {
+    verdict: "unknown",
+    summary:
+      /A live region announced "10:00:03" \(polite\) after the press, but that region, paragraph "Clock", was already announcing on its own while the page was left untouched \(before the press it said "10:00:02"\), so it is not counted/
+  },
+  // The status message comes from a region that was quiet before the press, so it still counts.
+  {
+    verdict: "pass",
+    summary:
+      /a live region announced "Saved" \(polite\)\).*A live region announced "10:00:03" \(polite\) after the press, but that region, paragraph "Clock", was already announcing/
+  },
+  {
+    verdict: "unknown",
+    summary:
+      /announced "Ticker: 4 new" \(polite\) after the press, but the page was already announcing on its own.*"Ticker: 3 new".*does not show which live region/
+  }
 ];
 
 for (const judgeId of ["keyboard", "change-response"]) {
@@ -1014,6 +1135,41 @@ for (const judgeId of ["keyboard", "change-response"]) {
     });
   });
 }
+
+test("the press judges name every announcement a self-announcing region made after the press, in one sentence", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
+  const bundle = createBundle(
+    [
+      ...focusStaysOn({ tagName: "button", role: "button", name: "Save" }),
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: clockTicks("10:00:03", "10:00:04"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03 10:00:04")]
+      }),
+      readerAfter(["10:00:03", "10:00:04"])
+    ],
+    { kind: "enter", target: { role: "button", name: "Save" } }
+  );
+
+  const [judgment] = await keyboardJudge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(
+    judgment?.summary ?? "",
+    /A live region announced "10:00:03" \(polite\), "10:00:04" \(polite\) after the press, but that region, paragraph "Clock", was already announcing on its own .*so they are not counted/
+  );
+  assert.equal(judgment?.summary.match(/A live region announced/g)?.length, 1);
+  assert.ok(judgment?.evidenceRecordIds.includes("record-reader-before"));
+  assert.ok(judgment?.evidenceRecordIds.includes("record-accessibility-before"));
+});
 
 test("keyboard judge fails a dead button even when unrelated markup changed", async () => {
   const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;

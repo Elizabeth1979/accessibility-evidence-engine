@@ -96,7 +96,8 @@ test("runWithPage records the capture policy and filtered observer set", async (
       includeScreenshots: false,
       includeAccessibilityTree: true,
       includeDomSnapshot: true,
-      stabilizeAfterInteractionMs: 250
+      stabilizeAfterInteractionMs: 250,
+      watchWithoutInputMs: 1500
     });
     assert.equal(report.judgments.length, 1);
     assert.equal(report.judgments[0]?.judgeId, "release");
