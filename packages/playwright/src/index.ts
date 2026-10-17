@@ -7,6 +7,7 @@ import AxeBuilder from "@axe-core/playwright";
 import axe from "axe-core";
 import {
   executeRun,
+  redactUrl,
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
@@ -2745,7 +2746,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "request",
       requestId,
-      url: redactNetworkUrl(request.url()),
+      url: redactUrl(request.url()),
       method: request.method(),
       resourceType: request.resourceType(),
       headers: redactHeaderValues(request.headers()),
@@ -2760,7 +2761,7 @@ function createNetworkTracker(page: EventedPageLike) {
     events.push({
       kind: "response",
       requestId,
-      url: redactNetworkUrl(response.url()),
+      url: redactUrl(response.url()),
       status: response.status(),
       statusText: response.statusText(),
       ok: response.ok(),
@@ -2804,23 +2805,6 @@ function createNetworkTracker(page: EventedPageLike) {
 
 function redactHeaderValues(headers: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.keys(headers).map((name) => [name, "[REDACTED]"]));
-}
-
-function redactNetworkUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-
-    for (const name of new Set(url.searchParams.keys())) {
-      url.searchParams.set(name, "[REDACTED]");
-    }
-
-    return url.toString();
-  } catch {
-    return value.split(/[?#]/, 1)[0] ?? "[REDACTED]";
-  }
 }
 
 async function renderReports(input: ReporterInput): Promise<ReporterArtifact[]> {

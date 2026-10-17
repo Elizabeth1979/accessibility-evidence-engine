@@ -41,7 +41,7 @@ async function framedPage(page: Page) {
             <p>Review the bills below before paying them from this page.</p>
             <iframe id="same" title="Billing, same origin" src="/inner"
               style="position:absolute;left:40px;top:220px;width:420px;height:260px;border:5px solid;padding:7px"></iframe>
-            <iframe id="cross" title="Billing, other site" src="${otherSite}/inner"
+            <iframe id="cross" title="Billing, other site" src="${otherSite}/inner?session=abc123#access_token=xyz"
               style="position:absolute;left:520px;top:900px;width:420px;height:260px;border:3px solid;padding:4px"></iframe>
             <div style="height:1400px"></div>
             <h2>After the frames</h2>
@@ -110,7 +110,8 @@ test("the accessibility tree is read in every frame, the cross-site one through 
     ).toEqual([
       { url: expect.stringMatching(/127\.0\.0\.1:\d+\/$/), child: false },
       { url: expect.stringMatching(/127\.0\.0\.1:\d+\/inner$/), child: true },
-      { url: expect.stringMatching(/localhost:\d+\/inner$/), child: true }
+      // A frame's address is kept without its query values or fragment, which can hold tokens.
+      { url: expect.stringMatching(/localhost:\d+\/inner\?session=%5BREDACTED%5D$/), child: true }
     ]);
     // Each frame's own <iframe> element in the top document holds it.
     const iframes = tree.nodes.filter(({ role }) => role?.value === "Iframe");

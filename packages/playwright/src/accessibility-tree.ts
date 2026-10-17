@@ -1,3 +1,5 @@
+import { redactUrl } from "@aee/core";
+
 /** A Chrome DevTools Protocol session, as Playwright's `CDPSession` provides it. */
 export interface CdpSession {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -74,6 +76,7 @@ export interface FrameRecord {
   frameId: string;
   /** The frame that holds it; absent for the top document. */
   parentFrameId?: string;
+  /** Its address. In evidence, with no credentials, query values or fragment. */
   url: string;
   /** The `<iframe>` or `<frame>` element that holds it, as its parent frame's process numbers it. */
   ownerBackendNodeId?: number;
@@ -222,11 +225,12 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A frame as evidence: its address keeps no credentials, query values or fragment. */
 function frameRecord({ frameId, parentFrameId, url, ownerBackendNodeId }: PageFrame): FrameRecord {
   return {
     frameId,
     ...(parentFrameId ? { parentFrameId } : {}),
-    url,
+    url: redactUrl(url),
     ...(ownerBackendNodeId === undefined ? {} : { ownerBackendNodeId })
   };
 }
@@ -249,7 +253,14 @@ export async function fetchAccessibilityTree(page: PageSessions): Promise<Access
   return {
     nodes: trees.flat(),
     frames: page.frames.map(frameRecord),
-    ...(page.framesNotRead.length ? { framesNotRead: page.framesNotRead } : {})
+    ...(page.framesNotRead.length
+      ? {
+          framesNotRead: page.framesNotRead.map(({ url, reason }) => ({
+            url: redactUrl(url),
+            reason
+          }))
+        }
+      : {})
   };
 }
 
