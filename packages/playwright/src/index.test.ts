@@ -32,20 +32,38 @@ interface JsonReport {
   }>;
 }
 
-function createMutablePage(
-  initialHtml: string
-): PlaywrightPageLike & { setHtml: (html: string) => void } {
-  let html = initialHtml;
+/**
+ * A page with one toggle button, "Save", whose pressed state Chrome's accessibility tree reports
+ * as CDP's `Accessibility.getFullAXTree` does.
+ */
+function createTogglePage(): PlaywrightPageLike & { press: () => void } {
+  let pressed = false;
+  const html = () =>
+    `<main><button id="save" type="button" aria-pressed="${pressed}">Save</button></main>`;
 
   return {
     url() {
       return "https://example.com/settings";
     },
     async content() {
-      return html;
+      return html();
     },
-    setHtml(nextHtml: string) {
-      html = nextHtml;
+    async snapshotAccessibilityTree() {
+      return {
+        nodes: [
+          {
+            nodeId: "7",
+            ignored: false,
+            role: { type: "role", value: "button" },
+            name: { type: "computedString", value: "Save" },
+            properties: [{ name: "pressed", value: { type: "tristate", value: String(pressed) } }],
+            backendDOMNodeId: 7
+          }
+        ]
+      };
+    },
+    press() {
+      pressed = true;
     }
   };
 }
@@ -494,7 +512,7 @@ test("resolveObserverIdsForCapturePolicy filters disabled capture observers", ()
 });
 
 test("runAeeOnPage rejects run IDs that can escape the output directory", async () => {
-  const page = createMutablePage("<main>Safe output</main>");
+  const page = createTogglePage();
 
   await assert.rejects(
     () =>
@@ -509,19 +527,14 @@ test("runAeeOnPage rejects run IDs that can escape the output directory", async 
   );
 });
 
-test("runAeeOnPage can miss delayed DOM changes when stabilization is disabled", async () => {
-  const page = createMutablePage(`
-    <main>
-      <button id="save" type="button">Save</button>
-      <p id="status">Idle</p>
-    </main>
-  `);
+test("runAeeOnPage can miss a delayed response when stabilization is disabled", async () => {
+  const page = createTogglePage();
 
   const result = await runAeeOnPage({
     page,
     projectRoot: process.cwd(),
     writeReports: false,
-    observers: ["dom"],
+    observers: ["dom", "accessibility-tree"],
     judges: ["change-response", "release"],
     interaction: {
       kind: "click",
@@ -537,14 +550,7 @@ test("runAeeOnPage can miss delayed DOM changes when stabilization is disabled",
       }
     },
     async performInteraction() {
-      setTimeout(() => {
-        page.setHtml(`
-          <main>
-            <button id="save" type="button">Save</button>
-            <p id="status">Saved</p>
-          </main>
-        `);
-      }, 20);
+      setTimeout(() => page.press(), 20);
     }
   });
 
@@ -560,12 +566,7 @@ test("runAeeOnPage can miss delayed DOM changes when stabilization is disabled",
 });
 
 test("runAeeOnPage honors capture policy filters and stabilization waits", async () => {
-  const page = createMutablePage(`
-    <main>
-      <button id="save" type="button">Save</button>
-      <p id="status">Idle</p>
-    </main>
-  `);
+  const page = createTogglePage();
 
   const result = await runAeeOnPage({
     page,
@@ -582,22 +583,14 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
       }
     },
     policy: {
-      name: "stable-dom-only",
+      name: "stable-no-screenshots",
       capture: {
-        includeAccessibilityTree: false,
         includeScreenshots: false,
         stabilizeAfterInteractionMs: 40
       }
     },
     async performInteraction() {
-      setTimeout(() => {
-        page.setHtml(`
-          <main>
-            <button id="save" type="button">Save</button>
-            <p id="status">Saved</p>
-          </main>
-        `);
-      }, 20);
+      setTimeout(() => page.press(), 20);
     }
   });
 
@@ -607,16 +600,20 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
   );
 
   assert.equal(changeResponseJudgment?.verdict, "pass");
-  assert.match(changeResponseJudgment?.summary ?? "", /dom changed/i);
+  assert.match(
+    changeResponseJudgment?.summary ?? "",
+    /button "Save" pressed changed from false to true/
+  );
+  assert.match(changeResponseJudgment?.summary ?? "", /supporting evidence only/);
   assert.deepEqual(
     report.records.map((record) => record.observerId),
-    ["dom", "dom"]
+    ["dom", "accessibility-tree", "dom", "accessibility-tree"]
   );
   assert.equal(report.artifacts.length, 0);
-  assert.deepEqual(report.run.config?.selectedObservers, ["dom"]);
+  assert.deepEqual(report.run.config?.selectedObservers, ["dom", "accessibility-tree"]);
   assert.deepEqual(report.run.config?.capturePolicy, {
     includeScreenshots: false,
-    includeAccessibilityTree: false,
+    includeAccessibilityTree: true,
     includeDomSnapshot: true,
     stabilizeAfterInteractionMs: 40
   });

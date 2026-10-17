@@ -69,7 +69,7 @@ The scenario author chooses every action. AEE does not infer which controls or k
 
 | Context                                  | Evaluated authored keys | Deterministic evidence check                                                                                                  |
 | ---------------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Button                                   | Enter, Space            | An observable focus, DOM, or network response follows activation                                                              |
+| Button                                   | Enter, Space            | An observable response follows activation (see [What counts as a response](#what-counts-as-a-response))                       |
 | Link                                     | Enter                   | An observable response follows activation; Space remains `unknown`                                                            |
 | Checkbox, radio, switch                  | Space                   | An observable response follows activation                                                                                     |
 | Menu item                                | Enter, Space            | An observable response follows activation                                                                                     |
@@ -83,9 +83,23 @@ The matrix follows the keyboard conventions in the [WAI-ARIA Authoring Practices
 
 Context-dependent behavior remains explicit. For example, Space selection in a listbox depends on its selection model, and Left/Right on a tree can expand, collapse, or move focus. These combinations return `unknown` unless the scenario supplies a specific outcome assertion.
 
+## What counts as a response
+
+The keyboard and change-response judges decide whether a press (Enter, Space, a click or a submit) did something from what a keyboard or screen-reader user can perceive, as the browser and Guidepup's virtual screen reader report it:
+
+- the pressed control's state in Chrome's accessibility tree changed: checked, expanded, pressed, selected, its value or its name, or it left the page. A key press acts on the element that had focus; a click on its target, found by role and name;
+- the same for anything the control names with `aria-controls`, such as the panel a disclosure opens;
+- focus moved;
+- Guidepup's virtual screen reader announced a live-region update, as a status message does ([WCAG 4.1.3](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html)). The reader listens through the press only when the `virtual-screen-reader` observer runs with a reader; the keyboard lane of `runInputComparison` always has one;
+- network activity.
+
+The page's markup is compared too, and kept in the record as supporting evidence only. It never decides: Space on a native checkbox ticks it without changing the markup, and a clock or an injected script changes the markup while a dead button does nothing.
+
+A press with none of these responses fails only when the accessibility tree was compared and nothing in it changed. When something else in the tree changed, such as a ticking clock or a paragraph that is not a live region, the judges return `unknown` and name what changed: it may be the press's doing, but nothing ties it to the press. Without the `accessibility-tree` observer the judges cannot tell, and also return `unknown`.
+
 ## Keyboard activation example
 
-The keyboard judge evaluates supported `enter` and `space` activation when focus evidence identifies the control and another observer captures an observable response.
+The keyboard judge evaluates supported `enter` and `space` activation when focus evidence identifies the control and the accessibility tree is captured before and after.
 
 ```ts
 await page.focus("#save");
@@ -93,7 +107,7 @@ await page.focus("#save");
 await runAeeOnPage({
   page,
   projectRoot: process.cwd(),
-  observers: ["focus", "dom"],
+  observers: ["focus", "dom", "accessibility-tree"],
   judges: ["keyboard", "release"],
   interaction: {
     kind: "enter",
@@ -165,13 +179,13 @@ await runAeeOnPage({
 
 ## Change-response example
 
-The change-response judge can evaluate whether a click, enter, space, or submit interaction produced an observable outcome when paired with DOM, network, or focus evidence.
+The change-response judge evaluates whether a click, enter, space, or submit interaction produced an observable outcome, by the same rules as the keyboard judge ([What counts as a response](#what-counts-as-a-response)).
 
 ```ts
 await runAeeOnPage({
   page,
   projectRoot: process.cwd(),
-  observers: ["dom"],
+  observers: ["dom", "accessibility-tree", "focus", "network"],
   judges: ["change-response", "release"],
   interaction: {
     kind: "click",
@@ -544,7 +558,8 @@ These helpers are explicit probes rather than universal WCAG judgments. The test
 - Focus snapshots include the containing dialog context when the active element is inside a native or ARIA dialog.
 - The focus-management judge supports explicit `inside-dialog`, `preserve`, and `target` expectations. Pointer hover is required to preserve focus; an authored focus action must resolve to its requested target.
 - The keyboard judge relies on deep focus evidence for tab order, role- and orientation-aware composite navigation, `aria-activedescendant`, and role-aware Enter/Space activation. It evaluates only user-authored actions; unsupported or context-dependent combinations return `unknown`.
-- The change-response judge currently evaluates click, enter, space, and submit interactions when DOM, network, or focus observers are available.
+- The change-response judge currently evaluates click, enter, space, and submit interactions. It needs the accessibility-tree observer to fail one; the DOM observer's markup diff is supporting evidence only.
+- After an interaction, the accessibility-tree record lists what changed in Chrome's tree (`meta.accessibilityChanges`: the focused node before and after, each tracked state, name, shown or hidden node, and which control names it with `aria-controls`). The reader record lists the live-region announcements Guidepup made during it (`meta.newLiveRegionAnnouncements`). Both are checked by `evidence-record.schema.json`.
 - The visual observer uses a screenshot snapshot hook and captures separate viewport and full-page PNG artifacts before and after the interaction.
 - The axe observer pins `@axe-core/playwright` 4.13.0, runs the cumulative WCAG 2.0/2.1/2.2 A/AA tag selection, and retains every raw result category.
 - The portable virtual reader speaks through Guidepup's virtual screen reader in the page, validates its canonical transcript against JSON Schema, and records DOM focus before and after every command.

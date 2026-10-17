@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import type { LiveRegionAnnouncement } from "@aee/core";
+
 import {
   capturePageDom,
   withCdpSession,
@@ -67,6 +69,8 @@ export interface VirtualScreenReaderTranscript {
   generatedAt: string;
   currentItem?: VirtualScreenReaderItem;
   entries: VirtualScreenReaderEntry[];
+  /** Live-region updates the reader announced while it listened, oldest first. */
+  liveRegionAnnouncements: LiveRegionAnnouncement[];
 }
 
 export function renderPortableVirtualScreenReaderTranscript(
@@ -92,6 +96,13 @@ export function renderPortableVirtualScreenReaderTranscript(
     }
   }
 
+  if (transcript.liveRegionAnnouncements.length > 0) {
+    lines.push("", "Live-region announcements:");
+    for (const announcement of transcript.liveRegionAnnouncements) {
+      lines.push(`${announcement.sequence}. ${announcement.politeness}: ${announcement.text}`);
+    }
+  }
+
   return `${lines.join("\n")}\n`;
 }
 
@@ -99,6 +110,11 @@ export interface PortableVirtualScreenReader {
   command(command: VirtualScreenReaderCommand): Promise<VirtualScreenReaderEntry>;
   /** The item a command would move to, without moving; undefined at the end of the page. */
   peek(command: VirtualScreenReaderCommand): Promise<VirtualScreenReaderItem | undefined>;
+  /**
+   * Starts hearing the page's live regions, as a running screen reader does, without moving the
+   * reading cursor. Does nothing when it already listens to this page.
+   */
+  listen(): Promise<void>;
   snapshot(): Promise<VirtualScreenReaderTranscript>;
 }
 
@@ -206,6 +222,7 @@ export function createPortableVirtualScreenReader(
   page: VirtualScreenReaderPage
 ): PortableVirtualScreenReader {
   const entries: VirtualScreenReaderEntry[] = [];
+  const liveRegionAnnouncements: LiveRegionAnnouncement[] = [];
   let currentItem: VirtualScreenReaderItem | undefined;
   // Every forward step since the reader last started or moved back. Guidepup keeps the reader
   // inside an open modal dialog, as screen readers do, and comes round to its start again: a
@@ -257,7 +274,27 @@ export function createPortableVirtualScreenReader(
         return item && cloneItem(item);
       });
     },
+    async listen() {
+      await session(async (cdp) => {
+        await loadGuidepup(cdp);
+        await evaluate(
+          cdp,
+          `(async () => {
+            if (window.__aeeGuidepupListener) return;
+            // A reader of its own, so listening never moves the cursor the commands read with.
+            window.__aeeGuidepupListener = new ${BUNDLE_GLOBAL}.Virtual();
+            window.__aeeGuidepupListenerRead = 0;
+            await window.__aeeGuidepupListener.start({ container: document.body });
+          })()`
+        );
+      });
+    },
     async snapshot() {
+      const heard = await session((cdp) => heardSinceLastRead(cdp));
+      for (const phrase of heard) {
+        const announcement = liveRegionAnnouncement(phrase, liveRegionAnnouncements.length + 1);
+        if (announcement) liveRegionAnnouncements.push(announcement);
+      }
       return {
         schemaVersion: "0.1.0",
         engine: "aee-portable-virtual-screen-reader",
@@ -269,7 +306,10 @@ export function createPortableVirtualScreenReader(
         pageUrl: page.url(),
         generatedAt: new Date().toISOString(),
         ...(currentItem ? { currentItem: cloneItem(currentItem) } : {}),
-        entries: entries.map(cloneEntry)
+        entries: entries.map(cloneEntry),
+        liveRegionAnnouncements: liveRegionAnnouncements.map((announcement) => ({
+          ...announcement
+        }))
       };
     }
   };
@@ -358,11 +398,7 @@ function positionKey({ backendNodeId, phrase }: Position): string {
  * the page does not have it (a fresh page, or one that has navigated), and reports where it is.
  */
 async function guidepup(cdp: CdpSession, action: Primitive | "current"): Promise<Position> {
-  const loaded = await evaluate<boolean>(cdp, `typeof ${BUNDLE_GLOBAL} === "object"`);
-  if (!loaded) {
-    bundleSource ??= readFileSync(BUNDLE_FILE, "utf8");
-    await evaluate(cdp, bundleSource);
-  }
+  await loadGuidepup(cdp);
   const position = await evaluate<{
     phrase: string;
     isText: boolean;
@@ -404,6 +440,51 @@ async function guidepup(cdp: CdpSession, action: Primitive | "current"): Promise
     isText: position.isText,
     ...(text ? { text } : {}),
     ...(backendNodeId === undefined ? {} : { backendNodeId })
+  };
+}
+
+/** Loads Guidepup's reader into the page when the page does not have it (fresh, or navigated). */
+async function loadGuidepup(cdp: CdpSession): Promise<void> {
+  const loaded = await evaluate<boolean>(cdp, `typeof ${BUNDLE_GLOBAL} === "object"`);
+  if (!loaded) {
+    bundleSource ??= readFileSync(BUNDLE_FILE, "utf8");
+    await evaluate(cdp, bundleSource);
+  }
+}
+
+/**
+ * What the listening reader said since this was last asked, from Guidepup's spoken-phrase log.
+ * Nothing when it does not listen to this page, as after the page navigated.
+ */
+async function heardSinceLastRead(cdp: CdpSession): Promise<string[]> {
+  return evaluate<string[]>(
+    cdp,
+    `(async () => {
+      const listener = window.__aeeGuidepupListener;
+      if (!listener) return [];
+      const log = await listener.spokenPhraseLog();
+      const heard = log.slice(window.__aeeGuidepupListenerRead);
+      window.__aeeGuidepupListenerRead = log.length;
+      return heard;
+    })()`
+  );
+}
+
+/**
+ * A live-region update as Guidepup says it: the politeness, a colon, then the words
+ * ("polite: Saved"). Its log also holds what it says as focus moves; those are not announcements.
+ */
+function liveRegionAnnouncement(
+  phrase: string,
+  sequence: number
+): LiveRegionAnnouncement | undefined {
+  const match = /^(polite|assertive): ([\s\S]*)$/.exec(phrase);
+  if (!match) return undefined;
+  return {
+    sequence,
+    timestamp: new Date().toISOString(),
+    politeness: match[1] as LiveRegionAnnouncement["politeness"],
+    text: match[2]!
   };
 }
 

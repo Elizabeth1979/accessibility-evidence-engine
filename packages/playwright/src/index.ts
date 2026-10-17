@@ -977,6 +977,13 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const judgeIds = [
       ...new Set([...INPUT_COMPARISON_JUDGES, ...(options.additionalJudges ?? [])])
     ];
+    // A key press can answer only with a status message (WCAG 4.1.3), which a screen reader hears
+    // from a live region. Guidepup's reader listens through each press, so the keyboard judge
+    // counts what it announced.
+    const pressListener =
+      driver === "keyboard" && opensCdpSessions(page)
+        ? createPortableVirtualScreenReader(page)
+        : undefined;
 
     for (const [index, action] of actions.entries()) {
       const sequence = index + 1;
@@ -993,13 +1000,15 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
         requiredArtifactBasenames: INPUT_LANE_REQUIRED_ARTIFACTS
       };
       manifestLane.actions.push(manifestAction);
+      const listensToPress = Boolean(pressListener) && action.kind === "press";
       const result = await runAeeOnPage({
         page,
         projectRoot: options.projectRoot,
         outputDir: runOutputDir,
         runId,
         policy: options.policy,
-        observers: observerIds,
+        observers: listensToPress ? [...observerIds, "virtual-screen-reader"] : observerIds,
+        ...(listensToPress ? { virtualScreenReader: pressListener } : {}),
         judges: [
           ...new Set([
             ...judgeIds,
@@ -2049,6 +2058,13 @@ interface CdpEnabledPageLike extends PlaywrightPageLike {
   context?(): CdpContext;
 }
 
+/** Whether the page can open DevTools sessions, as a Playwright page in Chromium can. */
+function opensCdpSessions<TPage extends PlaywrightPageLike>(
+  page: TPage
+): page is TPage & VirtualScreenReaderPage {
+  return typeof (page as CdpEnabledPageLike).context === "function";
+}
+
 interface EvaluatablePageLike extends PlaywrightPageLike {
   evaluate?<TArgument>(
     pageFunction: (argument: TArgument) => unknown,
@@ -2092,6 +2108,9 @@ async function createObserverPage(
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
   const customRunAxeAnalysis = page.runAxeAnalysis?.bind(page);
+  const listenVirtualScreenReader = virtualScreenReader
+    ? async () => virtualScreenReader.listen()
+    : undefined;
   const rawSnapshotVirtualScreenReaderTranscript = virtualScreenReader
     ? async () => virtualScreenReader.snapshot()
     : page.snapshotVirtualScreenReaderTranscript?.bind(page);
@@ -2637,6 +2656,7 @@ async function createObserverPage(
     snapshotScreenshot,
     runAxeAnalysis,
     snapshotVirtualScreenReaderTranscript,
+    listenVirtualScreenReader,
     setupNetworkTracking,
     snapshotNetworkLog,
     teardownNetworkTracking
