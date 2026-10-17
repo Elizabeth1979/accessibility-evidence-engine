@@ -4731,8 +4731,8 @@ function addElementMapLayers(state: PageState, map: ElementMap): void {
         title:
           element.alt === "text"
             ? element.name
-            : element.alt === "decorative"
-              ? "Decorative: screen readers skip it"
+            : element.alt === "ignored"
+              ? `Screen readers skip it (Chrome: ${element.ignoredReasons?.join(", ") || "ignored"})`
               : "No text alternative",
         detail: element.selector,
         tone: element.alt === "missing" ? "fail" : "neutral",
