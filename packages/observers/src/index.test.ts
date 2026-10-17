@@ -14,7 +14,7 @@ import {
   type RuntimeObserverContext
 } from "./index";
 
-test("createAccessibilityTreeObserver builds a normalized semantic index", async () => {
+test("createAccessibilityTreeObserver indexes whole tree nodes by their DOM node", async () => {
   const observer = createAccessibilityTreeObserver();
   const [record] = await observer.captureAfter!({
     runId: "run-accessibility",
@@ -28,11 +28,44 @@ test("createAccessibilityTreeObserver builds a normalized semantic index", async
         return {
           nodes: [
             {
+              nodeId: "1",
+              ignored: false,
+              backendDOMNodeId: 7,
               role: { type: "role", value: "heading" },
               name: { type: "computedString", value: "  Invoices  " },
-              properties: [{ name: "level", value: { type: "integer", value: 1 } }]
+              description: { type: "computedString", value: "Unpaid this month" },
+              properties: [{ name: "level", value: { type: "integer", value: 1 } }],
+              childIds: ["2"]
             },
-            { role: "button", name: "PAY NOW" }
+            {
+              nodeId: "2",
+              ignored: true,
+              ignoredReasons: [
+                { name: "ariaHiddenElement", value: { type: "boolean", value: true } }
+              ],
+              backendDOMNodeId: 8,
+              role: { type: "role", value: "none" }
+            },
+            {
+              nodeId: "3",
+              ignored: false,
+              backendDOMNodeId: 9,
+              role: { type: "role", value: "textbox" },
+              name: { type: "computedString", value: "Search" },
+              value: { type: "string", value: "invoices" },
+              properties: [
+                { name: "focusable", value: { type: "booleanOrUndefined", value: true } },
+                {
+                  name: "describedby",
+                  value: {
+                    type: "nodeList",
+                    relatedNodes: [{ backendDOMNodeId: 10, idref: "hint", text: "Press Enter" }]
+                  }
+                }
+              ]
+            },
+            // A node no DOM node backs cannot be joined to what the reader read.
+            { nodeId: "4", ignored: false, role: { type: "internalRole", value: "RootWebArea" } }
           ]
         };
       }
@@ -40,13 +73,43 @@ test("createAccessibilityTreeObserver builds a normalized semantic index", async
   } as RuntimeObserverContext);
 
   assert.equal(record.status, "ok");
-  assert.equal(record.observerVersion, "0.2.0");
+  assert.equal(record.observerVersion, "0.3.0");
   assert.deepEqual(record.meta, {
-    semanticNodeCount: 2,
+    semanticNodeCount: 3,
     semanticIndexTruncated: false,
     semanticNodes: [
-      { role: "heading", name: "invoices", level: 1 },
-      { role: "button", name: "pay now" }
+      {
+        backendDOMNodeId: 7,
+        role: "heading",
+        name: "  Invoices  ",
+        description: "Unpaid this month",
+        ignored: false,
+        properties: [{ name: "level", value: { type: "integer", value: 1 } }]
+      },
+      {
+        backendDOMNodeId: 8,
+        role: "none",
+        ignored: true,
+        ignoredReasons: ["ariaHiddenElement"],
+        properties: []
+      },
+      {
+        backendDOMNodeId: 9,
+        role: "textbox",
+        name: "Search",
+        value: "invoices",
+        ignored: false,
+        properties: [
+          { name: "focusable", value: { type: "booleanOrUndefined", value: true } },
+          {
+            name: "describedby",
+            value: {
+              type: "nodeList",
+              relatedNodes: [{ backendDOMNodeId: 10, idref: "hint", text: "Press Enter" }]
+            }
+          }
+        ]
+      }
     ]
   });
 });

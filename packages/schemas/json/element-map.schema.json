@@ -21,7 +21,12 @@
         "role": { "type": "string" },
         "name": { "type": "string" },
         "level": { "type": "integer", "minimum": 1 },
-        "alt": { "enum": ["text", "decorative", "missing"] },
+        "alt": { "enum": ["text", "ignored", "missing"] },
+        "ignoredReasons": {
+          "description": "Images the accessibility tree leaves out: Chrome's own reasons, such as emptyAlt, presentationalRole or ariaHiddenElement.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
         "selector": { "type": "string", "minLength": 1 },
         "box": {
           "type": "object",

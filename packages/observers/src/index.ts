@@ -411,7 +411,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "unsupported",
       timestamp: getTimestamp(),
@@ -430,7 +430,7 @@ async function captureAccessibilityRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "accessibility-tree",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "observer_error",
       timestamp: getTimestamp(),
@@ -460,7 +460,7 @@ async function captureAccessibilityRecord(
     checkpointId: context.checkpointId,
     interactionId: context.interactionId,
     observerId: "accessibility-tree",
-    observerVersion: "0.2.0",
+    observerVersion: "0.3.0",
     phase,
     status: "ok",
     timestamp: getTimestamp(),
@@ -475,77 +475,64 @@ async function captureAccessibilityRecord(
   };
 }
 
+/**
+ * One node of the checkpoint's accessibility tree, whole: everything the browser says about it
+ * except its links to other tree nodes. `backendDOMNodeId` is the DOM node it belongs to, which
+ * joins it to what the virtual reader read in the same browser session.
+ */
 interface AccessibilitySemanticNode {
+  backendDOMNodeId: number;
   role: string;
   name?: string;
-  level?: number;
+  description?: string;
+  value?: string | number;
+  ignored: boolean;
+  /** Chrome's own reasons for leaving an ignored node out, such as `ariaHiddenElement`. */
+  ignoredReasons?: string[];
+  properties: Array<{ name: string; value: unknown }>;
 }
 
+/** The tree's nodes that belong to a DOM node, in tree order, up to a size a record can carry. */
 function buildAccessibilitySemanticIndex(snapshot: unknown): {
   nodes: AccessibilitySemanticNode[];
   truncated: boolean;
 } {
   const maximumNodes = 5_000;
-  const nodes: AccessibilitySemanticNode[] = [];
-  const seen = new Set<string>();
-  const visited = new WeakSet<object>();
-  let truncated = false;
-
-  const visit = (value: unknown): void => {
-    if (nodes.length >= maximumNodes) {
-      truncated = true;
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(visit);
-      return;
-    }
-    if (!isRecord(value) || visited.has(value)) return;
-    visited.add(value);
-
-    const role = readAccessibilityValue(value.role);
-    if (role) {
-      const name = readAccessibilityValue(value.name);
-      const level = readAccessibilityLevel(value);
-      const normalizedRole = normalizeSemanticText(role);
-      const normalizedName = name ? normalizeSemanticText(name) : undefined;
-      const key = `${normalizedRole}\u0000${normalizedName ?? ""}\u0000${level ?? ""}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        nodes.push({
-          role: normalizedRole,
-          ...(normalizedName ? { name: normalizedName } : {}),
-          ...(level !== undefined ? { level } : {})
-        });
+  const treeNodes = isRecord(snapshot) && Array.isArray(snapshot.nodes) ? snapshot.nodes : [];
+  const nodes = treeNodes.flatMap((node): AccessibilitySemanticNode[] => {
+    if (!isRecord(node) || typeof node.backendDOMNodeId !== "number") return [];
+    const name = readAccessibilityValue(node.name);
+    const description = readAccessibilityValue(node.description);
+    const value = isRecord(node.value) ? node.value.value : undefined;
+    const ignoredReasons = Array.isArray(node.ignoredReasons)
+      ? node.ignoredReasons.flatMap((reason) =>
+          isRecord(reason) && typeof reason.name === "string" ? [reason.name] : []
+        )
+      : [];
+    return [
+      {
+        backendDOMNodeId: node.backendDOMNodeId,
+        role: readAccessibilityValue(node.role) ?? "",
+        ...(name ? { name } : {}),
+        ...(description ? { description } : {}),
+        ...(typeof value === "string" || typeof value === "number" ? { value } : {}),
+        ignored: node.ignored === true,
+        ...(ignoredReasons.length ? { ignoredReasons } : {}),
+        properties: Array.isArray(node.properties)
+          ? node.properties.flatMap((property) =>
+              isRecord(property) && typeof property.name === "string"
+                ? [{ name: property.name, value: property.value }]
+                : []
+            )
+          : []
       }
-    }
-
-    Object.values(value).forEach(visit);
-  };
-
-  visit(snapshot);
-  return { nodes, truncated };
+    ];
+  });
+  return { nodes: nodes.slice(0, maximumNodes), truncated: nodes.length > maximumNodes };
 }
 
 function readAccessibilityValue(value: unknown): string | undefined {
-  if (typeof value === "string") return value;
-  if (isRecord(value) && typeof value.value === "string") return value.value;
-  return undefined;
-}
-
-function readAccessibilityLevel(node: Record<string, unknown>): number | undefined {
-  if (typeof node.level === "number" && Number.isFinite(node.level)) return node.level;
-  if (!Array.isArray(node.properties)) return undefined;
-  const property = node.properties.find(
-    (candidate) => isRecord(candidate) && candidate.name === "level"
-  );
-  if (!isRecord(property)) return undefined;
-  const value = isRecord(property.value) ? property.value.value : property.value;
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function normalizeSemanticText(value: string): string {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+  return isRecord(value) && typeof value.value === "string" ? value.value : undefined;
 }
 
 async function captureFocusRecord(

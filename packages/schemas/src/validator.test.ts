@@ -214,6 +214,74 @@ test("validateSchema accepts a portable virtual screen-reader transcript", () =>
   assert.equal(result.valid, true, result.errors.join("; "));
 });
 
+test("validateSchema accepts a transcript item with every state, the description and the value Chrome gives", () => {
+  const result = validateSchema("virtualScreenReaderTranscript", {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.2.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-09-13T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-09-13T00:00:00.000Z",
+        command: "next-control",
+        announcement: "button, Filters, collapsed, has popup menu",
+        item: {
+          key: "#filters#start",
+          nodePath: "#filters",
+          tagName: "button",
+          role: "button",
+          name: "Filters",
+          description: "Narrows the list by status",
+          value: "",
+          states: ["collapsed"],
+          properties: [
+            { name: "hasPopup", value: { type: "token", value: "menu" } },
+            { name: "expanded", value: { type: "booleanOrUndefined", value: false } },
+            {
+              name: "describedby",
+              value: {
+                type: "idrefList",
+                value: "filters-hint",
+                relatedNodes: [{ backendDOMNodeId: 13, idref: "filters-hint" }]
+              }
+            }
+          ],
+          backendDOMNodeId: 12
+        },
+        focusMoved: false
+      }
+    ]
+  });
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+});
+
+test("validateSchema accepts an image the tree leaves out, with Chrome's reasons", () => {
+  const result = validateSchema("elementMap", {
+    schemaVersion: "0.1.0",
+    captureType: "element-map",
+    elements: [
+      {
+        kind: "image",
+        role: "none",
+        name: "",
+        alt: "ignored",
+        ignoredReasons: ["emptyAlt"],
+        selector: "header > img",
+        box: { x: 0, y: 0, width: 40, height: 40 }
+      }
+    ]
+  });
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+});
+
 test("validateSchema rejects a virtual transcript that claims physical AT fidelity", () => {
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
