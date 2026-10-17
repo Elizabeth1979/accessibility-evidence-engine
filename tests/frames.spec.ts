@@ -516,6 +516,161 @@ test("a frame inside a frame is read in place, and an empty frame is stepped ove
   }
 });
 
+/** The focus observer's evidence after the interaction, as the JSON report saves it. */
+async function focusAfter(result: Awaited<ReturnType<typeof runAeeOnPage>>) {
+  const report = JSON.parse(
+    await readFile(
+      result.reporterFiles.find((file) => file.endsWith("aee-report.json"))!,
+      "utf8"
+    )
+  ) as { records: Array<{ observerId: string; phase: string; meta?: Record<string, unknown> }> };
+  return report.records.find(({ observerId, phase }) => observerId === "focus" && phase === "after")
+    ?.meta?.focusTarget as Record<string, unknown> & {
+    deepActiveElement: { frameId: string; backendDOMNodeId: number };
+    accessibilityFocus: { frameId: string; backendDOMNodeId: number };
+  };
+}
+
+test("the focus observer's DOM focus names the button inside a cross-site frame, and its frame", async ({
+  page,
+  context
+}, testInfo) => {
+  const { server, cross } = await framedPage(page);
+  try {
+    const focus = await focusAfter(
+      await runAeeOnPage({
+        page,
+        projectRoot: process.cwd(),
+        outputDir: testInfo.outputPath("cross-frame-dom-focus"),
+        observers: ["focus"],
+        judges: ["release"],
+        checkpointName: "cross-frame-dom-focus",
+        interaction: { kind: "focus", actor: "test" },
+        async performInteraction() {
+          await cross.locator("button").focus();
+        }
+      })
+    );
+    const { frames } = await withPageSessions(context, page, fetchAccessibilityTree);
+    const other = frames!.find(({ url }) => url.includes("localhost"))!;
+
+    // Before, the chain stopped at the <iframe>: a cross-site frame's contentDocument is null to
+    // the page, so the deepest element, its focus style and its name described "iframe#cross".
+    const button = expect.objectContaining({
+      tagName: "button",
+      role: "button",
+      name: "Pay now",
+      type: "button",
+      nodePath: "html > body > button",
+      frameId: other.frameId,
+      framePath: ["iframe#cross"],
+      backendDOMNodeId: expect.any(Number)
+    });
+    const frameElement = expect.objectContaining({
+      tagName: "iframe",
+      id: "cross",
+      nodePath: "iframe#cross",
+      frameId: frames![0]!.frameId
+    });
+    expect(focus).toEqual(
+      expect.objectContaining({
+        tagName: "button",
+        name: "Pay now",
+        documentActiveElement: frameElement,
+        deepActiveElement: button,
+        activeElementChain: [
+          expect.objectContaining({ context: "document", nodePath: "iframe#cross" }),
+          expect.objectContaining({ context: "iframe-document", nodePath: "html > body > button" })
+        ]
+      })
+    );
+    expect(focus.deepActiveElement).toEqual(button);
+    // Tab order is counted in the top document only, so the frame's button has no place in it.
+    expect(focus.deepActiveElement).not.toHaveProperty("focusOrderIndex");
+    // DOM focus and the accessibility tree's focus name the same node in the same frame.
+    expect({
+      frameId: focus.accessibilityFocus.frameId,
+      backendDOMNodeId: focus.accessibilityFocus.backendDOMNodeId
+    }).toEqual({
+      frameId: focus.deepActiveElement.frameId,
+      backendDOMNodeId: focus.deepActiveElement.backendDOMNodeId
+    });
+  } finally {
+    await server.close();
+  }
+});
+
+test("the focus observer labels each step from a shadow root into a cross-site frame", async ({
+  page
+}, testInfo) => {
+  const server = await startHtmlServer((request, response) => {
+    const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Checkout</title></head><body>
+        <h1>Checkout</h1>
+        <payment-widget id="widget"></payment-widget>
+        <script>
+          const root = document.getElementById("widget").attachShadow({ mode: "open" });
+          root.innerHTML = '<iframe id="card" title="Card" src="${otherSite}/card"></iframe>';
+        </script>
+      </body></html>`,
+      "/card": `<!doctype html><html lang="en"><head><title>Card</title></head><body>
+        <div role="listbox" aria-label="Saved cards" tabindex="0" aria-activedescendant="visa">
+          <div role="option" id="visa" aria-selected="true">Visa ending 4242</div>
+        </div>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    const card = frameAt(page, "localhost", "/card");
+    await card.locator("[role=listbox]").waitFor();
+    const focus = await focusAfter(
+      await runAeeOnPage({
+        page,
+        projectRoot: process.cwd(),
+        outputDir: testInfo.outputPath("shadow-frame-dom-focus"),
+        observers: ["focus"],
+        judges: ["release"],
+        checkpointName: "shadow-frame-dom-focus",
+        interaction: { kind: "focus", actor: "test" },
+        async performInteraction() {
+          await card.locator("[role=listbox]").focus();
+        }
+      })
+    );
+
+    // The top document names the shadow host, its shadow root the frame, and the frame's own
+    // document the listbox, whose active option is looked up in that document.
+    expect(focus).toEqual(
+      expect.objectContaining({
+        role: "listbox",
+        name: "Saved cards",
+        activeElementChain: [
+          expect.objectContaining({ context: "document", nodePath: "payment-widget#widget" }),
+          expect.objectContaining({ context: "shadow-root", nodePath: "iframe#card" }),
+          expect.objectContaining({
+            context: "iframe-document",
+            role: "listbox",
+            framePath: ["iframe#card"]
+          })
+        ],
+        activeDescendantId: "visa",
+        activeDescendant: expect.objectContaining({
+          role: "option",
+          name: "Visa ending 4242",
+          selected: true,
+          framePath: ["iframe#card"]
+        })
+      })
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 test("DOM focus names the focused control inside a cross-site frame, not the frame", async ({
   page,
   context

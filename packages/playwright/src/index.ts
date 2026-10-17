@@ -40,13 +40,12 @@ import {
 } from "./virtual-screen-reader";
 import {
   fetchAccessibilityTree,
-  mainFrameOf,
   withPageSessions,
-  type AccessibilityTree,
   type CdpContext,
-  type FramedPage
+  type FramedPage,
+  type PageSessions
 } from "./accessibility-tree";
-import { describeFocusElements } from "./focus-accessibility";
+import { captureDomFocus } from "./dom-focus";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
@@ -2154,246 +2153,17 @@ async function createObserverPage(
       : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
-    : evaluatablePage.evaluate
+    : cdpPage
       ? async () => {
-          const domFocus = await evaluatablePage.evaluate?.((elementsKey: string | undefined) => {
-            const globalRef = globalThis as unknown as {
-              document?: {
-                activeElement?: unknown;
-                getElementById?: (id: string) => unknown;
-                querySelectorAll?: (selector: string) => Iterable<unknown>;
-              };
-              getComputedStyle?: (element: unknown) => {
-                display?: string;
-                visibility?: string;
-                outlineColor?: string;
-                outlineStyle?: string;
-                outlineWidth?: string;
-                boxShadow?: string;
-              };
-            };
-            const documentRef = globalRef.document;
-            const documentActiveElement = documentRef?.activeElement as
-              | {
-                  tagName?: unknown;
-                  id?: unknown;
-                  textContent?: unknown;
-                  type?: unknown;
-                  tabIndex?: unknown;
-                  disabled?: unknown;
-                  parentElement?: unknown;
-                  getAttribute?: (name: string) => string | null;
-                  getClientRects?: () => { length?: number };
-                  querySelectorAll?: (selector: string) => Iterable<unknown>;
-                  matches?: (selector: string) => boolean;
-                  shadowRoot?: { activeElement?: unknown };
-                  contentDocument?: { activeElement?: unknown };
-                }
-              | undefined;
-
-            if (!documentActiveElement) {
-              return null;
-            }
-
-            const isElementLike = (
-              value: unknown
-            ): value is {
-              tagName?: unknown;
-              id?: unknown;
-              textContent?: unknown;
-              type?: unknown;
-              tabIndex?: unknown;
-              disabled?: unknown;
-              parentElement?: unknown;
-              getAttribute?: (name: string) => string | null;
-              getClientRects?: () => { length?: number };
-              querySelectorAll?: (selector: string) => Iterable<unknown>;
-              matches?: (selector: string) => boolean;
-              shadowRoot?: { activeElement?: unknown };
-              contentDocument?: { activeElement?: unknown };
-            } => typeof value === "object" && value !== null;
-            const activeElementSources: Array<{
-              context: "document" | "shadow-root" | "iframe-document";
-              element: typeof documentActiveElement;
-            }> = [{ context: "document", element: documentActiveElement }];
-            let activeElement = documentActiveElement;
-
-            while (activeElement) {
-              const shadowActive = activeElement.shadowRoot?.activeElement;
-              const frameActive = activeElement.contentDocument?.activeElement;
-              const nextActive = isElementLike(shadowActive)
-                ? { context: "shadow-root" as const, element: shadowActive }
-                : isElementLike(frameActive)
-                  ? { context: "iframe-document" as const, element: frameActive }
-                  : undefined;
-
-              if (!nextActive || nextActive.element === activeElement) break;
-              activeElementSources.push(nextActive);
-              activeElement = nextActive.element;
-            }
-            const getElementSummary = (element: {
-              tagName?: unknown;
-              id?: unknown;
-              textContent?: unknown;
-              type?: unknown;
-              tabIndex?: unknown;
-              disabled?: unknown;
-              parentElement?: unknown;
-              getAttribute?: (name: string) => string | null;
-              getClientRects?: () => { length?: number };
-              querySelectorAll?: (selector: string) => Iterable<unknown>;
-              matches?: (selector: string) => boolean;
-              shadowRoot?: { activeElement?: unknown };
-              contentDocument?: { activeElement?: unknown };
-            }) => {
-              const tagName =
-                typeof element.tagName === "string" ? element.tagName.toLowerCase() : undefined;
-              const id =
-                typeof element.id === "string" && element.id.length > 0 ? element.id : undefined;
-              const type =
-                typeof element.type === "string" && element.type.length > 0
-                  ? element.type
-                  : undefined;
-              const focusOrderIndex = focusableElements.indexOf(element);
-              const tabIndex = typeof element.tabIndex === "number" ? element.tabIndex : undefined;
-              const disabled = typeof element.disabled === "boolean" ? element.disabled : undefined;
-              const style = globalRef.getComputedStyle?.(element);
-              let focusVisible: boolean;
-              try {
-                focusVisible = element.matches?.(":focus-visible") ?? false;
-              } catch {
-                focusVisible = false;
-              }
-              const outlineVisible =
-                style?.outlineStyle !== undefined &&
-                style.outlineStyle !== "none" &&
-                style.outlineWidth !== "0px";
-              const shadowVisible = style?.boxShadow !== undefined && style.boxShadow !== "none";
-
-              return {
-                tagName,
-                id,
-                type,
-                tabIndex,
-                disabled,
-                nodePath: getElementNodePath(element),
-                focusVisible,
-                focusIndicator: {
-                  visible: focusVisible && (outlineVisible || shadowVisible),
-                  outlineColor: style?.outlineColor,
-                  outlineStyle: style?.outlineStyle,
-                  outlineWidth: style?.outlineWidth,
-                  boxShadow: style?.boxShadow
-                },
-                focusOrderIndex: focusOrderIndex >= 0 ? focusOrderIndex : undefined,
-                focusableCount: focusableElements.length
-              };
-            };
-
-            const focusableElements = Array.from(
-              documentRef?.querySelectorAll?.(
-                'a[href], button, input, select, textarea, [tabindex], [contenteditable="true"]'
-              ) ?? []
-            )
-              .filter(
-                (
-                  element
-                ): element is {
-                  tagName?: unknown;
-                  id?: unknown;
-                  textContent?: unknown;
-                  type?: unknown;
-                  tabIndex?: unknown;
-                  disabled?: unknown;
-                  getAttribute?: (name: string) => string | null;
-                  getClientRects?: () => { length?: number };
-                } => typeof element === "object" && element !== null
-              )
-              .filter((element) => {
-                if (typeof element.tabIndex === "number" && element.tabIndex < 0) {
-                  return false;
-                }
-
-                if (element.disabled) {
-                  return false;
-                }
-
-                const style = globalRef.getComputedStyle?.(element);
-
-                if (style?.display === "none" || style?.visibility === "hidden") {
-                  return false;
-                }
-
-                const rects = element.getClientRects?.();
-                return typeof rects?.length === "number" ? rects.length > 0 : true;
-              });
-            const activeDescendantId =
-              activeElement.getAttribute?.("aria-activedescendant") ?? undefined;
-            const activeDescendantCandidate = activeDescendantId
-              ? documentRef?.getElementById?.(activeDescendantId)
-              : undefined;
-            const activeDescendant =
-              activeDescendantCandidate && isElementLike(activeDescendantCandidate)
-                ? getElementSummary(activeDescendantCandidate)
-                : undefined;
-            const activeElementSummary = getElementSummary(activeElement);
-            const documentActiveElementSummary = getElementSummary(documentActiveElement);
-            // Left for the accessibility tree to describe, in the order the summaries are merged.
-            if (elementsKey) {
-              (globalThis as unknown as Record<symbol, unknown>)[Symbol.for(elementsKey)] = [
-                ...activeElementSources.map(({ element }) => element),
-                activeDescendant ? activeDescendantCandidate : null
-              ];
-            }
-
-            return {
-              schemaVersion: "0.1.0",
-              captureType: "deep-focus-state",
-              ...activeElementSummary,
-              documentActiveElement: documentActiveElementSummary,
-              deepActiveElement: activeElementSummary,
-              activeElementChain: activeElementSources.map(({ context, element }) => ({
-                context,
-                ...getElementSummary(element)
-              })),
-              activeDescendantId,
-              activeDescendant
-            };
-
-            function getElementNodePath(element: {
-              tagName?: unknown;
-              id?: unknown;
-              parentElement?: unknown;
-            }): string | undefined {
-              const segments: string[] = [];
-              let current: unknown = element;
-
-              while (isElementLike(current)) {
-                const tagName =
-                  typeof current.tagName === "string" ? current.tagName.toLowerCase() : "element";
-                const id = typeof current.id === "string" && current.id ? `#${current.id}` : "";
-                segments.unshift(`${tagName}${id}`);
-                if (id) break;
-                current = current.parentElement;
-              }
-
-              return segments.length > 0 ? segments.join(" > ") : undefined;
-            }
-          }, cdpPage && FOCUS_ELEMENTS_KEY);
-
-          const focusState =
-            typeof domFocus === "object" && domFocus !== null
-              ? cdpPage
-                ? await withAccessibilityFocus(cdpPage, domFocus as Record<string, unknown>)
-                : { ...domFocus, accessibilityFocus: { status: "unsupported" as const } }
-              : domFocus;
-          if (
-            typeof focusState === "object" &&
-            focusState !== null &&
-            "captureType" in focusState
-          ) {
-            assertValidSchema("focusState", focusState, "deep focus state");
-          }
+          // DOM focus and the accessibility tree's focus are read from the same sessions, so both
+          // describe the page at the same moment.
+          const focusState = await withPageSessions(cdpPage.context(), cdpPage, async (frames) => {
+            const domFocus = await captureDomFocus(frames);
+            return (
+              domFocus && { ...domFocus, accessibilityFocus: await accessibilityFocusOf(frames) }
+            );
+          });
+          if (focusState) assertValidSchema("focusState", focusState, "deep focus state");
           return focusState;
         }
       : undefined;
@@ -2515,79 +2285,36 @@ async function createObserverPage(
   };
 }
 
-/** Where the focus capture leaves the elements it summarised, for the tree to describe. */
-const FOCUS_ELEMENTS_KEY = "aee.focus-state.elements";
-
-/**
- * Adds what the accessibility tree says about each captured element, which is what NVDA and JAWS
- * receive from Chrome: its role, name and states, and the dialog and composite widget it sits in.
- * Where focus is in the tree is read from every frame, including one Chrome renders in a process
- * of its own, which the page's active-element chain cannot enter. Without the tree, the capture
- * says why and has no role or name, rather than a guess at one.
- */
-async function withAccessibilityFocus(
-  page: FramedPage & { context(): CdpContext },
-  domFocus: Record<string, unknown>
-): Promise<Record<string, unknown>> {
+/** Where the accessibility tree has focus, in whichever frame holds it. */
+async function accessibilityFocusOf(frames: PageSessions): Promise<Record<string, unknown>> {
   try {
-    const { described, tree } = await withPageSessions(page.context(), page, async (sessions) => ({
-      described: await describeFocusElements(
-        mainFrameOf(sessions).session,
-        `(() => { const key = Symbol.for(${JSON.stringify(FOCUS_ELEMENTS_KEY)}); const elements = globalThis[key]; delete globalThis[key]; return elements; })()`
-      ),
-      tree: await fetchAccessibilityTree(sessions)
-    }));
-    const chain = Array.isArray(domFocus.activeElementChain)
-      ? (domFocus.activeElementChain as Array<Record<string, unknown>>)
-      : [];
-    const deepIndex = chain.length - 1;
-    const withFacts = (summary: unknown, index: number) => ({
-      ...(summary as Record<string, unknown>),
-      ...described[index]?.accessibility
-    });
+    const { nodes } = await fetchAccessibilityTree(frames);
+    const focusedNodes = nodes.filter((node) =>
+      node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
+    );
+    const focusedNode =
+      focusedNodes.find((node) => !["RootWebArea", "WebArea"].includes(String(node.role?.value))) ??
+      focusedNodes.at(-1);
+
+    if (!focusedNode) return { status: "not-exposed" };
     return {
-      ...withFacts(domFocus, deepIndex),
-      documentActiveElement: withFacts(domFocus.documentActiveElement, 0),
-      deepActiveElement: withFacts(domFocus.deepActiveElement, deepIndex),
-      activeElementChain: chain.map(withFacts),
-      ...(domFocus.activeDescendant
-        ? { activeDescendant: withFacts(domFocus.activeDescendant, chain.length) }
-        : {}),
-      accessibilityFocus: focusInTree(tree)
+      status: "matched",
+      nodeId: focusedNode.nodeId,
+      backendDOMNodeId: focusedNode.backendDOMNodeId,
+      frameId: focusedNode.frameId,
+      role: focusedNode.role?.value,
+      name: focusedNode.name?.value
     };
   } catch (error) {
     return {
-      ...domFocus,
-      accessibilityFocus: {
-        status: "failed",
-        diagnostics: [
-          error instanceof Error
-            ? `Accessibility focus capture failed: ${error.message}`
-            : "Accessibility focus capture failed."
-        ]
-      }
+      status: "failed",
+      diagnostics: [
+        error instanceof Error
+          ? `Accessibility focus capture failed: ${error.message}`
+          : "Accessibility focus capture failed."
+      ]
     };
   }
-}
-
-/** Where the accessibility tree has focus, in whichever frame holds it. */
-function focusInTree({ nodes }: AccessibilityTree): Record<string, unknown> {
-  const focusedNodes = nodes.filter((node) =>
-    node.properties?.some(({ name, value }) => name === "focused" && value.value === true)
-  );
-  const focusedNode =
-    focusedNodes.find((node) => !["RootWebArea", "WebArea"].includes(String(node.role?.value))) ??
-    focusedNodes.at(-1);
-
-  if (!focusedNode) return { status: "not-exposed" };
-  return {
-    status: "matched",
-    nodeId: focusedNode.nodeId,
-    backendDOMNodeId: focusedNode.backendDOMNodeId,
-    frameId: focusedNode.frameId,
-    role: focusedNode.role?.value,
-    name: focusedNode.name?.value
-  };
 }
 
 /** Pairs each target's key with its result, dropping the targets the page could not find. */

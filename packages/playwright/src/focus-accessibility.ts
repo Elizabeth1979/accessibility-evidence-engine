@@ -18,9 +18,6 @@ const COMPOSITE_ITEM_ROLES: Record<string, string[]> = {
 
 const DIALOG_ROLES = ["dialog", "alertdialog"];
 
-/** Released after each description, with every remote object it created. */
-const OBJECT_GROUP = "aee-focus-accessibility";
-
 /** The dialog an element sits in, as the accessibility tree has it. */
 export interface DialogContext {
   tagName: string;
@@ -49,49 +46,14 @@ export interface FocusAccessibility {
   compositeItemCount?: number;
 }
 
-/** A focused element's description, with the tree node it came from. */
-export interface DescribedFocusElement {
-  nodeId: string;
-  backendDOMNodeId?: number;
-  accessibility: FocusAccessibility;
-}
-
 /**
- * Describes each element of the array that `expression` evaluates to, in order. An entry that is
- * not an element, or that the tree does not have, is undefined.
+ * Describes one element, given as a protocol object in its frame's session, as the accessibility
+ * tree has it. Undefined when the tree does not have it.
  */
-export async function describeFocusElements(
-  session: CdpSession,
-  expression: string
-): Promise<Array<DescribedFocusElement | undefined>> {
-  const { result } = (await session.send("Runtime.evaluate", {
-    expression,
-    objectGroup: OBJECT_GROUP
-  })) as { result: { objectId?: string } };
-  try {
-    if (!result.objectId) return [];
-    const { result: entries } = (await session.send("Runtime.getProperties", {
-      objectId: result.objectId,
-      ownProperties: true
-    })) as { result: Array<{ name: string; value?: { objectId?: string; subtype?: string } }> };
-    const elements = entries
-      .filter(({ name }) => /^\d+$/.test(name))
-      .sort((first, second) => Number(first.name) - Number(second.name))
-      .map(({ value }) => (value?.subtype === "node" ? value.objectId : undefined));
-    const described: Array<DescribedFocusElement | undefined> = [];
-    for (const objectId of elements) {
-      described.push(objectId ? await describeFocusElement(session, objectId) : undefined);
-    }
-    return described;
-  } finally {
-    await session.send("Runtime.releaseObjectGroup", { objectGroup: OBJECT_GROUP });
-  }
-}
-
-async function describeFocusElement(
+export async function describeFocusElement(
   session: CdpSession,
   objectId: string
-): Promise<DescribedFocusElement | undefined> {
+): Promise<FocusAccessibility | undefined> {
   const { node: domNode } = (await session.send("DOM.describeNode", { objectId })) as {
     node: { backendNodeId: number };
   };
@@ -117,15 +79,11 @@ async function describeFocusElement(
   const composite = ancestors.find(exposedWith(Object.keys(COMPOSITE_ITEM_ROLES)));
 
   return {
-    nodeId: own.nodeId,
-    ...(own.backendDOMNodeId === undefined ? {} : { backendDOMNodeId: own.backendDOMNodeId }),
-    accessibility: {
-      role: element.role,
-      name: element.name,
-      ...states(element.properties),
-      ...(dialog ? { dialogContext: await describeDialog(session, dialog) } : {}),
-      ...(composite ? await describeComposite(session, composite, own) : {})
-    }
+    role: element.role,
+    name: element.name,
+    ...states(element.properties),
+    ...(dialog ? { dialogContext: await describeDialog(session, dialog) } : {}),
+    ...(composite ? await describeComposite(session, composite, own) : {})
   };
 }
 
