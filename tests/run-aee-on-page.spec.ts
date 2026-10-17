@@ -240,6 +240,90 @@ approval:
   }
 });
 
+test("a lane that fails before writing any evidence keeps the report incomplete in every format", async ({
+  browser
+}, testInfo) => {
+  const server = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html><html lang="en"><head><title>Example</title></head><body>
+      <main><h1>Account overview</h1><button type="button">Show details</button></main>
+    </body></html>`);
+  });
+  // The scenario accepts this journey id, but the comparison lane's id built from it is longer than
+  // a lane id may be, so that lane throws before it writes a manifest. The other lanes complete.
+  const journeyId = `read-${"a".repeat(100)}`;
+  const scenarioYaml = `schemaVersion: 0.1.0
+id: lane-fails-early
+target:
+  url: ${server.origin}/
+  allowedOrigins:
+    - ${server.origin}
+standard:
+  name: WCAG
+  version: "2.2"
+  levels: [A, AA]
+profile: core
+goal: Read the page.
+journeys:
+  - id: ${journeyId}
+    name: Read page
+    goal: Find the heading.
+    startPath: /
+    allowedActions: [navigate, hover, focus]
+    forbiddenActions: [submit]
+    virtualScreenReaderCommands: [next-heading]
+    interactionComparisons:
+      - id: show-details-hover-focus
+        name: Show details with pointer and keyboard
+        pointerActions:
+          - id: hover-show-details
+            kind: hover
+            target: { role: button, name: Show details }
+        keyboardActions:
+          - id: focus-show-details
+            kind: focus
+            target: { role: button, name: Show details }
+        observe:
+          target: { role: button, name: Show details }
+          visible: true
+privacy:
+  storage: local
+  remoteUpload: forbidden
+  sharingReviewRequired: true
+approval:
+  required: true
+`;
+
+  try {
+    const result = await runApprovedScenario(browser, scenarioYaml, testInfo);
+    const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+      status: string;
+      verdict: string;
+      completeness: { status: string; plannedLanes: number; completedLanes: number };
+      diagnostics: string[];
+    };
+
+    expect(report.diagnostics).toEqual([
+      expect.stringMatching(new RegExp(`^${journeyId}-show-details-hover-focus: Invalid runId`))
+    ]);
+    expect(report.completeness).toMatchObject({
+      status: "incomplete",
+      plannedLanes: 4,
+      completedLanes: 2
+    });
+    expect(report.status).toBe("partial");
+    expect(report.verdict).toBe("unknown");
+    expect(result.completeness).toBe("incomplete");
+    expect(await readFile(result.reportFiles.prComment, "utf8")).toContain("Evidence: incomplete.");
+    expect(await readFile(result.reportFiles.markdown, "utf8")).toContain(
+      "**Evidence completeness:** INCOMPLETE"
+    );
+    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 2/4 lanes");
+  } finally {
+    await server.close();
+  }
+});
+
 interface JsonReport {
   run: {
     status: string;
