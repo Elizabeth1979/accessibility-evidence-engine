@@ -69,6 +69,7 @@ import {
 import {
   ACTIVATE_PAGE_CONTROLS,
   compileScenarioPlan,
+  journeyStartUrl,
   loadScenario,
   type AeeScenario,
   type ScenarioPlan,
@@ -571,7 +572,7 @@ export async function executeScenario(
   const runLane = laneRunner(assessment);
   try {
     for (const journey of scenario.journeys) {
-      const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
+      const startUrl = journeyStartUrl(scenario, journey);
       const allowedOrigins = plan.safety.allowedOrigins;
       await runPageLanes(assessment, {
         target: { browser },

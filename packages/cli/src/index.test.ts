@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -287,6 +287,45 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
         assert.match(output.stderr ?? "", /until plan sha256:[a-f0-9]+ is approved/);
         return true;
       }
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI plan and run refuse a journey that starts on another site before opening a browser", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-off-site-"));
+  const offSiteScenarioPath = path.join(tempRoot, "scenario.yml");
+  const scenarioYaml = await readFile(scenarioPath, "utf8");
+  await writeFile(
+    offSiteScenarioPath,
+    scenarioYaml.replace("startPath: /\n", "startPath: //other.example/\n"),
+    "utf8"
+  );
+
+  try {
+    for (const command of ["plan", "run"]) {
+      await assert.rejects(
+        () =>
+          execFileAsync(process.execPath, [cliPath, command, offSiteScenarioPath], {
+            cwd: tempRoot
+          }),
+        (error: unknown) => {
+          const output = error as { stderr?: string };
+          assert.match(
+            output.stderr ?? "",
+            /Journey “explore-public-homepage” startPath "\/\/other\.example\/" leads to https:\/\/other\.example,/
+          );
+          return true;
+        }
+      );
+    }
+    assert.equal(
+      await stat(path.join(tempRoot, "aee-output")).catch(() => undefined),
+      undefined,
+      "no lane ran, so no evidence was written"
     );
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
