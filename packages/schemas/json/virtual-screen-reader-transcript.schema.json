@@ -45,9 +45,20 @@
         "tagName": { "type": "string", "minLength": 1 },
         "role": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
+        "description": { "type": "string" },
+        "value": { "type": ["string", "number"] },
         "text": { "type": "string", "minLength": 1 },
         "level": { "type": "integer", "minimum": 1 },
         "states": { "type": "array", "items": { "type": "string" } },
+        "properties": {
+          "description": "Every state and property the browser's accessibility tree gives the element, as Chrome DevTools Protocol AXProperty objects.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/accessibilityProperty" }
+        },
+        "backendDOMNodeId": {
+          "description": "The DOM node the reader is on, as the browser session numbers it; joins the item to the accessibility tree captured in the same session.",
+          "type": "integer"
+        },
         "visualBounds": {
           "type": "object",
           "additionalProperties": false,
@@ -57,6 +68,34 @@
             "y": { "type": "number" },
             "width": { "type": "number", "exclusiveMinimum": 0 },
             "height": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "accessibilityProperty": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "type": "string", "minLength": 1 },
+            "value": true,
+            "relatedNodes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["backendDOMNodeId"],
+                "properties": {
+                  "backendDOMNodeId": { "type": "integer" },
+                  "idref": { "type": "string" },
+                  "text": { "type": "string" }
+                }
+              }
+            }
           }
         }
       },

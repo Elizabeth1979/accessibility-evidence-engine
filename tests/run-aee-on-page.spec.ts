@@ -6,10 +6,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 import {
+  captureElementMap,
   createPortableVirtualScreenReader,
   runInputComparison,
   runAeeOnPage,
-  runVirtualScreenReaderLane
+  runVirtualScreenReaderLane,
+  withCdpSession
 } from "@aee/playwright";
 
 import { runApprovedScenario, startHtmlServer } from "./scenario-helpers";
@@ -521,6 +523,57 @@ test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements"
   }
 });
 
+test("runAeeOnPage runs axe's experimental WCAG rules and blocks release on them", async ({
+  page
+}, testInfo) => {
+  // A bold paragraph styled as a title, and a data table whose cells have no headers.
+  await page.setContent(`
+    <html lang="en">
+      <head><title>Experimental rules</title></head>
+      <body>
+        <main>
+          <h1>Orders</h1>
+          <p style="font-size: 1.6em; font-weight: bold">Shipping</p>
+          <p>Parcels leave the warehouse every weekday before noon.</p>
+          <p>Each parcel is tracked from the warehouse to the door.</p>
+          <table>
+            <caption>Recent orders</caption>
+            <tr><td>Order</td><td>Item</td><td>Status</td></tr>
+            <tr><td>1001</td><td>Lamp</td><td>Sent</td></tr>
+            <tr><td>1002</td><td>Chair</td><td>Packed</td></tr>
+          </table>
+        </main>
+      </body>
+    </html>
+  `);
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-axe-experimental-output"),
+    observers: ["axe"],
+    judges: ["axe", "release"],
+    checkpointName: "axe-experimental-rules",
+    interaction: {
+      kind: "custom",
+      actor: "test",
+      target: { role: "document", name: "Experimental rules fixture" }
+    }
+  });
+
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  const axeJudgment = report.judgments.find(({ judgeId }) => judgeId === "axe");
+  expect(axeJudgment?.verdict).toBe("fail");
+  expect(axeJudgment?.summary).toContain("p-as-heading");
+  expect(axeJudgment?.summary).toContain("td-has-header");
+  expect(report.judgments).toContainEqual(
+    expect.objectContaining({ judgeId: "release", verdict: "fail" })
+  );
+});
+
 test("portable virtual reader records guide navigation without moving DOM focus", async ({
   page
 }, testInfo) => {
@@ -577,6 +630,99 @@ test("portable virtual reader records guide navigation without moving DOM focus"
   );
 });
 
+test("portable virtual reader keeps every state, the description and the value Chrome gives an element", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`
+    <main>
+      <h1>Invoices</h1>
+      <button id="filters" type="button" aria-expanded="false" aria-haspopup="true" aria-describedby="filters-hint">Filters</button>
+      <p id="filters-hint">Narrows the list by status</p>
+      <label>Search <input id="search" value="overdue" required aria-invalid="true"></label>
+    </main>
+  `);
+  const reader = createPortableVirtualScreenReader(page);
+  await reader.command("start");
+
+  const button = (await reader.command("next-control")).item;
+  expect(button).toEqual(
+    expect.objectContaining({
+      role: "button",
+      name: "Filters",
+      description: "Narrows the list by status",
+      states: ["collapsed"],
+      backendDOMNodeId: expect.any(Number)
+    })
+  );
+  const buttonProperties = new Map(button?.properties?.map(({ name, value }) => [name, value]));
+  // Before, only six states were kept; the pop-up and the description link were lost.
+  expect(buttonProperties.get("hasPopup")?.value).toBe("menu");
+  expect(buttonProperties.get("describedby")?.relatedNodes?.[0]?.idref).toBe("filters-hint");
+
+  const search = (await reader.command("next-control")).item;
+  expect(search).toEqual(expect.objectContaining({ role: "textbox", value: "overdue" }));
+  const searchProperties = new Map(search?.properties?.map(({ name, value }) => [name, value]));
+  expect(searchProperties.get("invalid")?.value).toBe("true");
+  expect(searchProperties.get("required")?.value).toBe(true);
+
+  // The judge finds that same element in the tree taken at the checkpoint and compares it whole.
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-virtual-reader-states"),
+    virtualScreenReader: reader,
+    observers: ["dom", "accessibility-tree", "visual", "virtual-screen-reader"],
+    judges: ["screen-reader"],
+    checkpointName: "virtual-reader-read-current",
+    interaction: { kind: "screen-reader-command", input: "read-current", actor: "test" },
+    async performInteraction() {
+      await reader.command("read-current");
+    }
+  });
+  const report = JSON.parse(
+    await readFile(
+      result.reporterFiles.find((file) => file.endsWith("aee-report.json"))!,
+      "utf8"
+    )
+  ) as JsonReport;
+  const judgment = report.judgments.find(({ judgeId }) => judgeId === "screen-reader");
+  expect(judgment?.verdict).toBe("pass");
+  expect(judgment?.summary).toContain(
+    "The element it read has the same role, name, description, value and states"
+  );
+});
+
+test("element map lists each image screen readers skip, with Chrome's exact reason", async ({
+  page
+}) => {
+  const image = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40"/></svg>')}`;
+  await page.setContent(`
+    <main>
+      <h1>Team</h1>
+      <p>
+        <img src="${image}" alt="" width="40" height="40">
+        <img src="${image}" alt="Team photo" aria-hidden="true" width="40" height="40">
+        <img src="${image}" role="presentation" width="40" height="40">
+        <img src="${image}" alt="Org chart" width="40" height="40">
+      </p>
+    </main>
+  `);
+
+  // The full tree leaves these images out in a paragraph; each is asked about on its own.
+  const map = await withCdpSession(page.context(), page, captureElementMap);
+
+  expect(
+    map.elements
+      .filter(({ kind }) => kind === "image")
+      .map(({ alt, ignoredReasons, name }) => ({ alt, ignoredReasons, name }))
+  ).toEqual([
+    { alt: "ignored", ignoredReasons: ["emptyAlt"], name: "" },
+    { alt: "ignored", ignoredReasons: ["ariaHiddenElement"], name: "" },
+    { alt: "ignored", ignoredReasons: ["presentationalRole"], name: "" },
+    { alt: "text", ignoredReasons: undefined, name: "Org chart" }
+  ]);
+});
+
 test("portable virtual reader supports item, heading, landmark, control, and current-item commands", async ({
   page
 }) => {
@@ -615,10 +761,11 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
 }, testInfo) => {
   const fixtureServer = await startHtmlServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html" });
+    // A page with no stylesheet at all leaves axe's css-orientation-lock "needs review".
     response.end(`
       <!doctype html>
       <html lang="en">
-        <head><title>Lane fixture</title></head>
+        <head><title>Lane fixture</title><style>main { margin: 1rem; }</style></head>
         <body><main><h1>Invoices</h1><button type="button">Pay invoice</button></main></body>
       </html>
     `);
@@ -673,7 +820,9 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
         expect.objectContaining({
           judgeId: "screen-reader",
           verdict: "pass",
-          summary: expect.stringContaining("still match the tree captured at this checkpoint")
+          summary: expect.stringContaining(
+            "The element it read has the same role, name, description, value and states"
+          )
         })
       );
     }

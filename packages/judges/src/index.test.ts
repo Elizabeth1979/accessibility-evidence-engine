@@ -65,9 +65,24 @@ function createJudgment(overrides: Partial<Judgment>): Judgment {
   };
 }
 
-function createSemanticSupportRecords(
-  semanticNodes: Array<{ role: string; name?: string; level?: number }>
-): EvidenceBundle["records"] {
+interface TreeNode {
+  backendDOMNodeId: number;
+  role: string;
+  name?: string;
+  description?: string;
+  ignored?: boolean;
+  ignoredReasons?: string[];
+  properties?: Array<{ name: string; value: { type: string; value?: unknown } }>;
+}
+
+const LEVEL_1 = [{ name: "level", value: { type: "integer", value: 1 } }];
+
+function createSemanticSupportRecords(treeNodes: TreeNode[]): EvidenceBundle["records"] {
+  const semanticNodes = treeNodes.map(({ ignored = false, properties = [], ...node }) => ({
+    ...node,
+    ignored,
+    properties
+  }));
   return [
     {
       id: "record-dom-after",
@@ -208,22 +223,29 @@ test("screen-reader judge passes virtual navigation that does not move DOM focus
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }])
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /without moving DOM focus/);
-  assert.match(judgment?.summary ?? "", /still match the tree captured at this checkpoint/);
+  assert.match(
+    judgment?.summary ?? "",
+    /The element it read has the same role, name, description, value and states in the accessibility tree captured at this checkpoint/
+  );
   assert.match(judgment?.summary ?? "", /not pixel meaning or VoiceOver\/NVDA fidelity/);
 });
 
-test("screen-reader judge fails when the checkpoint's accessibility tree lacks the read item", async () => {
+test("screen-reader judge fails when the same element is named differently, even if another node has the name", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const bundle = createBundle([
     {
@@ -242,21 +264,162 @@ test("screen-reader judge fails when the checkpoint's accessibility tree lacks t
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "Payments", level: 1 }])
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Payments", properties: LEVEL_1 },
+      // A different element with the read name and level does not stand in for the one read.
+      { backendDOMNodeId: 8, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
 
   assert.equal(judgment?.verdict, "fail");
   assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
-  assert.match(judgment?.summary ?? "", /not found in the tree captured at this checkpoint/);
+  assert.match(
+    judgment?.summary ?? "",
+    /describes that same element differently: name “Invoices” when read, “Payments” in the tree/
+  );
 });
 
-function readTextBundle(semanticNodes: Array<{ role: string; name?: string }>) {
+function readButtonBundle(
+  item: Record<string, unknown>,
+  treeNodes: TreeNode[],
+  announcement = "Filters, button, collapsed"
+) {
+  return createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: announcement,
+        lastItem: {
+          role: "button",
+          name: "Filters",
+          nodePath: "main > button",
+          visualBounds: { x: 20, y: 40, width: 120, height: 32 },
+          ...item
+        }
+      }
+    },
+    ...createSemanticSupportRecords(treeNodes)
+  ]);
+}
+
+const COLLAPSED = [{ name: "expanded", value: { type: "booleanOrUndefined", value: false } }];
+const EXPANDED = [{ name: "expanded", value: { type: "booleanOrUndefined", value: true } }];
+
+test("screen-reader judge fails when a state of the element read differs in the tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: COLLAPSED }, [
+      { backendDOMNodeId: 3, role: "button", name: "Filters", properties: EXPANDED }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /expanded \{"type":"booleanOrUndefined","value":false\} when read, \{"type":"booleanOrUndefined","value":true\} in the tree/
+  );
+});
+
+test("screen-reader judge fails when the description of the element read differs in the tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle(
+      { backendDOMNodeId: 3, description: "Opens the filter panel", properties: [] },
+      [{ backendDOMNodeId: 3, role: "button", name: "Filters" }]
+    ),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /description “Opens the filter panel” when read, none in the tree/
+  );
+});
+
+test("screen-reader judge fails when the tree leaves out the element read, with Chrome's reason", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: [] }, [
+      {
+        backendDOMNodeId: 3,
+        role: "button",
+        name: "Filters",
+        ignored: true,
+        ignoredReasons: ["ariaHiddenElement"]
+      }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /the tree leaves it out \(ariaHiddenElement\)/);
+});
+
+test("screen-reader judge fails when the element read is not in the checkpoint's tree", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: [] }, [
+      { backendDOMNodeId: 4, role: "button", name: "Filters" }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(
+    judgment?.summary ?? "",
+    /that element is not in the tree captured at this checkpoint/
+  );
+});
+
+test("screen-reader judge leaves undecided an item that names no DOM node", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ properties: [] }, [
+      { backendDOMNodeId: 3, role: "button", name: "Filters" }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /names no DOM node/);
+});
+
+test("screen-reader judge matches a summary the reader calls a button to Chromium's DisclosureTriangle", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+
+  const [judgment] = await judge!.judge(
+    readButtonBundle({ backendDOMNodeId: 3, properties: COLLAPSED }, [
+      { backendDOMNodeId: 3, role: "DisclosureTriangle", name: "Filters", properties: COLLAPSED }
+    ]),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "pass");
+});
+
+function readTextBundle(treeNodes: TreeNode[]) {
   return createBundle([
     {
       id: "record-reader-after",
@@ -273,11 +436,12 @@ function readTextBundle(semanticNodes: Array<{ role: string; name?: string }>) {
           role: "text",
           text: "Project Alpha",
           nodePath: "main > article > header > strong",
-          visualBounds: { x: 20, y: 40, width: 120, height: 20 }
+          visualBounds: { x: 20, y: 40, width: 120, height: 20 },
+          backendDOMNodeId: 12
         }
       }
     },
-    ...createSemanticSupportRecords(semanticNodes)
+    ...createSemanticSupportRecords(treeNodes)
   ]);
 }
 
@@ -285,7 +449,7 @@ test("screen-reader judge matches text the reader reads on its own to the tree's
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
 
   const [judgment] = await judge!.judge(
-    readTextBundle([{ role: "statictext", name: "project alpha" }]),
+    readTextBundle([{ backendDOMNodeId: 12, role: "StaticText", name: "Project  Alpha" }]),
     { runId: "run-1" }
   );
 
@@ -296,7 +460,7 @@ test("screen-reader judge fails text the reader reads that the tree does not hol
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
 
   const [judgment] = await judge!.judge(
-    readTextBundle([{ role: "statictext", name: "project beta" }]),
+    readTextBundle([{ backendDOMNodeId: 12, role: "StaticText", name: "Project Beta" }]),
     { runId: "run-1" }
   );
 
@@ -322,11 +486,13 @@ test("screen-reader judge leaves undecided an announcement that disagrees with t
           role: "button",
           name: "Pay invoice",
           nodePath: "main > button",
-          visualBounds: { x: 20, y: 40, width: 120, height: 32 }
+          visualBounds: { x: 20, y: 40, width: 120, height: 32 },
+          backendDOMNodeId: 5,
+          properties: []
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "button", name: "pay invoice" }])
+    ...createSemanticSupportRecords([{ backendDOMNodeId: 5, role: "button", name: "Pay invoice" }])
   ]);
 
   const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
@@ -354,13 +520,15 @@ test("screen-reader judge returns unknown when same-checkpoint visual evidence i
           name: "Invoices",
           level: 1,
           nodePath: "main > h1",
-          visualBounds: { x: 20, y: 40, width: 240, height: 48 }
+          visualBounds: { x: 20, y: 40, width: 240, height: 48 },
+          backendDOMNodeId: 7,
+          properties: LEVEL_1
         }
       }
     },
-    ...createSemanticSupportRecords([{ role: "heading", name: "invoices", level: 1 }]).filter(
-      ({ observerId }) => observerId !== "visual"
-    )
+    ...createSemanticSupportRecords([
+      { backendDOMNodeId: 7, role: "heading", name: "Invoices", properties: LEVEL_1 }
+    ]).filter(({ observerId }) => observerId !== "visual")
   ];
 
   const [judgment] = await judge!.judge(createBundle(records), { runId: "run-1" });

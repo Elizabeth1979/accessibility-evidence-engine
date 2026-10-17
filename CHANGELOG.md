@@ -15,6 +15,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Added
 
+- axe's experimental rules filed under a WCAG A/AA criterion now run, and their failures block release like any other WCAG rule. In axe 4.13 these are `p-as-heading` (text styled as a heading that is not one), `td-has-header` (data cells with no header), `table-fake-caption` (a table row used as its caption), `label-content-name-mismatch` (a control's visible text missing from its accessible name) and `css-orientation-lock` (content locked to portrait or landscape). axe switches them off by default; AEE enables them by id from axe's own rule list, so a rule axe adds or graduates is picked up. `css-orientation-lock` needs a stylesheet to read, so on a page with none at all it needs review. The axe record's `ruleSelection` names them as `experimentalTags`.
 - `npm run reader:record` records AEE's virtual screen reader reading a page on video, with the transcript beside it. `AEE_READERS_PAGE` names the page.
 
 ### Removed
