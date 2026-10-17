@@ -106,13 +106,14 @@ approval:
     expect(report.status).toBe("completed");
     expect(report.completeness).toMatchObject({
       status: "complete",
-      plannedLanes: 4,
-      completedLanes: 4
+      plannedLanes: 5,
+      completedLanes: 5
     });
-    expect(report.summary.actions).toBe(3);
+    // The start page's own checkpoint, the reader command and the two comparison actions.
+    expect(report.summary.actions).toBe(4);
     expect(report.summary.artifacts).toBeGreaterThan(0);
     expect(report.ai.present).toBe(false);
-    expect(report.synthesis.directJudgments).toEqual({ passed: 3, failed: 3, unknown: 0 });
+    expect(report.synthesis.directJudgments).toEqual({ passed: 3, failed: 4, unknown: 0 });
     expect(report.synthesis.comparisons).toMatchObject([
       { equivalence: { verdict: "pass" }, expectation: { verdict: "pass" } }
     ]);
@@ -121,7 +122,7 @@ approval:
       expect.arrayContaining([
         expect.objectContaining({
           ruleId: "aria-required-parent",
-          checkpointCount: 3,
+          checkpointCount: 4,
           remediation: expect.objectContaining({
             ai: expect.objectContaining({ used: false })
           }),
@@ -2351,6 +2352,105 @@ approval:
     expect(await readFile(result.reportFiles.html, "utf8")).toContain(
       '<span class="badge unknown">2 advisory</span>'
     );
+  } finally {
+    await server.close();
+  }
+});
+
+// A title styled as a heading, a table whose cells have no headers, and an image with no text.
+const startPageOnlyPage = `<!doctype html>
+<html lang="en">
+  <head>
+    <title>Prices</title>
+  </head>
+  <body>
+    <main>
+      <p style="font-size: 1.6em; font-weight: bold">Price list</p>
+      <table>
+        <caption>Prices</caption>
+        <tr><td>Item</td><td>Price</td></tr>
+        <tr><td>Tea</td><td>2</td></tr>
+      </table>
+      <img src="/chart.png" width="80" height="40">
+    </main>
+  </body>
+</html>`;
+
+test("aee run checks the start page with axe when a journey has no reader commands", async ({
+  browser
+}, testInfo) => {
+  const server = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(startPageOnlyPage);
+  });
+  try {
+    const result = await runApprovedScenario(
+      browser,
+      `schemaVersion: 0.1.0
+id: start-page-only
+target:
+  url: ${server.origin}/
+standard:
+  name: WCAG
+  version: "2.2"
+  levels: [A, AA]
+profile: core
+goal: Read the price list.
+journeys:
+  - id: prices
+    name: Prices
+    goal: Read the price list.
+    startPath: /
+    allowedActions: [focus]
+    forbiddenActions: [submit-forms]
+approval:
+  required: true
+`,
+      testInfo
+    );
+    const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+      verdict: string;
+      completeness: { status: string; plannedLanes: number; completedLanes: number };
+      actions: Array<{ laneId: string; driver: string; actionId: string }>;
+      artifacts: Array<{ kind: string; path: string }>;
+      synthesis: {
+        findings: Array<{
+          ruleId: string;
+          advisory: boolean;
+          checkpoints: Array<{ laneId: string; actionId: string }>;
+        }>;
+      };
+    };
+
+    // The plan's "run the pinned WCAG rule selection" runs on the start page itself, with no
+    // reader command or authored action to carry it.
+    expect(report.actions).toEqual([
+      expect.objectContaining({
+        laneId: "prices-start-page",
+        driver: "page-load",
+        actionId: "checkpoint-1-start-page"
+      })
+    ]);
+    expect(report.artifacts.filter(({ kind }) => kind === "axe-result")).not.toEqual([]);
+    expect(report.completeness).toMatchObject({
+      status: "complete",
+      plannedLanes: 2,
+      completedLanes: 2
+    });
+    expect(report.synthesis.findings).toContainEqual(
+      expect.objectContaining({
+        ruleId: "image-alt",
+        advisory: false,
+        checkpoints: [
+          expect.objectContaining({
+            laneId: "prices-start-page",
+            actionId: "checkpoint-1-start-page"
+          })
+        ]
+      })
+    );
+    expect(report.verdict).toBe("fail");
+    expect(result.headline).toMatch(/^release blocked, \d+ fix(es)? needed$/);
   } finally {
     await server.close();
   }
