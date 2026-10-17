@@ -1,14 +1,15 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-  AccessibilityChanges,
-  AccessibilityNodeRef,
-  ArtifactKind,
-  EvidenceRecord,
-  LiveRegionAnnouncement,
-  ObserverContext,
-  ObserverPlugin
+import {
+  redactUrl,
+  type AccessibilityChanges,
+  type AccessibilityNodeRef,
+  type ArtifactKind,
+  type EvidenceRecord,
+  type LiveRegionAnnouncement,
+  type ObserverContext,
+  type ObserverPlugin
 } from "@aee/core";
 
 import { diffAccessibilityTrees } from "./accessibility-changes";
@@ -528,11 +529,13 @@ function describeNodeRef({ role, name }: AccessibilityNodeRef): string {
 
 /**
  * One node of the checkpoint's accessibility tree, whole: everything the browser says about it
- * except its links to other tree nodes. `backendDOMNodeId` is the DOM node it belongs to, which
- * joins it to what the virtual reader read in the same browser session.
+ * except its links to other tree nodes. `backendDOMNodeId` and `frameId` are the DOM node it
+ * belongs to and the frame holding it, which join it to what the virtual reader read in the same
+ * browser session.
  */
 interface AccessibilitySemanticNode {
   backendDOMNodeId: number;
+  frameId?: string;
   role: string;
   name?: string;
   description?: string;
@@ -563,6 +566,7 @@ function buildAccessibilitySemanticIndex(snapshot: unknown): {
     return [
       {
         backendDOMNodeId: node.backendDOMNodeId,
+        ...(typeof node.frameId === "string" ? { frameId: node.frameId } : {}),
         role: readAccessibilityValue(node.role) ?? "",
         ...(name ? { name } : {}),
         ...(description ? { description } : {}),
@@ -1304,7 +1308,7 @@ function sanitizeNetworkEvent(event: unknown): Record<string, unknown> | undefin
   copyBooleanField(event, sanitized, "fromServiceWorker");
 
   if (typeof event.url === "string") {
-    sanitized.url = redactNetworkUrl(event.url);
+    sanitized.url = redactUrl(event.url);
   }
 
   if (isRecord(event.headers)) {
@@ -1359,23 +1363,6 @@ function copyBooleanField(
 ): void {
   if (typeof source[field] === "boolean") {
     target[field] = source[field];
-  }
-}
-
-function redactNetworkUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.hash = "";
-
-    for (const name of new Set(url.searchParams.keys())) {
-      url.searchParams.set(name, "[REDACTED]");
-    }
-
-    return url.toString();
-  } catch {
-    return "[REDACTED]";
   }
 }
 

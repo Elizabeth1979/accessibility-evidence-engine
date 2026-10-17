@@ -59,6 +59,11 @@
           "description": "The DOM node the reader is on, as the browser session numbers it; joins the item to the accessibility tree captured in the same session.",
           "type": "integer"
         },
+        "frameId": {
+          "description": "The frame whose document holds the node; with backendDOMNodeId it names the node across every frame, since node ids repeat in frames rendered in other processes.",
+          "type": "string",
+          "minLength": 1
+        },
         "visualBounds": {
           "type": "object",
           "additionalProperties": false,

@@ -1,9 +1,10 @@
 import {
   capturePageDom,
+  domNodeOf,
   fetchAccessibilityNode,
   fetchAccessibilityTree,
   type AccessibilityNode,
-  type CdpSession
+  type PageSessions
 } from "./accessibility-tree";
 
 /**
@@ -27,7 +28,13 @@ export interface ElementMapEntry {
    * or `ariaHiddenElement`, exactly as it reports them.
    */
   ignoredReasons?: string[];
+  /** Where it is in the document that holds it. */
   selector: string;
+  /**
+   * Inside a frame: the `<iframe>` elements it is inside, outermost first, each as a path in the
+   * document that holds it.
+   */
+  framePath?: string[];
   /** Where it is on the page, in the full-page screenshot's coordinates. */
   box: { x: number; y: number; width: number; height: number };
 }
@@ -43,38 +50,46 @@ export interface ElementMap {
 }
 
 /**
- * Reads the accessibility tree and one DOM snapshot, joined by node, so each heading and image
- * carries the browser's own role, name and level together with its box. The full tree leaves out
- * some ignored images (an `alt=""` image in a paragraph), so each of those is asked about on its
- * own and placed in document order among the rest.
+ * Reads every frame's accessibility tree and DOM snapshot, joined by node, so each heading and
+ * image carries the browser's own role, name and level together with its box on the page. The
+ * full tree leaves out some ignored images (an `alt=""` image in a paragraph), so each of those is
+ * asked about on its own. Everything is listed in the page's document order, a frame's content
+ * where its `<iframe>` is.
  */
-export async function captureElementMap(session: CdpSession): Promise<ElementMap> {
-  const [tree, dom] = await Promise.all([fetchAccessibilityTree(session), capturePageDom(session)]);
-  const inTree = new Set(tree.nodes.map(({ backendDOMNodeId }) => backendDOMNodeId));
+export async function captureElementMap(page: PageSessions): Promise<ElementMap> {
+  const [tree, dom] = await Promise.all([fetchAccessibilityTree(page), capturePageDom(page)]);
+  const inTree = new Set(tree.nodes.map((node) => `${node.frameId}\u0000${node.backendDOMNodeId}`));
   const leftOut = await Promise.all(
     dom
-      .elementIds("img")
-      .filter((id) => !inTree.has(id))
-      .map((id) => fetchAccessibilityNode(session, id))
+      .elements("img")
+      .filter(({ frameId, backendNodeId }) => !inTree.has(`${frameId}\u0000${backendNodeId}`))
+      .map((image) => fetchAccessibilityNode(page, image))
   );
-  const order = (node: AccessibilityNode) =>
-    node.backendDOMNodeId === undefined ? -1 : (dom.element(node.backendDOMNodeId)?.order ?? -1);
-  const nodes = [...tree.nodes];
-  for (const image of leftOut) {
-    if (!image) continue;
-    const at = nodes.findIndex((node) => order(node) > order(image));
-    nodes.splice(at === -1 ? nodes.length : at, 0, image);
-  }
+  const order = (node: AccessibilityNode) => {
+    const ref = domNodeOf(node);
+    return ref ? (dom.element(ref)?.order ?? -1) : -1;
+  };
+  const nodes = [...tree.nodes, ...leftOut.filter((node) => node !== undefined)]
+    .map((node) => ({ node, at: order(node) }))
+    .filter(({ at }) => at !== -1)
+    .sort((left, right) => left.at - right.at)
+    .map(({ node }) => node);
   return { schemaVersion: "0.1.0", captureType: "element-map", elements: nodes.flatMap(toEntries) };
 
   function toEntries(node: AccessibilityNode): ElementMapEntry[] {
-    const element =
-      node.backendDOMNodeId === undefined ? undefined : dom.element(node.backendDOMNodeId);
+    const ref = domNodeOf(node);
+    const element = ref && dom.element(ref);
     // Only what the page lays out; an empty heading still has a place on the page.
     if (!element?.layoutBounds) return [];
     const role = String(node.role?.value ?? "");
     const name = typeof node.name?.value === "string" ? node.name.value.trim() : "";
-    const common = { role, name, selector: element.nodePath, box: element.layoutBounds };
+    const common = {
+      role,
+      name,
+      selector: element.nodePath,
+      ...(element.framePath.length ? { framePath: element.framePath } : {}),
+      box: element.layoutBounds
+    };
     if (!node.ignored && role === "heading") {
       return [{ kind: "heading", ...common, level: headingLevel(node) }];
     }

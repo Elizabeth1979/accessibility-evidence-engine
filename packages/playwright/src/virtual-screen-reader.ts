@@ -6,13 +6,16 @@ import { spokenRoleOf, TEXT_ROLE, type LiveRegionAnnouncement } from "@aee/core"
 import {
   capturePageDom,
   fetchAccessibilityNode,
-  withCdpSession,
+  mainFrameOf,
+  withPageSessions,
   type AccessibilityNode,
   type AccessibilityProperty,
   type AccessibilityValue,
   type CapturedElement,
   type CdpContext,
-  type CdpSession
+  type CdpSession,
+  type FramedPage,
+  type PageSessions
 } from "./accessibility-tree";
 
 export type VirtualScreenReaderCommand =
@@ -52,6 +55,11 @@ export interface VirtualScreenReaderItem {
    * accessibility tree and DOM snapshot taken in the same session, node for node.
    */
   backendDOMNodeId?: number;
+  /**
+   * The frame whose document holds the node. With `backendDOMNodeId` it names the node across
+   * every frame, since node ids repeat in frames rendered in other processes.
+   */
+  frameId?: string;
   /** Page coordinates; absent when the element has no rendered box. */
   visualBounds?: {
     x: number;
@@ -135,7 +143,7 @@ export interface PortableVirtualScreenReader {
   snapshot(): Promise<VirtualScreenReaderTranscript>;
 }
 
-export interface VirtualScreenReaderPage {
+export interface VirtualScreenReaderPage extends FramedPage {
   url(): string;
   context(): CdpContext;
 }
@@ -240,21 +248,23 @@ export function createPortableVirtualScreenReader(
   // forward step onto a node and phrase already passed is the end of what there is to read.
   let readInThisPass = new Set<string>();
 
-  const session = <Result>(use: (session: CdpSession) => Promise<Result>) =>
-    withCdpSession(page.context(), page, use);
+  // Guidepup's reader runs in the top document; every frame is read for where its items are.
+  const session = <Result>(use: (cdp: CdpSession, frames: PageSessions) => Promise<Result>) =>
+    withPageSessions(page.context(), page, (frames) => use(mainFrameOf(frames).session, frames));
 
   return {
     async command(command) {
-      return session(async (cdp) => {
+      return session(async (cdp, frames) => {
+        const top = mainFrameOf(frames).frameId;
         const focusBefore = await activeElementNode(cdp);
         if (command === "start" || !forward(command)) readInThisPass = new Set();
-        const position = await move(cdp, command, { record: readInThisPass });
-        const dom = await capturePageDom(cdp);
-        const item = position && (await itemAt(cdp, dom, position));
+        const position = await move(frames, command, { record: readInThisPass });
+        const dom = await capturePageDom(frames);
+        const item = position && (await itemAt(frames, dom, position));
         if (item) currentItem = item;
         const focusAfter = await activeElementNode(cdp);
         const focusPath = (id: number | undefined) =>
-          id === undefined ? undefined : dom.element(id)?.nodePath;
+          id === undefined ? undefined : dom.element({ frameId: top, backendNodeId: id })?.nodePath;
         const domFocusBefore = focusPath(focusBefore);
         const domFocusAfter = focusPath(focusAfter);
         const entry: VirtualScreenReaderEntry = {
@@ -272,13 +282,13 @@ export function createPortableVirtualScreenReader(
       });
     },
     async peek(command) {
-      return session(async (cdp) => {
-        const moved = await move(cdp, command, {
+      return session(async (cdp, frames) => {
+        const moved = await move(frames, command, {
           record: new Set(readInThisPass),
           countSteps: true
         });
         const item =
-          moved?.position && (await itemAt(cdp, await capturePageDom(cdp), moved.position));
+          moved?.position && (await itemAt(frames, await capturePageDom(frames), moved.position));
         // Step back exactly as far as the command went, so peeking leaves the reader where it was.
         const back: Primitive = forward(command) ? "previous" : "next";
         for (let step = 0; step < (moved?.steps ?? 0); step++) await guidepup(cdp, back);
@@ -352,20 +362,21 @@ function atEnd(position: Position): boolean {
  * stays there, as a screen reader does).
  */
 async function move(
-  cdp: CdpSession,
+  frames: PageSessions,
   command: VirtualScreenReaderCommand,
   options: { record: Set<string> | undefined; countSteps?: false }
 ): Promise<Position | undefined>;
 async function move(
-  cdp: CdpSession,
+  frames: PageSessions,
   command: VirtualScreenReaderCommand,
   options: { record: Set<string> | undefined; countSteps: true }
 ): Promise<{ position: Position | undefined; steps: number } | undefined>;
 async function move(
-  cdp: CdpSession,
+  frames: PageSessions,
   command: VirtualScreenReaderCommand,
   { record, countSteps }: { record: Set<string> | undefined; countSteps?: boolean }
 ): Promise<Position | { position: Position | undefined; steps: number } | undefined> {
+  const cdp = mainFrameOf(frames).session;
   const result = (position: Position | undefined, steps: number) =>
     countSteps ? { position, steps } : position;
 
@@ -395,7 +406,7 @@ async function move(
       if (command === "next-item" || command === "previous-item") return result(position, steps);
       continue;
     }
-    if (stopsAt(command, await roleAt(cdp, position))) return result(position, steps);
+    if (stopsAt(command, await roleAt(frames, position))) return result(position, steps);
   }
   return result(undefined, MAX_STEPS);
 }
@@ -508,18 +519,20 @@ async function lastSpokenPhrase(cdp: CdpSession): Promise<string> {
 
 /** The item for where the reader is: the browser's role, name and states, and where it is drawn. */
 async function itemAt(
-  cdp: CdpSession,
+  frames: PageSessions,
   dom: Awaited<ReturnType<typeof capturePageDom>>,
   position: Position
 ): Promise<VirtualScreenReaderItem | undefined> {
-  if (position.backendNodeId === undefined) return undefined;
-  const element = dom.closestElement(position.backendNodeId);
+  const ref = domNodeAt(frames, position);
+  if (!ref) return undefined;
+  const element = dom.closestElement(ref);
   if (!element) return undefined;
   const at = {
     nodePath: element.nodePath,
     tagName: element.tagName,
     ...(element.visualBounds ? { visualBounds: element.visualBounds } : {}),
-    backendDOMNodeId: position.backendNodeId
+    backendDOMNodeId: ref.backendNodeId,
+    frameId: ref.frameId
   };
   if (position.isText) {
     return {
@@ -530,7 +543,7 @@ async function itemAt(
       states: currentState(element)
     };
   }
-  const node = await fetchAccessibilityNode(cdp, position.backendNodeId);
+  const node = await fetchAccessibilityNode(frames, ref);
   const role = roleOf(node);
   const name = textValue(node?.name);
   const description = textValue(node?.description);
@@ -551,9 +564,17 @@ async function itemAt(
   };
 }
 
-async function roleAt(cdp: CdpSession, position: Position): Promise<string> {
-  if (position.isText || position.backendNodeId === undefined) return TEXT_ROLE;
-  return roleOf(await fetchAccessibilityNode(cdp, position.backendNodeId));
+async function roleAt(frames: PageSessions, position: Position): Promise<string> {
+  const ref = domNodeAt(frames, position);
+  if (position.isText || !ref) return TEXT_ROLE;
+  return roleOf(await fetchAccessibilityNode(frames, ref));
+}
+
+/** The node the reader is on, which is in the top document: Guidepup does not enter frames. */
+function domNodeAt(frames: PageSessions, { backendNodeId }: Position) {
+  return backendNodeId === undefined
+    ? undefined
+    : { frameId: mainFrameOf(frames).frameId, backendNodeId };
 }
 
 function roleOf(node: AccessibilityNode | undefined): string {

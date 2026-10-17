@@ -17,6 +17,8 @@ Malformed URL strings are replaced completely with `[REDACTED]` rather than bein
 
 The URL scheme, host, port, and path remain visible because they are used to correlate requests and responses. Do not place credentials, personal information, or other secrets in URL paths.
 
+The frame list in an accessibility-tree snapshot (each iframe's address) is redacted the same way, since a sign-in or payment frame often carries a token in its address. The accessibility-tree nodes themselves are kept as Chrome reports them, so a document's or link's `url` property is not redacted, and the DOM snapshot keeps each iframe's `src` attribute.
+
 ## Evidence that is not automatically redacted
 
 DOM snapshots, accessibility-tree snapshots, element maps (each heading and image with its name), virtual screen-reader transcripts, focus metadata, screenshots (including the keyboard sweep's close-up of each Tab stop with focus), target descriptions, and generated reports can contain page text, accessible names, form values, identifiers, filesystem paths, or other information from the tested environment. AEE cannot reliably remove this content without also damaging the evidence.
