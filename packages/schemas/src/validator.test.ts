@@ -183,7 +183,7 @@ test("validateSchema accepts a portable virtual screen-reader transcript", () =>
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
@@ -218,7 +218,7 @@ test("validateSchema accepts a transcript item with every state, the description
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
@@ -262,6 +262,49 @@ test("validateSchema accepts a transcript item with every state, the description
   assert.equal(result.valid, true, result.errors.join("; "));
 });
 
+test("validateSchema accepts a transcript step into a frame, with the frames it left and entered", () => {
+  const frame = (frameId: string, framePath: string[], name: string) => ({
+    frameId,
+    framePath,
+    name
+  });
+  const result = validateSchema("virtualScreenReaderTranscript", {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.3.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.32.1",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-10-17T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-10-17T00:00:00.000Z",
+        command: "next-heading",
+        announcement: "heading, Shipping, level 2",
+        framesLeft: [frame("frame-billing", ["#billing"], "Billing")],
+        framesEntered: [frame("frame-shipping", ["#shipping"], "Shipping")],
+        item: {
+          key: "#shipping >>> body > h2#start",
+          nodePath: "body > h2",
+          tagName: "h2",
+          role: "heading",
+          name: "Shipping",
+          level: 2,
+          states: [],
+          frameId: "frame-shipping",
+          framePath: ["#shipping"]
+        },
+        focusMoved: false
+      }
+    ]
+  });
+
+  assert.equal(result.valid, true, result.errors.join("; "));
+});
+
 test("validateSchema accepts an image the tree leaves out, with Chrome's reasons", () => {
   const result = validateSchema("elementMap", {
     schemaVersion: "0.1.0",
@@ -286,7 +329,7 @@ test("validateSchema rejects a virtual transcript that claims physical AT fideli
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
@@ -304,7 +347,7 @@ test("validateSchema checks a transcript's live-region announcements", () => {
   const transcript = (politeness: string) => ({
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.32.1",
     mode: "guide",
     fidelity: "semantic-simulation",
@@ -386,7 +429,7 @@ test("validateSchema accepts an isolated virtual screen-reader lane", () => {
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.2.0",
+    engineVersion: "0.3.0",
     speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",

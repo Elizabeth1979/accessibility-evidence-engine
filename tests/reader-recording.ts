@@ -4,10 +4,11 @@ import path from "node:path";
 
 import type { Browser, Page } from "@playwright/test";
 
+import { frameNotes } from "@aee/core";
 import {
   createPortableVirtualScreenReader,
   renderPortableVirtualScreenReaderTranscript,
-  type VirtualScreenReaderItem
+  type VirtualScreenReaderEntry
 } from "@aee/playwright";
 
 /** Long enough to read a caption, short enough that 100 steps stay under two minutes. */
@@ -42,7 +43,7 @@ export async function recordVirtualReader(
       const reader = createPortableVirtualScreenReader(page);
       let step = 0;
       for (let entry = await reader.command("start"); entry.item;) {
-        await showStep(page, ++step, entry.announcement, entry.item);
+        await showStep(page, ++step, entry);
         entry = await reader.command("next-item");
       }
       await writeFile(
@@ -67,17 +68,12 @@ async function attachOverlay(page: Page) {
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML =
       '<div data-box style="position:absolute;border:4px solid #fc0;border-radius:4px;pointer-events:none;z-index:2147483646"></div>' +
-      '<div data-caption style="position:fixed;inset:auto 0 0 0;padding:14px 20px;background:#000;color:#fc0;font:600 20px/1.35 system-ui,sans-serif;border-top:3px solid #fc0;z-index:2147483647"></div>';
+      '<div data-caption style="position:fixed;inset:auto 0 0 0;padding:14px 20px;background:#000;color:#fc0;font:600 20px/1.35 system-ui,sans-serif;white-space:pre-line;border-top:3px solid #fc0;z-index:2147483647"></div>';
     document.documentElement.append(overlay);
   }, OVERLAY_ID);
 }
 
-async function showStep(
-  page: Page,
-  step: number,
-  announcement: string,
-  { visualBounds }: VirtualScreenReaderItem
-) {
+async function showStep(page: Page, step: number, entry: VirtualScreenReaderEntry) {
   await page.evaluate(
     ({ id, caption, bounds }) => {
       const overlay = document.getElementById(id);
@@ -97,7 +93,12 @@ async function showStep(
       }
       captionBar.textContent = caption;
     },
-    { id: OVERLAY_ID, caption: `🔊 ${step}. ${announcement}`, bounds: visualBounds }
+    {
+      id: OVERLAY_ID,
+      // AEE's note that the reader left or entered a frame sits above what Guidepup said.
+      caption: [...frameNotes(entry), `🔊 ${step}. ${entry.announcement}`].join("\n"),
+      bounds: entry.item?.visualBounds
+    }
   );
   await page.waitForTimeout(STEP_MS);
 }
