@@ -322,7 +322,11 @@ app you run the command from:
    Testing and System Events. Allow each one. The run does not wait for you, so if it fails with
    "AppleEvent timed out" while a prompt is open, allow it and run again.
 
-On Windows, `npx @guidepup/setup setup` sets up NVDA.
+On Windows, `npx @guidepup/setup install` downloads the portable NVDA that Guidepup drives; its `setup` command only prepares macOS.
+
+### Real NVDA without a Windows computer (planned)
+
+The next step is to run real NVDA on one of GitHub's own Windows computers, free for public repositories, so nobody needs a Windows machine. You press **Run workflow** in GitHub, NVDA reads the test lab page in Chrome, and the run saves NVDA's words, a side-by-side page with AEE's reader and a video. JAWS is not part of it: Guidepup does not drive JAWS, and JAWS's own automation server needs a paid licence. [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md) has the picture of how it works, the research behind each step and the choices you get when you run it.
 
 ## Known limitations
 
@@ -353,6 +357,7 @@ See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-en
 - [Evidence privacy](docs/privacy.md)
 - [AI fix proposals](docs/ai-fixes.md)
 - [QA and designer view (design spec)](docs/qa-designer-view.md)
+- [Real NVDA on GitHub's Windows computers (plan and research)](docs/real-screen-readers.md)
 - [Architecture decision records](docs/adr/README.md)
 
 ## Contributing and security
