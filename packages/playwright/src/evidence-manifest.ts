@@ -27,7 +27,8 @@ export interface EvidenceManifestLaneSource {
     | "keyboard"
     | "portable-virtual-screen-reader"
     | "keyboard-pointer-sweep"
-    | "playwright-test";
+    | "playwright-test"
+    | "page-load";
   status: "completed" | "blocked" | "failed";
   actions: EvidenceManifestActionSource[];
 }

@@ -62,11 +62,11 @@ for (const [device, width] of [
     await archive.focus();
     await page.keyboard.press("Enter");
     await expect(archive).toHaveAttribute("aria-current", "true");
-    const marker = panel.locator(
-      `[data-marker-shape="${await archive.getAttribute("data-marker")}"]`
-    );
+    const shape = `[data-marker-shape="${await archive.getAttribute("data-marker")}"]`;
+    const marker = panel.locator(shape);
     await expect(marker).toHaveClass(/current/);
-    const canvas = panel.locator(".page-canvas").first();
+    // The picture the issue is drawn on: the page as it loaded.
+    const canvas = panel.locator(".page-canvas").filter({ has: page.locator(shape) });
     // The picture moves to the marker; it glides there unless the reader asks for reduced motion.
     await expect
       .poll(async () => {
@@ -92,14 +92,19 @@ for (const [device, width] of [
     await expect(readerItems.nth(1)).toHaveAttribute("aria-current", "true");
 
     // Each layer switches off and on from the keyboard, list and markers together.
+    const list = (layer: string) => panel.locator(`section[data-layer="${layer}"]`);
+    const markers = (layer: string) =>
+      panel.locator(`g[data-layer="${layer}"] [data-marker-shape]`);
     for (const layer of ["issues", "reader"] as const) {
       const toggle = panel.locator(`[data-layer-toggle="${layer}"]`);
       await toggle.focus();
       await page.keyboard.press("Space");
-      await expect(panel.locator(`[data-layer="${layer}"]`).first()).toBeHidden();
+      for (const section of await list(layer).all()) await expect(section).toBeHidden();
+      await expect(markers(layer).first()).toBeHidden();
     }
     await expectNoViolations(page, `${device}, both layers off`);
     await page.keyboard.press("Space");
-    await expect(panel.locator('[data-layer="reader"]').first()).toBeVisible();
+    await expect(list("reader")).toBeVisible();
+    await expect(markers("reader").first()).toBeVisible();
   });
 }
