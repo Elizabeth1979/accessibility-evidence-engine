@@ -1,13 +1,9 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
-
 import { expect, test } from "@playwright/test";
 
 import {
   agreement,
   pageWords,
   realPageWords,
-  readWithGuidepupVirtualReader,
   realReaderName,
   sideBySide,
   withoutReaderHints,
@@ -21,10 +17,9 @@ const comparison: ReaderComparison = {
     platform: "darwin",
     release: "27.0.0",
     guidepup: "0.36.3",
-    guidepupVirtualScreenReader: "0.33.0"
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0"
   },
-  virtual: ["heading, Workspace, level 1", "link, Help | projects", "end of document"],
-  guidepupVirtual: ["heading, Workspace, level 1", "link, Help | projects", "Fern"],
+  virtual: ["heading, Workspace, level 1", "link, Help | projects", "end of list"],
   real: { reader: "VoiceOver", phrases: ["Workspace, heading level 1", "Help, link", "Fern"] }
 };
 
@@ -90,25 +85,20 @@ test("agreement counts the real reader's phrases a virtual reader also says", ()
   expect(result).toEqual({ compared: 4, heard: 3, missed: ["Export report"] });
 });
 
-test("all three transcripts sit side by side, with each virtual reader's score", () => {
+test("both transcripts sit side by side, with the virtual reader's score", () => {
   const lines = sideBySide(comparison).split("\n");
   expect(lines[0]).toBe("# What each screen reader said: site/test-case.html");
   expect(lines).toContain(
-    "Recorded 2026-10-16T12:00:00.000Z on darwin 27.0.0, with Guidepup 0.36.3 and Guidepup's virtual screen reader 0.33.0."
+    "Recorded 2026-10-16T12:00:00.000Z on darwin 27.0.0, with Guidepup 0.36.3; AEE's virtual reader speaks through @guidepup/virtual-screen-reader 0.33.0."
   );
   expect(lines).toContain("| AEE's virtual screen reader | 3 | 67% (2 of 3) |");
-  expect(lines).toContain("| Guidepup's virtual screen reader | 3 | 100% (3 of 3) |");
   expect(lines).toContain("| VoiceOver | 3 | |");
   expect(lines).toContain("VoiceOver said, and AEE's virtual screen reader did not:");
   expect(lines).toContain("- Fern");
-  expect(lines).toContain(
-    "| Step | AEE's virtual screen reader | Guidepup's virtual screen reader | VoiceOver |"
-  );
-  expect(lines).toContain(
-    "| 1 | heading, Workspace, level 1 | heading, Workspace, level 1 | Workspace, heading level 1 |"
-  );
+  expect(lines).toContain("| Step | AEE's virtual screen reader | VoiceOver |");
+  expect(lines).toContain("| 1 | heading, Workspace, level 1 | Workspace, heading level 1 |");
   // A pipe in a phrase stays inside its cell.
-  expect(lines).toContain("| 2 | link, Help \\| projects | link, Help \\| projects | Help, link |");
+  expect(lines).toContain("| 2 | link, Help \\| projects | Help, link |");
 });
 
 test("a phrase that spans lines stays on its row", () => {
@@ -116,14 +106,5 @@ test("a phrase that spans lines stays on its row", () => {
     ...comparison,
     real: { reader: "VoiceOver", phrases: ["Workspace\nheading level 1"] }
   }).split("\n");
-  expect(lines).toContain(
-    "| 1 | heading, Workspace, level 1 | heading, Workspace, level 1 | Workspace heading level 1 |"
-  );
-});
-
-test("Guidepup's virtual reader reads the demo page to its end", async ({ page }) => {
-  await page.goto(pathToFileURL(path.resolve("site/test-case.html")).href);
-  const phrases = await readWithGuidepupVirtualReader(page);
-  expect(phrases.at(-1)).toBe("end of document");
-  expect(phrases).toContain("Project Alpha");
+  expect(lines).toContain("| 1 | heading, Workspace, level 1 | Workspace heading level 1 |");
 });

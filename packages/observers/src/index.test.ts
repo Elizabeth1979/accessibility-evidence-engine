@@ -55,7 +55,8 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.1.0",
+    engineVersion: "0.2.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
@@ -66,7 +67,7 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
         sequence: 1,
         timestamp: "2026-09-13T00:00:00.000Z",
         command: "next-heading",
-        announcement: "Invoices, heading, level 1",
+        announcement: "heading, Invoices, level 1",
         domFocusBefore: "#pay",
         domFocusAfter: "#pay",
         focusMoved: false

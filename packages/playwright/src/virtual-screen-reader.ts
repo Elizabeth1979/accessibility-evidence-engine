@@ -1,10 +1,11 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import {
   capturePageDom,
-  fetchAccessibilityTree,
   withCdpSession,
   type AccessibilityNode,
   type AccessibilityValue,
-  type CapturedDom,
   type CapturedElement,
   type CdpContext,
   type CdpSession
@@ -24,11 +25,11 @@ export interface VirtualScreenReaderItem {
   key: string;
   nodePath: string;
   tagName: string;
-  /** The role in the browser's accessibility tree. */
+  /** The role in the browser's accessibility tree, or "text" for a piece of text. */
   role: string;
   /** The accessible name the browser computed. */
   name?: string;
-  /** What is read for an item whose content, not a name, is spoken: a paragraph or a list item. */
+  /** The words of a piece of text the reader stopped on. */
   text?: string;
   level?: number;
   states: string[];
@@ -45,6 +46,7 @@ export interface VirtualScreenReaderEntry {
   sequence: number;
   timestamp: string;
   command: VirtualScreenReaderCommand;
+  /** What the reader said, as Guidepup's virtual screen reader says it. */
   announcement: string;
   item?: VirtualScreenReaderItem;
   domFocusBefore?: string;
@@ -55,7 +57,9 @@ export interface VirtualScreenReaderEntry {
 export interface VirtualScreenReaderTranscript {
   schemaVersion: "0.1.0";
   engine: "aee-portable-virtual-screen-reader";
-  engineVersion: "0.1.0";
+  engineVersion: "0.2.0";
+  /** What decides what is spoken: Guidepup's virtual screen reader, and its version. */
+  speechEngine: string;
   mode: "guide";
   fidelity: "semantic-simulation";
   physicalAssistiveTechnology: false;
@@ -71,6 +75,7 @@ export function renderPortableVirtualScreenReaderTranscript(
   const lines = [
     "AEE portable virtual screen-reader transcript",
     "Fidelity: semantic simulation; not VoiceOver, NVDA, or another physical assistive technology.",
+    `Speech: ${transcript.speechEngine}`,
     `Page: ${transcript.pageUrl}`,
     `Mode: ${transcript.mode}`,
     ""
@@ -102,11 +107,6 @@ export interface VirtualScreenReaderPage {
   context(): CdpContext;
 }
 
-interface PageSemanticState {
-  items: VirtualScreenReaderItem[];
-  focusKey?: string;
-}
-
 const LANDMARK_ROLES = new Set([
   "banner",
   "complementary",
@@ -119,7 +119,6 @@ const LANDMARK_ROLES = new Set([
 ]);
 
 const CONTROL_ROLES = new Set([
-  "DisclosureTriangle",
   "button",
   "checkbox",
   "combobox",
@@ -154,121 +153,116 @@ export function announcedWithoutName(
   return NAME_REQUIRED_ROLES.has(item.role) && !item.name;
 }
 
-/**
- * ARIA roles a screen reader passes over when it reads item by item: containers with no meaning of
- * their own, the header and footer of a section (ARIA 1.3 roles, not landmarks), words inside a
- * sentence, and the inside of a table, which is read as one table.
- */
-const SILENT_ROLES = new Set([
-  "generic",
-  "none",
-  "presentation",
-  "sectionheader",
-  "sectionfooter",
-  "strong",
-  "emphasis",
-  "code",
-  "mark",
-  "time",
-  "subscript",
-  "superscript",
-  "insertion",
-  "deletion",
-  "row",
-  "rowgroup",
-  "cell",
-  "columnheader",
-  "rowheader",
-  "caption"
-]);
-
 /** Chromium's own role names that platforms expose as an ARIA role; HTML-AAM maps summary to a button. */
-const SPOKEN_INTERNAL_ROLES = new Map([["DisclosureTriangle", "button"]]);
+const INTERNAL_ROLES = new Map([["DisclosureTriangle", "button"]]);
 
-/**
- * Roles announced only when they have an accessible name. Core-AAM and HTML-AAM expose a form or a
- * region as a landmark only when it is named, and recent Chromium leaves that rule to the platform
- * (its tree calls every <form> a form), so the reader applies it. An unnamed group, such as a
- * details element, is not announced either.
- */
-const NAMED_ONLY_ROLES = new Set(["form", "region", "group"]);
-
-/** Roles the accessible-name rules give no name, so their content is what is read. */
-const CONTENT_ROLES = new Set(["paragraph", "listitem", "status", "alert"]);
-
-/**
- * Roles whose announcement already says the text inside them: their name comes from their content
- * (ARIA's "name from content"), or their content is read as their text. Text inside one of these is
- * not read again on its own.
- */
-const SPEAKS_CONTENT_ROLES = new Set([
-  ...CONTENT_ROLES,
-  "button",
-  "checkbox",
-  "heading",
-  "link",
-  "menuitem",
-  "menuitemcheckbox",
-  "menuitemradio",
-  "option",
-  "radio",
-  "switch",
-  "tab",
-  "tooltip",
-  "treeitem"
-]);
-
-/** The role of text that no announced item says: it is read as it stands, with no role spoken. */
+/** The role of a piece of text the reader stops on. */
 const TEXT_ROLE = "text";
 
+/** What Guidepup's reader says at each end of what it reads. */
+const END_OF_DOCUMENT = "end of document";
+const START_OF_DOCUMENT = "document";
+
+/** More single steps than any page holds; a jump that finds nothing stops here. */
+const MAX_STEPS = 10_000;
+
+const BUNDLE_FILE = path.join(__dirname, "guidepup-virtual-screen-reader.js");
+const BUNDLE_GLOBAL = "__aeeGuidepupVirtualScreenReader";
+const SPEECH_ENGINE = `@guidepup/virtual-screen-reader ${
+  (
+    JSON.parse(
+      readFileSync(require.resolve("@guidepup/virtual-screen-reader/package.json"), "utf8")
+    ) as { version: string }
+  ).version
+}`;
+let bundleSource: string | undefined;
+
+type Primitive = "start" | "next" | "previous";
+
+/** Where the reader is after a step: what it said and the DOM node it is on. */
+interface Position {
+  phrase: string;
+  /** The node Guidepup's reader is on; absent at either end of the page. */
+  backendNodeId?: number;
+  isText: boolean;
+  text?: string;
+}
+
 /**
- * Creates a deterministic semantic navigator. It reads the page but never focuses, clicks, types,
- * or dispatches events. It is useful portable evidence, not a substitute for VoiceOver or NVDA.
+ * Reads the page item by item with Guidepup's virtual screen reader
+ * ([`@guidepup/virtual-screen-reader`](https://github.com/guidepup/virtual-screen-reader)), which
+ * follows the W3C mappings (ARIA, accname, Core-AAM, HTML-AAM) and is tested against the Web
+ * Platform Tests. Guidepup decides what is said; AEE adds where on the page each step is, and the
+ * role and name the browser gives that element, so every announcement is evidence that can be
+ * located and cross-checked.
+ *
+ * Guidepup's reader runs in the page. It is loaded as a plain script over the DevTools protocol,
+ * the way Deque's official @axe-core/playwright loads axe (`page.evaluate` of its source), so a
+ * page's Content-Security-Policy does not refuse it and no security setting is switched off. It reads the page but never focuses, clicks,
+ * types, or dispatches events. It is useful portable evidence, not a substitute for VoiceOver,
+ * NVDA or JAWS.
  */
 export function createPortableVirtualScreenReader(
   page: VirtualScreenReaderPage
 ): PortableVirtualScreenReader {
   const entries: VirtualScreenReaderEntry[] = [];
-  let currentKey: string | undefined;
   let currentItem: VirtualScreenReaderItem | undefined;
+  // Every forward step since the reader last started or moved back. Guidepup keeps the reader
+  // inside an open modal dialog, as screen readers do, and comes round to its start again: a
+  // forward step onto a node and phrase already passed is the end of what there is to read.
+  let readInThisPass = new Set<string>();
+
+  const session = <Result>(use: (session: CdpSession) => Promise<Result>) =>
+    withCdpSession(page.context(), page, use);
 
   return {
     async command(command) {
-      const before = await captureSemanticState(page);
-      const item = selectItem(command, before.items, currentKey);
-      const announcement = item
-        ? describeItem(item)
-        : describeBoundary(command, currentKey === undefined);
-
-      if (item) {
-        currentKey = item.key;
-        currentItem = item;
-      }
-
-      const after = await captureSemanticState(page);
-      const entry: VirtualScreenReaderEntry = {
-        sequence: entries.length + 1,
-        timestamp: new Date().toISOString(),
-        command,
-        announcement,
-        ...(item ? { item } : {}),
-        ...(before.focusKey ? { domFocusBefore: before.focusKey } : {}),
-        ...(after.focusKey ? { domFocusAfter: after.focusKey } : {}),
-        focusMoved: before.focusKey !== after.focusKey
-      };
-
-      entries.push(entry);
-      return cloneEntry(entry);
+      return session(async (cdp) => {
+        const focusBefore = await activeElementNode(cdp);
+        if (command === "start" || !forward(command)) readInThisPass = new Set();
+        const position = await move(cdp, command, { record: readInThisPass });
+        const dom = await capturePageDom(cdp);
+        const item = position && (await itemAt(cdp, dom, position));
+        if (item) currentItem = item;
+        const focusAfter = await activeElementNode(cdp);
+        const focusPath = (id: number | undefined) =>
+          id === undefined ? undefined : dom.element(id)?.nodePath;
+        const domFocusBefore = focusPath(focusBefore);
+        const domFocusAfter = focusPath(focusAfter);
+        const entry: VirtualScreenReaderEntry = {
+          sequence: entries.length + 1,
+          timestamp: new Date().toISOString(),
+          command,
+          announcement: position?.phrase || (await lastSpokenPhrase(cdp)),
+          ...(item ? { item } : {}),
+          ...(domFocusBefore ? { domFocusBefore } : {}),
+          ...(domFocusAfter ? { domFocusAfter } : {}),
+          focusMoved: focusBefore !== focusAfter
+        };
+        entries.push(entry);
+        return cloneEntry(entry);
+      });
     },
     async peek(command) {
-      const item = selectItem(command, (await captureSemanticState(page)).items, currentKey);
-      return item && cloneItem(item);
+      return session(async (cdp) => {
+        const moved = await move(cdp, command, {
+          record: new Set(readInThisPass),
+          countSteps: true
+        });
+        const item =
+          moved?.position && (await itemAt(cdp, await capturePageDom(cdp), moved.position));
+        // Step back exactly as far as the command went, so peeking leaves the reader where it was.
+        const back: Primitive = forward(command) ? "previous" : "next";
+        for (let step = 0; step < (moved?.steps ?? 0); step++) await guidepup(cdp, back);
+        return item && cloneItem(item);
+      });
     },
     async snapshot() {
       return {
         schemaVersion: "0.1.0",
         engine: "aee-portable-virtual-screen-reader",
-        engineVersion: "0.1.0",
+        engineVersion: "0.2.0",
+        speechEngine: SPEECH_ENGINE,
         mode: "guide",
         fidelity: "semantic-simulation",
         physicalAssistiveTechnology: false,
@@ -281,215 +275,204 @@ export function createPortableVirtualScreenReader(
   };
 }
 
-function selectItem(
-  command: VirtualScreenReaderCommand,
-  items: VirtualScreenReaderItem[],
-  currentKey: string | undefined
-): VirtualScreenReaderItem | undefined {
-  const currentIndex = currentKey ? items.findIndex(({ key }) => key === currentKey) : -1;
-
-  if (command === "read-current") {
-    return currentIndex >= 0 ? items[currentIndex] : items[0];
-  }
-
-  if (command === "start") {
-    return items[0];
-  }
-
-  const backwards = command === "previous-item" || command === "previous-heading";
-  const predicate = getCommandPredicate(command);
-
-  if (backwards) {
-    for (let index = currentIndex < 0 ? items.length - 1 : currentIndex - 1; index >= 0; index--) {
-      if (predicate(items[index]!)) {
-        return items[index];
-      }
-    }
-
-    return undefined;
-  }
-
-  for (let index = currentIndex + 1; index < items.length; index++) {
-    if (predicate(items[index]!)) {
-      return items[index];
-    }
-  }
-
-  return undefined;
+function forward(command: VirtualScreenReaderCommand): boolean {
+  return command !== "previous-item" && command !== "previous-heading";
 }
 
-function getCommandPredicate(
-  command: VirtualScreenReaderCommand
-): (item: VirtualScreenReaderItem) => boolean {
-  if (command === "next-heading" || command === "previous-heading") {
-    return ({ role }) => role === "heading";
-  }
-
-  if (command === "next-landmark") {
-    return ({ role }) => LANDMARK_ROLES.has(role);
-  }
-
-  if (command === "next-control") {
-    return ({ role }) => CONTROL_ROLES.has(role);
-  }
-
-  return () => true;
+/** Whether a command stops at a node with this role: an item, a heading, a landmark or a control. */
+function stopsAt(command: VirtualScreenReaderCommand, role: string): boolean {
+  if (command === "next-heading" || command === "previous-heading") return role === "heading";
+  if (command === "next-landmark") return LANDMARK_ROLES.has(role);
+  if (command === "next-control") return CONTROL_ROLES.has(role);
+  return true;
 }
 
-function describeBoundary(command: VirtualScreenReaderCommand, hasNoCursor: boolean): string {
-  if (hasNoCursor) {
-    return "No readable item.";
-  }
-
-  return command.startsWith("previous") ? "Start of document." : "End of document.";
-}
-
-function describeItem(item: VirtualScreenReaderItem): string {
-  const role =
-    item.role === TEXT_ROLE ? undefined : (SPOKEN_INTERNAL_ROLES.get(item.role) ?? item.role);
-  const parts = [item.name ?? item.text, role];
-
-  if (item.role === "heading" && item.level) {
-    parts.push(`level ${item.level}`);
-  }
-
-  parts.push(...item.states);
-  return parts.filter((part): part is string => Boolean(part)).join(", ");
-}
-
-function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
-  return {
-    ...item,
-    states: [...item.states],
-    ...(item.visualBounds ? { visualBounds: { ...item.visualBounds } } : {})
-  };
-}
-
-function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
-  return {
-    sequence: entry.sequence,
-    timestamp: entry.timestamp,
-    command: entry.command,
-    announcement: entry.announcement,
-    ...(entry.item ? { item: cloneItem(entry.item) } : {}),
-    ...(entry.domFocusBefore ? { domFocusBefore: entry.domFocusBefore } : {}),
-    ...(entry.domFocusAfter ? { domFocusAfter: entry.domFocusAfter } : {}),
-    focusMoved: entry.focusMoved
-  };
-}
-
-/** Roles, names and states come from the browser's accessibility tree; the DOM supplies where. */
-async function captureSemanticState(page: VirtualScreenReaderPage): Promise<PageSemanticState> {
-  return withCdpSession(page.context(), page, async (session) => {
-    const [tree, dom, focused] = await Promise.all([
-      fetchAccessibilityTree(session),
-      capturePageDom(session),
-      activeElementNode(session)
-    ]);
-    const focusKey = focused === undefined ? undefined : dom.element(focused)?.nodePath;
-    return { items: readableItems(tree.nodes, dom), ...(focusKey ? { focusKey } : {}) };
-  });
+function atEnd(position: Position): boolean {
+  return (
+    position.backendNodeId === undefined ||
+    position.phrase === END_OF_DOCUMENT ||
+    position.phrase === START_OF_DOCUMENT
+  );
 }
 
 /**
- * Every item a screen reader stops on, in reading order. Like VoiceOver and NVDA in browse mode,
- * that includes text no announced item says, such as a bold title in a plain box: it is in the
- * accessibility tree, so it is read.
+ * Moves Guidepup's reader for one command, a single step at a time, so every command can be
+ * undone exactly. Returns where it stopped, or undefined at either end of the page (the reader
+ * stays there, as a screen reader does).
  */
-function readableItems(nodes: AccessibilityNode[], dom: CapturedDom): VirtualScreenReaderItem[] {
-  const byId = new Map(nodes.map((node) => [node.nodeId, node]));
-  const items: VirtualScreenReaderItem[] = [];
-  const textCount = new Map<string, number>();
-  const visit = (node: AccessibilityNode | undefined, said: boolean): void => {
-    if (!node || node.ignored) {
-      node?.childIds?.forEach((id) => visit(byId.get(id), said));
-      return;
+async function move(
+  cdp: CdpSession,
+  command: VirtualScreenReaderCommand,
+  options: { record: Set<string> | undefined; countSteps?: false }
+): Promise<Position | undefined>;
+async function move(
+  cdp: CdpSession,
+  command: VirtualScreenReaderCommand,
+  options: { record: Set<string> | undefined; countSteps: true }
+): Promise<{ position: Position | undefined; steps: number } | undefined>;
+async function move(
+  cdp: CdpSession,
+  command: VirtualScreenReaderCommand,
+  { record, countSteps }: { record: Set<string> | undefined; countSteps?: boolean }
+): Promise<Position | { position: Position | undefined; steps: number } | undefined> {
+  const result = (position: Position | undefined, steps: number) =>
+    countSteps ? { position, steps } : position;
+
+  if (command === "start") {
+    const position = await guidepup(cdp, "start");
+    if (atEnd(position)) return result(undefined, 0);
+    record?.add(positionKey(position));
+    return result(position, 0);
+  }
+  if (command === "read-current") {
+    const position = await guidepup(cdp, "current");
+    return result(atEnd(position) ? undefined : position, 0);
+  }
+
+  const primitive: Primitive = forward(command) ? "next" : "previous";
+  const passed = record ?? new Set<string>();
+  for (let steps = 1; steps <= MAX_STEPS; steps++) {
+    const position = await guidepup(cdp, primitive);
+    if (atEnd(position)) return result(undefined, steps);
+    if (primitive === "next") {
+      const key = positionKey(position);
+      if (passed.has(key)) return result(undefined, steps);
+      passed.add(key);
     }
-    if (node.role?.value === "StaticText") {
-      const item = said ? undefined : textItem(node, dom, textCount);
-      if (item) items.push(item);
-      return;
+    // A jump stops where an element begins, not where Guidepup says it ends ("end of list").
+    if (position.phrase.startsWith("end of ")) {
+      if (command === "next-item" || command === "previous-item") return result(position, steps);
+      continue;
     }
-    const item = readableItem(node, byId, dom);
-    if (item) items.push(item);
-    const saysContent = said || (item !== undefined && SPEAKS_CONTENT_ROLES.has(item.role));
-    node.childIds?.forEach((id) => visit(byId.get(id), saysContent));
-  };
-  visit(nodes[0], false);
-  return items;
+    if (stopsAt(command, await roleAt(cdp, position))) return result(position, steps);
+  }
+  return result(undefined, MAX_STEPS);
 }
 
-/** A piece of text read on its own, placed on the element that holds it. */
-function textItem(
-  node: AccessibilityNode,
-  dom: CapturedDom,
-  textCount: Map<string, number>
-): VirtualScreenReaderItem | undefined {
-  const text = textValue(node.name)?.replace(/\s+/g, " ");
-  const element =
-    node.backendDOMNodeId === undefined ? undefined : dom.closestElement(node.backendDOMNodeId);
-  if (!text || !element) return undefined;
-  // An element can hold several pieces of text, so each gets its own key.
-  const index = textCount.get(element.nodePath) ?? 0;
-  textCount.set(element.nodePath, index + 1);
+function positionKey({ backendNodeId, phrase }: Position): string {
+  return `${backendNodeId}\u0000${phrase}`;
+}
+
+/**
+ * Runs one of Guidepup's reader commands in the page, loading and starting the reader first when
+ * the page does not have it (a fresh page, or one that has navigated), and reports where it is.
+ */
+async function guidepup(cdp: CdpSession, action: Primitive | "current"): Promise<Position> {
+  const loaded = await evaluate<boolean>(cdp, `typeof ${BUNDLE_GLOBAL} === "object"`);
+  if (!loaded) {
+    bundleSource ??= readFileSync(BUNDLE_FILE, "utf8");
+    await evaluate(cdp, bundleSource);
+  }
+  const position = await evaluate<{
+    phrase: string;
+    isText: boolean;
+    text?: string;
+    hasNode: boolean;
+  }>(
+    cdp,
+    `(async () => {
+      const reader = ${BUNDLE_GLOBAL}.virtual;
+      const action = ${JSON.stringify(action)};
+      if (action === "start" || !window.__aeeGuidepupStarted) {
+        if (window.__aeeGuidepupStarted) await reader.stop();
+        await reader.start({ container: document.body });
+        window.__aeeGuidepupStarted = true;
+        // Guidepup's reader starts on the document itself; the first step is the page's first
+        // item, which is also where any first command lands on a page not read before.
+        await reader.next();
+      } else if (action === "next") {
+        await reader.next();
+      } else if (action === "previous") {
+        await reader.previous();
+      }
+      const node = reader.activeNode;
+      window.__aeeGuidepupNode = node;
+      return {
+        phrase: await reader.lastSpokenPhrase(),
+        isText: node?.nodeType === Node.TEXT_NODE,
+        text: node?.nodeType === Node.TEXT_NODE ? node.textContent : undefined,
+        hasNode: Boolean(node) && node !== document.body
+      };
+    })()`
+  );
+  const backendNodeId = position.hasNode
+    ? await backendNodeOf(cdp, "window.__aeeGuidepupNode")
+    : undefined;
+  const text = position.text?.replace(/\s+/g, " ").trim();
   return {
-    key: `${element.nodePath}#text${index}`,
+    phrase: position.phrase,
+    isText: position.isText,
+    ...(text ? { text } : {}),
+    ...(backendNodeId === undefined ? {} : { backendNodeId })
+  };
+}
+
+async function lastSpokenPhrase(cdp: CdpSession): Promise<string> {
+  return evaluate<string>(
+    cdp,
+    `typeof ${BUNDLE_GLOBAL} === "object" ? ${BUNDLE_GLOBAL}.virtual.lastSpokenPhrase() : ""`
+  );
+}
+
+/** The item for where the reader is: the browser's role, name and states, and where it is drawn. */
+async function itemAt(
+  cdp: CdpSession,
+  dom: Awaited<ReturnType<typeof capturePageDom>>,
+  position: Position
+): Promise<VirtualScreenReaderItem | undefined> {
+  if (position.backendNodeId === undefined) return undefined;
+  const element = dom.closestElement(position.backendNodeId);
+  if (!element) return undefined;
+  const at = {
     nodePath: element.nodePath,
     tagName: element.tagName,
-    role: TEXT_ROLE,
-    text,
-    states: currentState(element),
     ...(element.visualBounds ? { visualBounds: element.visualBounds } : {})
   };
-}
-
-function readableItem(
-  node: AccessibilityNode,
-  byId: Map<string, AccessibilityNode>,
-  dom: CapturedDom
-): VirtualScreenReaderItem | undefined {
-  const role = textValue(node.role);
-  const name = textValue(node.name);
-  const spoken =
-    node.role?.type === "role"
-      ? !SILENT_ROLES.has(role ?? "") && !(NAMED_ONLY_ROLES.has(role ?? "") && !name)
-      : SPOKEN_INTERNAL_ROLES.has(role ?? "");
-  const element =
-    spoken && node.backendDOMNodeId !== undefined ? dom.element(node.backendDOMNodeId) : undefined;
-  if (!role || !element) return undefined;
-  const text = !name && CONTENT_ROLES.has(role) ? spokenText(node, byId) : undefined;
-  const level = role === "heading" ? propertyValue(node, "level") : undefined;
-
+  if (position.isText) {
+    return {
+      key: `${element.nodePath}#text:${position.text ?? ""}`,
+      ...at,
+      role: TEXT_ROLE,
+      ...(position.text ? { text: position.text } : {}),
+      states: currentState(element)
+    };
+  }
+  const node = await accessibilityNode(cdp, position.backendNodeId);
+  const role = roleOf(node);
+  const name = textValue(node?.name);
+  const level = role === "heading" && node ? propertyValue(node, "level") : undefined;
   return {
-    key: element.nodePath,
-    nodePath: element.nodePath,
-    tagName: element.tagName,
+    // The same element is read as it begins and as it ends ("end of list"), so the phrase is part
+    // of where the reader is.
+    key: `${element.nodePath}#${position.phrase.startsWith("end of ") ? "end" : "start"}`,
+    ...at,
     role,
     ...(name ? { name } : {}),
-    ...(text ? { text } : {}),
     ...(typeof level === "number" ? { level } : {}),
-    states: itemStates(node, element),
-    ...(element.visualBounds ? { visualBounds: element.visualBounds } : {})
+    states: node ? itemStates(node, element) : currentState(element)
   };
 }
 
-function spokenText(
-  node: AccessibilityNode,
-  byId: Map<string, AccessibilityNode>
-): string | undefined {
-  const parts: string[] = [];
-  const visit = (current: AccessibilityNode | undefined): void => {
-    if (!current) return;
-    if (current.role?.value === "StaticText") {
-      if (!current.ignored && typeof current.name?.value === "string")
-        parts.push(current.name.value);
-      return;
-    }
-    current.childIds?.forEach((id) => visit(byId.get(id)));
-  };
-  node.childIds?.forEach((id) => visit(byId.get(id)));
-  const text = parts.join("").replace(/\s+/g, " ").trim();
-  return text ? text.slice(0, 240) : undefined;
+async function roleAt(cdp: CdpSession, position: Position): Promise<string> {
+  if (position.isText || position.backendNodeId === undefined) return TEXT_ROLE;
+  return roleOf(await accessibilityNode(cdp, position.backendNodeId));
+}
+
+function roleOf(node: AccessibilityNode | undefined): string {
+  const role = textValue(node?.role) ?? "generic";
+  return INTERNAL_ROLES.get(role) ?? role;
+}
+
+/** The browser's accessibility node for a DOM node. */
+async function accessibilityNode(
+  cdp: CdpSession,
+  backendNodeId: number
+): Promise<AccessibilityNode | undefined> {
+  const { nodes } = (await cdp.send("Accessibility.getPartialAXTree", {
+    backendNodeId,
+    fetchRelatives: false
+  })) as { nodes: AccessibilityNode[] };
+  return nodes.find((node) => node.backendDOMNodeId === backendNodeId) ?? nodes[0];
 }
 
 function itemStates(node: AccessibilityNode, element: CapturedElement): string[] {
@@ -526,14 +509,61 @@ function textValue(value: AccessibilityValue | undefined): string | undefined {
   return text || undefined;
 }
 
-/** The DOM node that has focus, found the way the page sees it: document.activeElement. */
-async function activeElementNode(session: CdpSession): Promise<number | undefined> {
-  const { result } = (await session.send("Runtime.evaluate", {
-    expression: "document.activeElement"
-  })) as { result: { objectId?: string } };
+function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
+  return {
+    ...item,
+    states: [...item.states],
+    ...(item.visualBounds ? { visualBounds: { ...item.visualBounds } } : {})
+  };
+}
+
+function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
+  return {
+    sequence: entry.sequence,
+    timestamp: entry.timestamp,
+    command: entry.command,
+    announcement: entry.announcement,
+    ...(entry.item ? { item: cloneItem(entry.item) } : {}),
+    ...(entry.domFocusBefore ? { domFocusBefore: entry.domFocusBefore } : {}),
+    ...(entry.domFocusAfter ? { domFocusAfter: entry.domFocusAfter } : {}),
+    focusMoved: entry.focusMoved
+  };
+}
+
+/**
+ * Evaluates script in the page over the DevTools protocol. It runs as the protocol's own code, so
+ * the page's Content-Security-Policy does not apply to it.
+ */
+async function evaluate<Value>(cdp: CdpSession, expression: string): Promise<Value> {
+  const { result, exceptionDetails } = (await cdp.send("Runtime.evaluate", {
+    expression,
+    awaitPromise: true,
+    returnByValue: true
+  })) as {
+    result: { value?: Value };
+    exceptionDetails?: { exception?: { description?: string }; text?: string };
+  };
+  if (exceptionDetails) {
+    throw new Error(
+      `Virtual screen reader failed in the page: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`
+    );
+  }
+  return result.value as Value;
+}
+
+/** The DOM node an expression evaluates to, as the backend id the DOM snapshot uses. */
+async function backendNodeOf(cdp: CdpSession, expression: string): Promise<number | undefined> {
+  const { result } = (await cdp.send("Runtime.evaluate", { expression })) as {
+    result: { objectId?: string };
+  };
   if (!result.objectId) return undefined;
-  const { node } = (await session.send("DOM.describeNode", { objectId: result.objectId })) as {
+  const { node } = (await cdp.send("DOM.describeNode", { objectId: result.objectId })) as {
     node: { backendNodeId: number };
   };
   return node.backendNodeId;
+}
+
+/** The DOM node that has focus, found the way the page sees it: document.activeElement. */
+async function activeElementNode(cdp: CdpSession): Promise<number | undefined> {
+  return backendNodeOf(cdp, "document.activeElement");
 }

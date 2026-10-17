@@ -14,25 +14,20 @@ export interface ReaderComparison {
     platform: string;
     release: string;
     guidepup: string;
-    guidepupVirtualScreenReader: string;
+    /** What decides what AEE's virtual reader says: Guidepup's virtual screen reader, and its version. */
+    speechEngine: string;
   };
-  /** What AEE's own virtual screen reader said. */
+  /** What AEE's virtual screen reader said. */
   virtual: string[];
-  /** What Guidepup's virtual screen reader said. */
-  guidepupVirtual: string[];
   /** What the real screen reader on this machine said. */
   real: { reader: string; phrases: string[] };
 }
 
-const packageVersion = (name: string) =>
-  (
-    JSON.parse(readFileSync(require.resolve(`${name}/package.json`), "utf8")) as {
-      version: string;
-    }
-  ).version;
-
-export const GUIDEPUP_VERSION = packageVersion("@guidepup/guidepup");
-export const GUIDEPUP_VIRTUAL_VERSION = packageVersion("@guidepup/virtual-screen-reader");
+export const GUIDEPUP_VERSION = (
+  JSON.parse(readFileSync(require.resolve("@guidepup/guidepup/package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
 
 const REAL_READERS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: "VoiceOver",
@@ -46,54 +41,16 @@ export function realReaderName(platform: NodeJS.Platform = process.platform) {
 }
 
 /** AEE's virtual screen reader reads the page from top to bottom, one item per step. */
-export async function readWithVirtualReader(page: Page): Promise<string[]> {
+export async function readWithVirtualReader(
+  page: Page
+): Promise<{ phrases: string[]; speechEngine: string }> {
   const reader = createPortableVirtualScreenReader(page);
   const phrases: string[] = [];
   for (let entry = await reader.command("start"); entry.item;) {
     phrases.push(entry.announcement);
     entry = await reader.command("next-item");
   }
-  return phrases;
-}
-
-/** More steps than any page this command reads; Guidepup's reader stops at the end anyway. */
-const GUIDEPUP_VIRTUAL_MAX_STEPS = 500;
-
-/**
- * Guidepup's virtual screen reader reads the page from top to bottom. It runs inside the page, so
- * the page is reloaded first and the reader leaves no trace on what the other readers read.
- */
-export async function readWithGuidepupVirtualReader(page: Page): Promise<string[]> {
-  await page.reload();
-  const bundle = readFileSync(
-    require.resolve("@guidepup/virtual-screen-reader/browser.js"),
-    "utf8"
-  );
-  return page.evaluate(
-    async ({ source, maxSteps }) => {
-      // The bundle is an ES module, so it is imported from a blob URL.
-      const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-      const { virtual } = (await import(url)) as {
-        virtual: {
-          start(options: { container: Element }): Promise<void>;
-          next(): Promise<void>;
-          lastSpokenPhrase(): Promise<string>;
-          spokenPhraseLog(): Promise<string[]>;
-          stop(): Promise<void>;
-        };
-      };
-      URL.revokeObjectURL(url);
-      await virtual.start({ container: document.body });
-      for (let step = 0; step < maxSteps; step++) {
-        await virtual.next();
-        if ((await virtual.lastSpokenPhrase()) === "end of document") break;
-      }
-      const phrases = await virtual.spokenPhraseLog();
-      await virtual.stop();
-      return phrases;
-    },
-    { source: bundle, maxSteps: GUIDEPUP_VIRTUAL_MAX_STEPS }
-  );
+  return { phrases, speechEngine: (await reader.snapshot()).speechEngine };
 }
 
 /**
@@ -230,44 +187,36 @@ const percent = ({ compared, heard }: Agreement) =>
   compared === 0 ? "—" : `${Math.round((heard / compared) * 100)}%`;
 
 /**
- * All three transcripts as Markdown: what ran where, how much of the real reader each virtual
- * reader also says, then one row per step in reading order. Rows line up by step, not by element,
- * since each reader groups a page's content its own way.
+ * Both transcripts as Markdown: what ran where, how much of the real reader the virtual reader also
+ * says, then one row per step in reading order. Rows line up by step, not by element, since each
+ * reader groups a page's content its own way.
  */
-export function sideBySide(comparison: ReaderComparison) {
-  const { page, recordedAt, environment, virtual, guidepupVirtual, real } = comparison;
-  const aee = agreement(real.phrases, virtual);
-  const guidepup = agreement(real.phrases, guidepupVirtual);
+export function sideBySide({ page, recordedAt, environment, virtual, real }: ReaderComparison) {
+  const score = agreement(real.phrases, virtual);
   const rows = Array.from(
-    { length: Math.max(virtual.length, guidepupVirtual.length, real.phrases.length) },
-    (_, step) =>
-      `| ${step + 1} | ${cell(virtual[step])} | ${cell(guidepupVirtual[step])} | ${cell(real.phrases[step])} |`
+    { length: Math.max(virtual.length, real.phrases.length) },
+    (_, step) => `| ${step + 1} | ${cell(virtual[step])} | ${cell(real.phrases[step])} |`
   );
-  const missedList = (name: string, { missed }: Agreement) => [
-    `${real.reader} said, and ${name} did not:`,
-    "",
-    ...(missed.length ? missed.map((phrase) => `- ${cell(phrase)}`) : ["- nothing"]),
-    ""
-  ];
   return [
     `# What each screen reader said: ${page}`,
     "",
-    `Recorded ${recordedAt} on ${environment.platform} ${environment.release}, with Guidepup ${environment.guidepup} and Guidepup's virtual screen reader ${environment.guidepupVirtualScreenReader}.`,
+    `Recorded ${recordedAt} on ${environment.platform} ${environment.release}, with Guidepup ${environment.guidepup}; AEE's virtual reader speaks through ${environment.speechEngine}.`,
     "",
     `| Reader | Announcements | Says what ${real.reader} says |`,
     "| --- | ---: | ---: |",
-    `| AEE's virtual screen reader | ${virtual.length} | ${percent(aee)} (${aee.heard} of ${aee.compared}) |`,
-    `| Guidepup's virtual screen reader | ${guidepupVirtual.length} | ${percent(guidepup)} (${guidepup.heard} of ${guidepup.compared}) |`,
+    `| AEE's virtual screen reader | ${virtual.length} | ${percent(score)} (${score.heard} of ${score.compared}) |`,
     `| ${real.reader} | ${real.phrases.length} | |`,
     "",
-    `A ${real.reader} phrase counts when a virtual reader has a phrase with every word of it that the page says; each reader's own words ("heading", "level", "end of list", a list position) and the order do not count. A rough measure; the table below is the evidence.`,
+    `A ${real.reader} phrase counts when the virtual reader has a phrase with every word of it that the page says; each reader's own words ("heading", "level", "end of list", a list position) and the order do not count. A rough measure; the table below is the evidence.`,
     "",
-    ...missedList("AEE's virtual screen reader", aee),
-    ...missedList("Guidepup's virtual screen reader", guidepup),
+    `${real.reader} said, and AEE's virtual screen reader did not:`,
+    "",
+    ...(score.missed.length ? score.missed.map((phrase) => `- ${cell(phrase)}`) : ["- nothing"]),
+    "",
     "Rows line up by step, not by element: each reader groups a page's content its own way.",
     "",
-    `| Step | AEE's virtual screen reader | Guidepup's virtual screen reader | ${real.reader} |`,
-    "| ---: | --- | --- | --- |",
+    `| Step | AEE's virtual screen reader | ${real.reader} |`,
+    "| ---: | --- | --- |",
     ...rows,
     ""
   ].join("\n");

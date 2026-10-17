@@ -299,6 +299,37 @@ test("screen-reader judge fails text the reader reads that the tree does not hol
   assert.equal(judgment?.findings?.[0]?.ruleId, "portable-reader-semantic-agreement");
 });
 
+test("screen-reader judge leaves undecided an announcement that disagrees with the browser's name", async () => {
+  const judge = createDefaultJudgePlugins(["screen-reader"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-reader-after",
+      runId: "run-1",
+      observerId: "virtual-screen-reader",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        newEntryCount: 1,
+        focusMovedCount: 0,
+        lastAnnouncement: "button, Pay",
+        lastItem: {
+          role: "button",
+          name: "Pay invoice",
+          nodePath: "main > button",
+          visualBounds: { x: 20, y: 40, width: 120, height: 32 }
+        }
+      }
+    },
+    ...createSemanticSupportRecords([{ role: "button", name: "pay invoice" }])
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /disagree on its accessible name/);
+});
+
 test("screen-reader judge returns unknown when same-checkpoint visual evidence is absent", async () => {
   const judge = createDefaultJudgePlugins(["screen-reader"])[0];
   const records = [

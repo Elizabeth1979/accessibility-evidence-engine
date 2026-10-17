@@ -16,8 +16,7 @@ export default defineConfig({
   timeout: 10 * 60_000,
   projects: [
     { name: "record", testMatch: "*.record.ts" },
-    // A screen reader reads a window it can see. Guidepup's virtual reader is imported into the page
-    // as a module, which a page's Content-Security-Policy would refuse.
-    { name: "compare", testMatch: "*.compare.ts", use: { headless: false, bypassCSP: true } }
+    // A screen reader reads a window it can see.
+    { name: "compare", testMatch: "*.compare.ts", use: { headless: false } }
   ]
 });

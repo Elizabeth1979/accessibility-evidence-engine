@@ -7,8 +7,6 @@ import { screenReaderTest as test } from "@guidepup/playwright";
 
 import {
   GUIDEPUP_VERSION,
-  GUIDEPUP_VIRTUAL_VERSION,
-  readWithGuidepupVirtualReader,
   readWithRealReader,
   readWithVirtualReader,
   realReaderName,
@@ -30,12 +28,10 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   screenReader
 }) => {
   await browserPage.goto(url);
-  const virtual = await readWithVirtualReader(browserPage);
+  const { phrases: virtual, speechEngine } = await readWithVirtualReader(browserPage);
 
   await screenReader.navigateToWebContent();
   const phrases = await readWithRealReader(screenReader, virtual.length + EXTRA_REAL_STEPS);
-  // Last, on a reloaded page: Guidepup's virtual reader runs inside the page.
-  const guidepupVirtual = await readWithGuidepupVirtualReader(browserPage);
 
   await writeComparison(dir, {
     page,
@@ -44,13 +40,12 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
       platform: process.platform,
       release: os.release(),
       guidepup: GUIDEPUP_VERSION,
-      guidepupVirtualScreenReader: GUIDEPUP_VIRTUAL_VERSION
+      speechEngine
     },
     virtual,
-    guidepupVirtual,
     real: { reader: realReaderName(), phrases }
   });
   console.log(
-    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, Guidepup's virtual reader ${guidepupVirtual.length}, ${realReaderName()} ${phrases.length}.`
+    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length}.`
   );
 });

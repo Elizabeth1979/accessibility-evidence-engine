@@ -113,8 +113,9 @@ test("an existing spec with only its import swapped produces findings", async ()
   expect(sweep.isolation).toBe("test-page");
   expect(sweep.tabStops.length).toBeGreaterThan(0);
   // The reader reads from the top to the end of the page, so every move lands on something,
-  // including "Buy", a clickable box with no role that a screen reader reads as plain text.
-  expect(shop.synthesis.reader).toEqual({ commands: 7, passed: 7, failed: 0, unknown: 0 });
+  // including "Buy", a clickable box with no role that a screen reader reads as plain text, and
+  // where each landmark ends.
+  expect(shop.synthesis.reader).toEqual({ commands: 9, passed: 9, failed: 0, unknown: 0 });
   await expect(
     readFile(path.join(path.dirname(shopComment!), "aee-report.html"), "utf8")
   ).resolves.toContain("Read from the top, item by item: 12 items or the end of the page");

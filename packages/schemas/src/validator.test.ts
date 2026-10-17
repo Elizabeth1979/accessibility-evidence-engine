@@ -183,7 +183,8 @@ test("validateSchema accepts a portable virtual screen-reader transcript", () =>
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.1.0",
+    engineVersion: "0.2.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
@@ -194,7 +195,7 @@ test("validateSchema accepts a portable virtual screen-reader transcript", () =>
         sequence: 1,
         timestamp: "2026-09-13T00:00:00.000Z",
         command: "next-heading",
-        announcement: "Invoices, heading, level 1",
+        announcement: "heading, Invoices, level 1",
         item: {
           key: "main > h1",
           nodePath: "main > h1",
@@ -217,7 +218,8 @@ test("validateSchema rejects a virtual transcript that claims physical AT fideli
   const result = validateSchema("virtualScreenReaderTranscript", {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.1.0",
+    engineVersion: "0.2.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: true,
@@ -235,13 +237,14 @@ test("validateSchema accepts an isolated virtual screen-reader lane", () => {
     sequence: 1,
     timestamp: "2026-09-14T00:00:01.000Z",
     command: "next-heading",
-    announcement: "Invoices, heading, level 1",
+    announcement: "heading, Invoices, level 1",
     focusMoved: false
   };
   const transcript = {
     schemaVersion: "0.1.0",
     engine: "aee-portable-virtual-screen-reader",
-    engineVersion: "0.1.0",
+    engineVersion: "0.2.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
     mode: "guide",
     fidelity: "semantic-simulation",
     physicalAssistiveTechnology: false,
