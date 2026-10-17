@@ -621,8 +621,11 @@ test("portable virtual reader records guide navigation without moving DOM focus"
         expect.objectContaining({
           command: "next-heading",
           announcement: "heading, Invoices, level 1",
-          domFocusBefore: "#pay",
-          domFocusAfter: "#pay",
+          domFocusBefore: expect.objectContaining({
+            nodePath: "#pay",
+            frameId: expect.any(String)
+          }),
+          domFocusAfter: expect.objectContaining({ nodePath: "#pay", frameId: expect.any(String) }),
           focusMoved: false
         })
       ]

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
+  focusPlace,
   frameNotes,
   READER_NOTES_LEGEND,
   spokenRoleOf,
@@ -84,6 +85,21 @@ export interface VirtualScreenReaderItem {
   };
 }
 
+/**
+ * The element that has DOM focus, named as an item names the element it is on. When focus is
+ * inside a frame it is the focused element in that frame's own document, not the `<iframe>`.
+ */
+export interface VirtualScreenReaderFocus {
+  /** Its path in the document that holds it. */
+  nodePath: string;
+  /** The DOM node, as this browser session numbers it in its frame's process. */
+  backendDOMNodeId: number;
+  /** The frame whose document holds it. */
+  frameId: string;
+  /** The `<iframe>` elements it is inside, outermost first. Absent in the top document. */
+  framePath?: string[];
+}
+
 /** A frame the reader went into or came out of. */
 export interface VirtualScreenReaderFrame {
   /** The frame's id: the `frameId` of every item read inside it. */
@@ -111,8 +127,11 @@ export interface VirtualScreenReaderEntry {
   /** The frames this command went into, outermost first. */
   framesEntered?: VirtualScreenReaderFrame[];
   item?: VirtualScreenReaderItem;
-  domFocusBefore?: string;
-  domFocusAfter?: string;
+  /** The element that had DOM focus before the command, in whichever frame holds it. */
+  domFocusBefore?: VirtualScreenReaderFocus;
+  /** The element that had DOM focus after the command, in whichever frame holds it. */
+  domFocusAfter?: VirtualScreenReaderFocus;
+  /** Whether DOM focus is on another element after the command, in any frame. */
   focusMoved: boolean;
 }
 
@@ -153,7 +172,7 @@ export function renderPortableVirtualScreenReaderTranscript(
       lines.push(...frameNotes(entry));
       lines.push(`${entry.sequence}. ${entry.command}: ${entry.announcement}`);
       lines.push(
-        `   DOM focus: ${entry.domFocusBefore ?? "none"} -> ${entry.domFocusAfter ?? "none"}; moved: ${entry.focusMoved ? "yes" : "no"}`
+        `   DOM focus: ${focusPlace(entry.domFocusBefore)} -> ${focusPlace(entry.domFocusAfter)}; moved: ${entry.focusMoved ? "yes" : "no"}`
       );
     }
   }
@@ -320,21 +339,18 @@ export function createPortableVirtualScreenReader(
     async command(command) {
       return read(async (reading) => {
         const top = mainFrameOf(reading.page);
-        const focusBefore = await activeElementNode(reading, top);
+        const focusBefore = await focusedNode(reading);
         if (command === "start" || !forward(command)) readInThisPass = new Set();
         const framesBefore = [...cursor.frames];
         const position = await move(reading, command, { record: readInThisPass });
+        // Focus is read before the DOM snapshot, so the snapshot holds the element it is on.
+        const focusAfter = await focusedNode(reading);
         const dom = await capturePageDom(reading.page);
         const item = position && (await itemAt(reading.page, dom, position));
         if (item) currentItem = item;
         const crossed = await framesCrossed(reading.page, dom, framesBefore, cursor.frames);
-        const focusAfter = await activeElementNode(reading, top);
-        const focusPath = (id: number | undefined) =>
-          id === undefined
-            ? undefined
-            : dom.element({ frameId: top.frameId, backendNodeId: id })?.nodePath;
-        const domFocusBefore = focusPath(focusBefore);
-        const domFocusAfter = focusPath(focusAfter);
+        const domFocusBefore = focusAt(dom, focusBefore);
+        const domFocusAfter = focusAt(dom, focusAfter);
         const entry: VirtualScreenReaderEntry = {
           sequence: entries.length + 1,
           timestamp: new Date().toISOString(),
@@ -344,7 +360,7 @@ export function createPortableVirtualScreenReader(
           ...(item ? { item } : {}),
           ...(domFocusBefore ? { domFocusBefore } : {}),
           ...(domFocusAfter ? { domFocusAfter } : {}),
-          focusMoved: focusBefore !== focusAfter
+          focusMoved: nodeKey(focusBefore) !== nodeKey(focusAfter)
         };
         entries.push(entry);
         return cloneEntry(entry);
@@ -451,14 +467,16 @@ function innerFrame({ page, cursor }: Reading): PageFrame {
   return frameById(page, cursor.frames.at(-1) ?? mainFrameOf(page).frameId);
 }
 
-/** The frame whose element the reader is on, when it is on one. */
-function frameHeldAt(page: PageSessions, position: Position | undefined): PageFrame | undefined {
-  return position?.backendNodeId === undefined
+/** The frame whose element the reader, or focus, is on, when it is on one. */
+function frameHeldAt(
+  page: PageSessions,
+  node: Pick<Position, "frameId" | "backendNodeId"> | undefined
+): PageFrame | undefined {
+  return node?.backendNodeId === undefined
     ? undefined
     : page.frames.find(
         (frame) =>
-          frame.parentFrameId === position.frameId &&
-          frame.ownerBackendNodeId === position.backendNodeId
+          frame.parentFrameId === node.frameId && frame.ownerBackendNodeId === node.backendNodeId
       );
 }
 
@@ -862,6 +880,10 @@ function cloneFrame(frame: VirtualScreenReaderFrame): VirtualScreenReaderFrame {
   return { ...frame, framePath: [...frame.framePath] };
 }
 
+function cloneFocus(focus: VirtualScreenReaderFocus): VirtualScreenReaderFocus {
+  return { ...focus, ...(focus.framePath ? { framePath: [...focus.framePath] } : {}) };
+}
+
 function cloneItem(item: VirtualScreenReaderItem): VirtualScreenReaderItem {
   return {
     ...item,
@@ -881,8 +903,8 @@ function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
     ...(entry.framesLeft ? { framesLeft: entry.framesLeft.map(cloneFrame) } : {}),
     ...(entry.framesEntered ? { framesEntered: entry.framesEntered.map(cloneFrame) } : {}),
     ...(entry.item ? { item: cloneItem(entry.item) } : {}),
-    ...(entry.domFocusBefore ? { domFocusBefore: entry.domFocusBefore } : {}),
-    ...(entry.domFocusAfter ? { domFocusAfter: entry.domFocusAfter } : {}),
+    ...(entry.domFocusBefore ? { domFocusBefore: cloneFocus(entry.domFocusBefore) } : {}),
+    ...(entry.domFocusAfter ? { domFocusAfter: cloneFocus(entry.domFocusAfter) } : {}),
     focusMoved: entry.focusMoved
   };
 }
@@ -957,10 +979,55 @@ async function nodeOf(
   return node.backendNodeId;
 }
 
-/** The DOM node that has focus in the top document, found the way the page sees it. */
-async function activeElementNode(reading: Reading, top: PageFrame): Promise<number | undefined> {
-  const document = await reading.document(top);
-  return document
-    ? nodeOf(top.session, document, "function () { return document.activeElement; }")
-    : undefined;
+/**
+ * The element focus is on in the frame's document, found the way the page sees it: its
+ * `activeElement`, and on into each open shadow root's, as the focus observer follows them.
+ */
+const ACTIVE_ELEMENT = `function () {
+  let element = document.activeElement;
+  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+  return element;
+}`;
+
+/**
+ * The element that has DOM focus, in whichever frame's document holds it. A document whose focus
+ * is in one of its frames names the frame's element as its active element (HTML's
+ * `activeElement`), so focus is followed into that frame's own document, through the frame's own
+ * session as the reader reads it, so a cross-site frame in another process is followed too. A
+ * frame that loses focus loses its own active element, so only the frames that hold focus are
+ * followed. Undefined when no element has focus.
+ */
+async function focusedNode(reading: Reading): Promise<DomNodeRef | undefined> {
+  let focused: DomNodeRef | undefined;
+  for (let frame: PageFrame | undefined = mainFrameOf(reading.page); frame;) {
+    const document = await reading.document(frame);
+    const backendNodeId = document
+      ? await nodeOf(frame.session, document, ACTIVE_ELEMENT)
+      : undefined;
+    if (backendNodeId === undefined) break;
+    focused = { frameId: frame.frameId, backendNodeId };
+    frame = frameHeldAt(reading.page, focused);
+  }
+  return focused;
+}
+
+/** The focused element as the DOM snapshot names it, the way an item names its element. */
+function focusAt(
+  dom: CapturedDom,
+  node: DomNodeRef | undefined
+): VirtualScreenReaderFocus | undefined {
+  const element = node && dom.element(node);
+  return (
+    element && {
+      nodePath: element.nodePath,
+      backendDOMNodeId: element.backendNodeId,
+      frameId: element.frameId,
+      ...(element.framePath.length ? { framePath: [...element.framePath] } : {})
+    }
+  );
+}
+
+/** A DOM node across frames: node ids repeat in frames rendered in other processes. */
+function nodeKey(node: DomNodeRef | undefined): string | undefined {
+  return node && `${node.frameId}\u0000${node.backendNodeId}`;
 }

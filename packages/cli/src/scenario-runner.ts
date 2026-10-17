@@ -20,6 +20,7 @@ import {
   type ModelImage,
   type ModelProvider
 } from "@aee/ai-fixes";
+import { focusPlace, readerFocusOf } from "@aee/core";
 import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
@@ -1370,8 +1371,8 @@ function readerEntryView(entry: Record<string, unknown>): ReaderEntryView {
     name: optionalStringField(item, "name"),
     level: optionalNumberField(item, "level"),
     nodePath: optionalStringField(item, "nodePath"),
-    focusBefore: stringField(entry, "domFocusBefore", "unknown"),
-    focusAfter: stringField(entry, "domFocusAfter", "unknown"),
+    focusBefore: focusPlace(readerFocusOf(entry.domFocusBefore)),
+    focusAfter: focusPlace(readerFocusOf(entry.domFocusAfter)),
     focusMoved: entry.focusMoved === true,
     visualBounds:
       bounds && ["x", "y", "width", "height"].every((key) => typeof bounds[key] === "number")
