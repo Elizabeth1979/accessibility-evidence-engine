@@ -1472,7 +1472,8 @@ type TreeComparison =
   | { kind: "different"; differences: string[] };
 
 /**
- * Finds the node the reader read in the checkpoint's accessibility tree by its DOM node, and
+ * Finds the node the reader read in the checkpoint's accessibility tree by its DOM node and the
+ * frame holding it (node ids repeat across frames rendered in other processes), and
  * compares what the reader recorded about it with what the tree says: role, name, description,
  * value and every state and property, and whether the tree leaves it out.
  */
@@ -1482,8 +1483,12 @@ function compareWithCheckpointNode(
 ): TreeComparison {
   const nodeId = getNumericField(target, "backendDOMNodeId");
   if (nodeId === undefined || !Array.isArray(nodes)) return { kind: "unjoinable" };
+  const frameId = getStringField(target, "frameId");
   const node: unknown = nodes.find(
-    (candidate) => isRecord(candidate) && candidate.backendDOMNodeId === nodeId
+    (candidate) =>
+      isRecord(candidate) &&
+      candidate.backendDOMNodeId === nodeId &&
+      (frameId === undefined || candidate.frameId === undefined || candidate.frameId === frameId)
   );
   if (!isRecord(node)) return { kind: "missing" };
 

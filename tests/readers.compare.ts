@@ -31,7 +31,8 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   const { phrases: virtual, speechEngine } = await readWithVirtualReader(browserPage);
 
   await screenReader.navigateToWebContent();
-  const phrases = await readWithRealReader(screenReader, virtual.length + EXTRA_REAL_STEPS);
+  const maxSteps = virtual.length + EXTRA_REAL_STEPS;
+  const { phrases, stoppedBecause } = await readWithRealReader(screenReader, maxSteps);
 
   await writeComparison(dir, {
     page,
@@ -43,9 +44,9 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
       speechEngine
     },
     virtual,
-    real: { reader: realReaderName(), phrases }
+    real: { reader: realReaderName(), phrases, stoppedBecause, maxSteps }
   });
   console.log(
-    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length}.`
+    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length} (stopped: ${stoppedBecause}).`
   );
 });
