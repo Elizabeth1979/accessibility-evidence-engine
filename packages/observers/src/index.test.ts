@@ -231,8 +231,8 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
         timestamp: "2026-09-13T00:00:00.000Z",
         command: "next-heading",
         announcement: "heading, Invoices, level 1",
-        domFocusBefore: "#pay",
-        domFocusAfter: "#pay",
+        domFocusBefore: { nodePath: "#pay", backendDOMNodeId: 7, frameId: "frame-top" },
+        domFocusAfter: { nodePath: "#pay", backendDOMNodeId: 7, frameId: "frame-top" },
         focusMoved: false
       }
     ] as Array<Record<string, unknown>>
@@ -257,14 +257,21 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
 
     await observer.setup!(context);
     const [before] = await observer.captureBefore!(context);
+    // Focus on a button inside a frame is named by the frame element and the button's own path.
+    const inBilling = {
+      nodePath: "button",
+      backendDOMNodeId: 4,
+      frameId: "frame-billing",
+      framePath: ["#billing"]
+    };
     transcript.entries.push({
       sequence: 2,
       timestamp: "2026-09-13T00:00:01.000Z",
       command: "next-control",
       announcement: "Pay, button",
       framesLeft: [{ frameId: "frame-billing", framePath: ["#billing"], name: "Billing" }],
-      domFocusBefore: "#pay",
-      domFocusAfter: "#pay",
+      domFocusBefore: inBilling,
+      domFocusAfter: inBilling,
       focusMoved: false
     });
     const [after] = await observer.captureAfter!(context);
@@ -288,6 +295,10 @@ test("createVirtualScreenReaderObserver writes canonical JSON and readable text"
     assert.match(
       await readFile(textPath, "utf8"),
       /\nAEE: left frame Billing\n2\. next-control: Pay, button\n/
+    );
+    assert.match(
+      await readFile(textPath, "utf8"),
+      /\n {3}DOM focus: #billing >>> button -> #billing >>> button; moved: no\n/
     );
   } finally {
     await rm(artifactDir, { recursive: true, force: true });

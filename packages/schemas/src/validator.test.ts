@@ -297,12 +297,46 @@ test("validateSchema accepts a transcript step into a frame, with the frames it 
           frameId: "frame-shipping",
           framePath: ["#shipping"]
         },
-        focusMoved: false
+        domFocusBefore: { nodePath: "#pay", backendDOMNodeId: 9, frameId: "frame-top" },
+        domFocusAfter: {
+          nodePath: "body > button",
+          backendDOMNodeId: 9,
+          frameId: "frame-billing",
+          framePath: ["#billing"]
+        },
+        focusMoved: true
       }
     ]
   });
 
   assert.equal(result.valid, true, result.errors.join("; "));
+});
+
+test("validateSchema rejects DOM focus named only by a path, with no frame", () => {
+  const result = validateSchema("virtualScreenReaderTranscript", {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.3.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.32.1",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-10-17T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-10-17T00:00:00.000Z",
+        command: "next-item",
+        announcement: "button, Pay now",
+        domFocusBefore: "#billing",
+        focusMoved: false
+      }
+    ]
+  });
+
+  assert.equal(result.valid, false);
+  assert.match(result.errors.join(" "), /domFocusBefore must be object/);
 });
 
 test("validateSchema accepts an image the tree leaves out, with Chrome's reasons", () => {

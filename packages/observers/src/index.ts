@@ -2,8 +2,10 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  focusPlace,
   frameNotes,
   READER_NOTES_LEGEND,
+  readerFocusOf,
   redactUrl,
   type AccessibilityChanges,
   type AccessibilityNodeRef,
@@ -1141,8 +1143,8 @@ function renderVirtualScreenReaderTranscript(transcript: Record<string, unknown>
       const sequence = typeof entry.sequence === "number" ? entry.sequence : index + 1;
       const command = readString(entry.command) ?? "unknown-command";
       const announcement = readString(entry.announcement) ?? "";
-      const focusBefore = readString(entry.domFocusBefore) ?? "none";
-      const focusAfter = readString(entry.domFocusAfter) ?? "none";
+      const focusBefore = focusPlace(readerFocusOf(entry.domFocusBefore));
+      const focusAfter = focusPlace(readerFocusOf(entry.domFocusAfter));
       lines.push(
         ...frameNotes({
           framesLeft: readFrameCrossings(entry.framesLeft),

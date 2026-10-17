@@ -515,3 +515,115 @@ test("a frame inside a frame is read in place, and an empty frame is stepped ove
     await server.close();
   }
 });
+
+test("DOM focus names the focused control inside a cross-site frame, not the frame", async ({
+  page,
+  context
+}) => {
+  const { server, cross } = await framedPage(page);
+  try {
+    await cross.locator("button").focus();
+    const reader = createPortableVirtualScreenReader(page);
+    const entry = await reader.command("start");
+    const { frames, nodes } = await withPageSessions(context, page, fetchAccessibilityTree);
+    const other = frames!.find(({ url }) => url.includes("localhost"))!;
+
+    // Before, focus was read in the top document only, which names the <iframe>: "#cross".
+    const inCross = {
+      nodePath: "html > body > button",
+      backendDOMNodeId: expect.any(Number),
+      frameId: other.frameId,
+      framePath: ["#cross"]
+    };
+    expect(entry).toEqual(
+      expect.objectContaining({
+        domFocusBefore: inCross,
+        domFocusAfter: inCross,
+        focusMoved: false
+      })
+    );
+    // The focus joins to the button in its own frame's accessibility tree.
+    const focused = nodes.find(
+      ({ frameId, backendDOMNodeId }) =>
+        frameId === entry.domFocusAfter!.frameId &&
+        backendDOMNodeId === entry.domFocusAfter!.backendDOMNodeId
+    );
+    expect({ role: focused?.role?.value, name: focused?.name?.value }).toEqual({
+      role: "button",
+      name: "Pay now"
+    });
+    expect(renderPortableVirtualScreenReaderTranscript(await reader.snapshot())).toContain(
+      "   DOM focus: #cross >>> html > body > button -> #cross >>> html > body > button; moved: no\n"
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("focus moving between two controls inside one frame counts as moved", async ({ page }) => {
+  const { server, cross } = await framedPage(page);
+  try {
+    await cross.locator("button").focus();
+    // The frame moves focus on its own while the reader reads, as a page with a timer can: every
+    // few milliseconds onto a new button, so focus is on another control at any later moment.
+    await cross.evaluate(() => {
+      let step = 0;
+      const timer = setInterval(() => {
+        const button = document.createElement("button");
+        button.textContent = `Step ${++step}`;
+        document.body.append(button);
+        button.focus();
+      }, 5);
+      Object.assign(globalThis, { stopMoving: () => clearInterval(timer) });
+    });
+    const reader = createPortableVirtualScreenReader(page);
+    const entry = await reader.command("start");
+    await cross.evaluate(() => (globalThis as unknown as { stopMoving(): void }).stopMoving());
+
+    // Before, both ends named the <iframe>, so a move inside the frame was "not moved".
+    const before = entry.domFocusBefore!;
+    const after = entry.domFocusAfter!;
+    expect(entry.focusMoved).toBe(true);
+    expect(before.frameId).toBe(after.frameId);
+    expect([before.framePath, after.framePath]).toEqual([["#cross"], ["#cross"]]);
+    expect(before.backendDOMNodeId).not.toBe(after.backendDOMNodeId);
+    expect(before.nodePath).not.toBe(after.nodePath);
+  } finally {
+    await server.close();
+  }
+});
+
+test("DOM focus is followed through a shadow root into the frame it holds", async ({ page }) => {
+  const server = await startHtmlServer((request, response) => {
+    const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Checkout</title></head><body>
+        <h1>Checkout</h1>
+        <payment-widget id="widget"></payment-widget>
+        <script>
+          const root = document.getElementById("widget").attachShadow({ mode: "open" });
+          root.innerHTML = '<iframe id="card" title="Card" src="${otherSite}/card"></iframe>';
+        </script>
+      </body></html>`,
+      "/card": `<!doctype html><html lang="en"><head><title>Card</title></head><body>
+        <label>Card number <input id="number"></label>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    const card = frameAt(page, "localhost", "/card");
+    await card.locator("#number").focus();
+    const entry = await createPortableVirtualScreenReader(page).command("start");
+
+    // The top document names the shadow host as its active element; its shadow root names the
+    // frame, and the frame's own document the field.
+    expect(entry.domFocusAfter).toEqual(
+      expect.objectContaining({ nodePath: "#number", framePath: [expect.stringContaining("card")] })
+    );
+  } finally {
+    await server.close();
+  }
+});
