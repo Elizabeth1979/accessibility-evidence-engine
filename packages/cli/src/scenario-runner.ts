@@ -841,8 +841,13 @@ export async function finishAssessment(input: {
   report.summary.artifacts = aggregate.manifest.summary.total;
   report.completeness.missingArtifacts = aggregate.manifest.summary.missing;
   report.completeness.failedArtifacts = aggregate.manifest.summary.failed;
+  // The aggregate only sees the manifests lanes wrote, so it can add gaps but never clear one: a
+  // lane that failed before writing its manifest is missing from it, not complete.
   report.completeness.status =
-    aggregate.manifest.status === "completed" ? "complete" : "incomplete";
+    aggregate.manifest.status === "completed" &&
+    evidenceIsComplete({ ...report.completeness, diagnostics: report.diagnostics })
+      ? "complete"
+      : "incomplete";
   report.status = report.completeness.status === "complete" ? "completed" : "partial";
   if (report.completeness.status === "incomplete" && report.verdict === "pass") {
     report.verdict = "unknown";
@@ -1083,6 +1088,25 @@ async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
   return { artifacts, completedLanes, missingArtifacts, failedArtifacts };
 }
 
+/**
+ * Evidence is complete only when every planned lane completed, no artifact is missing or failed,
+ * and nothing went wrong.
+ */
+function evidenceIsComplete(input: {
+  plannedLanes: number;
+  completedLanes: number;
+  missingArtifacts: number;
+  failedArtifacts: number;
+  diagnostics: string[];
+}): boolean {
+  return (
+    input.completedLanes === input.plannedLanes &&
+    input.missingArtifacts === 0 &&
+    input.failedArtifacts === 0 &&
+    input.diagnostics.length === 0
+  );
+}
+
 function createIntegratedReport(input: {
   assessmentId: string;
   scenario: AeeScenario;
@@ -1106,11 +1130,7 @@ function createIntegratedReport(input: {
   const failed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "fail").length;
   const unknown = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "unknown").length;
   const passed = input.actions.filter(({ releaseVerdict }) => releaseVerdict === "pass").length;
-  const complete =
-    input.completedLanes === input.plannedLanes &&
-    input.missingArtifacts === 0 &&
-    input.failedArtifacts === 0 &&
-    input.diagnostics.length === 0;
+  const complete = evidenceIsComplete(input);
   // Axe failures arrive through the actions' release verdicts; sweep findings have no action.
   const sweepFailed = input.findings.some(
     (finding) => isSweepFindingKind(String(finding.ruleId)) && !isAdvisoryFinding(finding)

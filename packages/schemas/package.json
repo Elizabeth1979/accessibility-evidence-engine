@@ -28,7 +28,7 @@
     "json"
   ],
   "engines": {
-    "node": ">=22.13"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "repository": {
     "type": "git",
