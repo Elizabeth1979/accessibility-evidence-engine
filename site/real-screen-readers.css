@@ -1,0 +1,305 @@
+/* The real-screen-readers page: a sample comparison table, the run steps, a picture of the
+   Run workflow form and the JAWS note. Colours come from styles.css; amber marks a difference. */
+:root {
+  --amber: #f3c969;
+  --amber-dark: #2f2508;
+}
+
+.readers-title {
+  max-width: 16ch;
+}
+
+.readers-section {
+  display: grid;
+  gap: 2rem;
+  padding: 5rem 0;
+}
+
+.readers-note {
+  max-width: 46rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.readers-run {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.readers-run-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem 1.5rem;
+  padding: 1rem 1.2rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+}
+
+.readers-run-head span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.readers-sample {
+  margin: 0;
+  padding: 0.75rem 1.2rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--amber-dark);
+  color: var(--amber);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.readers-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.readers-run .readers-scroll {
+  border: 0;
+  border-radius: 0;
+}
+
+.readers-scroll:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.readers-table {
+  width: 100%;
+  min-width: 46rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.readers-table caption {
+  padding: 1rem 1.2rem 0.5rem;
+  color: var(--muted);
+  text-align: left;
+}
+
+.readers-table th,
+.readers-table td {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+}
+
+.readers-table thead th {
+  color: var(--accent);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.readers-table td:first-child {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.readers-table .say {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+}
+
+.readers-table .none {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.readers-table mark {
+  padding: 0 0.15em;
+  border-radius: 0.2rem;
+  background: var(--amber-dark);
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.mark {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.mark.same {
+  background: var(--accent-dark);
+  color: var(--accent);
+}
+
+.mark.diff {
+  background: var(--amber-dark);
+  color: var(--amber);
+}
+
+.mark.only {
+  background: var(--danger-dark);
+  color: var(--danger);
+}
+
+.why {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.readers-flow,
+.readers-cards {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.readers-flow {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  counter-reset: step;
+}
+
+.readers-flow li,
+.readers-cards li {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+}
+
+.readers-flow li {
+  counter-increment: step;
+}
+
+.readers-flow li::before {
+  content: counter(step);
+  color: var(--accent);
+  font-size: 1.6rem;
+  font-weight: 760;
+  line-height: 1;
+}
+
+.readers-flow span,
+.readers-cards p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.readers-cards h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.readers-choices {
+  display: grid;
+  grid-template-columns: minmax(0, 24rem) minmax(0, 1fr);
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.readers-form {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 1.2rem;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--surface);
+  font-size: 0.92rem;
+}
+
+.readers-form-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.readers-form-top span {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.readers-form-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.readers-form-row.column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.tick {
+  display: inline-grid;
+  flex: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  place-items: center;
+  border: 1.5px solid var(--muted);
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.tick.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-dark);
+}
+
+.field {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.readers-form-button {
+  justify-self: start;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.45rem;
+  background: var(--accent);
+  color: var(--accent-dark);
+  font-weight: 750;
+}
+
+.readers-form figcaption {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.readers-jaws {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 46rem;
+  padding: 1.2rem 1.4rem;
+  border-left: 4px solid var(--danger);
+  background: var(--danger-dark);
+}
+
+.readers-jaws p {
+  margin: 0;
+}
+
+@media (max-width: 760px) {
+  .readers-choices {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

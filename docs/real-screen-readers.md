@@ -1,6 +1,6 @@
 # Real NVDA on GitHub's Windows computers
 
-**Status: planned, not built yet.** This is audit item A18 in [the home-grown code audit](audits/home-grown-code.md#a18-a-real-screen-reader). The owner decided on 17 October 2026 that it is the next step: "that will be great as a next step". This page holds the plan and the research behind it, checked against each tool's current source and docs on that date.
+**Status: planned, not built yet.** This is audit item A18 in [the home-grown code audit](audits/home-grown-code.md#a18-a-real-screen-reader). The owner decided on 17 October 2026 that it is the next step: "that will be great as a next step". This page holds the plan and the research behind it, checked against each tool's current source and docs on that date. The picture version is on AEE's website as [Real NVDA, next to AEE's reader](https://elizabeth1979.github.io/accessibility-evidence-engine/real-screen-readers.html) (`site/real-screen-readers.html`); its NVDA column is a sample of NVDA's wording until the first real run replaces it.
 
 ## Why
 
