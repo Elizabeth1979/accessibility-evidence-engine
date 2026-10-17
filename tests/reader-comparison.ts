@@ -20,8 +20,17 @@ export interface ReaderComparison {
   };
   /** What AEE's virtual screen reader said. */
   virtual: string[];
-  /** What the real screen reader on this machine said, and why its walk ended. */
-  real: { reader: string; phrases: string[]; stoppedBecause: WalkEnd; maxSteps: number };
+  /**
+   * What the real screen reader on this machine said, why its walk ended, and which attempt this
+   * was: a reader that fails to start is tried again, up to the retries the run allows.
+   */
+  real: {
+    reader: string;
+    phrases: string[];
+    stoppedBecause: WalkEnd;
+    maxSteps: number;
+    attempt?: number;
+  };
 }
 
 /**
@@ -234,16 +243,26 @@ export function summarize(rows: AlignedRow[]) {
 
 const VIRTUAL = "AEE's virtual screen reader";
 
-/** Why the real reader's walk ended, in a sentence. */
-function walkEnd({ reader, phrases, stoppedBecause, maxSteps }: ReaderComparison["real"]) {
+/** Why the real reader's walk ended, in a sentence, and whether it needed a retry to start. */
+function walkEnd({
+  reader,
+  phrases,
+  stoppedBecause,
+  maxSteps,
+  attempt = 1
+}: ReaderComparison["real"]) {
   const read = `${reader} read ${phrases.length} steps`;
+  const retried =
+    attempt > 1
+      ? ` ${reader} started on attempt ${attempt}: ${attempt - 1} ${attempt === 2 ? "retry was" : "retries were"} needed.`
+      : "";
   switch (stoppedBecause) {
     case "silence":
-      return `${read}, then said nothing at the next step, so its walk ended there.`;
+      return `${read}, then said nothing at the next step, so its walk ended there.${retried}`;
     case "repeated":
-      return `${read} and said the same thing three times in a row, which is how it marks the end of the page, so its walk ended there.`;
+      return `${read} and said the same thing three times in a row, which is how it marks the end of the page, so its walk ended there.${retried}`;
     case "step-limit":
-      return `${read} and was stopped at the limit of ${maxSteps} steps, so it may not have reached the end of the page. What it would have said after that is not here: rows near the end that only ${VIRTUAL} said may be page ${reader} never reached.`;
+      return `${read} and was stopped at the limit of ${maxSteps} steps, so it may not have reached the end of the page. What it would have said after that is not here: rows near the end that only ${VIRTUAL} said may be page ${reader} never reached.${retried}`;
   }
 }
 
@@ -295,6 +314,106 @@ export function sideBySide(comparison: ReaderComparison) {
     ...rows.map(
       (row, index) =>
         `| ${index + 1} | ${cell(row.virtual)} | ${cell(row.real)} | ${difference(row, real.reader)} |`
+    ),
+    ""
+  ].join("\n");
+}
+
+/** One row of several readers' alignments merged: AEE's phrase, and each real reader's row. */
+export interface CombinedRow {
+  virtual?: string;
+  /** Each real reader's row, in the order the comparisons were given; absent where it has none. */
+  readers: (AlignedRow | undefined)[];
+}
+
+/**
+ * Several real readers lined up against AEE's virtual reader at once, one machine's comparison
+ * each (NVDA on Windows, VoiceOver on a Mac). Each comparison keeps its own two-way alignment;
+ * this merges them on AEE's phrases, which every comparison holds in the same order. A phrase only
+ * one real reader said gets its own row, where that reader said it. The comparisons must have read
+ * the same page with the same virtual transcript, or there is nothing shared to line up on.
+ */
+export function combine(comparisons: ReaderComparison[]): CombinedRow[] {
+  const [first] = comparisons;
+  if (!first) throw new Error("No comparisons to combine.");
+  for (const { page, virtual, real } of comparisons) {
+    if (page !== first.page || virtual.join("\n") !== first.virtual.join("\n")) {
+      throw new Error(
+        `${real.reader}'s comparison read ${page} with a different virtual transcript from ${first.real.reader}'s (${first.page}); comparisons line up only on the same one.`
+      );
+    }
+  }
+  const sides = comparisons.map(({ real }) => {
+    const before: AlignedRow[][] = first.virtual.map(() => []);
+    const after: AlignedRow[] = [];
+    const paired: AlignedRow[] = [];
+    for (const row of align(real.phrases, first.virtual)) {
+      if (row.virtual !== undefined) paired.push(row);
+      else (before[paired.length] ?? after).push(row);
+    }
+    return { before, paired, after };
+  });
+  const alone = (index: number, row: AlignedRow): CombinedRow => ({
+    readers: comparisons.map((_, other) => (other === index ? row : undefined))
+  });
+  return [
+    ...first.virtual.flatMap((virtual, step) => [
+      ...sides.flatMap(({ before }, index) => before[step]!.map((row) => alone(index, row))),
+      { virtual, readers: sides.map(({ paired }) => paired[step]) }
+    ]),
+    ...sides.flatMap(({ after }, index) => after.map((row) => alone(index, row)))
+  ];
+}
+
+/**
+ * Every real reader's comparison in one Markdown page: what ran where and why each walk ended,
+ * how each reader lines up with AEE's, then one table with a column for AEE's reader and, for each
+ * real reader, what it said and what differs. A reader's cells are empty on a row another reader
+ * said alone.
+ */
+export function readersSideBySide(comparisons: ReaderComparison[]) {
+  const rows = combine(comparisons);
+  const [{ page, environment }] = comparisons as [ReaderComparison];
+  const readers = comparisons.map(({ real }) => real.reader);
+  const counts = comparisons.map(({ real, virtual }) => summarize(align(real.phrases, virtual)));
+  const countRow = (label: string, pick: (count: (typeof counts)[number]) => number) =>
+    `| ${label} | ${counts.map(pick).join(" | ")} |`;
+  return [
+    `# What each screen reader said: ${page}`,
+    "",
+    `AEE's virtual reader speaks through ${environment.speechEngine}.`,
+    "",
+    "| Reader | Where it ran | Announcements |",
+    "| --- | --- | ---: |",
+    `| ${VIRTUAL} | each machine below, the same transcript | ${comparisons[0]!.virtual.length} |`,
+    ...comparisons.map(
+      ({ real, environment: ran, recordedAt }) =>
+        `| ${real.reader} | ${ran.platform} ${ran.release}, Guidepup ${ran.guidepup}, ${recordedAt} | ${real.phrases.length} |`
+    ),
+    "",
+    ...comparisons.flatMap(({ real }) => [walkEnd(real), ""]),
+    "## How they line up",
+    "",
+    `Each row is one thing on the page: AEE's phrase with each real reader's phrase about the same item, or a phrase only one reader said. Two phrases are about the same item when they have at least as many words in common as words that differ. Every word counts, including role and state words such as "button", "link", "not", "checked" and "expanded"; only the order of words within a phrase does not, since each reader orders role, name and state its own way.`,
+    "",
+    `| Rows | ${readers.join(" | ")} |`,
+    `| --- | ${readers.map(() => "---:").join(" | ")} |`,
+    countRow("Same words as AEE's reader", ({ same }) => same),
+    countRow("About the same item, in different words", ({ differ }) => differ),
+    countRow("Only the real reader said it", ({ onlyReal }) => onlyReal),
+    countRow("Only AEE's reader said it", ({ onlyVirtual }) => onlyVirtual),
+    "",
+    "These counts describe how each reader differs from AEE's, not which one is right.",
+    "",
+    `| Row | ${VIRTUAL} | ${readers.map((reader) => `${reader} | What differs from ${reader}`).join(" | ")} |`,
+    `| ---: | --- | ${readers.map(() => "--- | ---").join(" | ")} |`,
+    ...rows.map(
+      ({ virtual, readers: cells }, index) =>
+        `| ${index + 1} | ${cell(virtual)} | ${cells
+          .map(
+            (row, reader) => `${cell(row?.real)} | ${row ? difference(row, readers[reader]!) : ""}`
+          )
+          .join(" | ")} |`
     ),
     ""
   ].join("\n");

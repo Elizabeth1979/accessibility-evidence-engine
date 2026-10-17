@@ -48,7 +48,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | A15 | Reader jump commands (next heading, landmark, control)            | Rebuilt on top of "next"                                       | Guidepup's own `moveToNextHeading` and others                       | Question                          | S–M    |
 | A16 | Colour and contrast maths                                         | Five hand-written copies                                       | `colorjs.io`                                                        | Replace                           | S      |
 | A17 | Red flags on the Page view (empty heading, skipped level, no alt) | Separate checks from axe                                       | axe's `empty-heading`, `heading-order`, `image-alt`                 | Question                          | S      |
-| A18 | Real screen reader                                                | Placeholder only                                               | `@guidepup/guidepup` with NVDA (installed, unused)                  | Decided: next step (not started)  | L      |
+| A18 | Real screen reader                                                | Placeholder only                                               | `@guidepup/guidepup` with NVDA (installed, unused)                  | Built (real screen readers)       | L      |
 | B1  | Compare AEE's reader with a real reader                           | Word-overlap score with role and state words removed           | `diff` (jsdiff) two-way alignment                                   | Replace, and one question         | S      |
 | B2  | Score the AI's suggested names and alt text                       | Word overlap with one fixed answer                             | `promptfoo` rubric or similarity checks                             | Question                          | M      |
 | B3  | Check the test lab's heading outline                              | Tag names (`H1`, `H2`)                                         | Playwright aria snapshots or `getByRole` heading levels             | Replace                           | S      |
@@ -97,7 +97,7 @@ Each of these is a tie or partial evidence, so it needs your call, not a recomme
 **Decided on 17 October 2026.** No work has started on these yet.
 
 - **A10, should the five experimental axe rules run? Yes.** Owner: "yes, why not". Still open: whether their failures block a release or only show as advice (listed below).
-- **A18, real NVDA through Guidepup on a Windows runner: planned as a next step, not started.** Owner: "that will be great as a next step".
+- **A18, real NVDA through Guidepup on a Windows runner: built.** Owner: "that will be great as a next step". The Real screen readers workflow runs it; see [docs/real-screen-readers.md](../real-screen-readers.md).
 
 **Still open:**
 
@@ -569,7 +569,7 @@ AEE's formula matches axe's exactly, so the numbers are right today. This is a m
 
 **Tested alternative.** `@guidepup/guidepup` 0.36.3 is already installed. Its [README](https://github.com/guidepup/guidepup) says it drives NVDA on Windows, Orca on Linux and VoiceOver on macOS. It does not drive JAWS.
 
-**Verdict: decided on 17 October 2026, planned as a next step (not started).** The owner said "that will be great as a next step". Real NVDA output fits the owner's priorities best. It needs a Windows runner, and nothing open drives JAWS.
+**Verdict: decided on 17 October 2026 and built the same day.** The owner said "that will be great as a next step". Real NVDA output fits the owner's priorities best. The Real screen readers workflow runs NVDA on a GitHub Windows runner, and VoiceOver on a Mac runner when ticked, next to AEE's virtual reader ([docs/real-screen-readers.md](../real-screen-readers.md)). Guidepup does not drive JAWS; JAWS's own Remote Command Server speaks W3C AT-Driver and W3C ARIA-AT runs it in CI, but it needs a paid licence, so JAWS is left as an open question.
 
 **Effort:** L.
 

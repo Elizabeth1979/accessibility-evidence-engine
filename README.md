@@ -327,11 +327,11 @@ app you run the command from:
    Testing and System Events. Allow each one. The run does not wait for you, so if it fails with
    "AppleEvent timed out" while a prompt is open, allow it and run again.
 
-On Windows, `npx @guidepup/setup install` downloads the portable NVDA that Guidepup drives; its `setup` command only prepares macOS.
+On Windows, `npx guidepup install` (from `@guidepup/setup`, one of the repository's dev dependencies) downloads the portable NVDA that Guidepup drives; its `setup` command only prepares macOS.
 
-### Real NVDA without a Windows computer (planned)
+### Real NVDA without a Windows computer
 
-The next step is to run real NVDA on one of GitHub's own Windows computers, free for public repositories, so nobody needs a Windows machine. You press **Run workflow** in GitHub, NVDA reads the test lab page in Chrome, and the run saves NVDA's words, a side-by-side page with AEE's reader and a video. JAWS is not part of it: Guidepup does not drive JAWS, and JAWS's own automation server needs a paid licence. [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md) has the picture of how it works, the research behind each step and the choices you get when you run it.
+The **Real screen readers** workflow runs real NVDA on one of GitHub's own Windows computers, free for public repositories, so nobody needs a Windows machine. Press **Run workflow** in the repository's Actions tab and tick the readers you want (NVDA, VoiceOver on a Mac, or both); it also runs on pull requests that change the reader code, and weekly. NVDA reads the test lab page in Chrome, and the run shows a side-by-side table with AEE's reader on its own page and saves each reader's words and a video of the screen. JAWS is not part of it: Guidepup does not drive JAWS, and JAWS's own automation server needs a paid licence. [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md) has the picture of how it works, what each run saves and the research behind each step.
 
 ## Known limitations
 
@@ -362,7 +362,7 @@ See the [live roadmap](https://elizabeth1979.github.io/accessibility-evidence-en
 - [Evidence privacy](docs/privacy.md)
 - [AI fix proposals](docs/ai-fixes.md)
 - [QA and designer view (design spec)](docs/qa-designer-view.md)
-- [Real NVDA on GitHub's Windows computers (plan and research)](docs/real-screen-readers.md)
+- [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md)
 - [Architecture decision records](docs/adr/README.md)
 
 ## Contributing and security

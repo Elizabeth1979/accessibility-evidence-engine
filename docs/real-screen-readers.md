@@ -1,6 +1,6 @@
 # Real NVDA on GitHub's Windows computers
 
-**Status: planned, not built yet.** This is audit item A18 in [the home-grown code audit](audits/home-grown-code.md#a18-a-real-screen-reader). The owner decided on 17 October 2026 that it is the next step: "that will be great as a next step". This page holds the plan and the research behind it, checked against each tool's current source and docs on that date. The picture version is on AEE's website as [Real NVDA, next to AEE's reader](https://elizabeth1979.github.io/accessibility-evidence-engine/real-screen-readers.html) (`site/real-screen-readers.html`); its NVDA column is a sample of NVDA's wording until the first real run replaces it.
+**Status: built.** The [Real screen readers](../.github/workflows/real-screen-readers.yml) workflow runs it. This is audit item A18 in [the home-grown code audit](audits/home-grown-code.md#a18-a-real-screen-reader); the owner decided on 17 October 2026 that it was the next step: "that will be great as a next step". This page holds how it works and the research behind it, checked against each tool's current source and docs on that date. The picture version is on AEE's website as [Real NVDA, next to AEE's reader](https://elizabeth1979.github.io/accessibility-evidence-engine/real-screen-readers.html) (`site/real-screen-readers.html`).
 
 ## Why
 
@@ -39,13 +39,20 @@ What using it looks like:
 
 1. **Start a run.** In GitHub, open the **Actions** tab, pick **Real screen readers** and press **Run workflow**. A short form lets you tick which readers to run and how many retries to allow (see [Choices when you run it](#choices-when-you-run-it)). It also starts by itself when a pull request changes the reader code, and once a week. A browser on any device will do.
 2. **Wait about 15 minutes.** GitHub sets up the Windows computer, installs NVDA, opens the test lab page in Chrome and lets NVDA read it from top to bottom with the Down Arrow, the way a user would. AEE's virtual reader reads the same page. Guidepup presses the keys and writes down what NVDA says, so nobody sits at that computer.
-3. **See the result.** Open the finished run and download its attachment: NVDA's words, AEE's words, a side-by-side page with each difference marked, and a video of the Windows screen with NVDA's Speech Viewer showing each phrase as it is spoken.
+3. **See the result.** Open the finished run. The side-by-side table is on the run's own page, under **Side by side**. The attachments at the bottom hold the rest: NVDA's words, AEE's words and a video of the Windows screen with NVDA's Speech Viewer showing each phrase as it is spoken.
 
-The run cannot be watched live; the video is how you see it. The **Run workflow** button appears once the workflow is merged into `main`. Before that, it runs on its own pull request.
+The run cannot be watched live; the video is how you see it.
 
-## What a run will produce
+## What a run produces
 
-A side-by-side page like `npm run readers:compare` writes today, with an NVDA column. Rows are matched by meaning, not by step number: "heading, level 1, Workspace overview" sits next to "heading, Workspace overview, level 1", and every word counts, including role and state words such as "pressed" and "not checked". When a VoiceOver run from the owner's Mac exists, it shows as another column.
+Each reader's job saves an attachment named after it (`readers-nvda`, `readers-voiceover`):
+
+- `comparison.md` and `comparison.json`: what AEE's virtual reader and that real reader said, lined up two ways, with the words only one of them said, why the real reader's walk ended and which attempt it came from.
+- `real-reader.mp4`: the whole screen while the real reader reads.
+
+The **Side by side** job then puts every reader that ran in one table, `combined.md`: a column for AEE's reader, and for each real reader what it said and what differs. It is also shown on the run's page and saved as the `side-by-side` attachment. Rows are matched by meaning, not by step number: "heading, level 1, Workspace overview" sits next to "heading, Workspace overview, level 1", and every word counts, including role and state words such as "pressed" and "not checked". The counts say how each reader differs from AEE's, not which one is right. When a reader fails to start, Playwright's trace is saved as `debug-nvda` or `debug-voiceover`.
+
+The same commands run on any machine with a real reader: `npm run readers:compare` reads the page with the reader on that machine (with `AEE_READERS_RECORD=1` it also records the screen), and `npm run readers:combine` puts the comparisons found under `test-results/readers-runs/` (or `AEE_READERS_RUNS`), one folder each, in one table.
 
 Only the public test lab page (`site/test-case.html`) is read. The workflow takes no page address, so no private page's words can reach GitHub's public logs, in line with [Evidence privacy](privacy.md).
 
@@ -83,7 +90,7 @@ Guidepup runs NVDA on GitHub's Windows computers in its own tests. These workflo
 - [`guidepup/.github/workflows/playwright-nvda.yml`](https://github.com/guidepup/guidepup/blob/main/.github/workflows/playwright-nvda.yml): the same, plus `npm rebuild ffmpeg-static`, which `@guidepup/record` needs to record the screen.
 - [guidepup.dev's CI guide](https://www.guidepup.dev/docs/getting-started/ci-cd) recommends caching the downloaded screen reader, keyed by version.
 
-Two things in those workflows AEE does not copy. They run `npx` with `--min-release-age=0 --ignore-scripts=false`; AEE needs neither, and both loosen npm's safety settings. AEE also pins `@guidepup/setup` in its lockfile, where npm checks its integrity, instead of fetching it with `npx` on each run.
+Two things in those workflows AEE does not copy. They run `npx` with `--min-release-age=0 --ignore-scripts=false`; AEE needs neither, and both loosen npm's safety settings. AEE also pins `@guidepup/setup` and `@guidepup/record` in its lockfile, where npm checks their integrity, instead of fetching them with `npx` on each run. The one install script AEE runs is the screen recorder's ffmpeg (`npm rebuild ffmpeg-static`), named on its own as in Guidepup's `playwright-nvda.yml`; every other package still installs with `npm ci --ignore-scripts`.
 
 Guidepup's example Playwright config retries a failed test up to five times, because NVDA on a fresh computer sometimes fails to start. AEE makes the number a choice on the run form (below).
 

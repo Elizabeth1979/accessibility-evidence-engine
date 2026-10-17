@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import {
   align,
+  combine,
+  readersSideBySide,
   readWithRealReader,
   realReaderName,
   sideBySide,
@@ -215,5 +217,82 @@ test("a phrase that spans lines stays on its row", () => {
   }).split("\n");
   expect(lines).toContain(
     "| 1 | heading, Workspace, level 1 | Workspace heading level 1 | same words |"
+  );
+});
+
+/** One machine's comparison of the same three virtual phrases with `reader`'s `phrases`. */
+function ran(reader: string, phrases: string[], attempt = 1): ReaderComparison {
+  return {
+    ...comparison,
+    virtual: ["banner", "link, Test lab", "end of list"],
+    real: { reader, phrases, stoppedBecause: "silence", maxSteps: 33, attempt }
+  };
+}
+
+const nvda = ran(
+  "NVDA",
+  ["banner landmark", "Breadcrumb navigation landmark", "link, Test lab"],
+  2
+);
+const voiceOver = ran("VoiceOver", ["banner", "link, Test lab", "end of list", "Fern"]);
+
+test("several real readers line up on AEE's phrases, each phrase only one said where it said it", () => {
+  const rows = combine([nvda, voiceOver]);
+  expect(rows.map(({ virtual }) => virtual)).toEqual([
+    "banner",
+    undefined,
+    "link, Test lab",
+    "end of list",
+    undefined
+  ]);
+  expect(rows.map(({ readers }) => readers.map((row) => row?.real))).toEqual([
+    ["banner landmark", "banner"],
+    // Only NVDA said this, between the items it shares with AEE's reader.
+    ["Breadcrumb navigation landmark", undefined],
+    ["link, Test lab", "link, Test lab"],
+    // NVDA said nothing about this item; its row is there, with no phrase.
+    [undefined, "end of list"],
+    // Only VoiceOver said this, after AEE's last phrase.
+    [undefined, "Fern"]
+  ]);
+});
+
+test("the combined table has a column for each real reader and what differs from it", () => {
+  const lines = readersSideBySide([nvda, voiceOver]).split("\n");
+  expect(lines[0]).toBe("# What each screen reader said: site/test-case.html");
+  expect(lines).toContain(
+    "NVDA read 3 steps, then said nothing at the next step, so its walk ended there. NVDA started on attempt 2: 1 retry was needed."
+  );
+  expect(lines).toContain(
+    "VoiceOver read 4 steps, then said nothing at the next step, so its walk ended there."
+  );
+  expect(lines).toContain("| Rows | NVDA | VoiceOver |");
+  expect(lines).toContain("| Same words as AEE's reader | 1 | 3 |");
+  expect(lines).toContain("| About the same item, in different words | 1 | 0 |");
+  expect(lines).toContain("| Only the real reader said it | 1 | 1 |");
+  expect(lines).toContain("| Only AEE's reader said it | 1 | 0 |");
+  expect(lines).toContain(
+    "| Row | AEE's virtual screen reader | NVDA | What differs from NVDA | VoiceOver | What differs from VoiceOver |"
+  );
+  expect(lines).toContain(
+    "| 1 | banner | banner landmark | only NVDA: **landmark** | banner | same words |"
+  );
+  expect(lines).toContain("| 2 |  | Breadcrumb navigation landmark | only NVDA said this |  |  |");
+  expect(lines).toContain(
+    "| 4 | end of list |  | only AEE's virtual screen reader said this | end of list | same words |"
+  );
+  expect(lines).toContain("| 5 |  |  |  | Fern | only VoiceOver said this |");
+});
+
+test("comparisons of different pages or transcripts are not combined", () => {
+  expect(() => combine([nvda, { ...voiceOver, page: "site/other.html" }])).toThrow(
+    "VoiceOver's comparison read site/other.html with a different virtual transcript from NVDA's (site/test-case.html); comparisons line up only on the same one."
+  );
+  expect(() => combine([])).toThrow("No comparisons to combine.");
+});
+
+test("a reader that needed retries to start says so on its own page too", () => {
+  expect(sideBySide({ ...comparison, real: { ...comparison.real, attempt: 3 } })).toContain(
+    "VoiceOver read 3 steps, then said nothing at the next step, so its walk ended there. VoiceOver started on attempt 3: 2 retries were needed."
   );
 });
