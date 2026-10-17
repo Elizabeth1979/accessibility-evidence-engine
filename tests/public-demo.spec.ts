@@ -132,45 +132,54 @@ test("every claim on the homepage links to a shot or a live page that exists", a
   }
 });
 
-for (const viewport of [
-  { name: "desktop", width: 1280, height: 900 },
-  { name: "phone", width: 390, height: 844 }
-]) {
-  test(`the homepage passes axe and works by keyboard on ${viewport.name}`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await page.goto(demoUrl);
+const realReadersUrl = pathToFileURL(path.resolve("site/real-screen-readers.html")).href;
 
-    const results = await new AxeBuilder({ page }).analyze();
-    expect(results.violations.map(({ id }) => id)).toEqual([]);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true
-    );
+for (const [pageName, url] of [
+  ["homepage", demoUrl],
+  ["real screen readers page", realReadersUrl]
+])
+  for (const viewport of [
+    { name: "desktop", width: 1280, height: 900 },
+    { name: "phone", width: 390, height: 844 }
+  ]) {
+    test(`the ${pageName} passes axe and works by keyboard on ${viewport.name}`, async ({
+      page
+    }) => {
+      await page.setViewportSize(viewport);
+      await page.goto(url);
 
-    // Tab reaches every link and video in the order they appear, each with a visible focus ring.
-    // A video's own controls are several stops in a row; they count as that one video, and the
-    // browser rings each of them itself, inside the video, where page styles cannot reach.
-    const focusable = page.locator("a[href], video");
-    const expected = await focusable.evaluateAll((elements) =>
-      elements.map((element) => element.outerHTML)
-    );
-    const reached: string[] = [];
-    for (let stops = 0; reached.length < expected.length && stops < 200; stops += 1) {
-      await page.keyboard.press("Tab");
-      const focused = await page.evaluate(() => {
-        const active = document.activeElement!;
-        const style = getComputedStyle(active);
-        return {
-          html: active.outerHTML,
-          visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0
-        };
-      });
-      if (reached.at(-1) === focused.html) continue;
-      expect(focused.visible, focused.html).toBe(true);
-      reached.push(focused.html);
-    }
-    expect(reached).toEqual(expected);
-  });
-}
+      const results = await new AxeBuilder({ page }).analyze();
+      expect(results.violations.map(({ id }) => id)).toEqual([]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true
+      );
+
+      // Tab reaches every link, video and scrollable table in the order they appear, each with a
+      // visible focus ring. A video's own controls are several stops in a row; they count as that
+      // one video, and the browser rings each of them itself, inside the video, where page styles
+      // cannot reach.
+      const focusable = page.locator('a[href], video, [tabindex="0"]');
+      const expected = await focusable.evaluateAll((elements) =>
+        elements.map((element) => element.outerHTML)
+      );
+      const reached: string[] = [];
+      for (let stops = 0; reached.length < expected.length && stops < 200; stops += 1) {
+        await page.keyboard.press("Tab");
+        const focused = await page.evaluate(() => {
+          const active = document.activeElement!;
+          const style = getComputedStyle(active);
+          return {
+            html: active.outerHTML,
+            visible: style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0
+          };
+        });
+        if (reached.at(-1) === focused.html) continue;
+        expect(focused.visible, focused.html).toBe(true);
+        reached.push(focused.html);
+      }
+      expect(reached).toEqual(expected);
+    });
+  }
 
 test("the How it works page has no axe violations or prohibited ARIA attributes", async ({
   page
