@@ -580,6 +580,7 @@ test("validateSchema accepts a deep focus-state artifact", () => {
   const result = validateSchema("focusState", {
     schemaVersion: "0.1.0",
     captureType: "deep-focus-state",
+    documentHasFocus: true,
     ...element,
     documentActiveElement: element,
     deepActiveElement: element,
@@ -620,12 +621,15 @@ test("validateSchema accepts focus inside a frame, named with its frame", () => 
     frameId: "PAY",
     framePath: ["iframe#pay"],
     backendDOMNodeId: 4,
+    focusOrderIndex: 2,
+    focusableCount: 5,
     focusVisible: true,
     focusIndicator: indicator
   };
   const focusState = {
     schemaVersion: "0.1.0",
     captureType: "deep-focus-state",
+    documentHasFocus: true,
     ...button,
     documentActiveElement: frameElement,
     deepActiveElement: button,
@@ -641,6 +645,18 @@ test("validateSchema accepts focus inside a frame, named with its frame", () => 
   assert.equal(
     validateSchema("focusState", { ...focusState, deepActiveElement: { ...button, framePath: [] } })
       .valid,
+    false
+  );
+  // Every capture says whether the page had focus: a <body> means lost focus only while it did.
+  const withoutPageFocus: Record<string, unknown> = { ...focusState };
+  delete withoutPageFocus.documentHasFocus;
+  assert.equal(validateSchema("focusState", withoutPageFocus).valid, false);
+  // A place in the page's tab order counts from 0.
+  assert.equal(
+    validateSchema("focusState", {
+      ...focusState,
+      deepActiveElement: { ...button, focusOrderIndex: -1 }
+    }).valid,
     false
   );
 });

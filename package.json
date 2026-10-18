@@ -12,7 +12,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli packages/mcp && node scripts/build-guidepup-reader.mjs",
+    "build": "tsc -b packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli packages/mcp && node scripts/build-page-scripts.mjs",
     "check": "tsc -b --pretty false packages/core packages/ai-fixes packages/schemas packages/playwright packages/observers packages/judges packages/reporter packages/cli packages/mcp",
     "demo:record": "npm run build && node scripts/record-public-demo.mjs",
     "format": "prettier --write .",

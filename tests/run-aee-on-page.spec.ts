@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Browser } from "@playwright/test";
 
 import {
   captureElementMap,
@@ -250,9 +250,24 @@ test("a lane that fails before writing any evidence keeps the report incomplete 
       <main><h1>Account overview</h1><button type="button">Show details</button></main>
     </body></html>`);
   });
-  // The scenario accepts this journey id, but the comparison lane's id built from it is longer than
-  // a lane id may be, so that lane throws before it writes a manifest. The other lanes complete.
-  const journeyId = `read-${"a".repeat(100)}`;
+  // The browser cannot open the first lane's context, as when it crashes, disconnects or runs out
+  // of memory, so the start-page lane throws before it writes a manifest. The other lanes complete.
+  // This relies on the start-page lane opening its context before it can record a failure: if that
+  // lane learns to write a "failed" manifest there too, this test needs another trigger.
+  const journeyId = "read-page";
+  let contextsOpened = 0;
+  const failsFirstContext = new Proxy(browser, {
+    get(target, property) {
+      if (property === "newContext") {
+        return (...args: Parameters<Browser["newContext"]>) =>
+          contextsOpened++ === 0
+            ? Promise.reject(new Error("The browser could not open a context."))
+            : target.newContext(...args);
+      }
+      const value: unknown = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
   const scenarioYaml = `schemaVersion: 0.1.0
 id: lane-fails-early
 target:
@@ -296,7 +311,7 @@ approval:
 `;
 
   try {
-    const result = await runApprovedScenario(browser, scenarioYaml, testInfo);
+    const result = await runApprovedScenario(failsFirstContext, scenarioYaml, testInfo);
     const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
       status: string;
       verdict: string;
@@ -305,12 +320,14 @@ approval:
     };
 
     expect(report.diagnostics).toEqual([
-      expect.stringMatching(new RegExp(`^${journeyId}-show-details-hover-focus: Invalid runId`))
+      expect.stringMatching(
+        new RegExp(`^${journeyId}-start-page: The browser could not open a context`)
+      )
     ]);
     expect(report.completeness).toMatchObject({
       status: "incomplete",
       plannedLanes: 5,
-      completedLanes: 3
+      completedLanes: 4
     });
     expect(report.status).toBe("partial");
     expect(report.verdict).toBe("unknown");
@@ -319,7 +336,7 @@ approval:
     expect(await readFile(result.reportFiles.markdown, "utf8")).toContain(
       "**Evidence completeness:** INCOMPLETE"
     );
-    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 3/5 lanes");
+    expect(await readFile(result.reportFiles.html, "utf8")).toContain("incomplete · 4/5 lanes");
   } finally {
     await server.close();
   }
@@ -1497,6 +1514,81 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
   );
 });
 
+// A click focuses the clicked button (HTML's focusing steps), and Chrome focuses the page when the
+// clicked element cannot take focus. Neither is the control responding.
+const clickFocusScenarios: Array<{
+  title: string;
+  html: string;
+  script?: () => void;
+  verdict: "pass" | "fail";
+  summary: string;
+}> = [
+  {
+    title: "clicking a button that does nothing is not a pass, though the click focuses it",
+    html: `<main><button id="clicked" type="button">Save</button></main>`,
+    verdict: "fail",
+    summary: 'Focus moved onto button "Save" itself, which a click on it does by itself'
+  },
+  {
+    title: "clicking a dead element that cannot take focus is not a pass, though it blurs a field",
+    html: `<main>
+      <label>Name <input id="name"></label>
+      <div id="clicked" role="button">Save</div>
+    </main>`,
+    script: () => (document.querySelector("#name") as HTMLInputElement).focus(),
+    verdict: "fail",
+    summary: "Focus moved to the page itself"
+  },
+  {
+    title: "clicking a button that moves focus into the dialog it opens passes",
+    html: `<main>
+      <button id="clicked" type="button">Save</button>
+      <div role="dialog" aria-label="Save changes?" hidden><button id="cancel">Cancel</button></div>
+    </main>`,
+    script: () => {
+      document.querySelector("#clicked")!.addEventListener("click", () => {
+        (document.querySelector("[role=dialog]") as HTMLElement).hidden = false;
+        (document.querySelector("#cancel") as HTMLButtonElement).focus();
+      });
+    },
+    verdict: "pass",
+    summary: "focus moved"
+  }
+];
+
+for (const scenario of clickFocusScenarios) {
+  test(`runAeeOnPage: ${scenario.title}`, async ({ page }, testInfo) => {
+    await page.setContent(scenario.html);
+    if (scenario.script) await page.evaluate(scenario.script);
+
+    const result = await runAeeOnPage({
+      page,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("aee-click-focus-output"),
+      observers: ["focus", "dom", "accessibility-tree"],
+      judges: ["change-response"],
+      interaction: { kind: "click", actor: "test", target: { role: "button", name: "Save" } },
+      async performInteraction({ page: interactionPage }) {
+        await interactionPage.click("#clicked");
+      }
+    });
+
+    const report = JSON.parse(
+      await readFile(
+        result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"))!,
+        "utf8"
+      )
+    ) as JsonReport;
+    expect(report.judgments).toContainEqual(
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: scenario.verdict,
+        summary: expect.stringContaining(scenario.summary)
+      })
+    );
+  });
+}
+
 test("runAeeOnPage fails keyboard judging when space does not activate a custom button", async ({
   page
 }, testInfo) => {
@@ -2272,7 +2364,7 @@ test("runAeeOnPage can capture backward focus movement around a shift-tab intera
   );
 });
 
-test("runAeeOnPage fails keyboard judging when tab moves focus backward", async ({
+test("runAeeOnPage leaves undecided a tab that moves focus against the predicted tab order", async ({
   page
 }, testInfo) => {
   await page.setContent(`
@@ -2329,21 +2421,18 @@ test("runAeeOnPage fails keyboard judging when tab moves focus backward", async 
 
   const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
   expect(report.run.status).toBe("completed");
-  expect(report.run.results).toEqual({
-    pass: 0,
-    fail: 2,
-    unknown: 0
-  });
+  // The browser's Tab is what a user gets and the predicted order a model of it, so a
+  // disagreement is left for review rather than failed (audit A4).
   expect(report.judgments).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         judgeId: "keyboard",
-        verdict: "fail",
-        summary: expect.stringContaining("wrong direction")
+        verdict: "unknown",
+        summary: expect.stringContaining("disagrees with the tab order AEE predicts")
       }),
       expect.objectContaining({
         judgeId: "release",
-        verdict: "fail"
+        verdict: "unknown"
       })
     ])
   );
