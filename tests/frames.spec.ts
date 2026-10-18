@@ -876,6 +876,69 @@ test("Tab into a cross-site frame, between its controls and back out is judged b
   }
 });
 
+test("Tab onto a control a script blurs is lost focus; a frame with nothing to focus and Tab out of the page are not", async ({
+  page
+}, testInfo) => {
+  const server = await startHtmlServer((request, response) => {
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Order</title></head><body>
+        <button type="button">Review order</button>
+        <button type="button" id="save">Save</button>
+        <iframe title="Terms" src="/terms"></iframe>
+        <button type="button">Done</button>
+        <script>
+          document.getElementById("save").addEventListener("focus", (event) => event.target.blur());
+        </script>
+      </body></html>`,
+      "/terms": `<!doctype html><html lang="en"><head><title>Terms</title></head><body>
+        <p>Orders ship in two days.</p>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    await frameAt(page, "127.0.0.1", "/terms").locator("p").waitFor();
+    await page.getByRole("button", { name: "Review order" }).focus();
+
+    // Each time, the browser names a document's <body> as focused. Only the first is lost focus:
+    // the second is the frame's own tab stop, the last is focus gone to the browser's controls.
+    const steps = [];
+    for (let step = 0; step < 4; step += 1) {
+      const { after, keyboard } = await judgeKeyPress(
+        page,
+        testInfo.outputPath(`step-${step}`),
+        "tab"
+      );
+      steps.push({
+        to: after.name ?? after.tagName,
+        place: after.focusOrderIndex,
+        of: after.focusableCount,
+        pageHasFocus: after.documentHasFocus,
+        verdict: keyboard.verdict,
+        rule: keyboard.findings?.[0]?.ruleId
+      });
+    }
+    expect(steps).toEqual([
+      // Before, this passed: "Keyboard focus advanced forward ... to body".
+      {
+        to: "body",
+        place: undefined,
+        of: 4,
+        pageHasFocus: true,
+        verdict: "fail",
+        rule: "keyboard-focus-presence"
+      },
+      { to: "body", place: 2, of: 4, pageHasFocus: true, verdict: "pass", rule: undefined },
+      { to: "Done", place: 3, of: 4, pageHasFocus: true, verdict: "pass", rule: undefined },
+      { to: "body", place: undefined, of: 4, pageHasFocus: false, verdict: "pass", rule: undefined }
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
 test("each Tab stop's recorded place is where Chrome's own Tab reaches it, through every kind of frame", async ({
   page
 }, testInfo) => {

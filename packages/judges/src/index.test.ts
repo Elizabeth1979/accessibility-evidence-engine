@@ -1436,23 +1436,8 @@ test("keyboard judge passes arrow-key navigation when aria-activedescendant chan
   assert.match(judgment.summary, /ArrowDown/);
 });
 
-/**
- * A Tab press's focus records: the focused button before and after, each with its place in the
- * page's tab order. The page has a "Pay" button in the top document and a "Pay" and a "Cancel"
- * button inside a frame, so two of them differ only by the frame and node they are in.
- */
-function tabRecords(
-  before: Record<string, unknown>,
-  after: Record<string, unknown>
-): EvidenceBundle["records"] {
-  const button = (place: Record<string, unknown>) => ({
-    tagName: "button",
-    role: "button",
-    type: "button",
-    nodePath: "html > body > button",
-    focusableCount: 4,
-    ...place
-  });
+/** A press's focus records: what the focus observer recorded before it and after it. */
+function focusRecords(before: unknown, after: unknown): EvidenceBundle["records"] {
   return (["before", "after"] as const).map((phase) => ({
     id: `record-focus-${phase}`,
     runId: "run-1",
@@ -1462,8 +1447,33 @@ function tabRecords(
     phase,
     status: "ok",
     timestamp: "2026-06-21T10:00:01.000Z",
-    meta: { focusTarget: button(phase === "before" ? before : after) }
+    meta: { focusTarget: phase === "before" ? before : after }
   }));
+}
+
+/**
+ * A focused button with its place in the page's tab order. The page has a "Pay" button in the top
+ * document and a "Pay" and a "Cancel" button inside a frame, so two of them differ only by the
+ * frame and node they are in.
+ */
+function placedButton(place: Record<string, unknown>) {
+  return {
+    tagName: "button",
+    role: "button",
+    type: "button",
+    nodePath: "html > body > button",
+    focusableCount: 4,
+    documentHasFocus: true,
+    ...place
+  };
+}
+
+/** A Tab press's focus records: the focused button before and after it. */
+function tabRecords(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): EvidenceBundle["records"] {
+  return focusRecords(placedButton(before), placedButton(after));
 }
 
 const TOP_PAY = { name: "Pay", frameId: "top", backendDOMNodeId: 7, focusOrderIndex: 0 };
@@ -1516,8 +1526,12 @@ test("keyboard judge orders two controls inside one frame by the page's tab orde
 
   assert.equal(forward.verdict, "pass");
   assert.equal(forward.confidence, 0.95);
-  assert.equal(wrongWay.verdict, "fail");
-  assert.match(wrongWay.summary, /wrong direction/);
+  // The browser's Tab is what a keyboard user gets; the order AEE predicts can be wrong (Chrome
+  // places a popover's content after its invoker, tabbable in document order), so a disagreement
+  // is left undecided, with both places, rather than failed.
+  assert.equal(wrongWay.verdict, "unknown");
+  assert.match(wrongWay.summary, /place 3 of 4.*place 2 of 4/);
+  assert.match(wrongWay.summary, /disagrees with the tab order AEE predicts/);
 });
 
 test("keyboard judge counts focus moving to a like-named control in the same frame as moved", async () => {
@@ -1533,6 +1547,205 @@ test("keyboard judge counts focus moving to a like-named control in the same fra
   // Two "Pay" buttons at the same path in one frame are two nodes, so focus did not stall.
   assert.equal(judgment.verdict, "pass");
   assert.match(judgment.summary, /advanced forward/);
+});
+
+/**
+ * Focus on a document's `<body>`, as the focus observer records it when no element of that
+ * document has focus: the page's tab order was counted (`focusableCount`), the body has no place
+ * in it, and whether the page itself still had focus.
+ */
+function focusOnBody(
+  documentHasFocus: boolean | undefined,
+  place: Record<string, unknown> = { frameId: "top" }
+) {
+  const body = { tagName: "body", nodePath: "html > body", focusableCount: 4, ...place };
+  return {
+    ...body,
+    ...(documentHasFocus === undefined ? {} : { documentHasFocus }),
+    deepActiveElement: body
+  };
+}
+
+const FRAME_BODY = { frameId: "card", framePath: ["iframe#card"], backendDOMNodeId: 3 };
+
+test("keyboard judge fails a Tab after which no element has focus, though the browser names <body>", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(TOP_PAY), focusOnBody(true)), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  // The audit's case: a script blurred the control Tab moved to. The browser then reports
+  // <body> as the active element, and the judge used to pass this as "advanced forward".
+  assert.equal(judgment.verdict, "fail");
+  assert.equal(judgment.findings?.[0]?.ruleId, "keyboard-focus-presence");
+  assert.match(judgment.summary, /lost focus/);
+  assert.match(judgment.summary, /After: body \(no element has focus\)/);
+});
+
+test("keyboard judge fails a Tab that leaves focus on a frame's <body> when the frame is not a tab stop", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(FRAME_PAY), focusOnBody(true, FRAME_BODY)), {
+      kind: "tab"
+    }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment.verdict, "fail");
+  assert.equal(judgment.findings?.[0]?.ruleId, "keyboard-focus-presence");
+});
+
+test("keyboard judge passes a Tab onto a frame with nothing to focus, whose <body> is its tab stop", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(
+      focusRecords(placedButton(TOP_PAY), focusOnBody(true, { ...FRAME_BODY, focusOrderIndex: 1 })),
+      { kind: "tab" }
+    ),
+    { runId: "run-1" }
+  );
+
+  // Chrome's Tab stops on such a frame, and its document's active element is then its <body>.
+  assert.equal(judgment.verdict, "pass");
+  assert.equal(judgment.confidence, 0.95);
+  assert.match(judgment.summary, /advanced forward/);
+  assert.match(judgment.summary, /body \(its frame has nothing to focus/);
+});
+
+test("keyboard judge passes Tab past the last tab stop and Shift+Tab before the first, which leave the page", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [pastLast] = await keyboardJudge!.judge(
+    createBundle(
+      focusRecords(placedButton({ ...TOP_PAY, focusOrderIndex: 3 }), focusOnBody(false)),
+      { kind: "tab" }
+    ),
+    { runId: "run-1" }
+  );
+  const [beforeFirst] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(TOP_PAY), focusOnBody(false)), { kind: "shift-tab" }),
+    { runId: "run-1" }
+  );
+
+  // Chrome then moves focus to its own controls: the page no longer has focus and names <body>.
+  for (const judgment of [pastLast, beforeFirst]) {
+    assert.equal(judgment.verdict, "pass");
+    assert.equal(judgment.confidence, 0.95);
+    assert.match(judgment.summary, /left the page for the browser's own controls/);
+  }
+  assert.match(pastLast.summary, /after the page's last tab stop \(place 4 of 4\)/);
+  assert.match(beforeFirst.summary, /before the page's first tab stop \(place 1 of 4\)/);
+});
+
+test("keyboard judge leaves undecided a Tab that leaves the page from the middle of the tab order", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(FRAME_PAY), focusOnBody(false)), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment.verdict, "unknown");
+  assert.match(judgment.summary, /place 2 of 4/);
+  assert.match(judgment.summary, /disagrees with the tab order AEE predicts/);
+});
+
+test("keyboard judge leaves undecided a <body> it cannot tell from lost focus", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  // A frame's <body> with no place and no count: the page's tab order was not counted.
+  const bodyOfUncountedPage = {
+    tagName: "body",
+    nodePath: "html > body",
+    ...FRAME_BODY,
+    documentHasFocus: true
+  };
+  const [orderNotCounted] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(TOP_PAY), bodyOfUncountedPage), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+  const [pageFocusUnknown] = await keyboardJudge!.judge(
+    createBundle(focusRecords(placedButton(TOP_PAY), focusOnBody(undefined)), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(orderNotCounted.verdict, "unknown");
+  assert.match(orderNotCounted.summary, /tab order could not be counted/);
+  assert.equal(pageFocusUnknown.verdict, "unknown");
+  assert.match(pageFocusUnknown.summary, /does not say whether the page still had focus/);
+});
+
+test("keyboard judge fails Enter on a button after which no element has focus", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const save = { tagName: "button", role: "button", name: "Save", nodePath: "button#save" };
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(focusRecords(save, focusOnBody(true)), {
+      kind: "enter",
+      target: { role: "button", name: "Save" }
+    }),
+    { runId: "run-1" }
+  );
+
+  // Focus going to <body> used to count as the press's response ("focus moved").
+  assert.equal(judgment.verdict, "fail");
+  assert.equal(judgment.findings?.[0]?.ruleId, "keyboard-activation-focus-presence");
+});
+
+test("keyboard judge fails an arrow key in a tablist after which no element has focus", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const overview = {
+    tagName: "button",
+    role: "tab",
+    name: "Overview",
+    compositeRole: "tablist",
+    compositeItemIndex: 0,
+    compositeItemCount: 3
+  };
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(focusRecords(overview, focusOnBody(true)), {
+      kind: "arrow-key",
+      input: "ArrowRight",
+      target: { role: "tab", name: "Overview" }
+    }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment.verdict, "fail");
+  assert.equal(judgment.findings?.[0]?.ruleId, "keyboard-composite-focus-presence");
+});
+
+test("change-response judge does not count focus lost to <body> as a response", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const save = { tagName: "button", role: "button", name: "Save", nodePath: "button#save" };
+  const bundle = createBundle(
+    [
+      ...focusRecords(save, focusOnBody(true)),
+      accessibilityAfter({ focusedBefore: saveButton, changes: [], truncated: false })
+    ],
+    { kind: "enter", target: { role: "button", name: "Save" } }
+  );
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  // Focus a click puts on the page itself is the click's own (see the click-focus tests); a key
+  // press that drops focus is lost focus.
+  assert.equal(judgment?.verdict, "fail");
+  assert.doesNotMatch(judgment?.summary ?? "", /focus moved/);
+  assert.match(judgment?.summary ?? "", /Focus was lost: after the enter no element had focus/);
+});
+
+test("focus-management judge says focus was lost when it falls to <body>", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
+  const more = { tagName: "button", role: "button", name: "More", nodePath: "button#more" };
+  const [judgment] = await judge.judge(
+    createBundle(focusRecords(more, focusOnBody(true)), {
+      kind: "hover",
+      meta: { focusExpectation: "preserve" },
+      target: { role: "button", name: "More" }
+    }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /to body \(no element has focus\)/);
 });
 
 test("change-response judge passes a click that presses the clicked toggle", async () => {
