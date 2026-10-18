@@ -1,0 +1,212 @@
+name: Real screen readers
+
+# Reads the test lab page with real screen readers on GitHub's own computers, driven by Guidepup,
+# next to AEE's virtual screen reader, and saves what each said, a side-by-side table and a video.
+# Each step follows Guidepup's own workflows: guidepup-playwright's test-nvda.yml and
+# test-voiceover.yml, and guidepup's playwright-nvda.yml for the screen recording. Only the public
+# test lab page is read; the workflow takes no page address, so no private page's words reach the
+# public logs. See docs/real-screen-readers.md.
+
+"on":
+  workflow_dispatch:
+    inputs:
+      nvda:
+        description: NVDA, on a Windows computer
+        type: boolean
+        default: true
+      voiceover:
+        description: VoiceOver, on a Mac computer
+        type: boolean
+        default: false
+      retries:
+        description: Retries if a reader fails to start (0 to 5)
+        type: choice
+        options: ["0", "1", "2", "3", "4", "5"]
+        default: "2"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/real-screen-readers.yml
+      - package-lock.json
+      - packages/playwright/src/**
+      - playwright.readers.config.ts
+      - scripts/build-guidepup-reader.mjs
+      - site/test-case.html
+      - site/test-case.js
+      - tests/reader-comparison.ts
+      - tests/readers.combine.ts
+      - tests/readers.compare.ts
+  # Weekly, so a new Chrome or runner image shows up even when nothing here changed.
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-screen-readers-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The automatic runs (pull requests and the weekly run) use the form's defaults.
+  RETRIES: ${{ inputs.retries || '2' }}
+  # Record the screen while the real reader reads (tests/readers.compare.ts).
+  AEE_READERS_RECORD: "1"
+
+jobs:
+  nvda:
+    name: NVDA on Windows
+    if: github.event_name != 'workflow_dispatch' || inputs.nvda
+    runs-on: windows-2025
+    # Each attempt has 20 minutes (playwright.readers.config.ts); room for the retries the form allows.
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # The recorder's ffmpeg arrives through this one package's install script, as in Guidepup's
+      # playwright-nvda.yml; every other package still installs without scripts.
+      - name: Fetch ffmpeg for the screen recording
+        run: npm rebuild ffmpeg-static --ignore-scripts=false
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      # Guidepup's own install folder on Windows (%LOCALAPPDATA%\guidepup), keyed on its manifest,
+      # which names the NVDA build and its sha256 (guidepup.dev's CI guide caches by version).
+      # `guidepup install` checks the fingerprint either way.
+      - name: Restore NVDA from the cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/AppData/Local/guidepup
+          key: guidepup-nvda-${{ hashFiles('node_modules/@guidepup/guidepup/manifest.json') }}
+
+      - name: Install NVDA
+        run: npx guidepup install
+
+      - name: Read the test lab page with AEE's virtual reader and NVDA
+        shell: bash
+        run: npm run readers:compare -- --retries="$RETRIES"
+
+      - name: Save what each reader said and the video
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: readers-nvda
+          path: test-results/readers/
+          if-no-files-found: ignore
+
+      - name: Save Playwright's trace if the run failed
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-nvda
+          path: test-results/readers-run/
+          if-no-files-found: ignore
+
+  voiceover:
+    name: VoiceOver on a Mac
+    if: github.event_name == 'workflow_dispatch' && inputs.voiceover
+    runs-on: macos-26
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Fetch ffmpeg for the screen recording
+        run: npm rebuild ffmpeg-static --ignore-scripts=false
+
+      - name: Install Chromium
+        run: npx playwright install chromium
+
+      # As in Guidepup's test-voiceover.yml: let VoiceOver be controlled and the screen recorded on
+      # the runner, then install the VoiceOver settings Guidepup uses.
+      - name: Set up VoiceOver
+        run: npx guidepup setup --ci --macos-record
+
+      - name: Install VoiceOver settings
+        run: npx guidepup install
+
+      - name: Read the test lab page with AEE's virtual reader and VoiceOver
+        shell: bash
+        run: npm run readers:compare -- --retries="$RETRIES"
+
+      - name: Save what each reader said and the video
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: readers-voiceover
+          path: test-results/readers/
+          if-no-files-found: ignore
+
+      - name: Save Playwright's trace if the run failed
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: debug-voiceover
+          path: test-results/readers-run/
+          if-no-files-found: ignore
+
+  combine:
+    name: Side by side
+    needs: [nvda, voiceover]
+    # Whatever readers finished go in the table; a reader that failed shows as a failed job above.
+    if: always() && (needs.nvda.result == 'success' || needs.voiceover.result == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download what each reader said
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: readers-*
+          path: test-results/readers-runs
+
+      # Writes test-results/readers/combined.md and adds the table to this run's summary page.
+      - name: Put every reader next to AEE's virtual reader
+        run: npm run readers:combine
+
+      - name: Save the side-by-side table
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: side-by-side
+          path: test-results/readers/combined.md

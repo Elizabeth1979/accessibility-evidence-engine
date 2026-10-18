@@ -29,7 +29,7 @@
     <main id="main" tabindex="-1">
       <section class="hero page-intro" aria-labelledby="page-title">
         <div class="hero-copy">
-          <p class="eyebrow">Planned · not built yet</p>
+          <p class="eyebrow">Running on GitHub</p>
           <h1 id="page-title" class="readers-title">Real NVDA, next to AEE's reader</h1>
           <p class="lede">
             GitHub starts a Windows computer, runs the real NVDA screen reader on the test lab page,
@@ -42,8 +42,8 @@
       <section class="section readers-section" aria-labelledby="result-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">The result</p>
-            <h2 id="result-title">What you'll see after each run</h2>
+            <p class="eyebrow">The first run</p>
+            <h2 id="result-title">What NVDA said, next to AEE's reader</h2>
           </div>
           <p>
             Rows are matched by meaning, not by step number, and every word counts, including role
@@ -54,48 +54,62 @@
         <div class="readers-run">
           <div class="readers-run-head">
             <strong>What each screen reader said: the test lab page</strong>
-            <span>Windows · NVDA 2026.2 · Chrome · Guidepup 0.36.3</span>
+            <span>Windows 11 · NVDA 2026.2 · Chrome · Guidepup 0.36.3 · 17 October 2026</span>
           </div>
-          <p class="readers-sample">
-            Sample. The AEE column is AEE's real output; the NVDA column shows NVDA's usual wording
-            so you can see the layout. The first run replaces it with what NVDA actually says.
+          <p class="readers-banner">
+            13 of the 97 rows, chosen for the page's planted issues. NVDA read the whole page in 31
+            steps on its first attempt; AEE's reader took 91.
           </p>
-          <div class="readers-scroll" role="region" aria-labelledby="sample-caption" tabindex="0">
+          <div
+            class="readers-scroll"
+            role="region"
+            aria-labelledby="first-run-caption"
+            tabindex="0"
+          >
             <table class="readers-table">
-              <caption id="sample-caption">
-                Sample comparison of AEE's virtual reader and NVDA on the test lab page
+              <caption id="first-run-caption">
+                AEE's virtual reader and NVDA on the test lab page, from the first run
               </caption>
               <thead>
                 <tr>
                   <th scope="col">Row</th>
                   <th scope="col">AEE's virtual reader</th>
-                  <th scope="col">NVDA (sample)</th>
+                  <th scope="col">NVDA</th>
                   <th scope="col">What differs</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td>1</td>
-                  <td class="say">link, Open the fixed page</td>
-                  <td class="say"><mark>banner landmark,</mark> link, Open the fixed page</td>
-                  <td>
-                    <span class="mark diff">Different words</span>
-                    <span class="why">NVDA names the banner in the same breath.</span>
-                  </td>
-                </tr>
-                <tr>
                   <td>2</td>
-                  <td class="say">link, Test lab</td>
+                  <td class="say">link, Open the fixed page</td>
                   <td class="say">
-                    <mark>Breadcrumb navigation landmark, list with 2 items,</mark> link, Test lab
+                    <mark>out of list, banner landmark,</mark> link, Open the fixed page
                   </td>
                   <td>
                     <span class="mark diff">Different words</span>
-                    <span class="why">NVDA adds the list's size.</span>
+                    <span class="why"
+                      >NVDA names the banner in the same breath; “out of list” is where its cursor
+                      came from.</span
+                    >
                   </td>
                 </tr>
                 <tr>
                   <td>3</td>
+                  <td class="none">Nothing</td>
+                  <td class="say">
+                    main landmark, Breadcrumb, navigation landmark, list, with 2 items, link, Test
+                    lab
+                  </td>
+                  <td>
+                    <span class="mark only">Only NVDA said this</span>
+                    <span class="why"
+                      >NVDA says the main area, the breadcrumb and its list in one breath. AEE takes
+                      a step for each, so they do not line up.</span
+                    >
+                  </td>
+                </tr>
+                <tr>
+                  <td>24</td>
                   <td class="say">heading, Workspace overview, level 1</td>
                   <td class="say">heading, level 1, Workspace overview</td>
                   <td>
@@ -104,7 +118,7 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>4</td>
+                  <td>30</td>
                   <td class="say">image, Upgrade to Team for unlimited projects</td>
                   <td class="say"><mark>graphic</mark>, Upgrade to Team for unlimited projects</td>
                   <td>
@@ -113,16 +127,39 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>5</td>
-                  <td class="say">link</td>
-                  <td class="say">link</td>
+                  <td>32</td>
+                  <td class="say">Search projects</td>
+                  <td class="say"><mark>section</mark>, Search projects</td>
                   <td>
-                    <span class="mark same">Same words</span>
-                    <span class="why">The planted link with no name.</span>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">NVDA calls the unnamed form a “section”.</span>
                   </td>
                 </tr>
                 <tr>
-                  <td>6</td>
+                  <td>39</td>
+                  <td class="say">Work in this workspace.</td>
+                  <td class="say">
+                    Work in this workspace.,
+                    <mark>same page, link, test-case projects-heading</mark>
+                  </td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why"
+                      >The planted link with no name: NVDA reads out where it goes.</span
+                    >
+                  </td>
+                </tr>
+                <tr>
+                  <td>40</td>
+                  <td class="say">link</td>
+                  <td class="none">Nothing</td>
+                  <td>
+                    <span class="mark only">Only AEE said this</span>
+                    <span class="why">AEE says just “link”, on a row of its own.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>49</td>
                   <td class="say">button</td>
                   <td class="say">button</td>
                   <td>
@@ -131,27 +168,53 @@
                   </td>
                 </tr>
                 <tr>
-                  <td>7</td>
-                  <td class="say">end of article</td>
-                  <td class="none">Nothing</td>
-                  <td><span class="mark only">Only AEE said this</span></td>
+                  <td>51</td>
+                  <td class="say">Export report</td>
+                  <td class="say"><mark>clickable</mark>, Export report</td>
+                  <td>
+                    <span class="mark diff">Different words</span>
+                    <span class="why">The box styled as a button: NVDA says it is clickable.</span>
+                  </td>
                 </tr>
                 <tr>
-                  <td>8</td>
+                  <td>64</td>
                   <td class="say">button, Toggle weekly digest, pressed</td>
                   <td class="say"><mark>toggle</mark> button, pressed, Toggle weekly digest</td>
                   <td>
                     <span class="mark diff">Different words</span>
-                    <span class="why">“pressed” is kept and compared.</span>
+                    <span class="why">“pressed” is kept and compared; NVDA adds “toggle”.</span>
                   </td>
                 </tr>
                 <tr>
-                  <td>9</td>
-                  <td class="say">heading, level 2</td>
-                  <td class="say">heading, level 2</td>
+                  <td>71</td>
+                  <td class="none">Nothing</td>
+                  <td class="say">
+                    out of region, Unlabeled graphic, To get missing image descriptions, open the
+                    context menu.
+                  </td>
                   <td>
-                    <span class="mark same">Same words</span>
-                    <span class="why">The planted heading with no words.</span>
+                    <span class="mark only">Only NVDA said this</span>
+                    <span class="why">The planted image with no description.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>74</td>
+                  <td class="say">heading, level 2</td>
+                  <td class="none">Nothing</td>
+                  <td>
+                    <span class="mark only">Only AEE said this</span>
+                    <span class="why">The planted heading with no words: NVDA skips it.</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>75</td>
+                  <td class="say">image</td>
+                  <td class="none">Nothing</td>
+                  <td>
+                    <span class="mark only">Only AEE said this</span>
+                    <span class="why"
+                      >AEE's word for the same image NVDA calls “Unlabeled graphic”.</span
+                    >
                   </td>
                 </tr>
               </tbody>
@@ -159,9 +222,37 @@
           </div>
         </div>
         <p class="readers-note">
+          Of the 97 rows, 14 have the same words, 11 are about the same item in different words, 6
+          only NVDA said (2 of them its end-of-page repeats of the last line) and 66 only AEE's
+          reader said. Most of AEE's own rows are steps NVDA does not take: AEE says where each
+          region, list and paragraph ends, and enters each on a step of its own. Highlighted words
+          are the ones only one reader said. These counts describe how the two differ, not which one
+          is right.
+        </p>
+        <ul class="readers-cards">
+          <li>
+            <h3>A link with no name</h3>
+            <p>
+              NVDA reads out where it goes, “same page, link, test-case projects-heading”. AEE says
+              only “link”.
+            </p>
+          </li>
+          <li>
+            <h3>An image with no description</h3>
+            <p>NVDA says “Unlabeled graphic” and how to ask for a description. AEE says “image”.</p>
+          </li>
+          <li>
+            <h3>A box styled as a button</h3>
+            <p>NVDA says “clickable, Export report”. AEE reads only its text.</p>
+          </li>
+          <li>
+            <h3>A heading with no words</h3>
+            <p>AEE says “heading, level 2”. NVDA skips it.</p>
+          </li>
+        </ul>
+        <p class="readers-note">
           The run also saves a video of the Windows screen with NVDA's Speech Viewer open, so you
-          can watch NVDA move down the page and see each phrase as it speaks. Highlighted words are
-          the ones only one reader said.
+          can watch NVDA move down the page and see each phrase as it speaks.
         </p>
       </section>
 
