@@ -2,6 +2,7 @@ import { PNG } from "pngjs";
 
 import {
   describeFocusedElement,
+  describeSelectedElement,
   withCdpSession,
   withPageSessions,
   type CdpSession,
@@ -63,6 +64,8 @@ export interface SweepFinding {
   /** Inside a frame: the `<iframe>` elements it is inside, outermost first. */
   framePath?: string[];
   label: string;
+  /** The text it shows, when the accessibility tree gives it no name: what a sighted person sees. */
+  text?: string;
   summary: string;
 }
 
@@ -205,8 +208,18 @@ interface FocusFrame {
   pixelRatio: number;
 }
 
-interface ProbedElement {
+/** An element the probe found, before the accessibility tree names it, and the text it shows. */
+interface LocatedElement {
   selector: string;
+  text?: string;
+}
+
+/**
+ * An element with its label: a control's accessible name from the tree, which is what a screen
+ * reader says for it; or, for text the page shows, that text. A control the tree gives no name
+ * keeps the text it shows, so a person can still tell which one it is.
+ */
+interface ProbedElement extends LocatedElement {
   label: string;
 }
 
@@ -219,17 +232,22 @@ interface PressableControl extends ProbedElement {
   key: "Enter" | "Space";
 }
 
+type LocatedControl = Omit<PressableControl, "label">;
+
 /**
  * The text a press showed: how many of its new elements a screen reader says, and those it does
  * not, and the control pressed. Null when the press loaded a page or changed the control's own
  * state, which a screen reader says itself, or when a watch with no control saw no press.
  */
-type NewText = {
-  pressed: ProbedElement;
+type ProbedNewText = {
+  pressed: LocatedElement;
   said: number;
   /** Each holds a field to fill in when it is a form the press opened, not a message. */
   unsaid: Array<ProbedElement & { form: boolean }>;
 } | null;
+
+/** The text a press showed, with the control pressed named by the accessibility tree. */
+type NewText = (NonNullable<ProbedNewText> & { pressed: ProbedElement }) | null;
 
 /** An item that stands out from its like neighbours by colour alone. */
 interface ColourOnlyItem extends ProbedElement {
@@ -340,10 +358,11 @@ async function sweepPage(
   const activated: string[] = [];
   if (options.activateControls) {
     await loadPage();
-    for (const control of await probe<PressableControl[]>({
-      mode: "pressable",
-      tabStops: stopSelectors
-    })) {
+    const controls = await namedByTree(
+      page,
+      await probe<LocatedControl[]>({ mode: "pressable", tabStops: stopSelectors })
+    );
+    for (const control of controls) {
       activated.push(control.selector);
       findings.push(
         ...(await timed(
@@ -425,8 +444,10 @@ export function observePresses(page: KeyboardPointerSweepPage) {
       watching = undefined;
       const failed = failedRequests();
       if (page.isClosed()) return;
-      const newText = await probe<NewText>({ mode: "new-text" });
-      if (!newText) return;
+      const probed = await probe<ProbedNewText>({ mode: "new-text" });
+      if (!probed) return;
+      const [pressed] = await namedByTree(page, [probed.pressed]);
+      const newText = { ...probed, pressed: pressed! };
       observed.pressed.push(newText.pressed.selector);
       const press = observed.pressed.length;
       const findings = announcementFindings(
@@ -482,13 +503,13 @@ async function pointerOnlyTargets(
   tabStops: string[],
   onStep: KeyboardPointerSweepOptions["onStep"]
 ): Promise<ProbedElement[]> {
-  const targets = await probe<ProbedElement[]>({ mode: "pointer-only", tabStops });
+  const targets = await probe<LocatedElement[]>({ mode: "pointer-only", tabStops });
   const widgets = await probe<Array<{ widget: string; stop: string }>>({
     mode: "composite-stops",
     selectors: targets.map(({ selector }) => selector),
     tabStops
   });
-  if (widgets.length === 0) return targets;
+  if (widgets.length === 0) return namedByTree(page, targets);
   const reached = await timed(
     onStep,
     () => "From each widget's Tab stop, press the arrow keys, Home and End",
@@ -501,7 +522,10 @@ async function pointerOnlyTargets(
     }
   );
   await loadPage();
-  return probe<ProbedElement[]>({ mode: "pointer-only", tabStops: [...tabStops, ...reached] });
+  return namedByTree(
+    page,
+    await probe<LocatedElement[]>({ mode: "pointer-only", tabStops: [...tabStops, ...reached] })
+  );
 }
 
 /** Every item of one widget its keys reach, starting from its Tab stop. */
@@ -517,7 +541,7 @@ async function walkComposite(
       // By script, not by locator, which waits for an item a key removed, such as a closed menu's.
       if (!(await probe<boolean>({ mode: "focus", selector: reached[index]! }))) break;
       await page.keyboard.press(key);
-      const active = await probe<ProbedElement | null>({ mode: "active", within: widget });
+      const active = await probe<LocatedElement | null>({ mode: "active", within: widget });
       if (active && !reached.includes(active.selector)) reached.push(active.selector);
     }
   }
@@ -561,9 +585,33 @@ async function readStyleSheetTexts(page: KeyboardPointerSweepPage): Promise<stri
   }
 }
 
+/**
+ * Names each control as the accessibility tree does, which is what a screen reader says for it,
+ * whether the name comes from a label, a value, alt text or aria-labelledby. Asked right after
+ * the probe found them, so the tree describes the same page.
+ */
+async function namedByTree<Located extends LocatedElement>(
+  page: KeyboardPointerSweepPage,
+  elements: Located[]
+): Promise<Array<Located & ProbedElement>> {
+  if (elements.length === 0) return [];
+  return withCdpSession(page.context(), page, async (session) => {
+    const named: Array<Located & ProbedElement> = [];
+    for (const element of elements) {
+      const label = (await describeSelectedElement(session, element.selector))?.name ?? "";
+      // The text it shows is kept only to tell an unnamed control apart.
+      named.push({ ...element, label, ...(label ? { text: undefined } : {}) });
+    }
+    return named;
+  });
+}
+
 /** How a step names an element: by its label, or as unnamed, which is itself worth seeing. */
-function describeElement({ selector, label }: ProbedElement): string {
-  return label ? `“${label}”` : `a control with no name (${selector})`;
+function describeElement({ selector, label, text }: ProbedElement): string {
+  if (label) return `“${label}”`;
+  return text
+    ? `a control with no name that shows “${text}” (${selector})`
+    : `a control with no name (${selector})`;
 }
 
 /** Runs `run`, then reports it as a step unless `label` names none. */
@@ -601,11 +649,14 @@ async function collectTabStops(
       (found) => (isNewStop(found) ? `Tab ${stops.length + 1}: ${describeElement(found)}` : ""),
       async (): Promise<SweepTabStop | null> => {
         await page.keyboard.press("Tab");
-        const element = await probe<ProbedElement | null>({ mode: "active" });
-        const described = element && (await describeFocusedElement(session));
-        return element && described
-          ? { selector: element.selector, label: described.name, role: described.role }
-          : element;
+        const element = await probe<LocatedElement | null>({ mode: "active" });
+        if (!element) return null;
+        const described = await describeFocusedElement(session);
+        return {
+          selector: element.selector,
+          label: described?.name ?? "",
+          ...(described ? { role: described.role } : {})
+        };
       }
     );
     if (!isNewStop(active)) break;
@@ -692,7 +743,10 @@ async function textImages(
   probe: <T>(request: ProbeRequest) => Promise<T>
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
-  for (const image of await probe<ProbedElement[]>({ mode: "text-images" })) {
+  for (const image of await namedByTree(
+    page,
+    await probe<LocatedElement[]>({ mode: "text-images" })
+  )) {
     const frame = await probe<FocusFrame | null>({
       mode: "frame",
       selector: image.selector,
@@ -790,7 +844,8 @@ async function pressControl(
         await settle();
       });
       pressed.focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
-      pressed.newText = await probe<NewText>({ mode: "new-text", selector: control.selector });
+      const newText = await probe<ProbedNewText>({ mode: "new-text", selector: control.selector });
+      pressed.newText = newText && { ...newText, pressed: control };
     },
     captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
@@ -902,10 +957,17 @@ function watchFailedRequests(page: KeyboardPointerSweepPage): () => string[] {
 
 function sweepFinding(
   kind: SweepFindingKind,
-  { selector, label }: ProbedElement,
+  { selector, label, text }: ProbedElement,
   summary: string
 ): SweepFinding {
-  return { kind, concept: SWEEP_FINDING_CONCEPTS[kind], selector, label, summary };
+  return {
+    kind,
+    concept: SWEEP_FINDING_CONCEPTS[kind],
+    selector,
+    label,
+    ...(text ? { text } : {}),
+    summary
+  };
 }
 
 /**
@@ -921,7 +983,9 @@ function runSweepProbe(request: ProbeRequest): unknown {
     const position = sameTag.indexOf(element) + 1;
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${position})`;
   };
-  const labelFor = (element: Element): string =>
+  // The text a sighted person sees in an element. A control's name comes from the accessibility
+  // tree instead, outside the page, since text is only one of the places a name can come from.
+  const shownText = (element: Element): string =>
     (
       element.getAttribute("aria-label") ??
       (element as HTMLElement).innerText ??
@@ -983,7 +1047,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
     dialogs: Element[];
     /** The control pressed and its states as the press began; unset until a watch with no
      * control sees one. */
-    pressed?: { control: Element | null; selector: string; label: string };
+    pressed?: { control: Element | null; selector: string; text: string };
     states: Record<string, string | null>;
     liveRegions: Element[];
     changed: Set<Element>;
@@ -997,7 +1061,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       const active = document.activeElement;
       if (!active || active === document.body) return null;
       if (request.within && !document.querySelector(request.within)?.contains(active)) return null;
-      return { selector: selectorFor(active), label: labelFor(active) };
+      return { selector: selectorFor(active) };
     }
     // The composite widget each target sits in, with the Tab stop inside it that its arrow keys
     // start from, once per widget. A widget whose items Tab never reaches has none.
@@ -1038,7 +1102,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
           const parentPointer = parent !== null && getComputedStyle(parent).cursor === "pointer";
           return pointer && !parentPointer && isVisible(element) && !reachable(element);
         })
-        .map((element) => ({ selector: selectorFor(element), label: labelFor(element) }));
+        .map((element) => ({ selector: selectorFor(element), text: shownText(element) }));
     }
     case "hover-rules": {
       // Splits a selector list on its top-level commas, not the ones inside :is() or :not().
@@ -1087,7 +1151,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       return rules;
     }
     case "visible":
-      return [...document.querySelectorAll(request.selector)].filter(isVisible).map(labelFor);
+      return [...document.querySelectorAll(request.selector)].filter(isVisible).map(shownText);
     case "pressable": {
       // Links navigate away and submit buttons send forms, so neither is ever pressed.
       return find(request.tabStops)
@@ -1102,7 +1166,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
         })
         .map((element) => ({
           selector: selectorFor(element),
-          label: labelFor(element),
+          text: shownText(element),
           key: element.matches(
             "input[type=checkbox], input[type=radio], [role=checkbox], [role=switch]"
           )
@@ -1150,7 +1214,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
         const target = event.composedPath()[0];
         if (!event.isTrusted || !watch || watch.pressed || !(target instanceof Element)) return;
         const control = target.closest(controls) ?? target;
-        watch.pressed = { control, selector: selectorFor(control), label: labelFor(control) };
+        watch.pressed = { control, selector: selectorFor(control), text: shownText(control) };
         watch.states = statesOf(control);
       };
       const presses = ["click", "keydown"];
@@ -1165,7 +1229,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
               pressed: {
                 control: named,
                 selector: request.selector,
-                label: named ? labelFor(named) : ""
+                text: named ? shownText(named) : ""
               }
             }
           : {}),
@@ -1197,7 +1261,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
       watch.observer.disconnect();
       watch.stopListening();
       if (!watch.pressed) return null;
-      const { selector, label } = watch.pressed;
+      const { selector, text } = watch.pressed;
       // A named control is found again, as the press may have drawn it afresh.
       const control = request.selector
         ? document.querySelector(request.selector)
@@ -1273,14 +1337,14 @@ function runSweepProbe(request: ProbeRequest): unknown {
       const said = (element: Element) =>
         saidAt(element) || textParts(element).every(({ parent }) => saidAt(parent));
       return {
-        pressed: { selector, label },
+        pressed: { selector, text },
         said: shown.filter(said).length,
         unsaid: shown
           .filter((element) => !said(element))
           .slice(0, 5)
           .map((element) => ({
             selector: selectorFor(element),
-            label: labelFor(element),
+            label: shownText(element),
             form: [...element.querySelectorAll(formFields)].some(isVisible)
           }))
       };
@@ -1508,7 +1572,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
               .find(Boolean);
             found.push({
               selector: selectorFor(item),
-              label: labelFor(item),
+              label: shownText(item),
               neighbours: group.length - 1,
               differences: [...new Set(differences)].slice(0, 3),
               ...(marked ? { state: marked } : {})
@@ -1543,10 +1607,7 @@ function runSweepProbe(request: ProbeRequest): unknown {
           );
         })
         .slice(0, 10)
-        .map((image) => ({
-          selector: selectorFor(image),
-          label: image.getAttribute("alt")!.trim()
-        }));
+        .map((image) => ({ selector: selectorFor(image) }));
     // Elements Tab reaches without a script, and a person could see and point at.
     case "focusable":
       return [

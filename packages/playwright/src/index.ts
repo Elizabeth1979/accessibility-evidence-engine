@@ -81,6 +81,7 @@ export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
+export * from "./focus-accessibility";
 export * from "./heading-lookalikes";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
@@ -697,6 +698,11 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
           )
       : undefined,
     interactionReadsOnly: options.interactionReadsOnly,
+    // The watch tells a live region the page updates on its own from one the press updates; with
+    // the reader not listening, no announcement is judged and there is nothing to tell apart.
+    ...(selectedObservers.includes("virtual-screen-reader")
+      ? { watchWithoutInputMs: resolvedPolicy.capture.watchWithoutInputMs }
+      : {}),
     environment: {
       mode: "playwright-page"
     },
@@ -2304,12 +2310,18 @@ async function createObserverPage(
               targets.map(({ selector }) => selector)
             )
           );
+          // An AI specialist is asked only with the element as the accessibility tree has it.
           const contextByKey = byTargetKey(
             contextTargets,
-            await describeElementContexts(
-              locatablePage,
-              contextTargets.map(({ selector }) => selector)
-            )
+            cdpPage && contextTargets.length > 0
+              ? await withPageSessions(cdpPage.context(), cdpPage, (sessions) =>
+                  describeElementContexts(
+                    locatablePage,
+                    sessions,
+                    contextTargets.map(({ selector }) => selector)
+                  )
+                )
+              : []
           );
           return {
             ...result,

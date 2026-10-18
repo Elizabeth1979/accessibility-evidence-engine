@@ -519,7 +519,8 @@ test("resolveObserverIdsForCapturePolicy filters disabled capture observers", ()
       includeDomSnapshot: false,
       includeAccessibilityTree: false,
       includeScreenshots: false,
-      stabilizeAfterInteractionMs: 0
+      stabilizeAfterInteractionMs: 0,
+      watchWithoutInputMs: 0
     }
   );
 
@@ -630,7 +631,8 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
     includeScreenshots: false,
     includeAccessibilityTree: true,
     includeDomSnapshot: true,
-    stabilizeAfterInteractionMs: 40
+    stabilizeAfterInteractionMs: 40,
+    watchWithoutInputMs: 1500
   });
 });
 

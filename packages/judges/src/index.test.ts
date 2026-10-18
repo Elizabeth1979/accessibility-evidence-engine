@@ -659,7 +659,7 @@ test("focus-management judge passes when focus moves inside the opened dialog", 
               id: "delete-dialog",
               role: "dialog",
               name: "Delete project?",
-              ariaModal: true
+              modal: true
             }
           }
         }
@@ -758,6 +758,49 @@ test("focus-management judge matches the deepest focused target", async () => {
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /requested target/i);
+});
+
+test("focus-management judge leaves a target unknown when the capture has no accessibility tree", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  // Role and name come only from the tree, so a capture without one has neither.
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget: { nodePath: "body", tagName: "body" } }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            nodePath: "input#q",
+            id: "q",
+            tagName: "input",
+            accessibilityFocus: { status: "unsupported" }
+          }
+        }
+      }
+    ],
+    {
+      kind: "focus",
+      meta: { focusExpectation: "target" },
+      target: { role: "textbox", name: "Search" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
 });
 
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
@@ -882,16 +925,75 @@ function markupAfter(changed: boolean): PressRecord {
   return pressRecord("record-dom-after", "dom", "after", { changed });
 }
 
+/**
+ * A failed press's fix names what counts as a response (docs/playwright-integration.md, "What
+ * counts as a response"), not a markup change, which the judges keep as supporting evidence only.
+ */
+function assertSuggestsPerceivableResponse(suggestedFix: string | undefined): void {
+  assert.ok(suggestedFix, "expected a suggested fix");
+  assert.match(
+    suggestedFix,
+    /accessibility state \(checked, expanded, pressed, selected, value or name\)/
+  );
+  assert.match(suggestedFix, /aria-controls/);
+  assert.match(suggestedFix, /move focus to what it opens/);
+  assert.match(suggestedFix, /live region \(WCAG 4\.1\.3 Status Messages\)/);
+  assert.match(suggestedFix, /network request/);
+  assert.match(suggestedFix, /markup alone does not count/);
+  assert.doesNotMatch(suggestedFix, /\bDOM\b/);
+}
+
+function politeAnnouncements(texts: string[]) {
+  return texts.map((text, index) => ({
+    sequence: index + 1,
+    timestamp: "2026-06-21T10:00:01.050Z",
+    politeness: "polite",
+    text
+  }));
+}
+
 function readerAfter(texts: string[]): PressRecord {
   return pressRecord("record-reader-after", "virtual-screen-reader", "after", {
-    newLiveRegionAnnouncements: texts.map((text, index) => ({
-      sequence: index + 1,
-      timestamp: "2026-06-21T10:00:01.050Z",
-      politeness: "polite",
-      text
-    }))
+    newLiveRegionAnnouncements: politeAnnouncements(texts)
   });
 }
+
+/** What the reader heard while the page was left untouched before the press. */
+function readerBefore(texts: string[]): PressRecord {
+  return pressRecord("record-reader-before", "virtual-screen-reader", "before", {
+    liveRegionAnnouncementsWithoutInput: politeAnnouncements(texts)
+  });
+}
+
+/** What Chrome's tree showed changing on its own while the page was left untouched. */
+function accessibilityBefore(accessibilityChangesWithoutInput: AccessibilityChanges): PressRecord {
+  return pressRecord("record-accessibility-before", "accessibility-tree", "before", {
+    accessibilityChangesWithoutInput
+  });
+}
+
+/** A polite clock, `<p aria-live="polite" aria-label="Clock">`, showing the given time. */
+function clockRegion(time: string) {
+  return {
+    nodeId: 51,
+    role: "paragraph",
+    name: "Clock",
+    politeness: "polite" as const,
+    text: time
+  };
+}
+
+/** The clock ticking from one time to the next, as Chrome's tree reports it. */
+function clockTicks(from: string, to: string): AccessibilityChanges["changes"] {
+  return [{ nodeId: 52, role: "StaticText", name: to, kind: "name", before: from, after: to }];
+}
+
+const statusRegion = {
+  nodeId: 61,
+  role: "status",
+  politeness: "polite" as const,
+  text: "Saved"
+};
 
 const agreeCheckbox = { nodeId: 11, role: "checkbox", name: "Agree" };
 const moreButton = { nodeId: 21, role: "button", name: "More" };
@@ -975,6 +1077,69 @@ const pressScenarios: Array<{
       }),
       markupAfter(true)
     ]
+  },
+  {
+    title: "Enter on a dead button while a polite clock announces on its own",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: clockTicks("10:00:02", "10:00:03"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03")]
+      }),
+      readerAfter(["10:00:03"]),
+      markupAfter(true)
+    ]
+  },
+  {
+    title: "Enter on a Save button whose status message appears while a polite clock ticks",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [
+          ...clockTicks("10:00:02", "10:00:03"),
+          { nodeId: 62, role: "StaticText", name: "Saved", kind: "shown" }
+        ],
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03"), statusRegion]
+      }),
+      readerAfter(["10:00:03", "Saved"]),
+      markupAfter(true)
+    ]
+  },
+  {
+    title:
+      "Enter on a dead button after the page announced on its own, with no tree to place the announcement",
+    kind: "enter",
+    focusTarget: { tagName: "button", role: "button", name: "Save" },
+    records: [
+      readerBefore(["Ticker: 3 new"]),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: [],
+        truncated: false
+      }),
+      readerAfter(["Ticker: 4 new"])
+    ]
   }
 ];
 
@@ -988,7 +1153,24 @@ const expectedPressOutcomes: Array<{ verdict: Judgment["verdict"]; summary: RegE
   { verdict: "pass", summary: /a live region announced "Saved" \(polite\)/ },
   // Not a fail: the page did change, and nothing says the press did not cause it. Not a pass:
   // nothing ties the change to the press. The judge says what changed and leaves it undecided.
-  { verdict: "unknown", summary: /StaticText "10:01" appeared.*cannot be told/ }
+  { verdict: "unknown", summary: /StaticText "10:01" appeared.*cannot be told/ },
+  // The clock's announcement is named and not counted; with nothing else, the press is undecided.
+  {
+    verdict: "unknown",
+    summary:
+      /A live region announced "10:00:03" \(polite\) after the press, but that region, paragraph "Clock", was already announcing on its own while the page was left untouched \(before the press it said "10:00:02"\), so it is not counted/
+  },
+  // The status message comes from a region that was quiet before the press, so it still counts.
+  {
+    verdict: "pass",
+    summary:
+      /a live region announced "Saved" \(polite\)\).*A live region announced "10:00:03" \(polite\) after the press, but that region, paragraph "Clock", was already announcing/
+  },
+  {
+    verdict: "unknown",
+    summary:
+      /announced "Ticker: 4 new" \(polite\) after the press, but the page was already announcing on its own.*"Ticker: 3 new".*does not show which live region/
+  }
 ];
 
 for (const judgeId of ["keyboard", "change-response"]) {
@@ -1016,6 +1198,41 @@ for (const judgeId of ["keyboard", "change-response"]) {
   });
 }
 
+test("the press judges name every announcement a self-announcing region made after the press, in one sentence", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
+  const bundle = createBundle(
+    [
+      ...focusStaysOn({ tagName: "button", role: "button", name: "Save" }),
+      readerBefore(["10:00:02"]),
+      accessibilityBefore({
+        changes: clockTicks("10:00:01", "10:00:02"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:02")]
+      }),
+      accessibilityAfter({
+        focusedBefore: saveButton,
+        focusedAfter: saveButton,
+        changes: clockTicks("10:00:03", "10:00:04"),
+        truncated: false,
+        liveRegions: [clockRegion("10:00:03 10:00:04")]
+      }),
+      readerAfter(["10:00:03", "10:00:04"])
+    ],
+    { kind: "enter", target: { role: "button", name: "Save" } }
+  );
+
+  const [judgment] = await keyboardJudge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(
+    judgment?.summary ?? "",
+    /A live region announced "10:00:03" \(polite\), "10:00:04" \(polite\) after the press, but that region, paragraph "Clock", was already announcing on its own .*so they are not counted/
+  );
+  assert.equal(judgment?.summary.match(/A live region announced/g)?.length, 1);
+  assert.ok(judgment?.evidenceRecordIds.includes("record-reader-before"));
+  assert.ok(judgment?.evidenceRecordIds.includes("record-accessibility-before"));
+});
+
 test("keyboard judge fails a dead button even when unrelated markup changed", async () => {
   const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0]!;
   const bundle = createBundle(
@@ -1038,6 +1255,8 @@ test("keyboard judge fails a dead button even when unrelated markup changed", as
     judgment?.findings?.[0]?.message ?? "",
     /accessibility state, what it controls, focus, live regions and the network/
   );
+  assert.match(judgment?.suggestedFix ?? "", /^Ensure space activates the focused control/);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
 });
 
 test("keyboard judge leaves a press undecided when only the markup is known to have changed", async () => {
@@ -1117,7 +1336,7 @@ test("keyboard judge leaves activation of an already selected tab explicitly unt
     tagName: "button",
     role: "tab",
     name: "Overview",
-    ariaSelected: true
+    selected: true
   };
   const bundle = createBundle(
     [
@@ -1784,6 +2003,8 @@ test("change-response judge fails a click when nothing a person perceives change
   assert.equal(judgment?.verdict, "fail");
   assert.match(judgment?.summary ?? "", /No observable response followed the click interaction/);
   assert.equal(judgment?.severity, "high");
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
+  assert.match(judgment?.suggestedFix ?? "", /not only onto the clicked control/);
 });
 
 const checkoutPage = { nodeId: 1, role: "RootWebArea", name: "Checkout" };
@@ -1942,4 +2163,19 @@ test("change-response judge fails a space activation with no response and says h
   assert.equal(judgment?.verdict, "fail");
   assert.match(judgment?.summary ?? "", /No observable response followed the space interaction/);
   assert.match(judgment?.suggestedFix ?? "", /space interaction activates the target/i);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
+});
+
+test("change-response judge tells a form submission with no response what would count", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle([accessibilityAfter({ changes: [], truncated: false })], {
+    kind: "submit",
+    target: { role: "button", name: "Save" }
+  });
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.suggestedFix ?? "", /^Ensure form submission responds/);
+  assertSuggestsPerceivableResponse(judgment?.suggestedFix);
 });

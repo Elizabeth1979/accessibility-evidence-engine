@@ -120,7 +120,7 @@ test("only contextual heading and image-purpose decisions route to AI review", (
   assert.equal(
     routeContextualReview({
       kind: "image-purpose",
-      markupRole: "decorative",
+      treeRole: "decorative",
       contextSignals: ["Usage this month"]
     }).route,
     "deterministic"

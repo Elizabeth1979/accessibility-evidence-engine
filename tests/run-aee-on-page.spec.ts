@@ -1178,7 +1178,8 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
 const pressScenarios: Array<{
   title: string;
   html: string;
-  script?: () => void;
+  /** What the page's own scripts do, each run in the page in turn. */
+  scripts?: Array<() => void>;
   key: "Enter" | "Space";
   target: { role: string; name: string };
   verdict: "pass" | "unknown";
@@ -1202,13 +1203,15 @@ const pressScenarios: Array<{
       <button id="pressed" type="button" aria-expanded="false" aria-controls="details">More</button>
       <div id="details" role="region" aria-label="Details" hidden>Shipping takes two days.</div>
     </main>`,
-    script: () => {
-      const button = document.querySelector("#pressed")!;
-      button.addEventListener("click", () => {
-        button.setAttribute("aria-expanded", "true");
-        (document.querySelector("#details") as HTMLElement).hidden = false;
-      });
-    },
+    scripts: [
+      () => {
+        const button = document.querySelector("#pressed")!;
+        button.addEventListener("click", () => {
+          button.setAttribute("aria-expanded", "true");
+          (document.querySelector("#details") as HTMLElement).hidden = false;
+        });
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "More" },
     verdict: "pass",
@@ -1223,11 +1226,13 @@ const pressScenarios: Array<{
       <button id="pressed" type="button">Save</button>
       <p role="status" id="status"></p>
     </main>`,
-    script: () => {
-      document.querySelector("#pressed")!.addEventListener("click", () => {
-        document.querySelector("#status")!.textContent = "Saved";
-      });
-    },
+    scripts: [
+      () => {
+        document.querySelector("#pressed")!.addEventListener("click", () => {
+          document.querySelector("#status")!.textContent = "Saved";
+        });
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "Save" },
     verdict: "pass",
@@ -1240,24 +1245,76 @@ const pressScenarios: Array<{
       <button id="pressed" type="button">Save</button>
       <p id="clock">0</p>
     </main>`,
-    script: () => {
-      let ticks = 0;
-      setInterval(() => {
-        document.querySelector("#clock")!.textContent = String((ticks += 1));
-      }, 20);
-    },
+    scripts: [
+      () => {
+        let ticks = 0;
+        setInterval(() => {
+          document.querySelector("#clock")!.textContent = String((ticks += 1));
+        }, 20);
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "Save" },
     verdict: "unknown",
     summary: "so whether the press caused it cannot be told",
     markupChanged: true
+  },
+  {
+    title:
+      "Enter on a dead button while a polite clock announces on its own is not a pass, and names the announcement",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <section aria-live="polite" aria-label="Clock" id="clock">10:00:00</section>
+    </main>`,
+    scripts: [startPoliteClock],
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "unknown",
+    // Placed in the clock's region, or, if the clock ticked between the reader's and the tree's
+    // captures, not placed; either way it is named and not counted.
+    summary: "was already announcing on its own while",
+    markupChanged: true
+  },
+  {
+    title:
+      "Enter on a button whose status message appears while a polite clock ticks still passes from the message",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <p role="status" id="status"></p>
+      <section aria-live="polite" aria-label="Clock" id="clock">10:00:00</section>
+    </main>`,
+    scripts: [
+      () => {
+        document.querySelector("#pressed")!.addEventListener("click", () => {
+          document.querySelector("#status")!.textContent = "Saved";
+        });
+      },
+      startPoliteClock
+    ],
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "pass",
+    summary: 'a live region announced "Saved" (polite))',
+    markupChanged: true
   }
 ];
+
+/**
+ * A polite live region that announces a new time ten times a second, with nobody touching the
+ * page, so it also announces between the "before" and "after" captures of every press.
+ */
+function startPoliteClock(): void {
+  let tenths = 0;
+  setInterval(() => {
+    tenths += 1;
+    document.querySelector("#clock")!.textContent = `10:00:${(tenths / 10).toFixed(1)}`;
+  }, 100);
+}
 
 for (const scenario of pressScenarios) {
   test(`runAeeOnPage: ${scenario.title}`, async ({ page }, testInfo) => {
     await page.setContent(scenario.html);
-    if (scenario.script) await page.evaluate(scenario.script);
+    for (const script of scenario.scripts ?? []) await page.evaluate(script);
     await page.focus("#pressed");
 
     const result = await runAeeOnPage({
@@ -1504,7 +1561,10 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
       expect.objectContaining({
         judgeId: "change-response",
         verdict: "fail",
-        summary: expect.stringContaining("No observable response followed the click interaction")
+        summary: expect.stringContaining("No observable response followed the click interaction"),
+        suggestedFix: expect.stringContaining(
+          "move focus to what it opens (not only onto the clicked control), announce the result in a live region (WCAG 4.1.3 Status Messages)"
+        )
       }),
       expect.objectContaining({
         judgeId: "release",
@@ -1654,12 +1714,16 @@ test("runAeeOnPage fails keyboard judging when space does not activate a custom 
       expect.objectContaining({
         judgeId: "keyboard",
         verdict: "fail",
-        summary: expect.stringContaining("no observable activation response")
+        summary: expect.stringContaining("no observable activation response"),
+        suggestedFix: expect.stringContaining(
+          "change the control's accessibility state (checked, expanded, pressed, selected, value or name) or that of what it names with aria-controls"
+        )
       }),
       expect.objectContaining({
         judgeId: "change-response",
         verdict: "fail",
-        summary: expect.stringContaining("No observable response followed the space interaction")
+        summary: expect.stringContaining("No observable response followed the space interaction"),
+        suggestedFix: expect.stringContaining("A change to the page's markup alone does not count.")
       }),
       expect.objectContaining({
         judgeId: "release",
@@ -2286,7 +2350,7 @@ test("runAeeOnPage verifies focus moves inside an opened dialog", async ({ page 
               id: "dialog",
               role: "dialog",
               name: "Delete Project Alpha?",
-              ariaModal: true
+              modal: true
             })
           })
         })

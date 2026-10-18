@@ -57,6 +57,8 @@ export interface AccessibilityNode {
   value?: AccessibilityValue;
   properties?: AccessibilityProperty[];
   childIds?: string[];
+  /** Set on the nodes a partial tree returns, so its ancestors can be walked. */
+  parentId?: string;
   backendDOMNodeId?: number;
   /**
    * The frame whose document holds the node. Chrome sets it on a frame's root node only; AEE sets
@@ -264,6 +266,31 @@ export async function fetchAccessibilityTree(page: PageSessions): Promise<Access
   };
 }
 
+/** What the accessibility tree gives a screen reader for one element. */
+export interface AccessibleElement {
+  role: string;
+  name: string;
+  /** Why the tree leaves it out, such as `emptyAlt` or `ariaHiddenSubtree`; empty when it is exposed. */
+  ignoredReasons: string[];
+  /** Its states and other properties by name, such as `checked`, `selected` or `modal`. */
+  properties: Record<string, unknown>;
+  /** Joins it to its node in the full tree and in a DOM snapshot. */
+  backendNodeId?: number;
+}
+
+/** An accessibility node as the role, name, ignored reasons and properties it gives a screen reader. */
+export function accessibleElementOf(node: AccessibilityNode): AccessibleElement {
+  return {
+    role: String(node.role?.value ?? ""),
+    name: typeof node.name?.value === "string" ? node.name.value : "",
+    ignoredReasons: node.ignored ? (node.ignoredReasons ?? []).map(({ name }) => name) : [],
+    properties: Object.fromEntries(
+      (node.properties ?? []).map(({ name, value }) => [name, value.value])
+    ),
+    ...(node.backendDOMNodeId === undefined ? {} : { backendNodeId: node.backendDOMNodeId })
+  };
+}
+
 /**
  * The browser's accessibility node for one DOM node. Unlike the full tree, which leaves out some
  * ignored nodes (an `alt=""` image in a paragraph), this always answers, with Chrome's reasons
@@ -284,30 +311,30 @@ export async function fetchAccessibilityNode(
 }
 
 /**
- * The focused element's role and name as the accessibility tree has them, which is what a screen
- * reader announces when focus arrives. Nothing when focus is on no element.
+ * The focused element as the accessibility tree has it, which is what a screen reader announces
+ * when focus arrives. Nothing when focus is on no element.
  */
 export function describeFocusedElement(
   session: CdpSession
-): Promise<{ role: string; name: string } | undefined> {
+): Promise<AccessibleElement | undefined> {
   return describeEvaluatedElement(session, "document.activeElement");
 }
 
 /**
- * The role and name of the first element a CSS selector matches, as the accessibility tree has
- * them. Nothing when no element matches.
+ * The first element a CSS selector matches, as the accessibility tree has it. Nothing when no
+ * element matches.
  */
 export function describeSelectedElement(
   session: CdpSession,
   selector: string
-): Promise<{ role: string; name: string } | undefined> {
+): Promise<AccessibleElement | undefined> {
   return describeEvaluatedElement(session, `document.querySelector(${JSON.stringify(selector)})`);
 }
 
 async function describeEvaluatedElement(
   session: CdpSession,
   expression: string
-): Promise<{ role: string; name: string } | undefined> {
+): Promise<AccessibleElement | undefined> {
   const { result } = (await session.send("Runtime.evaluate", { expression })) as {
     result: { objectId?: string };
   };
@@ -317,12 +344,7 @@ async function describeEvaluatedElement(
       objectId: result.objectId,
       fetchRelatives: false
     })) as AccessibilityTree;
-    const node = nodes[0];
-    if (!node) return undefined;
-    return {
-      role: String(node.role?.value ?? ""),
-      name: typeof node.name?.value === "string" ? node.name.value : ""
-    };
+    return nodes[0] && accessibleElementOf(nodes[0]);
   } finally {
     await session.send("Runtime.releaseObject", { objectId: result.objectId });
   }
