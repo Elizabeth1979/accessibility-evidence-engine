@@ -659,7 +659,7 @@ test("focus-management judge passes when focus moves inside the opened dialog", 
               id: "delete-dialog",
               role: "dialog",
               name: "Delete project?",
-              ariaModal: true
+              modal: true
             }
           }
         }
@@ -758,6 +758,49 @@ test("focus-management judge matches the deepest focused target", async () => {
 
   assert.equal(judgment?.verdict, "pass");
   assert.match(judgment?.summary ?? "", /requested target/i);
+});
+
+test("focus-management judge leaves a target unknown when the capture has no accessibility tree", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0];
+  // Role and name come only from the tree, so a capture without one has neither.
+  const bundle = createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.000Z",
+        meta: { focusTarget: { nodePath: "body", tagName: "body" } }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-06-21T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            nodePath: "input#q",
+            id: "q",
+            tagName: "input",
+            accessibilityFocus: { status: "unsupported" }
+          }
+        }
+      }
+    ],
+    {
+      kind: "focus",
+      meta: { focusExpectation: "target" },
+      target: { role: "textbox", name: "Search" }
+    }
+  );
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
 });
 
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
@@ -1293,7 +1336,7 @@ test("keyboard judge leaves activation of an already selected tab explicitly unt
     tagName: "button",
     role: "tab",
     name: "Overview",
-    ariaSelected: true
+    selected: true
   };
   const bundle = createBundle(
     [

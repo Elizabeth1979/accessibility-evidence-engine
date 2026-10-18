@@ -8,7 +8,7 @@ import {
   colorMeaningSpecialist,
   createModelProvider,
   imagePurposeSpecialist,
-  imageRoleFromMarkup,
+  imageRoleFromTree,
   judgeColorMeaning,
   parseModelProviderName,
   proposeAccessibleLabelFix,
@@ -2323,11 +2323,22 @@ function sweepFindingInstance(
 ): FindingInstanceSynthesis {
   return {
     component: affectedComponentName(finding.selector),
-    label: finding.label || elementLabel(undefined, finding.selector, index),
+    label:
+      finding.label ||
+      unnamedLabel(finding.text) ||
+      elementLabel(undefined, finding.selector, index),
     selector: framedSelector([...(finding.framePath ?? []), finding.selector]),
     targetBox: finding.targetBox,
     detail: finding.summary
   };
+}
+
+/**
+ * A control the accessibility tree gives no name, told apart by the text it shows: a screen
+ * reader is given no name for it, but a sighted person sees these words.
+ */
+function unnamedLabel(text: string | undefined): string | undefined {
+  return text ? `Shows “${text}”, no accessible name` : undefined;
 }
 
 /**
@@ -2600,8 +2611,7 @@ const AI_SPECIALISTS: Record<string, AiSpecialistRun> = {
       return proposeAccessibleLabelFix(
         {
           selector,
-          role:
-            context.role ?? ({ a: "link", button: "button" }[context.tagName] || context.tagName),
+          role: context.role,
           iconDescription: context.iconOnly
             ? context.iconHints.length
               ? `an icon; its markup mentions ${context.iconHints.join(", ")}`
@@ -2626,10 +2636,8 @@ const AI_SPECIALISTS: Record<string, AiSpecialistRun> = {
           selector,
           source: image?.source,
           currentAlternative: image?.alt,
-          markupRole: imageRoleFromMarkup({
-            role: image?.role,
-            ariaHidden: image?.ariaHidden,
-            alt: image?.alt,
+          treeRole: imageRoleFromTree({
+            ignoredReasons: context.ignoredReasons,
             soleContentOfLinkOrButton: image?.soleContentOfLinkOrButton
           }),
           linkOrButtonText: image?.linkOrButtonText,
@@ -4318,7 +4326,7 @@ const EVIDENCE_WORDS: Record<string, string> = {
   destinationText: "where it leads",
   source: "the image file",
   currentAlternative: "its current alternative",
-  markupRole: "its markup",
+  treeRole: "the browser's accessibility tree",
   linkOrButtonText: "its link or button text",
   caption: "its caption",
   title: "its title",
@@ -4871,7 +4879,7 @@ function addSweepLayers(
       id: "",
       badge: "!",
       ...(finding.targetBox ? { box: finding.targetBox } : {}),
-      title: finding.label || finding.selector,
+      title: finding.label || unnamedLabel(finding.text) || finding.selector,
       detail: finding.summary,
       tone: "fail",
       flag: SWEEP_FINDING_TEXT[finding.kind].title,

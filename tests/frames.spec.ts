@@ -676,7 +676,7 @@ test("the focus observer labels each step from a shadow root into a cross-site f
         activeDescendant: expect.objectContaining({
           role: "option",
           name: "Visa ending 4242",
-          ariaSelected: true,
+          selected: true,
           framePath: ["iframe#card"]
         })
       })
@@ -912,7 +912,7 @@ test("Tab onto a control a script blurs is lost focus; a frame with nothing to f
         "tab"
       );
       steps.push({
-        to: after.name ?? after.tagName,
+        to: after.name || after.tagName,
         place: after.focusOrderIndex,
         of: after.focusableCount,
         pageHasFocus: after.documentHasFocus,
@@ -1019,7 +1019,7 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
     const reached = [];
     for (let stop = 0; stop < 15; stop += 1) {
       const { after } = await judgeKeyPress(page, testInfo.outputPath(`tab-${stop}`), "tab");
-      reached.push([after.name ?? after.tagName, after.focusOrderIndex, after.focusableCount]);
+      reached.push([after.name || after.tagName, after.focusOrderIndex, after.focusableCount]);
     }
     expect(reached).toEqual(
       [

@@ -37,8 +37,8 @@ export type ContextualReviewCandidate =
     }
   | {
       kind: "image-purpose";
-      /** The role the markup already decides, if any (imageRoleFromMarkup). */
-      markupRole?: ImageRole;
+      /** The role the accessibility tree already decides, if any (imageRoleFromTree). */
+      treeRole?: ImageRole;
       contextSignals: string[];
     }
   | {
@@ -202,10 +202,11 @@ export function routeContextualReview(candidate: ContextualReviewCandidate): AiR
         };
   }
 
-  if (candidate.markupRole === "decorative") {
+  if (candidate.treeRole === "decorative") {
     return {
       route: "deterministic",
-      reason: "The markup already marks the image decorative, so its alternative is empty."
+      reason:
+        "The accessibility tree already leaves the image out as decorative, so its alternative is empty."
     };
   }
   if (!hasSignal(candidate.contextSignals)) {
@@ -267,7 +268,7 @@ export async function proposeImageAlternativeFix(
 ): Promise<AiProposedFix<ImagePurposeAnswer>> {
   const decision = routeContextualReview({
     kind: "image-purpose",
-    markupRole: context.markupRole,
+    treeRole: context.treeRole,
     contextSignals: definedSignals(
       context.linkOrButtonText,
       context.destinationText,

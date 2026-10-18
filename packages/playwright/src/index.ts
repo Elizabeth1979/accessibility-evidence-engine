@@ -81,6 +81,7 @@ export * from "./element-context";
 export * from "./element-locations";
 export * from "./element-map";
 export * from "./evidence-manifest";
+export * from "./focus-accessibility";
 export * from "./heading-lookalikes";
 export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
@@ -2309,12 +2310,18 @@ async function createObserverPage(
               targets.map(({ selector }) => selector)
             )
           );
+          // An AI specialist is asked only with the element as the accessibility tree has it.
           const contextByKey = byTargetKey(
             contextTargets,
-            await describeElementContexts(
-              locatablePage,
-              contextTargets.map(({ selector }) => selector)
-            )
+            cdpPage && contextTargets.length > 0
+              ? await withPageSessions(cdpPage.context(), cdpPage, (sessions) =>
+                  describeElementContexts(
+                    locatablePage,
+                    sessions,
+                    contextTargets.map(({ selector }) => selector)
+                  )
+                )
+              : []
           );
           return {
             ...result,
