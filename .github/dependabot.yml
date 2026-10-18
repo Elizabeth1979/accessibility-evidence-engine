@@ -9,6 +9,10 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - version-update:semver-major
+      # 0.33.0 can break typing in a React input on the page under test (guidepup/virtual-screen-reader#250).
+      - dependency-name: "@guidepup/virtual-screen-reader"
+        versions:
+          - "0.33.0"
     groups:
       development-dependencies:
         dependency-type: development
@@ -20,3 +24,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # CodeQL's init and analyze steps must run the same version, so they move together.
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
