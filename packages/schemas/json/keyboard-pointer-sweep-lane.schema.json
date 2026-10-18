@@ -41,6 +41,33 @@
     "tabStops": { "type": "array", "items": { "$ref": "#/$defs/tabStop" } },
     "activated": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "failedNavigations": {
+      "description": "Pages on the site a press set out for that did not load: Chrome showed its own error page, so the sweep read nothing there and compared the click with the key press by where each set out for.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["selector", "url", "reason"],
+        "properties": {
+          "selector": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "framesNotRead": {
+      "description": "Frames whose content the sweep did not check, and why: one showing a page outside the allowed origins or Chrome's error page, one inside such a frame, or one no session could read. The frame element on the page is still swept.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["url", "reason"],
+        "properties": {
+          "url": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "diagnostics": {
       "type": "array",
       "minItems": 1,

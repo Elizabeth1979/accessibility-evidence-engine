@@ -229,6 +229,225 @@ test("the sweep lane reports a control a click takes outside the allowed origins
   }
 });
 
+test("the sweep lane reads nothing in a frame a redirect takes outside the allowed origins and still reads its own frames", async ({
+  browser
+}, testInfo) => {
+  // Each page has a line styled as a title with no heading role, which the sweep reports in every
+  // frame it reads.
+  const titled = (title: string) => `<!doctype html>
+<html lang="en"><head><title>${title}</title></head>
+  <body>
+    <p style="font-size: 32px; font-weight: 700; margin: 0">${title}</p>
+    <p>Ordinary text, long enough to set the size of this frame's body text.</p>
+  </body>
+</html>`;
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(titled("Another site's title"));
+  });
+  // localhost is another site than 127.0.0.1, so Chrome renders its frame in a process of its own.
+  const elsewhereOrigin = elsewhere.origin.replace("127.0.0.1", "localhost");
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/away") {
+      response.writeHead(302, { location: `${elsewhereOrigin}/` });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      request.url === "/panel"
+        ? titled("Our own panel")
+        : `<!doctype html>
+<html lang="en">
+  <head><title>Frames</title></head>
+  <body>
+    <main>
+      <h1>Frames</h1>
+      <iframe id="ours" title="Our panel" src="/panel"></iframe>
+      <iframe id="away" title="Embedded" src="/away"></iframe>
+    </main>
+  </body>
+</html>`
+    );
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    expect(lane.status).toBe("completed");
+    expect(new Set(lane.blockedNavigations)).toEqual(new Set([`${elsewhereOrigin}/`]));
+    expect(lane.framesNotRead).toEqual([
+      {
+        url: `${elsewhereOrigin}/`,
+        reason: `It shows a page from ${elsewhereOrigin}, which is not an allowed origin; add it to them to check this frame.`
+      }
+    ]);
+    // The frame element itself is on the page, so the sweep still reaches it and reads its name.
+    expect(lane.tabStops.map(({ selector, label }) => ({ selector, label }))).toContainEqual({
+      selector: "#away",
+      label: "Embedded"
+    });
+    expect(lane.findings.map(({ kind, label, framePath }) => ({ kind, label, framePath }))).toEqual(
+      [{ kind: "looks-like-heading", label: "Our own panel", framePath: ["#ours"] }]
+    );
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
+test("the sweep lane's pictures cover a frame a redirect takes outside the allowed origins and still show its own frames", async ({
+  browser
+}, testInfo) => {
+  // Each page is one solid colour, so a picture shows whose pixels are where.
+  const filled = (colour: string) =>
+    `<!doctype html><html lang="en"><head><title>${colour}</title></head><body style="margin: 0; background: ${colour}"></body></html>`;
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(filled("rgb(255, 0, 0)"));
+  });
+  // localhost is another site than 127.0.0.1, so Chrome renders its frame in a process of its own.
+  const elsewhereOrigin = elsewhere.origin.replace("127.0.0.1", "localhost");
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/away") {
+      response.writeHead(302, { location: `${elsewhereOrigin}/` });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      request.url === "/panel"
+        ? filled("rgb(0, 255, 0)")
+        : `<!doctype html>
+<html lang="en">
+  <head><title>Frames</title></head>
+  <body>
+    <main>
+      <h1>Frames</h1>
+      <iframe id="ours" title="Our panel" src="/panel" style="border: 0; width: 200px; height: 100px"></iframe>
+      <iframe id="away" title="Embedded" src="/away" style="border: 0; width: 200px; height: 100px"></iframe>
+    </main>
+  </body>
+</html>`
+    );
+  });
+  // The share of a box's pixels that are close to one colour.
+  const shareOf = (
+    image: PNG,
+    { x, y, width, height }: { x: number; y: number; width: number; height: number },
+    [red, green, blue]: [number, number, number]
+  ) => {
+    let matching = 0;
+    for (let row = Math.round(y); row < Math.round(y + height); row += 1) {
+      for (let column = Math.round(x); column < Math.round(x + width); column += 1) {
+        const at = (row * image.width + column) * 4;
+        const near = [red, green, blue].every(
+          (channel, index) => Math.abs(image.data[at + index]! - channel) < 40
+        );
+        if (near) matching += 1;
+      }
+    }
+    return matching / (Math.round(width) * Math.round(height));
+  };
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    expect(lane.status).toBe("completed");
+    expect(lane.framesNotRead.map(({ url }) => url)).toEqual([`${elsewhereOrigin}/`]);
+    const stop = (selector: string) =>
+      lane.tabStops.find((tabStop) => tabStop.selector === selector)!;
+    const fullPage = PNG.sync.read(await readFile(lane.screenshotFile));
+    expect(shareOf(fullPage, stop("#away").targetBox!, [255, 0, 0])).toBe(0);
+    expect(shareOf(fullPage, stop("#ours").targetBox!, [0, 255, 0])).toBeGreaterThan(0.95);
+    // The frame is a Tab stop, so its focus crop shows where it is on screen.
+    const crop = PNG.sync.read(
+      await readFile(path.join(path.dirname(lane.screenshotFile), stop("#away").focusCrop!))
+    );
+    expect(shareOf(crop, { x: 0, y: 0, width: crop.width, height: crop.height }, [255, 0, 0])).toBe(
+      0
+    );
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
+test("the sweep lane records a press whose page fails to load, reads no error page and sweeps on", async ({
+  browser
+}, testInfo) => {
+  // The server drops the connection for the next step, so Chrome shows its own error page there.
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/next-step") {
+      request.socket.destroy();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Steps</title></head>
+  <body>
+    <main>
+      <h1>Steps</h1>
+      <button id="next" type="button">Open the next step</button>
+      <div id="next-by-mouse" role="button" tabindex="0">Open the next step by mouse</div>
+      <button id="details" type="button" aria-expanded="false">Show details</button>
+      <p id="more" hidden>More details</p>
+    </main>
+    <script>
+      document.querySelector("#next").addEventListener("click", () => {
+        location.href = "/next-step";
+      });
+      // It listens for clicks only, so Enter does nothing.
+      document.querySelector("#next-by-mouse").addEventListener("click", () => {
+        location.href = "/next-step";
+      });
+      document.querySelector("#details").addEventListener("click", (event) => {
+        event.currentTarget.setAttribute("aria-expanded", "true");
+        document.querySelector("#more").hidden = false;
+      });
+    </script>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: true
+    });
+
+    expect(lane.status).toBe("completed");
+    expect(lane.activated).toEqual(["#next", "#next-by-mouse", "#details"]);
+    expect(lane.blockedNavigations).toEqual([]);
+    expect(lane.failedNavigations).toEqual([
+      { selector: "#next", url: `${site.origin}/next-step`, reason: "net::ERR_EMPTY_RESPONSE" },
+      {
+        selector: "#next-by-mouse",
+        url: `${site.origin}/next-step`,
+        reason: "net::ERR_EMPTY_RESPONSE"
+      }
+    ]);
+    expect(lane.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
+      { kind: "activation-differs", selector: "#next-by-mouse" }
+    ]);
+  } finally {
+    await site.close();
+  }
+});
+
 test("the sweep lane records a start page that redirects outside the allowed origins as blocked and sweeps nothing there", async ({
   browser
 }, testInfo) => {

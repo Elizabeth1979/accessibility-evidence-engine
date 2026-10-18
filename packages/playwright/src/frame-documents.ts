@@ -142,13 +142,15 @@ const DESCRIBE_DEPTH = 100;
 /**
  * The closed shadow roots in each document one process renders, by frame, as backend node ids:
  * the process's DOM walked from its top document through every shadow root and every frame it
- * renders itself (`DOM.describeNode` with `pierce`, the protocol's way into closed roots). Every
- * document it walked has an entry, an empty one when it has no closed root.
+ * renders itself (`DOM.describeNode` with `pierce`, the protocol's way into closed roots), except
+ * a frame the page's sessions leave unread. Every document it walked has an entry, an empty one
+ * when it has no closed root.
  */
 async function closedShadowRootsByFrame(
   cdp: CdpSession,
   documentObjectId: string,
-  frameId: string
+  frameId: string,
+  read: Set<string>
 ): Promise<Map<string, number[]>> {
   const found = new Map<string, Set<number>>([[frameId, new Set()]]);
   const pending: Array<{ target: object; frameId: string }> = [
@@ -171,7 +173,7 @@ async function closedShadowRootsByFrame(
       for (const child of [...(node.shadowRoots ?? []), ...(node.children ?? [])]) {
         visit(child, frameId, true);
       }
-      if (node.contentDocument && node.frameId) {
+      if (node.contentDocument && node.frameId && read.has(node.frameId)) {
         if (!found.has(node.frameId)) found.set(node.frameId, new Set());
         visit(node.contentDocument, node.frameId, true);
       }
@@ -208,6 +210,7 @@ export function frameDocuments(page: PageSessions): FrameDocuments {
     }
     return value;
   };
+  const read = new Set(page.frames.map(({ frameId }) => frameId));
   const documents = new Map<string, Promise<string | undefined>>();
   const walks = new Map<CdpSession, Promise<Map<string, number[]> | undefined>>();
   const roots = new Map<string, Promise<PageObject | undefined>>();
@@ -226,7 +229,7 @@ export function frameDocuments(page: PageSessions): FrameDocuments {
       const topDocument = await document(top);
       return topDocument === undefined
         ? undefined
-        : closedShadowRootsByFrame(session, topDocument, top.frameId);
+        : closedShadowRootsByFrame(session, topDocument, top.frameId, read);
     });
   return {
     document,

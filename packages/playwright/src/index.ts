@@ -40,10 +40,12 @@ import {
 } from "./virtual-screen-reader";
 import {
   fetchAccessibilityTree,
+  framesInsideOrigins,
   withPageSessions,
   type CdpContext,
   type FramedPage,
-  type PageSessions
+  type PageSessions,
+  type UnreadFrame
 } from "./accessibility-tree";
 import {
   assertAllowedOrigin,
@@ -51,6 +53,12 @@ import {
   normalizeAllowedOrigins
 } from "./allowed-origins";
 import { captureDomFocus } from "./dom-focus";
+import {
+  frameMasks,
+  framesNotChecked,
+  type FrameNotChecked,
+  type LocatorScope
+} from "./frames-not-checked";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
@@ -62,6 +70,7 @@ import {
 } from "./element-locations";
 import {
   sweepKeyboardAndPointer,
+  type FailedNavigation,
   type KeyboardPointerSweepPage,
   type KeyboardPointerSweepRequest,
   type ObservedPresses,
@@ -148,6 +157,12 @@ export interface RunAeeOnPageOptions<TPage extends PlaywrightPageLike = Playwrig
    * captured once, after it, and not waited on to settle, since nothing on it changed.
    */
   interactionReadsOnly?: boolean;
+  /**
+   * The origins whose pages are read. A frame whose page is outside them is not: its element is
+   * checked on the page, axe leaves it out and the screenshots cover it, and the axe result lists
+   * it as not checked.
+   */
+  allowedOrigins?: string[];
 }
 
 export interface RunAeeOnPageResult {
@@ -455,6 +470,10 @@ export interface KeyboardPointerSweepLaneDocument {
   tabStops?: KeyboardPointerSweepLaneTabStop[];
   activated?: string[];
   findings?: KeyboardPointerSweepLaneFinding[];
+  /** Pages on the site a press set out for that did not load, so the sweep read nothing there. */
+  failedNavigations?: FailedNavigation[];
+  /** Frames whose content the sweep did not check, and why, such as one showing another site. */
+  framesNotRead?: UnreadFrame[];
   diagnostics?: string[];
 }
 
@@ -463,6 +482,8 @@ export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLane
   tabStops: KeyboardPointerSweepLaneTabStop[];
   activated: string[];
   findings: KeyboardPointerSweepLaneFinding[];
+  failedNavigations: FailedNavigation[];
+  framesNotRead: UnreadFrame[];
   sweepFile: string;
   screenshotFile: string;
   manifestFile: string;
@@ -683,7 +704,11 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     checkpointId: checkpoint.id,
     interactionId: interaction.id,
     url: options.page.url(),
-    page: await createObserverPage(options.page, options.virtualScreenReader),
+    page: await createObserverPage(
+      options.page,
+      options.virtualScreenReader,
+      options.allowedOrigins
+    ),
     artifactDir
   };
 
@@ -1549,6 +1574,11 @@ export interface PageCheckpointLaneOptions<TPage extends PlaywrightPageLike> {
   laneId?: string;
   /** Defaults to a Playwright test. */
   driver?: PageCheckpointDriver;
+  /**
+   * The origins whose pages a checkpoint reads. A frame whose page is outside them is checked on
+   * the page and listed as not checked (`RunAeeOnPageOptions.allowedOrigins`).
+   */
+  allowedOrigins?: string[];
 }
 
 export interface PageCheckpointStep {
@@ -1637,9 +1667,15 @@ export function startPageCheckpointLane<TPage extends PlaywrightPageLike>(
           kind: "custom",
           actor: "test",
           meta: { laneId, laneSequence: sequence, checkpoint: name }
-        }
+        },
+        allowedOrigins: options.allowedOrigins
       });
       const outcome = readLaneStepOutcome(result, "Page checkpoint");
+      for (const { url, reason } of outcome.framesNotChecked) {
+        diagnostics.push(
+          `${laneId}: checkpoint "${name}" did not check the frame at ${url}. ${reason}`
+        );
+      }
       manifestAction.status = "completed";
       manifestAction.reporterFiles = result.reporterFiles;
       manifestAction.artifactFiles = result.artifactFiles;
@@ -1689,6 +1725,8 @@ export interface StartPageLanePage extends PlaywrightPageLike {
 export interface StartPageLaneContext<
   TPage extends StartPageLanePage
 > extends KeyboardPointerSweepLaneRouter {
+  /** Every request its pages send, redirects included, which its route handler does not see. */
+  on(event: "request", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
   newPage(): Promise<TPage>;
   close(): Promise<void>;
 }
@@ -1707,16 +1745,20 @@ export interface RunStartPageLaneOptions<TPage extends StartPageLanePage> {
 }
 
 export interface StartPageLaneResult extends PageCheckpointLaneResult {
-  /** Navigations the lane stopped because they left the allowed origins. */
+  /**
+   * Navigations that left the allowed origins: each one the lane stopped, and each address a
+   * redirect took a frame of the start page to, whose page the checkpoint then left unread.
+   */
   blockedNavigations: string[];
 }
 
 /**
  * Opens a start page in a browser context of its own and checkpoints it once, before anything acts
  * on it: the evidence and pinned axe rules a scenario's plan runs on every journey's start page,
- * whatever else the journey declares. Every navigation outside the allowed origins is stopped. A lane
- * that fails still writes its manifest: "blocked" when it stopped at a page outside the allowed
- * origins, otherwise "failed".
+ * whatever else the journey declares. Every navigation outside the allowed origins is stopped, and
+ * a frame a redirect takes outside them is checked on the start page and nothing inside it is read
+ * (`PageCheckpointLaneOptions.allowedOrigins`). A lane that fails still writes its manifest:
+ * "blocked" when it stopped at a page outside the allowed origins, otherwise "failed".
  */
 export async function runStartPageLane<TPage extends StartPageLanePage>(
   options: RunStartPageLaneOptions<TPage>
@@ -1730,6 +1772,7 @@ export async function runStartPageLane<TPage extends StartPageLanePage>(
   try {
     context = await options.browser.newContext();
     await context.route("**/*", navigationGuard(allowedOrigins, blockedNavigations));
+    context.on("request", redirectsLeaving(allowedOrigins, blockedNavigations));
     const page = await context.newPage();
     // Started before the load, so the checkpoint waits for the data the page loads.
     const lane = startPageCheckpointLane({
@@ -1737,7 +1780,8 @@ export async function runStartPageLane<TPage extends StartPageLanePage>(
       projectRoot: options.projectRoot,
       outputDir: options.outputDir,
       laneId,
-      driver: "page-load"
+      driver: "page-load",
+      allowedOrigins
     });
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
     assertAllowedOrigin(page.url(), allowedOrigins, "Start-page lane");
@@ -1796,7 +1840,7 @@ function navigationGuard(
 /**
  * Records each navigation a redirect took outside the allowed origins. A route handler is called
  * only for the first address of a redirect (Playwright's `page.route`), so the guard never sees
- * the hop, and the browser follows it; the sweep then reads nothing there.
+ * the hop, and the browser follows it; the lane then reads nothing there.
  */
 function redirectsLeaving(
   allowedOrigins: string[],
@@ -1975,7 +2019,11 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   const blockedNavigations: string[] = [];
   const steps: SweepStep[] = [];
   let sweep:
-    Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
+    | Pick<
+        KeyboardPointerSweepLaneResult,
+        "tabStops" | "activated" | "findings" | "failedNavigations" | "framesNotRead"
+      >
+    | undefined;
   const focusCropFiles: string[] = [];
   let runError: unknown;
   let pages: SweepPages<TPage> | undefined;
@@ -2004,7 +2052,15 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     } finally {
       stillRequests.stop();
     }
-    await still.screenshot({ path: screenshotFile, fullPage: true });
+    // A frame a redirect took off-site was not read, so the picture covers it too.
+    const framesLeftOut = await withPageSessions(still.context(), still, (sessions) =>
+      framesNotChecked(framesInsideOrigins(sessions, allowedOrigins))
+    );
+    await still.screenshot({
+      path: screenshotFile,
+      fullPage: true,
+      mask: frameMasks(still, framesLeftOut)
+    });
     const locations = await locateElements(
       still,
       result.findings.map(({ selector }) => selector)
@@ -2034,7 +2090,9 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       findings: result.findings.map((finding, index) => {
         const targetBox = locations[index];
         return targetBox ? { ...finding, targetBox } : finding;
-      })
+      }),
+      failedNavigations: result.failedNavigations,
+      framesNotRead: result.framesNotRead
     };
   } catch (error) {
     runError = error;
@@ -2130,6 +2188,8 @@ function readLaneStepOutcome(
 ): {
   results: RunSummary;
   releaseVerdict: JudgmentVerdict;
+  /** The frames axe left out because their pages are outside the allowed origins. */
+  framesNotChecked: FrameNotChecked[];
 } {
   const jsonReport = result.reportArtifacts.find(({ label }) => label === "aee-report.json");
 
@@ -2140,6 +2200,7 @@ function readLaneStepOutcome(
   const parsed = JSON.parse(jsonReport.content) as {
     run?: { results?: Partial<RunSummary> };
     judgments?: Array<{ judgeId?: unknown; verdict?: unknown }>;
+    records?: Array<{ observerId?: unknown; meta?: { framesNotChecked?: FrameNotChecked[] } }>;
   };
   const results = parsed.run?.results;
   const releaseVerdict = parsed.judgments?.find(({ judgeId }) => judgeId === "release")?.verdict;
@@ -2159,7 +2220,10 @@ function readLaneStepOutcome(
       fail: results.fail,
       unknown: results.unknown
     },
-    releaseVerdict: releaseVerdict as JudgmentVerdict
+    releaseVerdict: releaseVerdict as JudgmentVerdict,
+    framesNotChecked: (parsed.records ?? [])
+      .filter(({ observerId }) => observerId === "axe")
+      .flatMap(({ meta }) => meta?.framesNotChecked ?? [])
   };
 }
 
@@ -2256,9 +2320,20 @@ interface EventedPageLike extends PlaywrightPageLike {
 
 async function createObserverPage(
   page: PlaywrightPageLike,
-  virtualScreenReader?: PortableVirtualScreenReader
+  virtualScreenReader?: PortableVirtualScreenReader,
+  allowedOrigins?: string[]
 ): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
+  // Each read of the page's frames leaves out those outside the allowed origins.
+  const withSessions = <Result>(
+    framedPage: NonNullable<typeof cdpPage>,
+    use: (sessions: PageSessions) => Promise<Result>
+  ) =>
+    withPageSessions(framedPage.context(), framedPage, (sessions) =>
+      use(allowedOrigins ? framesInsideOrigins(sessions, allowedOrigins) : sessions)
+    );
+  const framesLeftOut: () => Promise<FrameNotChecked[]> =
+    cdpPage && allowedOrigins ? () => withSessions(cdpPage, framesNotChecked) : async () => [];
   const evaluatablePage = page as EvaluatablePageLike;
   const eventedPage = page as EventedPageLike;
   const customScreenshot = page.snapshotScreenshot?.bind(page);
@@ -2288,7 +2363,7 @@ async function createObserverPage(
   const snapshotAccessibilityTree = page.snapshotAccessibilityTree
     ? async () => page.snapshotAccessibilityTree?.()
     : cdpPage
-      ? async () => withPageSessions(cdpPage.context(), cdpPage, fetchAccessibilityTree)
+      ? async () => withSessions(cdpPage, fetchAccessibilityTree)
       : undefined;
   const snapshotFocusTarget = page.snapshotFocusTarget
     ? async () => page.snapshotFocusTarget?.()
@@ -2296,7 +2371,7 @@ async function createObserverPage(
       ? async () => {
           // DOM focus and the accessibility tree's focus are read from the same sessions, so both
           // describe the page at the same moment.
-          const focusState = await withPageSessions(cdpPage.context(), cdpPage, async (frames) => {
+          const focusState = await withSessions(cdpPage, async (frames) => {
             const domFocus = await captureDomFocus(frames);
             return (
               domFocus && { ...domFocus, accessibilityFocus: await accessibilityFocusOf(frames) }
@@ -2310,9 +2385,12 @@ async function createObserverPage(
     ? async (options?: { fullPage?: boolean }) => customScreenshot(options)
     : nativeScreenshot
       ? async (options?: { fullPage?: boolean }) => {
+          // Playwright's own `mask` covers each frame left unread, so nothing of its page is kept.
+          const mask = frameMasks(page as unknown as LocatorScope, await framesLeftOut());
           const value = await nativeScreenshot({
             type: "png",
-            fullPage: options?.fullPage ?? false
+            fullPage: options?.fullPage ?? false,
+            ...(mask.length ? { mask } : {})
           });
 
           if (value instanceof Uint8Array) {
@@ -2327,12 +2405,21 @@ async function createObserverPage(
     : evaluatablePage.evaluate
       ? async (options: AxeAnalysisOptions) => {
           // `options()` replaces axe's run options, so it goes before `withTags()` adds the tags.
-          const axeResult = await new AxeBuilder({
+          const builder = new AxeBuilder({
             page: page as unknown as ConstructorParameters<typeof AxeBuilder>[0]["page"]
           })
             .options({ rules: enableExperimentalAxeRules(options.experimentalTags ?? []) })
-            .withTags(options.tags)
-            .analyze();
+            .withTags(options.tags);
+          // A frame left unread is left out with its element: excluding only what is inside it
+          // still loads axe into its page (@axe-core/playwright goes into every frame axe's context
+          // lists, and an exclusion inside a frame keeps the frame listed).
+          const notChecked = await framesLeftOut();
+          for (const {
+            selector: [outer, next, ...rest]
+          } of notChecked) {
+            builder.exclude(next === undefined ? outer : { fromFrames: [outer, next, ...rest] });
+          }
+          const axeResult = await builder.analyze();
           // Contrast axe could not decide over an image or a gradient is measured from the pixels.
           const result = nativeScreenshot
             ? await settleContrastByPixels(page as unknown as ContrastMeasuringPage, axeResult)
@@ -2358,7 +2445,7 @@ async function createObserverPage(
           const contextByKey = byTargetKey(
             contextTargets,
             cdpPage && contextTargets.length > 0
-              ? await withPageSessions(cdpPage.context(), cdpPage, (sessions) =>
+              ? await withSessions(cdpPage, (sessions) =>
                   describeElementContexts(
                     locatablePage,
                     sessions,
@@ -2369,6 +2456,7 @@ async function createObserverPage(
           );
           return {
             ...result,
+            ...(notChecked.length ? { framesNotChecked: notChecked } : {}),
             violations: result.violations.map((rule, ruleIndex) => ({
               ...rule,
               nodes: rule.nodes.map((node, nodeIndex) => {
@@ -2408,7 +2496,7 @@ async function createObserverPage(
     snapshotAccessibilityTree,
     snapshotElementMap: cdpPage
       ? async () => {
-          const elementMap = await withPageSessions(cdpPage.context(), cdpPage, captureElementMap);
+          const elementMap = await withSessions(cdpPage, captureElementMap);
           assertValidSchema("elementMap", elementMap, "element map");
           return elementMap;
         }
