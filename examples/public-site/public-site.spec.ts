@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test } from "@playwright/test";
-import { loadScenario } from "@aee/cli";
+import { journeyStartUrl, loadScenario } from "@aee/cli";
 import { runAeeOnPage, runInputComparison, runVirtualScreenReaderLane } from "@aee/playwright";
 
 test("Public homepage moves focus forward through the primary navigation", async ({ page }) => {
@@ -51,7 +51,7 @@ test("Public homepage runs user-selected virtual-reader commands in an isolated 
     projectRoot: process.cwd(),
     outputDir: "aee-output",
     laneId: `public-site-virtual-reader-${Date.now()}`,
-    targetUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
+    targetUrl: journeyStartUrl(scenario, journey),
     allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
     commands: commands!
   });
@@ -78,7 +78,7 @@ test("Public homepage runs the user-authored pointer and keyboard comparison", a
     outputDir: "aee-output",
     comparisonId: `public-site-${comparison!.id}-${Date.now()}`,
     name: comparison!.name,
-    targetUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
+    targetUrl: journeyStartUrl(scenario, journey),
     allowedOrigins: scenario.target.allowedOrigins ?? [scenario.target.url],
     pointerActions: comparison!.pointerActions,
     keyboardActions: comparison!.keyboardActions,

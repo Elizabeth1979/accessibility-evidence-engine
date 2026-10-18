@@ -15,7 +15,7 @@ import {
 } from "@aee/core";
 
 const KEYBOARD_JUDGE_VERSION = "0.4.0";
-const CHANGE_RESPONSE_JUDGE_VERSION = "0.3.0";
+const CHANGE_RESPONSE_JUDGE_VERSION = "0.4.0";
 
 export const defaultJudgeManifests = [
   {
@@ -952,7 +952,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
     return [
       buildKeyboardUnknownJudgment(
         bundle,
-        `Keyboard ${bundle.interaction.kind} on ${describeFocusTarget(beforeTarget)} showed no response of its own. ${undecided}${describeMarkupEvidence(response)}`,
+        `Keyboard ${bundle.interaction.kind} on ${describeFocusTarget(beforeTarget)} showed no response of its own. ${undecided}${describeSupportingEvidence(response)}`,
         "medium",
         0.7,
         [
@@ -983,7 +983,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
         judgeVersion: KEYBOARD_JUDGE_VERSION,
         scope: "interaction",
         verdict: "fail",
-        summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.${describeMarkupEvidence(response)}`,
+        summary: `Keyboard ${bundle.interaction.kind} produced no observable activation response for ${describeFocusTarget(beforeTarget)}.${describeSupportingEvidence(response)}`,
         severity: "high",
         confidence: 0.9,
         evidenceRecordIds,
@@ -1020,7 +1020,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
       judgeVersion: KEYBOARD_JUDGE_VERSION,
       scope: "interaction",
       verdict: "pass",
-      summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}${describeMarkupEvidence(response)}`,
+      summary: `Keyboard ${bundle.interaction.kind} produced observable activation signals (${activationSignals.map((signal) => signal.label).join(", ")}). ${focusOutcome}${describeSupportingEvidence(response)}`,
       severity: "info",
       confidence: 0.9,
       evidenceRecordIds,
@@ -1329,7 +1329,7 @@ function createChangeResponseJudge(): JudgePlugin {
               judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
               scope: "interaction",
               verdict: "unknown",
-              summary: `No response of its own followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}. ${undecided}${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
+              summary: `No response of its own followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}. ${undecided}${describeFocusLoss(response, bundle.interaction.kind)}${describeSupportingEvidence(response)}`,
               severity: "medium",
               confidence: 0.7,
               evidenceRecordIds: bundle.records.map((record) => record.id)
@@ -1337,7 +1337,11 @@ function createChangeResponseJudge(): JudgePlugin {
           ];
         }
 
-        const evidenceRecords = [response.accessibilityRecord!, ...response.markupRecords];
+        const evidenceRecords = [
+          response.accessibilityRecord!,
+          ...(response.clickFocus?.records ?? []),
+          ...response.markupRecords
+        ];
         const evidenceRecordIds = evidenceRecords.map((record) => record.id);
         const artifactIds = collectArtifactIds(evidenceRecords);
         const suggestedFix = buildChangeResponseSuggestedFix(bundle.interaction.kind);
@@ -1349,7 +1353,7 @@ function createChangeResponseJudge(): JudgePlugin {
             judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
             scope: "interaction",
             verdict: "fail",
-            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
+            summary: `No observable response followed the ${bundle.interaction.kind} interaction on ${describeTarget(bundle.interaction.target)}.${describeFocusLoss(response, bundle.interaction.kind)}${describeSupportingEvidence(response)}`,
             severity: "high",
             confidence: 0.9,
             evidenceRecordIds,
@@ -1357,7 +1361,7 @@ function createChangeResponseJudge(): JudgePlugin {
             findings: [
               {
                 id: `change-response:${bundle.interaction.id}:no-response`,
-                message: `Expected ${bundle.interaction.kind} to change the control's accessibility state, what it controls, focus, a live region or the network, but none of them changed.`,
+                message: `Expected ${bundle.interaction.kind} to change the control's accessibility state or what it controls, move focus elsewhere, update a live region or reach the network, but none of that happened.`,
                 severity: "high",
                 ruleId: "interaction-response-observable",
                 evidenceRecordIds,
@@ -1377,7 +1381,7 @@ function createChangeResponseJudge(): JudgePlugin {
           judgeVersion: CHANGE_RESPONSE_JUDGE_VERSION,
           scope: "interaction",
           verdict: "pass",
-          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).${describeFocusLoss(response, bundle.interaction.kind)}${describeMarkupEvidence(response)}`,
+          summary: `Observed response signals after the ${bundle.interaction.kind} interaction (${observedSignals.map((signal) => signal.label).join(", ")}).${describeFocusLoss(response, bundle.interaction.kind)}${describeSupportingEvidence(response)}`,
           severity: "info",
           confidence: 0.9,
           evidenceRecordIds: [
@@ -2020,6 +2024,8 @@ interface PressResponse {
   unattributed: { count: number; descriptions: string[]; evidenceRecordIds: string[] };
   /** The accessibility-tree record that compared the tree before the press with after it. */
   accessibilityRecord?: EvidenceRecord;
+  /** Focus a click or submit moved only where the click itself puts it: not a response. */
+  clickFocus?: { description: string; records: EvidenceRecord[] };
   /** Records whose markup changed: supporting evidence, never a response on its own. */
   markupRecords: EvidenceRecord[];
   /**
@@ -2035,7 +2041,7 @@ interface PressResponse {
  * - the pressed control's state in Chrome's accessibility tree (checked, expanded, pressed,
  *   selected, value, its name, or it leaving the page), and the same for what it names with
  *   `aria-controls`;
- * - focus moving;
+ * - focus moving, except where a click puts it by itself;
  * - a live-region update Guidepup's virtual screen reader announced (a status message, WCAG 4.1.3);
  * - network activity.
  * Any other change in the tree, such as a clock ticking, cannot be tied to the press. A change in
@@ -2079,6 +2085,7 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
 
   const beforeFocusRecord = findFocusRecord(records, "before");
   const afterFocusRecord = findFocusRecord(records, "after");
+  let clickFocus: PressResponse["clickFocus"];
   let focusLanding: PressResponse["focusLanding"];
   if (
     beforeFocusRecord &&
@@ -2086,15 +2093,21 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
     serializeFocusTarget(getFocusTarget(beforeFocusRecord)) !==
       serializeFocusTarget(getFocusTarget(afterFocusRecord))
   ) {
+    const focusRecords = [beforeFocusRecord, afterFocusRecord];
+    // A click's own focus, the page itself included, is explained first: a click on something
+    // that cannot take focus puts focus on the page's <body> by itself.
+    const fromClick = describeFocusFromClick(afterFocusRecord, interaction, accessibilityChanges);
     const landing = focusLandingOf(getFocusTarget(afterFocusRecord));
-    if (landing.kind === "element") {
+    if (fromClick) {
+      clickFocus = { description: fromClick, records: focusRecords };
+    } else if (landing.kind !== "element") {
+      focusLanding = landing;
+    } else {
       signals.push({
         label: "focus moved",
-        evidenceRecordIds: [beforeFocusRecord.id, afterFocusRecord.id],
-        artifactIds: collectArtifactIds([beforeFocusRecord, afterFocusRecord])
+        evidenceRecordIds: focusRecords.map(({ id }) => id),
+        artifactIds: collectArtifactIds(focusRecords)
       });
-    } else {
-      focusLanding = landing;
     }
   }
 
@@ -2140,6 +2153,7 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
         accessibilityRecord && unattributed.length > 0 ? [accessibilityRecord.id] : []
     },
     ...(accessibilityRecord ? { accessibilityRecord } : {}),
+    ...(clickFocus ? { clickFocus } : {}),
     markupRecords: records.filter(
       (record) =>
         record.observerId === "dom" &&
@@ -2158,7 +2172,7 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
 function isPressedNode(
   node: AccessibilityNodeRef,
   interaction: EvidenceBundle["interaction"],
-  changes: AccessibilityChanges
+  changes: Pick<AccessibilityChanges, "focusedBefore" | "focusedAfter">
 ): boolean {
   if ((interaction.kind === "enter" || interaction.kind === "space") && changes.focusedBefore) {
     return node.nodeId === changes.focusedBefore.nodeId;
@@ -2169,6 +2183,56 @@ function isPressedNode(
     (!role || normalizeSemanticValue(role) === normalizeSemanticValue(node.role)) &&
     (!name || normalizeSemanticValue(name) === normalizeSemanticValue(node.name))
   );
+}
+
+/** Chrome's roles for the page itself, which has focus when no element does. */
+const PAGE_ROLES = new Set(["RootWebArea", "WebArea"]);
+
+/**
+ * Says why focus a click or submit moved is not a response, when it only went where the click
+ * itself puts it: HTML runs its focusing steps on a clicked control that can take focus (focus
+ * trigger "click"), and Chrome moves focus to the page when what was clicked cannot. That is the
+ * browser's doing, not the control's, so only focus moving elsewhere (into a dialog, onto another
+ * control) counts. Where focus landed is Chrome's
+ * accessibility node for the focus observer's element, or else the accessibility tree's focused
+ * node; with neither, it cannot be told apart from the click's own focus.
+ */
+function describeFocusFromClick(
+  afterFocusRecord: EvidenceRecord,
+  interaction: EvidenceBundle["interaction"],
+  changes: AccessibilityChanges | undefined
+): string | undefined {
+  if (interaction.kind !== "click" && interaction.kind !== "submit") return undefined;
+  const focused = readAccessibilityFocus(afterFocusRecord) ?? changes?.focusedAfter;
+  if (!focused) {
+    return `Focus moved, but without Chrome's accessibility tree it cannot be told whether it went anywhere other than where the ${interaction.kind} itself puts it, so it is not counted as a response.`;
+  }
+  if (PAGE_ROLES.has(focused.role)) {
+    return `Focus moved to the page itself, which a ${interaction.kind} on something that cannot take focus does by itself, so it is not counted as a response.`;
+  }
+  if (isPressedNode(focused, interaction, changes ?? {})) {
+    return `Focus moved onto ${describeAccessibilityNode(focused)} itself, which a ${interaction.kind} on it does by itself, so it is not counted as a response.`;
+  }
+  return undefined;
+}
+
+/** The focus observer's element as Chrome's accessibility tree names it, when the tree has it. */
+function readAccessibilityFocus(record: EvidenceRecord): AccessibilityNodeRef | undefined {
+  const target = getFocusTarget(record);
+  const focus = isRecord(target) ? target.accessibilityFocus : undefined;
+  if (
+    !isRecord(focus) ||
+    focus.status !== "matched" ||
+    typeof focus.backendDOMNodeId !== "number" ||
+    typeof focus.role !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    nodeId: focus.backendDOMNodeId,
+    role: focus.role,
+    ...(typeof focus.name === "string" ? { name: focus.name } : {})
+  };
 }
 
 function readAccessibilityChanges(record: EvidenceRecord): AccessibilityChanges | undefined {
@@ -2219,10 +2283,14 @@ function describeUndecidedPress(response: PressResponse): string | undefined {
 }
 
 /** The markup change, said as what it is: supporting evidence, not a response. */
-function describeMarkupEvidence(response: PressResponse): string {
-  return response.markupRecords.length > 0
-    ? " The page's markup changed, which is kept as supporting evidence only."
-    : "";
+/** What was seen but not counted as the press responding: a click's own focus, the markup. */
+function describeSupportingEvidence(response: PressResponse): string {
+  return [
+    response.clickFocus ? ` ${response.clickFocus.description}` : "",
+    response.markupRecords.length > 0
+      ? " The page's markup changed, which is kept as supporting evidence only."
+      : ""
+  ].join("");
 }
 
 function supportsChangeResponseInteraction(

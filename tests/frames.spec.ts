@@ -942,6 +942,8 @@ test("Tab onto a control a script blurs is lost focus; a frame with nothing to f
 test("each Tab stop's recorded place is where Chrome's own Tab reaches it, through every kind of frame", async ({
   page
 }, testInfo) => {
+  // Fifteen Tab presses, each a full AEE run with the focus observer.
+  test.setTimeout(120_000);
   const server = await startHtmlServer((request, response) => {
     const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
     const doc = (title: string, body: string) =>
@@ -952,6 +954,7 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
         `<button type="button">Top first</button>
         <iframe title="Same origin" src="/same"></iframe>
         <shop-widget id="widget"></shop-widget>
+        <vault-panel id="vault"><iframe title="Slotted in the vault" src="/vault-slotted"></iframe></vault-panel>
         <iframe title="Skipped" tabindex="-1" src="${otherSite}/skipped"></iframe>
         <iframe title="Nothing to focus" src="/empty"></iframe>
         <iframe title="Sorted first" tabindex="1" src="${otherSite}/sorted"></iframe>
@@ -964,6 +967,11 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
           root.innerHTML =
             '<button type="button">In the widget</button>' +
             '<iframe title="Card" src="${otherSite}/card"></iframe>';
+          // A closed root: the page cannot reach into it, Chrome's Tab does.
+          document.getElementById("vault").attachShadow({ mode: "closed" }).innerHTML =
+            '<button type="button">In the vault</button>' +
+            '<iframe title="Vault" src="${otherSite}/vault"></iframe><slot></slot>' +
+            '<button type="button" tabindex="1">Vault first</button>';
           document.getElementById("shell").attachShadow({ mode: "open" }).innerHTML =
             '<button type="button" tabindex="2">Shell second</button><slot></slot>' +
             '<button type="button" tabindex="1">Shell first</button>';
@@ -973,6 +981,8 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
       ),
       "/same": doc("Same", `<button type="button">Same origin</button>`),
       "/card": doc("Card", `<input aria-label="Card number">`),
+      "/vault": doc("Vault", `<input aria-label="Vault code">`),
+      "/vault-slotted": doc("Vault slotted", `<button type="button">Vault slotted</button>`),
       "/skipped": doc("Skipped", `<button type="button">Never reached</button>`),
       "/empty": doc("Empty", `<p>No controls here.</p>`),
       "/sorted": doc("Sorted", `<button type="button">Sorted first</button>`),
@@ -990,6 +1000,8 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
       [
         frameAt(page, "127.0.0.1", "/same").locator("button"),
         frameAt(page, "localhost", "/card").locator("input"),
+        frameAt(page, "localhost", "/vault").locator("input"),
+        frameAt(page, "127.0.0.1", "/vault-slotted").locator("button"),
         frameAt(page, "localhost", "/skipped").locator("button"),
         frameAt(page, "127.0.0.1", "/empty").locator("p"),
         frameAt(page, "localhost", "/sorted").locator("button"),
@@ -1003,9 +1015,9 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
     // by its tabindex; a frame with tabindex="-1" or under an inert host is skipped; a frame with
     // nothing to focus is one stop itself, the innermost one when frames nest; a frame inside a
     // shadow root or slotted into one comes at its place there, after that root's positive
-    // tabindex.
+    // tabindex, a closed root as much as an open one.
     const reached = [];
-    for (let stop = 0; stop < 11; stop += 1) {
+    for (let stop = 0; stop < 15; stop += 1) {
       const { after } = await judgeKeyPress(page, testInfo.outputPath(`tab-${stop}`), "tab");
       reached.push([after.name ?? after.tagName, after.focusOrderIndex, after.focusableCount]);
     }
@@ -1016,13 +1028,17 @@ test("each Tab stop's recorded place is where Chrome's own Tab reaches it, throu
         "Same origin",
         "In the widget",
         "Card number",
+        "Vault first",
+        "In the vault",
+        "Vault code",
+        "Vault slotted",
         "body",
         "Shell first",
         "Shell second",
         "Slotted",
         "body",
         "Top last"
-      ].map((name, place) => [name, place, 11])
+      ].map((name, place) => [name, place, 15])
     );
   } finally {
     await server.close();
