@@ -111,7 +111,7 @@ For example, the demo page's unnamed archive button, from a real run with the la
 
 - **Severity:** Blocks release
 - **WCAG:** 4.1.2 Name, Role, Value (A) https://www.w3.org/WAI/WCAG22/Understanding/name-role-value.html
-- **Rule:** `button-name` https://dequeuniversity.com/rules/axe/4.13/button-name
+- **Rule:** `button-name` https://dequeuniversity.com/rules/axe/4.14/button-name
 - **How to build it:** https://github.com/Elizabeth1979/a11y-skills/blob/<commit>/patterns/buttons.instructions.md
 - **Where:** http://127.0.0.1:4173/test-case.html, `#archive-project`, as the virtual screen reader read it
 - **Steps to reproduce:**

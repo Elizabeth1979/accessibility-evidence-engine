@@ -16,6 +16,7 @@ import {
   persistInteractionVideo,
   runAeeOnPage,
   runInputComparison,
+  runStartPageLane,
   toSafeId,
   writeEvidenceManifest,
   verifyMotionControl,
@@ -25,10 +26,10 @@ import {
 test("enableExperimentalAxeRules switches on axe's experimental rules filed under WCAG A/AA", () => {
   const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
 
-  // axe-core 4.13's five; its experimental best-practice rules stay off.
+  // axe-core 4.14's four (4.14 made label-content-name-mismatch a default rule); its
+  // experimental best-practice rules stay off.
   assert.deepEqual(enableExperimentalAxeRules(wcagTags), {
     "css-orientation-lock": { enabled: true },
-    "label-content-name-mismatch": { enabled: true },
     "p-as-heading": { enabled: true },
     "table-fake-caption": { enabled: true },
     "td-has-header": { enabled: true }
@@ -209,7 +210,7 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
         },
         async runAxeAnalysis() {
           return {
-            testEngine: { name: "axe-core", version: "4.13.0" },
+            testEngine: { name: "axe-core", version: "4.14.0" },
             testRunner: { name: "axe" },
             testEnvironment: { userAgent: "unit-test" },
             toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
@@ -321,6 +322,41 @@ test("persistInteractionVideo refuses symbolic-link output targets", async () =>
       rm(tempRoot, { recursive: true, force: true }),
       rm(outsideRoot, { recursive: true, force: true })
     ]);
+  }
+});
+
+test("runStartPageLane records a failed lane when the browser cannot open its context", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-start-page-"));
+  // As when the browser has crashed, disconnected or run out of memory.
+  const browserError = new Error("The browser could not open a context.");
+  const browser = {
+    async newContext(): Promise<never> {
+      throw browserError;
+    }
+  };
+
+  try {
+    await assert.rejects(
+      runStartPageLane({
+        browser,
+        projectRoot: tempRoot,
+        outputDir: "aee-output",
+        laneId: "read-start-page",
+        targetUrl: "https://example.com/",
+        allowedOrigins: ["https://example.com"]
+      }),
+      browserError
+    );
+    const manifest = JSON.parse(
+      await readFile(path.join(tempRoot, "aee-output", "read-start-page", "manifest.json"), "utf8")
+    ) as { status: string; lanes: Array<{ id: string; driver: string; status: string }> };
+    assert.equal(manifest.status, "partial");
+    assert.deepEqual(
+      manifest.lanes.map(({ id, driver, status }) => ({ id, driver, status })),
+      [{ id: "read-start-page", driver: "page-load", status: "failed" }]
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 
@@ -519,7 +555,8 @@ test("resolveObserverIdsForCapturePolicy filters disabled capture observers", ()
       includeDomSnapshot: false,
       includeAccessibilityTree: false,
       includeScreenshots: false,
-      stabilizeAfterInteractionMs: 0
+      stabilizeAfterInteractionMs: 0,
+      watchWithoutInputMs: 0
     }
   );
 
@@ -630,7 +667,8 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
     includeScreenshots: false,
     includeAccessibilityTree: true,
     includeDomSnapshot: true,
-    stabilizeAfterInteractionMs: 40
+    stabilizeAfterInteractionMs: 40,
+    watchWithoutInputMs: 1500
   });
 });
 

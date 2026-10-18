@@ -10,6 +10,7 @@ import {
   createPortableVirtualScreenReader,
   runInputComparison,
   runAeeOnPage,
+  runStartPageLane,
   runVirtualScreenReaderLane,
   withPageSessions
 } from "@aee/playwright";
@@ -241,7 +242,7 @@ approval:
   }
 });
 
-test("a lane that fails before writing any evidence keeps the report incomplete in every format", async ({
+test("a lane whose browser cannot open a page records it as failed and keeps the report incomplete in every format", async ({
   browser
 }, testInfo) => {
   const server = await startHtmlServer((_request, response) => {
@@ -251,9 +252,9 @@ test("a lane that fails before writing any evidence keeps the report incomplete 
     </body></html>`);
   });
   // The browser cannot open the first lane's context, as when it crashes, disconnects or runs out
-  // of memory, so the start-page lane throws before it writes a manifest. The other lanes complete.
-  // This relies on the start-page lane opening its context before it can record a failure: if that
-  // lane learns to write a "failed" manifest there too, this test needs another trigger.
+  // of memory, so the start-page lane fails before it opens the page and records itself as failed.
+  // The other lanes complete. A lane that leaves no manifest at all is covered in
+  // scenario-runner.test.ts, since no lane is left that fails that way.
   const journeyId = "read-page";
   let contextsOpened = 0;
   const failsFirstContext = new Proxy(browser, {
@@ -324,6 +325,13 @@ approval:
         new RegExp(`^${journeyId}-start-page: The browser could not open a context`)
       )
     ]);
+    // The failed lane is in the run's evidence, not just in its diagnostics.
+    const manifest = JSON.parse(await readFile(result.manifestFile, "utf8")) as {
+      lanes: Array<{ id: string; status: string }>;
+    };
+    expect(manifest.lanes).toContainEqual(
+      expect.objectContaining({ id: `${journeyId}-start-page`, status: "failed" })
+    );
     expect(report.completeness).toMatchObject({
       status: "incomplete",
       plannedLanes: 5,
@@ -568,7 +576,7 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   );
 });
 
-test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements", async ({
+test("runAeeOnPage preserves axe 4.14 WCAG results and locates failing elements", async ({
   page
 }, testInfo) => {
   await page.setContent(`
@@ -598,7 +606,7 @@ test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements"
   );
 
   for (const rawResult of rawResults) {
-    expect(rawResult.testEngine.version).toBe("4.13.0");
+    expect(rawResult.testEngine.version).toBe("4.14.0");
     expect(rawResult.violations).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "button-name" })])
     );
@@ -1004,6 +1012,45 @@ test("virtual-reader lane blocks a redirect outside the approved origin and clos
   }
 });
 
+test("start-page lane records a redirect outside the approved origin as blocked and closes its context", async ({
+  browser
+}, testInfo) => {
+  const destination = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<h1>Outside approved origin</h1>");
+  });
+  const redirector = await startHtmlServer((_request, response) => {
+    response.writeHead(302, { location: `${destination.origin}/outside` });
+    response.end();
+  });
+  const initialContextCount = browser.contexts().length;
+  const outputDir = testInfo.outputPath("blocked-start-page-lanes");
+
+  try {
+    await expect(
+      runStartPageLane({
+        browser,
+        projectRoot: process.cwd(),
+        outputDir,
+        laneId: "start-page-blocked-origin",
+        targetUrl: `${redirector.origin}/start`,
+        allowedOrigins: [redirector.origin]
+      })
+    ).rejects.toThrow(/Start-page lane blocked origin/);
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    const manifest = JSON.parse(
+      await readFile(path.join(outputDir, "start-page-blocked-origin", "manifest.json"), "utf8")
+    );
+    expect(manifest.status).toBe("partial");
+    expect(manifest.lanes).toEqual([
+      expect.objectContaining({ id: "start-page-blocked-origin", status: "blocked" })
+    ]);
+  } finally {
+    await redirector.close();
+    await destination.close();
+  }
+});
+
 test("input comparison runs declared pointer and keyboard actions in isolated contexts", async ({
   browser
 }, testInfo) => {
@@ -1178,7 +1225,8 @@ test("input comparison recaptures focus and Enter as separate keyboard actions",
 const pressScenarios: Array<{
   title: string;
   html: string;
-  script?: () => void;
+  /** What the page's own scripts do, each run in the page in turn. */
+  scripts?: Array<() => void>;
   key: "Enter" | "Space";
   target: { role: string; name: string };
   verdict: "pass" | "unknown";
@@ -1202,13 +1250,15 @@ const pressScenarios: Array<{
       <button id="pressed" type="button" aria-expanded="false" aria-controls="details">More</button>
       <div id="details" role="region" aria-label="Details" hidden>Shipping takes two days.</div>
     </main>`,
-    script: () => {
-      const button = document.querySelector("#pressed")!;
-      button.addEventListener("click", () => {
-        button.setAttribute("aria-expanded", "true");
-        (document.querySelector("#details") as HTMLElement).hidden = false;
-      });
-    },
+    scripts: [
+      () => {
+        const button = document.querySelector("#pressed")!;
+        button.addEventListener("click", () => {
+          button.setAttribute("aria-expanded", "true");
+          (document.querySelector("#details") as HTMLElement).hidden = false;
+        });
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "More" },
     verdict: "pass",
@@ -1223,11 +1273,13 @@ const pressScenarios: Array<{
       <button id="pressed" type="button">Save</button>
       <p role="status" id="status"></p>
     </main>`,
-    script: () => {
-      document.querySelector("#pressed")!.addEventListener("click", () => {
-        document.querySelector("#status")!.textContent = "Saved";
-      });
-    },
+    scripts: [
+      () => {
+        document.querySelector("#pressed")!.addEventListener("click", () => {
+          document.querySelector("#status")!.textContent = "Saved";
+        });
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "Save" },
     verdict: "pass",
@@ -1240,24 +1292,76 @@ const pressScenarios: Array<{
       <button id="pressed" type="button">Save</button>
       <p id="clock">0</p>
     </main>`,
-    script: () => {
-      let ticks = 0;
-      setInterval(() => {
-        document.querySelector("#clock")!.textContent = String((ticks += 1));
-      }, 20);
-    },
+    scripts: [
+      () => {
+        let ticks = 0;
+        setInterval(() => {
+          document.querySelector("#clock")!.textContent = String((ticks += 1));
+        }, 20);
+      }
+    ],
     key: "Enter",
     target: { role: "button", name: "Save" },
     verdict: "unknown",
     summary: "so whether the press caused it cannot be told",
     markupChanged: true
+  },
+  {
+    title:
+      "Enter on a dead button while a polite clock announces on its own is not a pass, and names the announcement",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <section aria-live="polite" aria-label="Clock" id="clock">10:00:00</section>
+    </main>`,
+    scripts: [startPoliteClock],
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "unknown",
+    // Placed in the clock's region, or, if the clock ticked between the reader's and the tree's
+    // captures, not placed; either way it is named and not counted.
+    summary: "was already announcing on its own while",
+    markupChanged: true
+  },
+  {
+    title:
+      "Enter on a button whose status message appears while a polite clock ticks still passes from the message",
+    html: `<main>
+      <button id="pressed" type="button">Save</button>
+      <p role="status" id="status"></p>
+      <section aria-live="polite" aria-label="Clock" id="clock">10:00:00</section>
+    </main>`,
+    scripts: [
+      () => {
+        document.querySelector("#pressed")!.addEventListener("click", () => {
+          document.querySelector("#status")!.textContent = "Saved";
+        });
+      },
+      startPoliteClock
+    ],
+    key: "Enter",
+    target: { role: "button", name: "Save" },
+    verdict: "pass",
+    summary: 'a live region announced "Saved" (polite))',
+    markupChanged: true
   }
 ];
+
+/**
+ * A polite live region that announces a new time ten times a second, with nobody touching the
+ * page, so it also announces between the "before" and "after" captures of every press.
+ */
+function startPoliteClock(): void {
+  let tenths = 0;
+  setInterval(() => {
+    tenths += 1;
+    document.querySelector("#clock")!.textContent = `10:00:${(tenths / 10).toFixed(1)}`;
+  }, 100);
+}
 
 for (const scenario of pressScenarios) {
   test(`runAeeOnPage: ${scenario.title}`, async ({ page }, testInfo) => {
     await page.setContent(scenario.html);
-    if (scenario.script) await page.evaluate(scenario.script);
+    for (const script of scenario.scripts ?? []) await page.evaluate(script);
     await page.focus("#pressed");
 
     const result = await runAeeOnPage({

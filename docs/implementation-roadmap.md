@@ -18,7 +18,7 @@ same-checkpoint evidence and missing evidence cannot pass.
 
 ## Milestone 2 — Portable automated lanes (in progress)
 
-- Maintain pinned axe 4.13 capture with the cumulative WCAG 2.0/2.1/2.2 A/AA selection and full raw results.
+- Maintain pinned axe 4.14 capture with the cumulative WCAG 2.0/2.1/2.2 A/AA selection and full raw results.
 - Expand cross-evidence validation beyond the implemented deterministic portable-reader check. The current judge requires focus separation, a same-checkpoint DOM target, matching accessibility-tree role/name/heading level, non-zero rendered bounds, and a full-page screenshot. Pixel-level meaning and contextual interpretation remain review work.
 - Expand the implemented user-authored pointer/hover and role-aware keyboard matrix beyond its current bounded activation and composite-navigation cases. Unsupported or context-dependent combinations remain explicitly untested.
 - Expand the implemented per-lane WebM persistence, JSON sidecars, and WebVTT captions with scenario-level retention policy.

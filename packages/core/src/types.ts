@@ -148,6 +148,19 @@ export interface AccessibilityChanges {
   changes: AccessibilityChange[];
   /** True when more nodes changed than are listed. */
   truncated: boolean;
+  /** The live regions that hold a listed change: which region a screen reader would hear from. */
+  liveRegions?: LiveRegionRef[];
+}
+
+/**
+ * A live region as Chrome's accessibility tree reports it: the nearest node with a `live`
+ * property of polite or assertive (WAI-ARIA 1.2 `aria-live`, or a role such as `status` that
+ * implies it).
+ */
+export interface LiveRegionRef extends AccessibilityNodeRef {
+  politeness: "polite" | "assertive";
+  /** The region's text in the later snapshot (the earlier one if it left the page), in tree order. */
+  text: string;
 }
 
 /** A live-region update Guidepup's virtual screen reader announced (WAI-ARIA 1.2 `aria-live`). */

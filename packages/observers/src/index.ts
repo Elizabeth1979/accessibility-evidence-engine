@@ -69,7 +69,7 @@ export const defaultObserverManifests = [
     displayName: "axe Observer",
     version: "0.2.0",
     kind: "observer" as const,
-    capabilities: ["axe-core-4.13", "wcag-2.2-a-aa", "raw-results"]
+    capabilities: ["axe-core-4.14", "wcag-2.2-a-aa", "raw-results"]
   },
   {
     id: "virtual-screen-reader",
@@ -120,10 +120,17 @@ export interface RuntimeObserverContext extends ObserverContext {
     domBeforeHtml?: string;
     /** The accessibility tree as it was before the interaction, to compare the after tree with. */
     accessibilityTreeBefore?: unknown;
+    /** The accessibility tree as the run started watching the page untouched. */
+    accessibilityTreeWatchStart?: unknown;
+    /** Why the tree could not be read as the watch started. */
+    accessibilityTreeWatchError?: string;
     networkBeforeSummary?: NetworkLogSummary;
     /** How many entries the transcript held as the run started. */
     virtualScreenReaderBaselineEntryCount?: number;
-    /** How many live-region announcements the transcript held as the run started. */
+    /**
+     * How many live-region announcements the transcript held as the run started, and from the
+     * "before" capture on, as that capture ended.
+     */
     virtualScreenReaderBaselineLiveCount?: number;
   };
 }
@@ -168,6 +175,9 @@ export function createDomObserver(): ObserverPlugin {
 export function createAccessibilityTreeObserver(): ObserverPlugin {
   return {
     manifest: defaultObserverManifests[1],
+    async startWatchWithoutInput(context: ObserverContext): Promise<void> {
+      await recordAccessibilityTreeWatchStart(context as RuntimeObserverContext);
+    },
     async captureBefore(context: ObserverContext): Promise<EvidenceRecord[]> {
       return [await captureAccessibilityRecord(context as RuntimeObserverContext, "before")];
     },
@@ -422,6 +432,22 @@ async function captureDomRecord(
   };
 }
 
+/**
+ * Reads the tree as the run starts watching the page untouched, so the "before" capture can say
+ * what changed on its own in that time, such as a live region announcing a clock's time.
+ */
+async function recordAccessibilityTreeWatchStart(context: RuntimeObserverContext): Promise<void> {
+  const snapshotAccessibilityTree = context.page?.snapshotAccessibilityTree?.bind(context.page);
+  if (!snapshotAccessibilityTree) return;
+  context.runtimeState ??= {};
+  try {
+    context.runtimeState.accessibilityTreeWatchStart = await snapshotAccessibilityTree();
+  } catch (error) {
+    context.runtimeState.accessibilityTreeWatchError =
+      error instanceof Error ? error.message : String(error);
+  }
+}
+
 async function captureAccessibilityRecord(
   context: RuntimeObserverContext,
   phase: "before" | "after"
@@ -472,6 +498,12 @@ async function captureAccessibilityRecord(
     phase === "after" && context.runtimeState?.accessibilityTreeBefore !== undefined
       ? diffAccessibilityTrees(context.runtimeState.accessibilityTreeBefore, snapshot)
       : undefined;
+  const accessibilityChangesWithoutInput =
+    phase === "before" && context.runtimeState?.accessibilityTreeWatchStart !== undefined
+      ? diffAccessibilityTrees(context.runtimeState.accessibilityTreeWatchStart, snapshot)
+      : undefined;
+  const watchError =
+    phase === "before" ? context.runtimeState?.accessibilityTreeWatchError : undefined;
   if (phase === "before") {
     context.runtimeState = { ...(context.runtimeState ?? {}), accessibilityTreeBefore: snapshot };
   }
@@ -497,7 +529,16 @@ async function captureAccessibilityRecord(
     timestamp: getTimestamp(),
     summary: accessibilityChanges
       ? `Captured accessibility tree after state; ${describeAccessibilityChanges(accessibilityChanges)}.`
-      : `Captured accessibility tree ${phase} state.`,
+      : accessibilityChangesWithoutInput
+        ? `Captured accessibility tree before state; while the page was left untouched, ${describeAccessibilityChanges(accessibilityChangesWithoutInput)}.`
+        : `Captured accessibility tree ${phase} state.`,
+    ...(watchError
+      ? {
+          diagnostics: [
+            `The tree could not be read as the page was left untouched, so what changed on its own before the interaction is not known: ${watchError}`
+          ]
+        }
+      : {}),
     ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
     artifacts: artifact ? [artifact] : [],
     ...(accessibilityChanges
@@ -517,7 +558,8 @@ async function captureAccessibilityRecord(
       semanticNodeCount: semanticIndex.nodes.length,
       semanticIndexTruncated: semanticIndex.truncated,
       semanticNodes: semanticIndex.nodes,
-      ...(accessibilityChanges ? { accessibilityChanges } : {})
+      ...(accessibilityChanges ? { accessibilityChanges } : {}),
+      ...(accessibilityChangesWithoutInput ? { accessibilityChangesWithoutInput } : {})
     }
   };
 }
@@ -855,7 +897,7 @@ async function captureAxeRecord(
       phase,
       status: "unsupported",
       timestamp: getTimestamp(),
-      diagnostics: ["Pinned axe 4.13 analysis API is unavailable."]
+      diagnostics: ["Pinned axe 4.14 analysis API is unavailable."]
     };
   }
 
@@ -902,7 +944,7 @@ async function captureAxeRecord(
       phase,
       status: "ok",
       timestamp: getTimestamp(),
-      summary: `axe 4.13 found ${violations} violations, ${advisoryRuleIds.length} advisory best-practice results, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
+      summary: `axe 4.14 found ${violations} violations, ${advisoryRuleIds.length} advisory best-practice results, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
       ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
       artifacts: artifact ? [artifact] : [],
       meta: {
@@ -1022,12 +1064,16 @@ async function captureVirtualScreenReaderRecord(
     const newEntries = entries.slice(previousEntryCount);
     const focusMovedCount = newEntries.filter((entry) => entry.focusMoved === true).length;
     const lastEntry = newEntries.at(-1);
-    const newLiveRegionAnnouncements =
-      phase === "after"
-        ? readLiveRegionAnnouncements(transcript).slice(
-            context.runtimeState?.virtualScreenReaderBaselineLiveCount ?? 0
-          )
-        : [];
+    // Before the interaction, what the reader heard since it began listening came from the page on
+    // its own; after it, what it heard since the "before" capture may be the interaction's response.
+    const liveRegionAnnouncements = readLiveRegionAnnouncements(transcript);
+    const heard = liveRegionAnnouncements.slice(
+      context.runtimeState?.virtualScreenReaderBaselineLiveCount ?? 0
+    );
+    if (phase === "before") {
+      context.runtimeState ??= {};
+      context.runtimeState.virtualScreenReaderBaselineLiveCount = liveRegionAnnouncements.length;
+    }
 
     const jsonArtifact = await maybeWriteArtifact(
       context,
@@ -1059,13 +1105,13 @@ async function captureVirtualScreenReaderRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "virtual-screen-reader",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "ok",
       timestamp: getTimestamp(),
       summary:
         phase === "before"
-          ? `Captured the virtual screen-reader transcript baseline with ${entryCount} existing entries.`
+          ? `Captured the virtual screen-reader transcript baseline with ${entryCount} existing entries${heard.length > 0 ? `; live regions announced ${heard.length} update${heard.length === 1 ? "" : "s"} on their own before the interaction` : ""}.`
           : focusMovedCount === 0
             ? `Captured ${newEntries.length} new virtual screen-reader transcript entr${newEntries.length === 1 ? "y" : "ies"}; no entry moved DOM focus.`
             : `Captured ${newEntries.length} new virtual screen-reader transcript entr${newEntries.length === 1 ? "y" : "ies"}; ${focusMovedCount} moved DOM focus.`,
@@ -1084,7 +1130,9 @@ async function captureVirtualScreenReaderRecord(
         lastAnnouncement: readString(lastEntry?.announcement),
         lastCommand: readString(lastEntry?.command),
         lastItem: isRecord(lastEntry?.item) ? lastEntry.item : undefined,
-        ...(phase === "after" ? { newLiveRegionAnnouncements } : {})
+        ...(phase === "before"
+          ? { liveRegionAnnouncementsWithoutInput: heard }
+          : { newLiveRegionAnnouncements: heard })
       }
     };
   } catch (error) {
@@ -1094,7 +1142,7 @@ async function captureVirtualScreenReaderRecord(
       checkpointId: context.checkpointId,
       interactionId: context.interactionId,
       observerId: "virtual-screen-reader",
-      observerVersion: "0.2.0",
+      observerVersion: "0.3.0",
       phase,
       status: "observer_error",
       timestamp: getTimestamp(),
@@ -1117,7 +1165,7 @@ function unsupportedVirtualScreenReaderRecord(
     checkpointId: context.checkpointId,
     interactionId: context.interactionId,
     observerId: "virtual-screen-reader",
-    observerVersion: "0.2.0",
+    observerVersion: "0.3.0",
     phase,
     status: "unsupported",
     timestamp: getTimestamp(),

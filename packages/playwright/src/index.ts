@@ -698,6 +698,11 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
           )
       : undefined,
     interactionReadsOnly: options.interactionReadsOnly,
+    // The watch tells a live region the page updates on its own from one the press updates; with
+    // the reader not listening, no announcement is judged and there is nothing to tell apart.
+    ...(selectedObservers.includes("virtual-screen-reader")
+      ? { watchWithoutInputMs: resolvedPolicy.capture.watchWithoutInputMs }
+      : {}),
     environment: {
       mode: "playwright-page"
     },
@@ -919,7 +924,7 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
     return result;
   } catch (error) {
     const failureStatus: "blocked" | "failed" =
-      error instanceof InputComparisonOriginError ? "blocked" : "failed";
+      error instanceof BlockedOriginError ? "blocked" : "failed";
     manifestLanes.forEach((lane) => {
       if (lane.status !== "completed") lane.status = failureStatus;
     });
@@ -1095,7 +1100,7 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
       driver,
       status: laneResult
         ? "completed"
-        : laneError instanceof InputComparisonOriginError
+        : laneError instanceof BlockedOriginError
           ? "blocked"
           : "failed",
       startedAt: videoStartedAt,
@@ -1399,7 +1404,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   }
 
   const failureStatus: "blocked" | "failed" =
-    runError instanceof VirtualScreenReaderOriginError ? "blocked" : "failed";
+    runError instanceof BlockedOriginError ? "blocked" : "failed";
   const finishedAt = new Date().toISOString();
   let video: InteractionVideoEvidence | undefined;
   if (pageVideo) {
@@ -1698,7 +1703,9 @@ export interface StartPageLaneResult extends PageCheckpointLaneResult {
 /**
  * Opens a start page in a browser context of its own and checkpoints it once, before anything acts
  * on it: the evidence and pinned axe rules a scenario's plan runs on every journey's start page,
- * whatever else the journey declares. Every navigation outside the allowed origins is stopped.
+ * whatever else the journey declares. Every navigation outside the allowed origins is stopped. A lane
+ * that fails still writes its manifest: "blocked" when it stopped at a page outside the allowed
+ * origins, otherwise "failed".
  */
 export async function runStartPageLane<TPage extends StartPageLanePage>(
   options: RunStartPageLaneOptions<TPage>
@@ -1708,8 +1715,9 @@ export async function runStartPageLane<TPage extends StartPageLanePage>(
   const allowedOrigins = normalizeAllowedOrigins(options.allowedOrigins, "start-page lane");
   assertAllowedOrigin(options.targetUrl, allowedOrigins, "Start-page lane");
   const blockedNavigations: string[] = [];
-  const context = await options.browser.newContext();
+  let context: StartPageLaneContext<TPage> | undefined;
   try {
+    context = await options.browser.newContext();
     await context.route("**/*", navigationGuard(allowedOrigins, blockedNavigations));
     const page = await context.newPage();
     // Started before the load, so the checkpoint waits for the data the page loads.
@@ -1724,8 +1732,34 @@ export async function runStartPageLane<TPage extends StartPageLanePage>(
     assertAllowedOrigin(page.url(), allowedOrigins, "Start-page lane");
     await lane.checkpoint("start page");
     return { ...(await lane.finish()), blockedNavigations };
+  } catch (error) {
+    // The browser can fail before the page opens (a crash, a disconnect, running out of memory), or
+    // the page can fail to load. The lane still leaves a manifest, so the report shows it did not
+    // complete.
+    const laneOutputDir = path.resolve(
+      options.projectRoot,
+      options.outputDir ?? "aee-output",
+      laneId
+    );
+    await mkdir(laneOutputDir, { recursive: true });
+    await writeEvidenceManifest({
+      assessmentId: laneId,
+      rootDir: laneOutputDir,
+      lanes: [
+        {
+          id: laneId,
+          driver: "page-load",
+          status:
+            error instanceof BlockedOriginError || blockedNavigations.length > 0
+              ? "blocked"
+              : "failed",
+          actions: []
+        }
+      ]
+    }).catch(() => undefined);
+    throw error;
   } finally {
-    await context.close();
+    await context?.close();
   }
 }
 
@@ -2063,17 +2097,14 @@ function assertAllowedOrigin(
   const origin = new URL(value).origin;
 
   if (!allowedOrigins.includes(origin)) {
-    const ErrorClass = laneLabel.startsWith("Input comparison")
-      ? InputComparisonOriginError
-      : VirtualScreenReaderOriginError;
-    throw new ErrorClass(
+    throw new BlockedOriginError(
       `${laneLabel} blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
     );
   }
 }
 
-class VirtualScreenReaderOriginError extends Error {}
-class InputComparisonOriginError extends Error {}
+/** A lane reached a page outside its allowed origins, so it stopped: the lane is "blocked". */
+class BlockedOriginError extends Error {}
 
 function readLaneStepOutcome(
   result: RunAeeOnPageResult,
