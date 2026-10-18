@@ -16,6 +16,7 @@ import {
   persistInteractionVideo,
   runAeeOnPage,
   runInputComparison,
+  runKeyboardPointerSweepLane,
   runStartPageLane,
   toSafeId,
   writeEvidenceManifest,
@@ -355,6 +356,49 @@ test("runStartPageLane records a failed lane when the browser cannot open its co
       manifest.lanes.map(({ id, driver, status }) => ({ id, driver, status })),
       [{ id: "read-start-page", driver: "page-load", status: "failed" }]
     );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("runKeyboardPointerSweepLane records a failed lane when the browser cannot open its contexts", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-sweep-"));
+  // As when the browser has crashed, disconnected or run out of memory.
+  const browserError = new Error("The browser could not open a context.");
+  const browser = {
+    async newContext(): Promise<never> {
+      throw browserError;
+    }
+  };
+
+  try {
+    await assert.rejects(
+      runKeyboardPointerSweepLane({
+        browser,
+        projectRoot: tempRoot,
+        outputDir: "aee-output",
+        laneId: "sweep-start-page",
+        targetUrl: "https://example.com/",
+        allowedOrigins: ["https://example.com"],
+        activateControls: false
+      }),
+      browserError
+    );
+    const laneDir = path.join(tempRoot, "aee-output", "sweep-start-page");
+    const manifest = JSON.parse(await readFile(path.join(laneDir, "manifest.json"), "utf8")) as {
+      status: string;
+      lanes: Array<{ id: string; driver: string; status: string }>;
+    };
+    assert.equal(manifest.status, "partial");
+    assert.deepEqual(
+      manifest.lanes.map(({ id, driver, status }) => ({ id, driver, status })),
+      [{ id: "sweep-start-page", driver: "keyboard-pointer-sweep", status: "failed" }]
+    );
+    const sweep = JSON.parse(
+      await readFile(path.join(laneDir, "keyboard-pointer-sweep.json"), "utf8")
+    ) as { status: string; diagnostics: string[] };
+    assert.equal(sweep.status, "failed");
+    assert.deepEqual(sweep.diagnostics, [browserError.message]);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

@@ -115,6 +115,55 @@ test("the sweep lane keeps pressed controls inside the allowed origins and repor
   }
 });
 
+test("the sweep lane records a start page that redirects outside the allowed origins as blocked and sweeps nothing there", async ({
+  browser
+}, testInfo) => {
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en"><head><title>Elsewhere</title></head>
+  <body><main><h1>Another site</h1><button type="button">Press me</button></main></body>
+</html>`);
+  });
+  // A route handler sees only the first address of a redirect, so the guard alone never stops it.
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(302, { location: `${elsewhere.origin}/` });
+    response.end();
+  });
+  const initialContextCount = browser.contexts().length;
+  const outputDir = testInfo.outputPath("blocked-sweep-lanes");
+
+  try {
+    await expect(
+      runKeyboardPointerSweepLane({
+        browser,
+        projectRoot: process.cwd(),
+        outputDir,
+        laneId: "sweep-blocked-origin",
+        targetUrl: `${site.origin}/`,
+        allowedOrigins: [site.origin],
+        activateControls: true
+      })
+    ).rejects.toThrow(/Keyboard and pointer sweep blocked origin/);
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    const laneDir = path.join(outputDir, "sweep-blocked-origin");
+    const manifest = JSON.parse(await readFile(path.join(laneDir, "manifest.json"), "utf8"));
+    expect(manifest.status).toBe("partial");
+    expect(manifest.lanes).toEqual([
+      expect.objectContaining({ id: "sweep-blocked-origin", status: "blocked" })
+    ]);
+    const sweep = JSON.parse(
+      await readFile(path.join(laneDir, "keyboard-pointer-sweep.json"), "utf8")
+    );
+    expect(sweep).toMatchObject({ status: "blocked" });
+    expect(sweep.tabStops).toBeUndefined();
+    expect(sweep.activated).toBeUndefined();
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
 test("the sweep lane records a video whose descriptions name each step", async ({
   browser
 }, testInfo) => {
