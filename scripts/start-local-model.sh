@@ -36,7 +36,17 @@ for _ in $(seq 30); do
   sleep 1
 done
 
-curl -sS --fail-with-body "$OLLAMA_URL/api/pull" -d "{\"model\":\"$model\",\"stream\":false}"
+# Ollama asks its registry for the model's manifest once, without retrying, and answers 500
+# whatever went wrong there, such as the registry's own passing 503. curl's --retry counts a 500 as
+# transient and waits 1, 2, 4 and on to 128 seconds between tries, about four minutes in all, and
+# Ollama resumes a retried pull where the last one stopped. --no-progress-meter, unlike --silent,
+# keeps curl's "Will retry" lines in the log. A model still missing after that stops the run.
+if ! curl --no-progress-meter --fail-with-body --retry 8 "$OLLAMA_URL/api/pull" \
+  -d "{\"model\":\"$model\",\"stream\":false}"; then
+  echo
+  echo "::error::The local model $model could not be downloaded; the lines above say why. A registry error is tried 9 times over about four minutes before this." >&2
+  exit 1
+fi
 # Loading it now spares the first question the wait.
 curl -fsS "$OLLAMA_URL/api/generate" -d "{\"model\":\"$model\"}" > /dev/null
 echo
