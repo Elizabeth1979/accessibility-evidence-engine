@@ -54,6 +54,21 @@ The **Side by side** job then puts every reader that ran in one table, `combined
 
 The same commands run on any machine with a real reader: `npm run readers:compare` reads the page with the reader on that machine (with `AEE_READERS_RECORD=1` it also records the screen), and `npm run readers:combine` puts the comparisons found under `test-results/readers-runs/` (or `AEE_READERS_RUNS`), one folder each, in one table.
 
+## What the first run showed
+
+On 17 October 2026, on this workflow's own pull request, NVDA 2026.2 read the whole test lab page in Chrome on Windows 11 in 31 steps, on its first attempt; AEE's virtual reader took 91. Of the 97 rows, 14 have the same words, 11 are about the same item in different words, 6 only NVDA said (2 of them its end-of-page repeats of the last line) and 66 only AEE's reader said. Most of AEE's own rows are steps NVDA does not take: AEE enters each region, list and paragraph on a step of its own and says where each ends, while NVDA names them in the same breath as the first thing inside ("main landmark, Breadcrumb, navigation landmark, list, with 2 items, link, Test lab").
+
+On the page's planted issues:
+
+- **A link with no name:** NVDA reads out where it goes, "same page, link, test-case projects-heading"; AEE says only "link".
+- **An image with no description:** NVDA says "Unlabeled graphic, To get missing image descriptions, open the context menu."; AEE says "image".
+- **A box styled as a button:** NVDA says "clickable, Export report"; AEE reads only its text.
+- **A heading with no words:** AEE says "heading, level 2"; NVDA skips it.
+- **A button with no name:** both say only "button".
+- **An unnamed form:** NVDA calls it a "section"; AEE says "form".
+
+The website page shows these rows; the run's `readers-nvda` attachment has all of them and the video.
+
 Only the public test lab page (`site/test-case.html`) is read. The workflow takes no page address, so no private page's words can reach GitHub's public logs, in line with [Evidence privacy](privacy.md).
 
 ## Research findings
