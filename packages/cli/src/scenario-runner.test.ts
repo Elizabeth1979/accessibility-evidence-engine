@@ -461,6 +461,55 @@ test("a sweep finding joins the report with its summary, fix pattern and place o
   assert.match(html, /Controls not pressed: activate-page-controls is not allowed/);
 });
 
+test("a Tab stop the sweep did not check says so on the Focus layer, naming the site, and flags nothing", () => {
+  const { report, views } = exampleSynthesisInputs();
+  const notChecked =
+    "It shows a page from https://maps.example, which is not an allowed origin; add it to them to check this frame.";
+  const sweepViews = {
+    ...views,
+    sweeps: [
+      {
+        path: "sweep-lane/keyboard-pointer-sweep.json",
+        screenshotPath: "sweep-lane/full-page.png",
+        document: {
+          schemaVersion: "0.2.0",
+          laneId: "sweep-lane",
+          driver: "keyboard-pointer-sweep",
+          isolation: "dedicated-browser-context",
+          status: "completed",
+          targetUrl: "https://example.com/",
+          allowedOrigins: ["https://example.com"],
+          activateControls: false,
+          startedAt: "2026-09-16T00:00:00.000Z",
+          finishedAt: "2026-09-16T00:00:05.000Z",
+          blockedNavigations: [],
+          tabStops: [
+            { selector: "#search", label: "Search", focusVisible: true },
+            {
+              selector: "#map",
+              label: "Map of our office",
+              notChecked,
+              focusCrop: "tab-stop-2.png"
+            }
+          ],
+          activated: [],
+          findings: []
+        }
+      }
+    ]
+  };
+
+  report.synthesis = buildScenarioSynthesisForTest(report, sweepViews);
+  const html = renderIntegratedHtmlForTest(report, sweepViews);
+
+  assert.ok(
+    html.includes(
+      `<span class="marker-number neutral" aria-hidden="true">2</span><span><b>Map of our office</b><small>Not checked. ${notChecked}</small><img class="focus-crop" src="sweep-lane/tab-stop-2.png"`
+    )
+  );
+  assert.doesNotMatch(html, /No visible focus/);
+});
+
 test("the PR comment puts blocking fixes first and AI last, and shows page text inertly", () => {
   const { report, views } = exampleSynthesisInputs();
   report.synthesis = buildScenarioSynthesisForTest(report, views);

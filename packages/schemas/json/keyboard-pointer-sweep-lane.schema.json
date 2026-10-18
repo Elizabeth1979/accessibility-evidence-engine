@@ -135,6 +135,11 @@
         "label": { "type": "string" },
         "role": { "type": "string" },
         "focusVisible": { "type": "boolean" },
+        "notChecked": {
+          "description": "Why its focus was not checked: it is a frame whose page the sweep does not read, so its pictures cover it. Names the site when its page is outside the allowed origins.",
+          "type": "string",
+          "minLength": 1
+        },
         "focusCrop": { "type": "string", "pattern": "^tab-stop-[0-9]+\\.png$" },
         "targetBox": { "$ref": "#/$defs/targetBox" }
       }

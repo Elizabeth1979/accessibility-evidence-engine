@@ -20,7 +20,12 @@ import {
   normalizeAllowedOrigins
 } from "./allowed-origins";
 import { locateElements, type ElementLocation } from "./element-locations";
-import { frameMasks, framesNotChecked, type LocatorScope } from "./frames-not-checked";
+import {
+  frameMasks,
+  framesNotChecked,
+  type FrameNotChecked,
+  type LocatorScope
+} from "./frames-not-checked";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
 import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-page";
@@ -97,9 +102,14 @@ export interface SweepTabStop {
   role?: string;
   /**
    * Whether the stop and its surroundings look different with keyboard focus than without it,
-   * compared pixel for pixel. Absent when it could not be measured.
+   * compared pixel for pixel. Absent when it could not be measured, or was not checked.
    */
   focusVisible?: boolean;
+  /**
+   * Why its focus was not checked: it is a frame whose page the sweep does not read, so its
+   * pictures cover it. Names the site when its page is outside the allowed origins.
+   */
+  notChecked?: string;
   /** A PNG of the stop and its surroundings with keyboard focus, as a keyboard user saw it. */
   focusedCrop?: Uint8Array;
 }
@@ -235,6 +245,7 @@ type ProbeRequest =
   | { mode: "document" }
   | { mode: "focus-lost"; document: number }
   | { mode: "frame"; selector: string; margin?: number }
+  | { mode: "same-element"; selector: string; among: string[] }
   | { mode: "blur" }
   | { mode: "start-at-top" }
   | { mode: "focusable" }
@@ -357,6 +368,7 @@ async function sweepPage(
   await loadPage();
   let framesNotRead: UnreadFrame[] = [];
   // The browser has still drawn the frames left unread, so the sweep's pictures cover them.
+  let unreadFrames: FrameNotChecked[] = [];
   let mask: unknown[] = [];
   const findings: SweepFinding[] = (
     await withPageSessions(page.context(), page, async (sessions) => {
@@ -365,7 +377,8 @@ async function sweepPage(
         url: redactUrl(url),
         reason
       }));
-      mask = frameMasks(page, await framesNotChecked(read));
+      unreadFrames = await framesNotChecked(read);
+      mask = frameMasks(page, unreadFrames);
       return findHeadingLookalikes(read);
     })
   ).map(({ selector, framePath, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) => ({
@@ -390,7 +403,7 @@ async function sweepPage(
   }
   findings.push(...(await textImages(page, probe, mask)));
   const tabStops = await withCdpSession(page.context(), page, (session) =>
-    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep, mask)
+    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep, mask, unreadFrames)
   );
   // Tab reaching nothing on a page with controls it reaches natively says the walk did not happen,
   // not that every control is mouse-only, so the sweep decides nothing.
@@ -729,7 +742,8 @@ async function timed<Result>(
 /**
  * Presses Tab from the top of the page until focus returns to a stop already reached, capturing
  * each stop's surroundings with focus. Then, with focus on nothing, it captures the same regions
- * again: focus is visible where the two differ, which is what WCAG 2.4.7 asks for.
+ * again: focus is visible where the two differ, which is what WCAG 2.4.7 asks for. A stop that is
+ * one of `unreadFrames` is covered by `mask` in both captures, so its focus is not checked.
  */
 async function collectTabStops(
   page: KeyboardPointerSweepPage,
@@ -737,8 +751,11 @@ async function collectTabStops(
   probe: <T>(request: ProbeRequest) => Promise<T>,
   maxTabStops: number,
   onStep: KeyboardPointerSweepOptions["onStep"],
-  mask: unknown[]
+  mask: unknown[],
+  unreadFrames: FrameNotChecked[]
 ): Promise<SweepTabStop[]> {
+  // Tab stops are elements of the top document, so only a frame whose element is there can be one.
+  const unreadStops = unreadFrames.filter(({ selector }) => selector.length === 1);
   const stops: Array<SweepTabStop & { frame: FocusFrame | null }> = [];
   const isNewStop = (active: SweepTabStop | null): active is SweepTabStop =>
     active !== null && !stops.some(({ selector }) => selector === active.selector);
@@ -762,12 +779,24 @@ async function collectTabStops(
     if (!isNewStop(active)) break;
     const frame = await probe<FocusFrame | null>({ mode: "frame", selector: active.selector });
     const focusedCrop = frame ? await captureFrame(page, frame, mask) : undefined;
-    stops.push({ ...active, frame, ...(focusedCrop ? { focusedCrop } : {}) });
+    const unread = unreadStops.length
+      ? await probe<number>({
+          mode: "same-element",
+          selector: active.selector,
+          among: unreadStops.map(({ selector: [element] }) => element)
+        })
+      : -1;
+    stops.push({
+      ...active,
+      frame,
+      ...(focusedCrop ? { focusedCrop } : {}),
+      ...(unread >= 0 ? { notChecked: unreadStops[unread]!.reason } : {})
+    });
   }
   await probe({ mode: "blur" });
   const measured: SweepTabStop[] = [];
   for (const { frame, ...stop } of stops) {
-    if (frame && stop.focusedCrop) {
+    if (frame && stop.focusedCrop && !stop.notChecked) {
       await probe({ mode: "scroll-to", x: frame.scrollX, y: frame.scrollY });
       const unfocused = await captureFrame(page, frame, mask);
       if (unfocused) stop.focusVisible = visiblyDifferent(stop.focusedCrop, unfocused);
@@ -1254,6 +1283,13 @@ function runSweepProbe(request: ProbeRequest): unknown {
       if (!active || active === document.body) return null;
       if (request.within && !document.querySelector(request.within)?.contains(active)) return null;
       return { selector: selectorFor(active) };
+    }
+    // Which of `among` selects the same element as `selector`, as an index; -1 when none does.
+    case "same-element": {
+      const element = document.querySelector(request.selector);
+      return element
+        ? request.among.findIndex((selector) => document.querySelector(selector) === element)
+        : -1;
     }
     // The composite widget each target sits in, with the Tab stop inside it that its arrow keys
     // start from, once per widget. A widget whose items Tab never reaches has none.
