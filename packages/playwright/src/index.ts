@@ -45,6 +45,11 @@ import {
   type FramedPage,
   type PageSessions
 } from "./accessibility-tree";
+import {
+  assertAllowedOrigin,
+  BlockedOriginError,
+  normalizeAllowedOrigins
+} from "./allowed-origins";
 import { captureDomFocus } from "./dom-focus";
 import { captureElementMap } from "./element-map";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
@@ -1782,6 +1787,13 @@ function navigationGuard(
   };
 }
 
+interface SweepPages<TPage> {
+  page: TPage;
+  still: TPage;
+  video?: PlaywrightVideoLike | null;
+  close(): Promise<void>;
+}
+
 /**
  * The pages a sweep lane drives, with its navigation guard set. On its own browser the lane sweeps
  * in a recorded context and takes its stills in a second, unrecorded one: a full-page capture
@@ -1793,12 +1805,7 @@ async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
   target: LaneTarget<KeyboardPointerSweepLaneBrowser<TPage>, TPage>,
   laneOutputDir: string,
   guard: KeyboardPointerSweepLaneRouteHandler
-): Promise<{
-  page: TPage;
-  still: TPage;
-  video?: PlaywrightVideoLike | null;
-  close(): Promise<void>;
-}> {
+): Promise<SweepPages<TPage>> {
   if (!target.browser) {
     const { page } = target;
     await page.route("**/*", guard);
@@ -1937,28 +1944,29 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
   const focusCropFiles: string[] = [];
   let runError: unknown;
+  let pages: SweepPages<TPage> | undefined;
 
   await mkdir(laneOutputDir, { recursive: true });
-  const {
-    page,
-    still,
-    video: pageVideo,
-    close
-  } = await openSweepPages(
-    options,
-    laneOutputDir,
-    navigationGuard(allowedOrigins, blockedNavigations)
-  );
   try {
+    // Opened in here, so a browser that fails to open them (a crash, a disconnect, running out of
+    // memory) still leaves the lane's record and manifest below.
+    pages = await openSweepPages<TPage>(
+      options,
+      laneOutputDir,
+      navigationGuard(allowedOrigins, blockedNavigations)
+    );
+    const { page, still } = pages;
     const result = await sweepKeyboardAndPointer({
       page,
       url: options.targetUrl,
       activateControls: options.activateControls,
+      allowedOrigins,
       onStep: (step) => steps.push(step)
     });
     const stillRequests = trackOpenRequests(still);
     try {
       await still.goto(options.targetUrl);
+      assertAllowedOrigin(still.url(), allowedOrigins, "Keyboard and pointer sweep");
       await waitForQuietPage(still, stillRequests);
     } finally {
       stillRequests.stop();
@@ -1998,10 +2006,15 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   } catch (error) {
     runError = error;
   } finally {
-    await close();
+    await pages?.close();
   }
 
-  const status = sweep ? "completed" : blockedNavigations.length > 0 ? "blocked" : "failed";
+  const status = sweep
+    ? "completed"
+    : runError instanceof BlockedOriginError || blockedNavigations.length > 0
+      ? "blocked"
+      : "failed";
+  const pageVideo = pages?.video;
   const laneRecord: KeyboardPointerSweepLaneDocument = {
     ...header,
     status,
@@ -2077,34 +2090,6 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     ...(video ? { video } : {})
   };
 }
-
-function normalizeAllowedOrigins(
-  origins: string[],
-  laneName = "virtual screen-reader lane"
-): string[] {
-  if (origins.length === 0) {
-    throw new Error(`A ${laneName} requires at least one allowed origin.`);
-  }
-
-  return [...new Set(origins.map((origin) => new URL(origin).origin))].sort();
-}
-
-function assertAllowedOrigin(
-  value: string,
-  allowedOrigins: string[],
-  laneLabel = "Virtual screen-reader lane"
-): void {
-  const origin = new URL(value).origin;
-
-  if (!allowedOrigins.includes(origin)) {
-    throw new BlockedOriginError(
-      `${laneLabel} blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
-    );
-  }
-}
-
-/** A lane reached a page outside its allowed origins, so it stopped: the lane is "blocked". */
-class BlockedOriginError extends Error {}
 
 function readLaneStepOutcome(
   result: RunAeeOnPageResult,

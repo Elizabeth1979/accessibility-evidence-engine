@@ -8,6 +8,7 @@ import {
   type CdpSession,
   type FramedPage
 } from "./accessibility-tree";
+import { assertAllowedOrigin, normalizeAllowedOrigins } from "./allowed-origins";
 import { locateElements, type ElementLocation } from "./element-locations";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
@@ -142,6 +143,7 @@ export interface KeyboardPointerSweepPage extends FramedPage {
   }): Promise<Uint8Array>;
   goto(url: string): Promise<unknown>;
   reload(): Promise<unknown>;
+  url(): string;
   isClosed(): boolean;
   waitForLoadState(): Promise<void>;
   evaluate<Result, Arg>(
@@ -173,6 +175,12 @@ export interface KeyboardPointerSweepOptions {
    */
   activateControls: boolean;
   maxTabStops?: number;
+  /**
+   * The origins the page may load from. A redirect passes a route handler by, so each time the
+   * sweep loads the page it checks where the page landed, and stops before reading or pressing
+   * anything on a page outside them.
+   */
+  allowedOrigins?: string[];
   /** Called as each step finishes, so a recording of the sweep can say what it shows. */
   onStep?: (step: SweepStep) => void;
 }
@@ -282,9 +290,12 @@ async function sweepPage(
   openRequests: OpenRequests
 ): Promise<KeyboardPointerSweepResult> {
   const { page, url, onStep } = options;
+  const allowedOrigins =
+    options.allowedOrigins &&
+    normalizeAllowedOrigins(options.allowedOrigins, "keyboard and pointer sweep");
   const probe = probeOf(page);
   const settle = () => onLoadedPage(page, () => waitForQuietPage(page, openRequests));
-  const loadPage = () => loadAfresh(page, url, openRequests);
+  const loadPage = () => loadAfresh(page, url, openRequests, allowedOrigins);
 
   await loadPage();
   const findings: SweepFinding[] = (
@@ -552,15 +563,17 @@ async function walkComposite(
  * Loads the page at its address again, as it first loaded, and waits for the app to draw it: a
  * check that reads it before then sees an empty page. Going to an address with a #fragment only
  * scrolls to the fragment when the page is already there, keeping whatever a check changed, so
- * such an address is reloaded.
+ * such an address is reloaded. A page that landed outside the allowed origins stops the sweep.
  */
 async function loadAfresh(
   page: KeyboardPointerSweepPage,
   url: string,
-  openRequests: OpenRequests
+  openRequests: OpenRequests,
+  allowedOrigins: string[] | undefined
 ): Promise<void> {
   await page.goto(url);
   if (new URL(url).hash) await page.reload();
+  if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, "Keyboard and pointer sweep");
   await waitForQuietPage(page, openRequests);
 }
 
