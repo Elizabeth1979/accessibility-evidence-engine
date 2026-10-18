@@ -568,7 +568,7 @@ test("runAeeOnPage can capture screenshots around a click interaction", async ({
   );
 });
 
-test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements", async ({
+test("runAeeOnPage preserves axe 4.14 WCAG results and locates failing elements", async ({
   page
 }, testInfo) => {
   await page.setContent(`
@@ -598,7 +598,7 @@ test("runAeeOnPage preserves axe 4.13 WCAG results and locates failing elements"
   );
 
   for (const rawResult of rawResults) {
-    expect(rawResult.testEngine.version).toBe("4.13.0");
+    expect(rawResult.testEngine.version).toBe("4.14.0");
     expect(rawResult.violations).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "button-name" })])
     );

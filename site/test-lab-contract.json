@@ -1,7 +1,7 @@
 {
   "version": 2,
   "validation": {
-    "engine": "axe-core 4.13.0",
+    "engine": "axe-core 4.14.0",
     "browser": "Playwright Chromium",
     "scope": "Initial page state; observations are version-specific, not universal tool guarantees."
   },
