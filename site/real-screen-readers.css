@@ -1,4 +1,4 @@
-/* The real-screen-readers page: a sample comparison table, the run steps, a picture of the
+/* The real-screen-readers page: the first run's comparison table, the run steps, a picture of the
    Run workflow form and the JAWS note. Colours come from styles.css; amber marks a difference. */
 :root {
   --amber: #f3c969;
@@ -43,7 +43,7 @@
   font-size: 0.86rem;
 }
 
-.readers-sample {
+.readers-banner {
   margin: 0;
   padding: 0.75rem 1.2rem;
   border-bottom: 1px solid var(--line);
