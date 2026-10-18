@@ -8,20 +8,25 @@ import {
 } from "./accessibility-tree";
 import {
   callOn,
-  documentOf,
+  frameDocuments,
   loadPageScript,
   nodeOf,
   PageObject,
-  TABBABLE_SCRIPT
+  TABBABLE_SCRIPT,
+  type FrameDocuments,
+  type ShadowRootsInPage
 } from "./frame-documents";
 
 /**
- * The element focus is on in the frame's document, found the way the page sees it: its
- * `activeElement`, and on into each open shadow root's.
+ * The element focus is on in the frame's document: its `activeElement`, and on into each shadow
+ * root's, closed ones too. A closed root's host stands for whatever has focus inside it, so it is
+ * followed through the frame's `ShadowRootsInPage`.
  */
-const ACTIVE_ELEMENT = `function () {
+const ACTIVE_ELEMENT = `function (shadowRoots) {
   let element = document.activeElement;
-  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+  while (element && shadowRoots.getShadowRoot(element)?.activeElement) {
+    element = shadowRoots.getShadowRoot(element).activeElement;
+  }
   return element;
 }`;
 
@@ -44,17 +49,19 @@ export function frameHeldAt(
  * frame's element as its active element (HTML's `activeElement`), so focus is followed into that
  * frame's own document, through the frame's own session, so a cross-site frame in another process
  * is followed too. A frame that loses focus loses its own active element, so only the frames that
- * hold focus are followed. Empty when no element has focus.
+ * hold focus are followed. Focus is followed into closed shadow roots too, so a frame inside one
+ * is followed. Empty when no element has focus.
  */
 export async function focusPath(
   page: PageSessions,
-  documentOfFrame: (frame: PageFrame) => Promise<string | undefined>
+  documents: FrameDocuments
 ): Promise<DomNodeRef[]> {
   const path: DomNodeRef[] = [];
   for (let frame: PageFrame | undefined = mainFrameOf(page); frame;) {
-    const document = await documentOfFrame(frame);
-    const backendNodeId = document
-      ? await nodeOf(frame.session, document, ACTIVE_ELEMENT)
+    const document = await documents.document(frame);
+    const shadowRoots = document && (await documents.shadowRoots(frame));
+    const backendNodeId = shadowRoots
+      ? await nodeOf(frame.session, document, ACTIVE_ELEMENT, [shadowRoots])
       : undefined;
     if (backendNodeId === undefined) break;
     const focused = { frameId: frame.frameId, backendNodeId };
@@ -152,8 +159,9 @@ interface DocumentFocus {
  * `frameId` and `backendDOMNodeId`. Null when no element has focus.
  */
 export async function captureDomFocus(page: PageSessions): Promise<DomFocusState | null> {
-  const path = await focusPath(page, (frame) => documentOf(page, frame));
-  const order = path.length ? await pageTabOrder(page) : undefined;
+  const documents = frameDocuments(page);
+  const path = await focusPath(page, documents);
+  const order = path.length ? await pageTabOrder(page, documents) : undefined;
   // A frame with nothing to focus is a tab stop itself; focus on it leaves its document's body
   // as that document's active element.
   const placed = ({ tabStop, ...element }: ElementDescription, frameId: string) => {
@@ -168,17 +176,17 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
   let last:
     { focus: DocumentFocus; place: Pick<FocusedElement, "frameId" | "framePath"> } | undefined;
   for (const [index, { frameId, backendNodeId }] of path.entries()) {
-    const session = page.frames.find((frame) => frame.frameId === frameId)!.session;
-    const { object } = (await session.send("DOM.resolveNode", { backendNodeId })) as {
+    const frame = page.frames.find((candidate) => candidate.frameId === frameId)!;
+    const { object } = (await frame.session.send("DOM.resolveNode", { backendNodeId })) as {
       object: { objectId: string };
     };
     // tabbable is in every frame's page once the page's order is counted, and a place in a
-    // document's own tab stops means nothing without it.
+    // document's own tab stops means nothing without it. focusPath read the frame's shadow roots.
     const focus = await callOn<DocumentFocus>(
-      session,
+      frame.session,
       object.objectId,
       `${describeDocumentFocus}`,
-      [order ? TABBABLE_IN_PAGE : null]
+      [order ? TABBABLE_SCRIPT.global : null, (await documents.shadowRoots(frame))!]
     );
     const place = { frameId, ...(framePath.length ? { framePath: [...framePath] } : {}) };
     focus.chain.forEach((element, at) => {
@@ -213,19 +221,6 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
   };
 }
 
-/** How the page asks tabbable for a document's tab stops, the same way for every document. */
-interface TabbableInPage {
-  /** The global the tabbable script sets in each frame's page. */
-  global: string;
-  /** Shadow roots are entered, as the browser's Tab enters them. */
-  options: Tabbable.CheckOptions;
-}
-
-const TABBABLE_IN_PAGE: TabbableInPage = {
-  global: TABBABLE_SCRIPT.global,
-  options: { getShadowRoot: true }
-};
-
 /**
  * One tab stop of the page: one of its document's own tab stops, by its place among them, or a
  * frame that has none, which Chrome's Tab stops on itself.
@@ -245,17 +240,26 @@ interface PageTabOrder {
 /**
  * The page's tab order: each document's own tab stops in the order tabbable gives them, which
  * follows HTML's sequential focus navigation (positive tabindex first, then document order, into
- * shadow roots), with each frame's tab stops at its `<iframe>` element's place in its parent's
- * order, as Chrome's Tab moves through them. Each frame is read through its own session, so a
- * cross-site frame in another process counts too. Undefined when any frame could not be read or
- * placed: one missing frame would shift every place after it.
+ * shadow roots, closed ones too), with each frame's tab stops at its `<iframe>` element's place in
+ * its parent's order, as Chrome's Tab moves through them. Each frame is read through its own
+ * session, so a cross-site frame in another process counts too. Undefined when any frame, or a
+ * closed shadow root in one, could not be read or placed: one missing stop would shift every place
+ * after it.
  */
-async function pageTabOrder(page: PageSessions): Promise<PageTabOrder | undefined> {
+async function pageTabOrder(
+  page: PageSessions,
+  documents: FrameDocuments
+): Promise<PageTabOrder | undefined> {
   if (page.framesNotRead.length) return undefined;
+  // Each process's DOM is walked for its closed roots at once, not one after another.
+  const frameShadowRoots = await Promise.all(
+    page.frames.map((frame) => documents.shadowRoots(frame))
+  );
+  if (frameShadowRoots.some((shadowRoots) => !shadowRoots)) return undefined;
   const sequences = new Map<string, { sequence: TabToken[]; children: PageFrame[] }>();
-  for (const frame of page.frames) {
-    const document = await documentOf(page, frame);
-    if (!document) return undefined;
+  for (const [index, frame] of page.frames.entries()) {
+    const document = (await documents.document(frame))!;
+    const shadowRoots = frameShadowRoots[index]!;
     await loadPageScript(frame.session, document, TABBABLE_SCRIPT);
     const children = page.frames.filter(({ parentFrameId }) => parentFrameId === frame.frameId);
     const owners: PageObject[] = [];
@@ -271,7 +275,7 @@ async function pageTabOrder(page: PageSessions): Promise<PageTabOrder | undefine
       frame.session,
       document,
       `${documentTabSequence}`,
-      [TABBABLE_IN_PAGE, ...owners]
+      [TABBABLE_SCRIPT.global, shadowRoots, ...owners]
     );
     if (!sequence) return undefined;
     sequences.set(frame.frameId, { sequence, children });
@@ -301,50 +305,50 @@ type TabToken = { stop: number } | { frame: number };
 
 /**
  * One document's tab order, run in the page on its `document` with the `<iframe>` elements of its
- * frames, in tabbable's order. Chrome's Tab goes into a frame rather than stopping on its element,
- * so an `<iframe>` tabbable lists (one with a tabindex) stands for its frame. tabbable leaves out
- * any other frame (its README: their tabbability differs between browsers), so each is placed by
- * the rule tabbable sorts by, read from its source (`sortByOrder`): in each scope (the document, an
- * open shadow root, a slot), positive tabindex first in ascending order, then tabindex 0, each in
- * document order, and a scope's content at its host's place. A frame whose element is hidden,
- * inert (itself or through a shadow host) or has a negative tabindex is left out, as Chrome's Tab
- * skips it. Null when a frame's element is not an `<iframe>`, or sits in a closed shadow root,
- * since that rule cannot place either. Sent to the page as source, so it uses nothing from outside
- * itself.
+ * frames, in tabbable's order. tabbable is given the document's shadow roots, closed ones included
+ * (`ShadowRootsInPage`), so it enters every shadow root Chrome's Tab enters. Chrome's Tab goes into
+ * a frame rather than stopping on its element, so an `<iframe>` tabbable lists (one with a
+ * tabindex) stands for its frame. tabbable leaves out any other frame (its README: their
+ * tabbability differs between browsers), so each is placed by the rule tabbable sorts by, read
+ * from its source (`sortByOrder`): in each scope (the document, a shadow root, a slot), positive
+ * tabindex first in ascending order, then tabindex 0, each in document order, and a scope's
+ * content at its host's place. A frame whose element is hidden, inert (itself or through a shadow
+ * host) or has a negative tabindex is left out, as Chrome's Tab skips it. Null when a frame's
+ * element is not an `<iframe>`, since that rule cannot place it. Sent to the page as source, so it
+ * uses nothing from outside itself.
  */
 function documentTabSequence(
   this: Document,
-  { global, options }: TabbableInPage,
+  global: string,
+  shadowRoots: ShadowRootsInPage,
   ...owners: Element[]
 ): TabToken[] | null {
   const { tabbable, isFocusable, getTabIndex } = (
     globalThis as unknown as Record<string, typeof Tabbable>
   )[global]!;
-  // tabbable cannot see into a closed shadow root, so it cannot place a frame inside one.
-  const inClosedShadowRoot = (node: Element) => {
-    for (
-      let root = node.getRootNode();
-      root instanceof ShadowRoot;
-      root = root.host.getRootNode()
-    ) {
-      if (root.host.shadowRoot !== root) return true;
-    }
-    return false;
-  };
-  if (owners.some((owner) => owner.localName !== "iframe" || inClosedShadowRoot(owner))) {
-    return null;
-  }
-  const stops: Element[] = tabbable(this.documentElement, options);
+  if (owners.some((owner) => owner.localName !== "iframe")) return null;
+  const stops: Element[] = tabbable(this.documentElement, shadowRoots);
 
+  // The slot a host's light-DOM child is assigned to. `assignedSlot` names a slot only in an open
+  // shadow root, so a closed root's slots are asked which elements they hold, as tabbable asks.
+  const slotOf = (node: Element): Element | null => {
+    if (node.assignedSlot) return node.assignedSlot;
+    const root = node.parentElement && shadowRoots.getShadowRoot(node.parentElement);
+    return root
+      ? (Array.from(root.querySelectorAll("slot")).find((slot) =>
+          slot.assignedElements().includes(node)
+        ) ?? null)
+      : null;
+  };
   // Where tabbable sorts an element: inside each slot and shadow host it is reached through.
   const parentOf = (node: Element): Element | null =>
-    node.assignedSlot ??
+    slotOf(node) ??
     node.parentElement ??
     (node.parentNode instanceof ShadowRoot ? node.parentNode.host : null);
   const scopesOf = (node: Element) => {
     const scopes: Element[] = [];
     for (let parent = parentOf(node); parent; parent = parentOf(parent)) {
-      if (parent.localName === "slot" || parent.shadowRoot) scopes.unshift(parent);
+      if (parent.localName === "slot" || shadowRoots.getShadowRoot(parent)) scopes.unshift(parent);
     }
     return scopes;
   };
@@ -378,11 +382,11 @@ function documentTabSequence(
     return false;
   };
   const reached = (owner: Element) =>
-    isFocusable(owner, options) &&
+    isFocusable(owner, shadowRoots) &&
     getTabIndex(owner) >= 0 &&
     !inert(owner) &&
     scopesOf(owner).every(
-      (scope) => !scope.shadowRoot || !hasTabIndex(scope) || getTabIndex(scope) >= 0
+      (scope) => !shadowRoots.getShadowRoot(scope) || !hasTabIndex(scope) || getTabIndex(scope) >= 0
     );
 
   const unlisted = owners
@@ -408,10 +412,16 @@ function documentTabSequence(
  * Describes DOM focus in one document, run in the page on the element that has focus there (the
  * one `ACTIVE_ELEMENT` finds). The document's active element and each shadow root's on the way
  * down to it are the shadow hosts it is inside, so the chain is read back up through each
- * `getRootNode().host`. It is sent to the page as source, as Playwright's own `evaluate` sends a
- * function, so it uses nothing from outside itself.
+ * `getRootNode().host`, closed roots' hosts too. Its place among the document's tab stops is
+ * tabbable's, given the document's shadow roots, when the tabbable script `tabbableGlobal` names
+ * is loaded. It is sent to the page as source, as Playwright's own `evaluate` sends a function, so
+ * it uses nothing from outside itself.
  */
-function describeDocumentFocus(this: Element, tabOrder: TabbableInPage | null): DocumentFocus {
+function describeDocumentFocus(
+  this: Element,
+  tabbableGlobal: string | null,
+  shadowRoots: ShadowRootsInPage
+): DocumentFocus {
   const COMPOSITE_ITEMS: Record<string, string> = {
     tablist: '[role="tab"]',
     radiogroup: '[role="radio"]',
@@ -421,10 +431,10 @@ function describeDocumentFocus(this: Element, tabOrder: TabbableInPage | null): 
     tree: '[role="treeitem"]',
     grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
   };
-  const tabStops: Element[] = tabOrder
-    ? (globalThis as unknown as Record<string, typeof Tabbable>)[tabOrder.global]!.tabbable(
+  const tabStops: Element[] = tabbableGlobal
+    ? (globalThis as unknown as Record<string, typeof Tabbable>)[tabbableGlobal]!.tabbable(
         this.ownerDocument.documentElement,
-        tabOrder.options
+        shadowRoots
       )
     : [];
 
