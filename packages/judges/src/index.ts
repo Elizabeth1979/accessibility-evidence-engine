@@ -11,6 +11,7 @@ import {
   type JudgePlugin,
   type Judgment,
   type LiveRegionAnnouncement,
+  type LiveRegionRef,
   type TargetDescriptor
 } from "@aee/core";
 
@@ -965,6 +966,7 @@ function judgeKeyboardActivation(bundle: EvidenceBundle): Judgment[] {
           beforeRecord.id,
           afterRecord.id,
           ...response.unattributed.evidenceRecordIds,
+          ...response.ownAnnouncements.evidenceRecordIds,
           ...response.markupRecords.map((record) => record.id)
         ]
       )
@@ -2039,6 +2041,20 @@ interface PressResponse {
    * somewhere the record cannot tell from lost.
    */
   focusLanding?: Exclude<FocusLanding, { kind: "element" }>;
+  /** Announcements after the press that the page may have made on its own, so not counted. */
+  ownAnnouncements: OwnAnnouncements;
+}
+
+/**
+ * Announcements heard after the press that cannot be credited to it, because the page was already
+ * announcing on its own while it was left untouched before the press.
+ */
+interface OwnAnnouncements {
+  /** Each announcement, with the live region it came from when Chrome's tree shows which. */
+  announcements: Array<{ announcement: LiveRegionAnnouncement; region?: LiveRegionRef }>;
+  /** What the reader heard from the page before the press. */
+  heardWithoutInput: LiveRegionAnnouncement[];
+  evidenceRecordIds: string[];
 }
 
 /**
@@ -2048,7 +2064,9 @@ interface PressResponse {
  *   selected, value, its name, or it leaving the page), and the same for what it names with
  *   `aria-controls`;
  * - focus moving, except where a click puts it by itself;
- * - a live-region update Guidepup's virtual screen reader announced (a status message, WCAG 4.1.3);
+ * - a live-region update Guidepup's virtual screen reader announced (a status message, WCAG 4.1.3),
+ *   unless the page was already announcing from that live region on its own before the press
+ *   (see `placeAnnouncements`);
  * - network activity.
  * Any other change in the tree, such as a clock ticking, cannot be tied to the press. A change in
  * the markup is kept as supporting evidence only: a native checkbox ticks without changing it, and
@@ -2124,16 +2142,27 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
       record.status === "ok" &&
       readNewLiveRegionAnnouncements(record).length > 0
   );
-  if (readerRecords.length > 0) {
-    const announced = readerRecords
-      .flatMap(readNewLiveRegionAnnouncements)
-      .map(({ politeness, text }) => `"${text}" (${politeness})`);
+  const placed = placeAnnouncements(
+    records,
+    readerRecords.flatMap(readNewLiveRegionAnnouncements),
+    accessibilityChanges
+  );
+  if (placed.counted.length > 0) {
+    const announced = placed.counted.map(({ politeness, text }) => `"${text}" (${politeness})`);
     signals.push({
       label: `a live region announced ${announced.join(", ")}`,
       evidenceRecordIds: readerRecords.map((record) => record.id),
       artifactIds: collectArtifactIds(readerRecords)
     });
   }
+  const ownAnnouncements: OwnAnnouncements = {
+    announcements: placed.own,
+    heardWithoutInput: placed.heardWithoutInput,
+    evidenceRecordIds:
+      placed.own.length > 0
+        ? [...readerRecords, ...placed.watchRecords].map((record) => record.id)
+        : []
+  };
 
   const networkRecords = records.filter(
     (record) =>
@@ -2167,8 +2196,85 @@ function collectPressResponse(bundle: EvidenceBundle): PressResponse {
         record.status === "ok" &&
         getBooleanMetaField(record, "changed") === true
     ),
+    ownAnnouncements,
     ...(focusLanding ? { focusLanding } : {})
   };
+}
+
+/**
+ * Sorts the announcements heard after a press into those the press may have caused and those the
+ * page may have made on its own. Before the press the run leaves the page untouched while the
+ * reader listens; the "before" records hold what the reader heard then and which live regions
+ * Chrome's tree shows changing on their own. A status message is the result of an action (WCAG
+ * 4.1.3); content that updates by itself is not (WCAG 2.2.2), so:
+ * - an announcement from a live region that changed on its own before the press is not counted;
+ * - one from a live region that did not is counted, even while another region (a clock) ticks;
+ * - one Chrome's tree cannot place in a region is counted only if the page announced nothing on
+ *   its own before the press.
+ * Guidepup's reader does not say which region spoke, so an announcement is placed in the changed
+ * region whose name or text contains its words, as Chrome's tree reports them after the press.
+ */
+function placeAnnouncements(
+  records: EvidenceRecord[],
+  announcements: LiveRegionAnnouncement[],
+  accessibilityChanges: AccessibilityChanges | undefined
+): {
+  counted: LiveRegionAnnouncement[];
+  own: OwnAnnouncements["announcements"];
+  heardWithoutInput: LiveRegionAnnouncement[];
+  watchRecords: EvidenceRecord[];
+} {
+  const readerWatchRecords = records.filter(
+    (record) =>
+      record.observerId === "virtual-screen-reader" &&
+      record.phase === "before" &&
+      record.status === "ok" &&
+      readLiveRegionAnnouncementsWithoutInput(record).length > 0
+  );
+  const heardWithoutInput = readerWatchRecords.flatMap(readLiveRegionAnnouncementsWithoutInput);
+  const treeWatchRecord = records.find(
+    (record) =>
+      record.observerId === "accessibility-tree" &&
+      record.phase === "before" &&
+      record.status === "ok" &&
+      readAccessibilityChanges(record, "accessibilityChangesWithoutInput") !== undefined
+  );
+  const changedOnItsOwn =
+    treeWatchRecord &&
+    new Set(
+      (
+        readAccessibilityChanges(treeWatchRecord, "accessibilityChangesWithoutInput")!
+          .liveRegions ?? []
+      ).map(({ nodeId }) => nodeId)
+    );
+  const counted: LiveRegionAnnouncement[] = [];
+  const own: OwnAnnouncements["announcements"] = [];
+  for (const announcement of announcements) {
+    const region = accessibilityChanges?.liveRegions?.find((candidate) =>
+      regionSays(candidate, announcement)
+    );
+    const fromOwnRegion = region && changedOnItsOwn?.has(region.nodeId);
+    const unplaced = !(region && changedOnItsOwn) && heardWithoutInput.length > 0;
+    if (fromOwnRegion || unplaced) own.push({ announcement, ...(region ? { region } : {}) });
+    else counted.push(announcement);
+  }
+  return {
+    counted,
+    own,
+    heardWithoutInput,
+    watchRecords: [...readerWatchRecords, ...(treeWatchRecord ? [treeWatchRecord] : [])]
+  };
+}
+
+/**
+ * Whether the region's name or text holds the announcement's words. Guidepup says an atomic
+ * region's name, or else its whole text, and a non-atomic one's added text; Chrome's tree splits
+ * the text across nodes, so spacing is not compared.
+ */
+function regionSays(region: LiveRegionRef, { text }: LiveRegionAnnouncement): boolean {
+  const words = (value: string) => value.replace(/\s+/g, "").toLowerCase();
+  const said = words(text);
+  return said.length > 0 && words(`${region.name ?? ""} ${region.text}`).includes(said);
 }
 
 /**
@@ -2241,15 +2347,29 @@ function readAccessibilityFocus(record: EvidenceRecord): AccessibilityNodeRef | 
   };
 }
 
-function readAccessibilityChanges(record: EvidenceRecord): AccessibilityChanges | undefined {
-  const changes = isRecord(record.meta) ? record.meta.accessibilityChanges : undefined;
+function readAccessibilityChanges(
+  record: EvidenceRecord,
+  field: "accessibilityChanges" | "accessibilityChangesWithoutInput" = "accessibilityChanges"
+): AccessibilityChanges | undefined {
+  const changes = isRecord(record.meta) ? record.meta[field] : undefined;
   return isRecord(changes) && Array.isArray(changes.changes)
     ? (changes as unknown as AccessibilityChanges)
     : undefined;
 }
 
 function readNewLiveRegionAnnouncements(record: EvidenceRecord): LiveRegionAnnouncement[] {
-  const announcements = isRecord(record.meta) ? record.meta.newLiveRegionAnnouncements : undefined;
+  return readAnnouncements(record, "newLiveRegionAnnouncements");
+}
+
+function readLiveRegionAnnouncementsWithoutInput(record: EvidenceRecord): LiveRegionAnnouncement[] {
+  return readAnnouncements(record, "liveRegionAnnouncementsWithoutInput");
+}
+
+function readAnnouncements(
+  record: EvidenceRecord,
+  field: "newLiveRegionAnnouncements" | "liveRegionAnnouncementsWithoutInput"
+): LiveRegionAnnouncement[] {
+  const announcements = isRecord(record.meta) ? record.meta[field] : undefined;
   return Array.isArray(announcements) ? (announcements as LiveRegionAnnouncement[]) : [];
 }
 
@@ -2268,7 +2388,6 @@ function describeAccessibilityChange(change: AccessibilityChange): string {
   return `${node} ${change.kind === "shown" ? "appeared" : "disappeared"}`;
 }
 
-/** Why a press with no response of its own is left undecided rather than failed, or nothing. */
 /** Says when focus was lost after the press: a change, but not a response. */
 function describeFocusLoss(response: PressResponse, kind: string): string {
   return response.focusLanding?.kind === "lost"
@@ -2276,6 +2395,10 @@ function describeFocusLoss(response: PressResponse, kind: string): string {
     : "";
 }
 
+/**
+ * Why a press with no response of its own is left undecided rather than failed, or nothing. The
+ * announcements the page made on its own are named with the supporting evidence.
+ */
 function describeUndecidedPress(response: PressResponse): string | undefined {
   if (!response.accessibilityRecord) {
     return "Telling whether the press responded needs the accessibility tree before and after it (the accessibility-tree observer).";
@@ -2283,16 +2406,49 @@ function describeUndecidedPress(response: PressResponse): string | undefined {
   if (response.focusLanding && response.focusLanding.kind !== "lost") {
     return `Focus moved to a document's <body>. ${describeUndecidedLanding(response.focusLanding)}`;
   }
-  if (response.unattributed.count === 0) return undefined;
-  const more = response.unattributed.count - response.unattributed.descriptions.length;
-  return `The page changed elsewhere (${response.unattributed.descriptions.join("; ")}${more > 0 ? `; and ${more} more` : ""}), but not the pressed control, what it controls, focus, a live-region announcement or the network, so whether the press caused it cannot be told.`;
+  if (response.unattributed.count > 0) {
+    const more = response.unattributed.count - response.unattributed.descriptions.length;
+    return `The page changed elsewhere (${response.unattributed.descriptions.join("; ")}${more > 0 ? `; and ${more} more` : ""}), but not the pressed control, what it controls, focus, a live-region announcement of its own or the network, so whether the press caused it cannot be told.`;
+  }
+  if (response.ownAnnouncements.announcements.length > 0) {
+    return "All it was followed by is what a live region announced, and the page was already announcing on its own, so whether the press caused it cannot be told.";
+  }
+  return undefined;
 }
 
-/** The markup change, said as what it is: supporting evidence, not a response. */
-/** What was seen but not counted as the press responding: a click's own focus, the markup. */
+/** The announcements not counted as the press's response, and why, said in full. */
+function describeOwnAnnouncements({ ownAnnouncements }: PressResponse): string {
+  if (ownAnnouncements.announcements.length === 0) return "";
+  const heard = ownAnnouncements.heardWithoutInput
+    .slice(0, 3)
+    .map(({ text }) => `"${text}"`)
+    .join(", ");
+  const before = heard ? ` (before the press it said ${heard})` : "";
+  // One sentence per region, and one for the announcements no region was found for.
+  const groups = new Map<number | undefined, { region?: LiveRegionRef; said: string[] }>();
+  for (const { announcement, region } of ownAnnouncements.announcements) {
+    const group = groups.get(region?.nodeId) ?? { ...(region ? { region } : {}), said: [] };
+    group.said.push(`"${announcement.text}" (${announcement.politeness})`);
+    groups.set(region?.nodeId, group);
+  }
+  const sentences = [...groups.values()].map(({ region, said }) => {
+    const announced = `A live region announced ${said.join(", ")} after the press`;
+    const notCounted = `so ${said.length === 1 ? "it is" : "they are"} not counted as the press's response`;
+    return region
+      ? `${announced}, but that region, ${describeAccessibilityNode(region)}, was already announcing on its own while the page was left untouched${before}, ${notCounted}.`
+      : `${announced}, but the page was already announcing on its own while it was left untouched${before} and Chrome's accessibility tree does not show which live region ${said.length === 1 ? "this" : "these"} came from, ${notCounted}.`;
+  });
+  return ` ${sentences.join(" ")}`;
+}
+
+/**
+ * What was seen but not counted as the press responding: a click's own focus, what the page
+ * announced on its own, the markup.
+ */
 function describeSupportingEvidence(response: PressResponse): string {
   return [
     response.clickFocus ? ` ${response.clickFocus.description}` : "",
+    describeOwnAnnouncements(response),
     response.markupRecords.length > 0
       ? " The page's markup changed, which is kept as supporting evidence only."
       : ""

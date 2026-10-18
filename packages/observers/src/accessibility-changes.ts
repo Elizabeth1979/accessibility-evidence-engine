@@ -3,6 +3,7 @@ import {
   type AccessibilityChange,
   type AccessibilityChanges,
   type AccessibilityNodeRef,
+  type LiveRegionRef,
   type TrackedAccessibilityState
 } from "@aee/core";
 
@@ -26,6 +27,10 @@ interface AxValue {
 }
 
 interface AxNode {
+  nodeId?: string;
+  parentId?: string;
+  childIds?: string[];
+  frameId?: string;
   ignored?: boolean;
   role?: AxValue;
   name?: AxValue;
@@ -45,6 +50,8 @@ export function diffAccessibilityTrees(
   const beforeNodes = readTree(before);
   const afterNodes = readTree(after);
   if (!beforeNodes || !afterNodes) return undefined;
+  const beforeStructure = readStructure(before);
+  const afterStructure = readStructure(after);
 
   const controllers = new Map<number, Map<number, AccessibilityNodeRef>>();
   for (const nodes of [beforeNodes, afterNodes]) {
@@ -60,11 +67,21 @@ export function diffAccessibilityTrees(
   }
 
   const changes: AccessibilityChange[] = [];
+  const liveRegions = new Map<number, LiveRegionRef>();
   let truncated = false;
   const add = (node: AxNode, change: Omit<AccessibilityChange, keyof AccessibilityNodeRef>) => {
     if (changes.length >= MAXIMUM_CHANGES) {
       truncated = true;
       return;
+    }
+    const structure = change.kind === "hidden" ? beforeStructure : afterStructure;
+    const region = liveRegionOf(node, structure);
+    if (region?.backendDOMNodeId !== undefined && !liveRegions.has(region.backendDOMNodeId)) {
+      const later = afterStructure.byBackendId.get(region.backendDOMNodeId);
+      liveRegions.set(
+        region.backendDOMNodeId,
+        later ? liveRegionRef(later, afterStructure) : liveRegionRef(region, beforeStructure)
+      );
     }
     const ref = refOf(node);
     const controlledBy = [...(controllers.get(ref.nodeId)?.values() ?? [])];
@@ -100,7 +117,69 @@ export function diffAccessibilityTrees(
     ...(focusedBefore ? { focusedBefore } : {}),
     ...(focusedAfter ? { focusedAfter } : {}),
     changes,
-    truncated
+    truncated,
+    ...(liveRegions.size > 0 ? { liveRegions: [...liveRegions.values()] } : {})
+  };
+}
+
+/** Every node of a snapshot, ignored ones too, so a node's ancestors and a region's text are whole. */
+interface TreeStructure {
+  byKey: Map<string, AxNode>;
+  byBackendId: Map<number, AxNode>;
+}
+
+function readStructure(snapshot: unknown): TreeStructure {
+  const { nodes } = snapshot as { nodes: AxNode[] };
+  const structure: TreeStructure = { byKey: new Map(), byBackendId: new Map() };
+  for (const node of nodes) {
+    if (node.nodeId !== undefined) structure.byKey.set(keyOf(node.frameId, node.nodeId), node);
+    if (node.backendDOMNodeId !== undefined) structure.byBackendId.set(node.backendDOMNodeId, node);
+  }
+  return structure;
+}
+
+/** A node's id in its frame's tree; each frame's tree numbers its nodes from one. */
+function keyOf(frameId: string | undefined, nodeId: string): string {
+  return `${frameId ?? ""} ${nodeId}`;
+}
+
+/**
+ * The live region a node is in: the node or its nearest ancestor that Chrome gives a `live`
+ * property of polite or assertive. Chrome sets `live` on the region's root only, so the region is
+ * found through the node's ancestors. A region marked `off` (a `timer`, say) is not announced.
+ */
+function liveRegionOf(node: AxNode, structure: TreeStructure): AxNode | undefined {
+  let current: AxNode | undefined =
+    node.nodeId !== undefined ? structure.byKey.get(keyOf(node.frameId, node.nodeId)) : undefined;
+  while (current) {
+    const live = property(current, "live")?.value;
+    if (live === "polite" || live === "assertive") return current;
+    if (live === "off") return undefined;
+    current =
+      current.parentId !== undefined
+        ? structure.byKey.get(keyOf(current.frameId, current.parentId))
+        : undefined;
+  }
+  return undefined;
+}
+
+function liveRegionRef(root: AxNode, structure: TreeStructure): LiveRegionRef {
+  const words: string[] = [];
+  const collect = (node: AxNode) => {
+    if (!node.ignored && String(node.role?.value) === "StaticText") {
+      const text = textOf(node.name);
+      if (text) words.push(text);
+    }
+    for (const childId of node.childIds ?? []) {
+      const child = structure.byKey.get(keyOf(node.frameId, childId));
+      if (child) collect(child);
+    }
+  };
+  collect(root);
+  return {
+    ...refOf(root),
+    politeness: property(root, "live")?.value as LiveRegionRef["politeness"],
+    text: words.join(" ")
   };
 }
 
