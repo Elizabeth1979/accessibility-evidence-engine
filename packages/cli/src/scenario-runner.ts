@@ -750,6 +750,14 @@ export async function runPageLanes(
     for (const url of sweep.blockedNavigations) {
       diagnostics.push(`${sweepLane}: stopped a navigation outside the allowed origins: ${url}`);
     }
+    for (const { selector, url, reason } of sweep.failedNavigations) {
+      diagnostics.push(
+        `${sweepLane}: pressing ${selector} set out for ${url}, which did not load (${reason}); nothing there was read`
+      );
+    }
+    for (const { url, reason } of sweep.framesNotRead) {
+      diagnostics.push(`${sweepLane}: did not check the content of the frame at ${url}. ${reason}`);
+    }
     return sweep.manifestFile;
   });
 

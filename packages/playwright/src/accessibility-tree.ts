@@ -84,7 +84,10 @@ export interface FrameRecord {
   ownerBackendNodeId?: number;
 }
 
-/** A frame Playwright lists that no session could read, and why. */
+/** The address Chrome gives the error page it shows in place of a page that did not load. */
+export const CHROME_ERROR_PAGE = "chrome-error://chromewebdata/";
+
+/** A frame that was not read, and why: no session could read it, or it was left out. */
 export interface UnreadFrame {
   url: string;
   reason: string;
@@ -221,6 +224,37 @@ export async function withPageSessions<Result>(
   } finally {
     await Promise.all(opened.map((session) => session.detach?.()));
   }
+}
+
+/**
+ * The page's frames that show a document from one of `allowedOrigins`, so a lane reads nothing
+ * from another site. A frame a redirect took to another site, or one showing Chrome's error page
+ * for a load that failed or was stopped, is left out, with every frame inside it, and listed in
+ * `framesNotRead` with why, so the evidence says its content was not checked. A frame showing a
+ * document its parent wrote (`about:blank`, `about:srcdoc`, a `data:` address) has no origin of
+ * its own address, so it goes with its parent. The top document is kept: its lane checks it.
+ */
+export function framesInsideOrigins(page: PageSessions, allowedOrigins: string[]): PageSessions {
+  const kept = new Set<string>();
+  const framesNotRead = [...page.framesNotRead];
+  const frames = page.frames.filter(({ frameId, parentFrameId, url }) => {
+    const reason = !parentFrameId
+      ? undefined
+      : !kept.has(parentFrameId)
+        ? "It is inside a frame that was not read."
+        : url === CHROME_ERROR_PAGE
+          ? "It shows Chrome's error page: its page did not load, or was stopped."
+          : /^(about|data):/.test(url) || allowedOrigins.includes(new URL(url).origin)
+            ? undefined
+            : `It shows a page from ${new URL(url).origin}, which is not an allowed origin; add it to them to check this frame.`;
+    if (reason) {
+      framesNotRead.push({ url, reason });
+      return false;
+    }
+    kept.add(frameId);
+    return true;
+  });
+  return { frames, framesNotRead };
 }
 
 function errorMessage(error: unknown): string {

@@ -43,7 +43,8 @@ import {
   withPageSessions,
   type CdpContext,
   type FramedPage,
-  type PageSessions
+  type PageSessions,
+  type UnreadFrame
 } from "./accessibility-tree";
 import {
   assertAllowedOrigin,
@@ -62,6 +63,7 @@ import {
 } from "./element-locations";
 import {
   sweepKeyboardAndPointer,
+  type FailedNavigation,
   type KeyboardPointerSweepPage,
   type KeyboardPointerSweepRequest,
   type ObservedPresses,
@@ -455,6 +457,10 @@ export interface KeyboardPointerSweepLaneDocument {
   tabStops?: KeyboardPointerSweepLaneTabStop[];
   activated?: string[];
   findings?: KeyboardPointerSweepLaneFinding[];
+  /** Pages on the site a press set out for that did not load, so the sweep read nothing there. */
+  failedNavigations?: FailedNavigation[];
+  /** Frames whose content the sweep did not check, and why, such as one showing another site. */
+  framesNotRead?: UnreadFrame[];
   diagnostics?: string[];
 }
 
@@ -463,6 +469,8 @@ export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLane
   tabStops: KeyboardPointerSweepLaneTabStop[];
   activated: string[];
   findings: KeyboardPointerSweepLaneFinding[];
+  failedNavigations: FailedNavigation[];
+  framesNotRead: UnreadFrame[];
   sweepFile: string;
   screenshotFile: string;
   manifestFile: string;
@@ -1975,7 +1983,11 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   const blockedNavigations: string[] = [];
   const steps: SweepStep[] = [];
   let sweep:
-    Pick<KeyboardPointerSweepLaneResult, "tabStops" | "activated" | "findings"> | undefined;
+    | Pick<
+        KeyboardPointerSweepLaneResult,
+        "tabStops" | "activated" | "findings" | "failedNavigations" | "framesNotRead"
+      >
+    | undefined;
   const focusCropFiles: string[] = [];
   let runError: unknown;
   let pages: SweepPages<TPage> | undefined;
@@ -2034,7 +2046,9 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
       findings: result.findings.map((finding, index) => {
         const targetBox = locations[index];
         return targetBox ? { ...finding, targetBox } : finding;
-      })
+      }),
+      failedNavigations: result.failedNavigations,
+      framesNotRead: result.framesNotRead
     };
   } catch (error) {
     runError = error;

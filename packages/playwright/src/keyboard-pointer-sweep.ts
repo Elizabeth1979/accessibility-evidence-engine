@@ -1,13 +1,18 @@
 import { PNG } from "pngjs";
 
+import { redactUrl } from "@aee/core";
+
 import {
   describeFocusedElement,
   describeSelectedElement,
+  CHROME_ERROR_PAGE,
+  framesInsideOrigins,
   withCdpSession,
   withPageSessions,
   type CdpSession,
   type FramedPage,
-  type PlaywrightFrameLike
+  type PlaywrightFrameLike,
+  type UnreadFrame
 } from "./accessibility-tree";
 import {
   assertAllowedOrigin,
@@ -104,6 +109,20 @@ export interface KeyboardPointerSweepResult {
   /** Controls pressed to compare keyboard and pointer; empty unless activation was allowed. */
   activated: string[];
   findings: SweepFinding[];
+  /** Each page a press set out for on the site that did not load, so the sweep read nothing there. */
+  failedNavigations: FailedNavigation[];
+  /** Frames whose content the sweep did not check, with no credentials, query values or fragment. */
+  framesNotRead: UnreadFrame[];
+}
+
+/** A page a press set out for that did not load: Chrome showed its own error page instead. */
+export interface FailedNavigation {
+  /** The control pressed. */
+  selector: string;
+  /** Where it set out for, with no credentials, query values or fragment. */
+  url: string;
+  /** Chrome's reason, such as `net::ERR_EMPTY_RESPONSE`. */
+  reason: string;
 }
 
 /** Clicks and presses go through the locator, so Playwright waits for any page load they start. */
@@ -278,14 +297,30 @@ interface ColourOnlyItem extends ProbedElement {
 }
 
 /**
- * What a press left on the page, or, when it went outside the allowed origins, only where it went:
- * that page is not read.
+ * What a press left on the page, or, when it went outside the allowed origins or to a page that did
+ * not load, only where it went: that page is not read.
  */
 type ActivationOutcome =
   { url: string; text: string; states: Record<string, string | null> } | { leftTo: string };
 
 /** Names the sweep in the error that stops it at a page outside the allowed origins. */
 const SWEEP_LABEL = "Keyboard and pointer sweep";
+
+/** The page is Chrome's error page for a load that failed or was stopped, not the site's own. */
+class PageNotLoadedError extends Error {}
+
+/**
+ * Stops the sweep at a page it must not read: Chrome's error page, which is the browser's and
+ * says nothing about the site, or a page outside the allowed origins.
+ */
+function assertReadablePage(page: KeyboardPointerSweepPage, allowedOrigins?: string[]): void {
+  if (page.url() === CHROME_ERROR_PAGE) {
+    throw new PageNotLoadedError(
+      `${SWEEP_LABEL} reached Chrome's error page: the page did not load, so it was not read.`
+    );
+  }
+  if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+}
 
 /** Runs every keyboard and pointer check on one page, resetting it between checks. */
 export async function sweepKeyboardAndPointer(
@@ -308,14 +343,22 @@ async function sweepPage(
   const allowedOrigins =
     options.allowedOrigins &&
     normalizeAllowedOrigins(options.allowedOrigins, "keyboard and pointer sweep");
-  const probe = probeOf(page, allowedOrigins);
-  const settle = () =>
-    onLoadedPage(page, () => waitForQuietPage(page, openRequests), allowedOrigins);
+  const checkPage = () => assertReadablePage(page, allowedOrigins);
+  const probe = probeOf(page, checkPage);
+  const settle = () => onLoadedPage(page, () => waitForQuietPage(page, openRequests), checkPage);
   const loadPage = () => loadAfresh(page, url, openRequests, allowedOrigins);
 
   await loadPage();
+  let framesNotRead: UnreadFrame[] = [];
   const findings: SweepFinding[] = (
-    await withPageSessions(page.context(), page, findHeadingLookalikes)
+    await withPageSessions(page.context(), page, (sessions) => {
+      const read = allowedOrigins ? framesInsideOrigins(sessions, allowedOrigins) : sessions;
+      framesNotRead = read.framesNotRead.map(({ url, reason }) => ({
+        url: redactUrl(url),
+        reason
+      }));
+      return findHeadingLookalikes(read);
+    })
   ).map(({ selector, framePath, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) => ({
     ...sweepFinding(
       "looks-like-heading",
@@ -383,6 +426,7 @@ async function sweepPage(
   );
 
   const activated: string[] = [];
+  const failedNavigations: FailedNavigation[] = [];
   if (options.activateControls) {
     await loadPage();
     const controls = await namedByTree(
@@ -395,29 +439,31 @@ async function sweepPage(
         ...(await timed(
           onStep,
           () => `Press ${describeElement(control)} with ${control.key}, then click it`,
-          () => pressControl(page, probe, settle, loadPage, control, allowedOrigins)
+          () =>
+            pressControl(page, probe, settle, loadPage, control, allowedOrigins, failedNavigations)
         ))
       );
     }
   }
 
-  return { url, tabStops, activated, findings };
+  return { url, tabStops, activated, findings, failedNavigations, framesNotRead };
 }
 
 /**
  * A press can load another page while the page is being read: read the page it loaded. A page
- * outside the allowed origins is not read: where the page is is checked before the read, and
- * again after it, since a page can finish loading while the read is on its way.
+ * `checkPage` refuses, as the sweep refuses one outside the allowed origins or Chrome's error page,
+ * is not read: where the page is is checked before the read, and again after it, since a page can
+ * finish loading while the read is on its way.
  */
 async function onLoadedPage<T>(
   page: KeyboardPointerSweepPage,
   read: () => Promise<T>,
-  allowedOrigins?: string[]
+  checkPage?: () => void
 ): Promise<T> {
   const readInside = async () => {
-    if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+    checkPage?.();
     const result = await read();
-    if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+    checkPage?.();
     return result;
   };
   try {
@@ -429,13 +475,9 @@ async function onLoadedPage<T>(
   }
 }
 
-function probeOf(page: KeyboardPointerSweepPage, allowedOrigins?: string[]) {
+function probeOf(page: KeyboardPointerSweepPage, checkPage?: () => void) {
   return <T>(request: ProbeRequest): Promise<T> =>
-    onLoadedPage(
-      page,
-      async () => (await page.evaluate(runSweepProbe, request)) as T,
-      allowedOrigins
-    );
+    onLoadedPage(page, async () => (await page.evaluate(runSweepProbe, request)) as T, checkPage);
 }
 
 /** A finding of a press the test made, placed on the page as the test left it after the press. */
@@ -597,7 +639,8 @@ async function walkComposite(
  * Loads the page at its address again, as it first loaded, and waits for the app to draw it: a
  * check that reads it before then sees an empty page. Going to an address with a #fragment only
  * scrolls to the fragment when the page is already there, keeping whatever a check changed, so
- * such an address is reloaded. A page that landed outside the allowed origins stops the sweep.
+ * such an address is reloaded. A page that landed outside the allowed origins, or on Chrome's error
+ * page, stops the sweep.
  */
 async function loadAfresh(
   page: KeyboardPointerSweepPage,
@@ -607,7 +650,7 @@ async function loadAfresh(
 ): Promise<void> {
   await page.goto(url);
   if (new URL(url).hash) await page.reload();
-  if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+  assertReadablePage(page, allowedOrigins);
   await waitForQuietPage(page, openRequests);
 }
 
@@ -863,13 +906,35 @@ async function pressControl(
   settle: () => Promise<void>,
   loadPage: () => Promise<void>,
   control: PressableControl,
-  allowedOrigins: string[] | undefined
+  allowedOrigins: string[] | undefined,
+  failedNavigations: FailedNavigation[]
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
   const target = page.locator(control.selector);
   let loadedDocument = 0;
-  // Where the last press went, when it went outside the allowed origins.
+  // Where the last press went, when it went outside the allowed origins or to a page that did not
+  // load.
   let leftTo: string | undefined;
+  const press = async (act: () => Promise<void>) => {
+    const unread = await unreadNavigationDuring(page, allowedOrigins, async () => {
+      await act();
+      await settle();
+    });
+    leftTo = unread?.url;
+    if (unread?.failure === undefined) return;
+    const failed = {
+      selector: control.selector,
+      url: redactUrl(unread.url),
+      reason: unread.failure
+    };
+    if (
+      !failedNavigations.some(
+        (known) => known.selector === failed.selector && known.url === failed.url
+      )
+    ) {
+      failedNavigations.push(failed);
+    }
+  };
   // What the keyboard press did, read as it happens.
   const pressed: { focusLost: boolean; newText: NewText; failedRequests: string[] } = {
     focusLost: false,
@@ -884,22 +949,14 @@ async function pressControl(
       leftTo = undefined;
       loadedDocument = await probe<number>({ mode: "document" });
     },
-    performPointerInteraction: async () => {
-      leftTo = await navigationLeavingDuring(page, allowedOrigins, async () => {
-        await target.click();
-        await settle();
-      });
-    },
+    performPointerInteraction: () => press(() => target.click()),
     performKeyboardInteraction: async () => {
       await probe({ mode: "watch-changes", selector: control.selector });
-      pressed.failedRequests = await failedRequestsDuring(page, async () => {
-        leftTo = await navigationLeavingDuring(page, allowedOrigins, async () => {
-          await target.press(control.key);
-          await settle();
-        });
-      });
-      // The page a press left for is not read, and the one it left stays only because the
-      // navigation was stopped, which is not what a user sees.
+      pressed.failedRequests = await failedRequestsDuring(page, () =>
+        press(() => target.press(control.key))
+      );
+      // The page a press went to is not read, whether it is outside the allowed origins or did
+      // not load, and the page there instead is not what a user sees.
       if (leftTo) return;
       pressed.focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
       const newText = await probe<ProbedNewText>({ mode: "new-text", selector: control.selector });
@@ -971,48 +1028,68 @@ function announcementFindings(
   return findings;
 }
 
+/** A page the top frame set out for that the sweep does not read, and, when it did not load, why. */
+interface UnreadNavigation {
+  url: string;
+  failure?: string;
+}
+
+/**
+ * The page the top frame set out for while `run` ran that the sweep does not read: the first one
+ * outside the allowed origins, whether the navigation guard stopped it there or a redirect took
+ * it there, or else the last one on the site that did not load, with Chrome's reason. A read that
+ * found the page there, or on the error page Chrome shows instead, which the sweep refuses, then
+ * ends `run` without an error. A load that failed and left the page as it was, as one cancelled
+ * by the next does, is not counted: the page is read as usual.
+ */
+async function unreadNavigationDuring(
+  page: KeyboardPointerSweepPage,
+  allowedOrigins: string[] | undefined,
+  run: () => Promise<void>
+): Promise<UnreadNavigation | undefined> {
+  const isTopLoad = (request: KeyboardPointerSweepRequest) =>
+    request.isNavigationRequest() && request.frame() === page.mainFrame();
+  let leftTo: string | undefined;
+  let failed: Required<UnreadNavigation> | undefined;
+  let notLoaded = false;
+  const onRequest = (request: KeyboardPointerSweepRequest) => {
+    if (
+      allowedOrigins &&
+      !leftTo &&
+      isTopLoad(request) &&
+      !allowedOrigins.includes(new URL(request.url()).origin)
+    ) {
+      leftTo = request.url();
+    }
+  };
+  const onRequestFailed = (request: KeyboardPointerSweepRequest) => {
+    if (isTopLoad(request)) {
+      failed = { url: request.url(), failure: request.failure()?.errorText ?? "no response" };
+    }
+  };
+  page.on("request", onRequest);
+  page.on("requestfailed", onRequestFailed);
+  try {
+    await run();
+  } catch (error) {
+    // A load the guard stopped shows Chrome's error page too.
+    const refused = error instanceof PageNotLoadedError || error instanceof BlockedOriginError;
+    notLoaded = error instanceof PageNotLoadedError && failed !== undefined;
+    if (!((leftTo && refused) || notLoaded)) throw error;
+  } finally {
+    page.off("request", onRequest);
+    page.off("requestfailed", onRequestFailed);
+  }
+  if (leftTo) return { url: leftTo };
+  return notLoaded ? failed : undefined;
+}
+
 /**
  * The requests that fail while `run` runs: an error status, or no response at all. Only requests a
  * script sends count, as a save or a load does; a missing image is no action's result. A request
  * the page cancelled, as a page load does to the requests still open, did not fail. Each is named
  * by its method and outcome, never its address, which can carry personal data.
  */
-/**
- * The address of the first page outside the allowed origins that the top frame set out to load
- * while `run` ran, whether the navigation guard stopped it there or a redirect took it there. A
- * read that found the page there, which the sweep refuses, then ends `run` without an error.
- */
-async function navigationLeavingDuring(
-  page: KeyboardPointerSweepPage,
-  allowedOrigins: string[] | undefined,
-  run: () => Promise<void>
-): Promise<string | undefined> {
-  if (!allowedOrigins) {
-    await run();
-    return undefined;
-  }
-  let leftTo: string | undefined;
-  const onRequest = (request: KeyboardPointerSweepRequest) => {
-    if (
-      !leftTo &&
-      request.isNavigationRequest() &&
-      request.frame() === page.mainFrame() &&
-      !allowedOrigins.includes(new URL(request.url()).origin)
-    ) {
-      leftTo = request.url();
-    }
-  };
-  page.on("request", onRequest);
-  try {
-    await run();
-  } catch (error) {
-    if (!(leftTo && error instanceof BlockedOriginError)) throw error;
-  } finally {
-    page.off("request", onRequest);
-  }
-  return leftTo;
-}
-
 async function failedRequestsDuring(
   page: KeyboardPointerSweepPage,
   run: () => Promise<void>

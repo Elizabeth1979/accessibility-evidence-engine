@@ -10,6 +10,7 @@ import {
   aggregateEvidenceManifests,
   comparePointerAndKeyboardOutcomes,
   enableExperimentalAxeRules,
+  framesInsideOrigins,
   measureAgainstPixels,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
@@ -21,6 +22,8 @@ import {
   toSafeId,
   writeEvidenceManifest,
   verifyMotionControl,
+  type CdpSession,
+  type PageFrame,
   type PlaywrightPageLike
 } from "./index";
 
@@ -97,6 +100,50 @@ function getReporterContent(result: Awaited<ReturnType<typeof runAeeOnPage>>): J
   assert.ok(artifact, "Expected a JSON reporter artifact.");
   return getJsonReport(artifact.content);
 }
+
+test("framesInsideOrigins leaves out frames from another site and every frame inside them", () => {
+  const session = {} as CdpSession;
+  const frame = (frameId: string, url: string, parentFrameId?: string): PageFrame => ({
+    frameId,
+    url,
+    session,
+    ...(parentFrameId ? { parentFrameId } : {})
+  });
+  const page = {
+    frames: [
+      frame("top", "https://example.com/"),
+      frame("ours", "https://example.com/panel", "top"),
+      // Written by the frame that holds it, so it goes with that frame.
+      frame("written", "about:srcdoc", "ours"),
+      frame("data", "data:text/html,<p>Hi</p>", "top"),
+      frame("away", "https://elsewhere.test/", "top"),
+      frame("inside-away", "https://example.com/inner", "away"),
+      frame("written-away", "about:blank", "away"),
+      frame("failed", "chrome-error://chromewebdata/", "top")
+    ],
+    framesNotRead: []
+  };
+
+  const read = framesInsideOrigins(page, ["https://example.com"]);
+
+  assert.deepEqual(
+    read.frames.map(({ frameId }) => frameId),
+    ["top", "ours", "written", "data"]
+  );
+  assert.deepEqual(read.framesNotRead, [
+    {
+      url: "https://elsewhere.test/",
+      reason:
+        "It shows a page from https://elsewhere.test, which is not an allowed origin; add it to them to check this frame."
+    },
+    { url: "https://example.com/inner", reason: "It is inside a frame that was not read." },
+    { url: "about:blank", reason: "It is inside a frame that was not read." },
+    {
+      url: "chrome-error://chromewebdata/",
+      reason: "It shows Chrome's error page: its page did not load, or was stopped."
+    }
+  ]);
+});
 
 test("comparePointerAndKeyboardOutcomes detects inaccessible hover-only behavior", async () => {
   let visibleText = "";
