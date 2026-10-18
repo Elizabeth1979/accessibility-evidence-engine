@@ -516,19 +516,32 @@ test("a frame inside a frame is read in place, and an empty frame is stepped ove
   }
 });
 
-/** The focus observer's evidence after the interaction, as the JSON report saves it. */
-async function focusAfter(result: Awaited<ReturnType<typeof runAeeOnPage>>) {
-  const report = JSON.parse(
+/** A run's report: its evidence records and its judges' judgments. */
+async function reportOf(result: Awaited<ReturnType<typeof runAeeOnPage>>) {
+  return JSON.parse(
     await readFile(
       result.reporterFiles.find((file) => file.endsWith("aee-report.json"))!,
       "utf8"
     )
-  ) as { records: Array<{ observerId: string; phase: string; meta?: Record<string, unknown> }> };
-  return report.records.find(({ observerId, phase }) => observerId === "focus" && phase === "after")
-    ?.meta?.focusTarget as Record<string, unknown> & {
-    deepActiveElement: { frameId: string; backendDOMNodeId: number };
-    accessibilityFocus: { frameId: string; backendDOMNodeId: number };
+  ) as {
+    records: Array<{ observerId: string; phase: string; meta?: Record<string, unknown> }>;
+    judgments: Array<{ judgeId: string; verdict: string; summary: string; confidence?: number }>;
   };
+}
+
+type RecordedFocus = Record<string, unknown> & {
+  deepActiveElement: { frameId: string; backendDOMNodeId: number };
+  accessibilityFocus: { frameId: string; backendDOMNodeId: number };
+};
+
+function focusIn(report: Awaited<ReturnType<typeof reportOf>>, phase: "before" | "after") {
+  return report.records.find((record) => record.observerId === "focus" && record.phase === phase)
+    ?.meta?.focusTarget as RecordedFocus;
+}
+
+/** The focus observer's evidence after the interaction, as the JSON report saves it. */
+async function focusAfter(result: Awaited<ReturnType<typeof runAeeOnPage>>) {
+  return focusIn(await reportOf(result), "after");
 }
 
 test("the focus observer's DOM focus names the button inside a cross-site frame, and its frame", async ({
@@ -585,8 +598,10 @@ test("the focus observer's DOM focus names the button inside a cross-site frame,
       })
     );
     expect(focus.deepActiveElement).toEqual(button);
-    // Tab order is counted in the top document only, so the frame's button has no place in it.
-    expect(focus.deepActiveElement).not.toHaveProperty("focusOrderIndex");
+    // The page's tab stops are the same-origin frame's button, then this one.
+    expect(focus.deepActiveElement).toEqual(
+      expect.objectContaining({ focusOrderIndex: 1, focusableCount: 2 })
+    );
     // DOM focus and the accessibility tree's focus name the same node in the same frame.
     expect({
       frameId: focus.accessibilityFocus.frameId,
@@ -778,6 +793,302 @@ test("DOM focus is followed through a shadow root into the frame it holds", asyn
     expect(entry.domFocusAfter).toEqual(
       expect.objectContaining({ nodePath: "#number", framePath: [expect.stringContaining("card")] })
     );
+  } finally {
+    await server.close();
+  }
+});
+
+/**
+ * Presses a key around one focus-observer run with the keyboard judge, and returns what the
+ * observer recorded before and after it and what the judge decided.
+ */
+async function judgeKeyPress(page: Page, outputDir: string, kind: "tab" | "shift-tab") {
+  const report = await reportOf(
+    await runAeeOnPage({
+      page,
+      projectRoot: process.cwd(),
+      outputDir,
+      observers: ["focus"],
+      judges: ["keyboard"],
+      checkpointName: kind,
+      interaction: { kind, actor: "test" },
+      async performInteraction({ page: interactionPage }) {
+        await interactionPage.keyboard.press(kind === "tab" ? "Tab" : "Shift+Tab");
+      }
+    })
+  );
+  return {
+    before: focusIn(report, "before"),
+    after: focusIn(report, "after"),
+    keyboard: report.judgments.find(({ judgeId }) => judgeId === "keyboard")!
+  };
+}
+
+test("Tab into a cross-site frame, between its controls and back out is judged by the page's tab order", async ({
+  page
+}, testInfo) => {
+  const server = await startHtmlServer((request, response) => {
+    const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Checkout</title></head><body>
+        <button type="button">Review order</button>
+        <iframe id="card" title="Card" src="${otherSite}/card"></iframe>
+        <button type="button">Done</button>
+      </body></html>`,
+      "/card": `<!doctype html><html lang="en"><head><title>Card</title></head><body>
+        <button type="button">Pay now</button>
+        <button type="button">Cancel</button>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    await frameAt(page, "localhost", "/card").locator("button").first().waitFor();
+    await page.getByRole("button", { name: "Review order" }).focus();
+
+    // Before, a control inside the frame had no place in the tab order, so each step that
+    // entered, left or stayed in the frame was passed at 0.75 with the direction unchecked.
+    const steps = [];
+    for (const kind of ["tab", "tab", "shift-tab", "shift-tab"] as const) {
+      const step = await judgeKeyPress(page, testInfo.outputPath(`step-${steps.length}`), kind);
+      steps.push({
+        kind,
+        from: [step.before.name, step.before.focusOrderIndex],
+        to: [step.after.name, step.after.focusOrderIndex],
+        focusableCount: step.after.focusableCount,
+        verdict: step.keyboard.verdict,
+        confidence: step.keyboard.confidence
+      });
+      expect(step.keyboard.summary).toMatch(kind === "tab" ? /advanced forward/ : /moved backward/);
+      expect(step.keyboard.summary).not.toMatch(/metadata was unavailable/);
+    }
+    const judged = { focusableCount: 4, verdict: "pass", confidence: 0.95 };
+    expect(steps).toEqual([
+      { kind: "tab", from: ["Review order", 0], to: ["Pay now", 1], ...judged },
+      { kind: "tab", from: ["Pay now", 1], to: ["Cancel", 2], ...judged },
+      { kind: "shift-tab", from: ["Cancel", 2], to: ["Pay now", 1], ...judged },
+      { kind: "shift-tab", from: ["Pay now", 1], to: ["Review order", 0], ...judged }
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("Tab onto a control a script blurs is lost focus; a frame with nothing to focus and Tab out of the page are not", async ({
+  page
+}, testInfo) => {
+  const server = await startHtmlServer((request, response) => {
+    const pages: Record<string, string> = {
+      "/": `<!doctype html><html lang="en"><head><title>Order</title></head><body>
+        <button type="button">Review order</button>
+        <button type="button" id="save">Save</button>
+        <iframe title="Terms" src="/terms"></iframe>
+        <button type="button">Done</button>
+        <script>
+          document.getElementById("save").addEventListener("focus", (event) => event.target.blur());
+        </script>
+      </body></html>`,
+      "/terms": `<!doctype html><html lang="en"><head><title>Terms</title></head><body>
+        <p>Orders ship in two days.</p>
+      </body></html>`
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    await frameAt(page, "127.0.0.1", "/terms").locator("p").waitFor();
+    await page.getByRole("button", { name: "Review order" }).focus();
+
+    // Each time, the browser names a document's <body> as focused. Only the first is lost focus:
+    // the second is the frame's own tab stop, the last is focus gone to the browser's controls.
+    const steps = [];
+    for (let step = 0; step < 4; step += 1) {
+      const { after, keyboard } = await judgeKeyPress(
+        page,
+        testInfo.outputPath(`step-${step}`),
+        "tab"
+      );
+      steps.push({
+        to: after.name || after.tagName,
+        place: after.focusOrderIndex,
+        of: after.focusableCount,
+        pageHasFocus: after.documentHasFocus,
+        verdict: keyboard.verdict,
+        rule: keyboard.findings?.[0]?.ruleId
+      });
+    }
+    expect(steps).toEqual([
+      // Before, this passed: "Keyboard focus advanced forward ... to body".
+      {
+        to: "body",
+        place: undefined,
+        of: 4,
+        pageHasFocus: true,
+        verdict: "fail",
+        rule: "keyboard-focus-presence"
+      },
+      { to: "body", place: 2, of: 4, pageHasFocus: true, verdict: "pass", rule: undefined },
+      { to: "Done", place: 3, of: 4, pageHasFocus: true, verdict: "pass", rule: undefined },
+      { to: "body", place: undefined, of: 4, pageHasFocus: false, verdict: "pass", rule: undefined }
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test("each Tab stop's recorded place is where Chrome's own Tab reaches it, through every kind of frame", async ({
+  page
+}, testInfo) => {
+  // Fifteen Tab presses, each a full AEE run with the focus observer.
+  test.setTimeout(120_000);
+  const server = await startHtmlServer((request, response) => {
+    const otherSite = `http://${request.headers.host!.replace("127.0.0.1", "localhost")}`;
+    const doc = (title: string, body: string) =>
+      `<!doctype html><html lang="en"><head><title>${title}</title></head><body>${body}</body></html>`;
+    const pages: Record<string, string> = {
+      "/": doc(
+        "Shop",
+        `<button type="button">Top first</button>
+        <iframe title="Same origin" src="/same"></iframe>
+        <shop-widget id="widget"></shop-widget>
+        <vault-panel id="vault"><iframe title="Slotted in the vault" src="/vault-slotted"></iframe></vault-panel>
+        <iframe title="Skipped" tabindex="-1" src="${otherSite}/skipped"></iframe>
+        <iframe title="Nothing to focus" src="/empty"></iframe>
+        <iframe title="Sorted first" tabindex="1" src="${otherSite}/sorted"></iframe>
+        <card-shell id="shell"><iframe title="Slotted" src="${otherSite}/slotted"></iframe></card-shell>
+        <iframe title="Holds an empty frame" src="/outer"></iframe>
+        <div id="sleeping" inert></div>
+        <button type="button">Top last</button>
+        <script>
+          const root = document.getElementById("widget").attachShadow({ mode: "open" });
+          root.innerHTML =
+            '<button type="button">In the widget</button>' +
+            '<iframe title="Card" src="${otherSite}/card"></iframe>';
+          // A closed root: the page cannot reach into it, Chrome's Tab does.
+          document.getElementById("vault").attachShadow({ mode: "closed" }).innerHTML =
+            '<button type="button">In the vault</button>' +
+            '<iframe title="Vault" src="${otherSite}/vault"></iframe><slot></slot>' +
+            '<button type="button" tabindex="1">Vault first</button>';
+          document.getElementById("shell").attachShadow({ mode: "open" }).innerHTML =
+            '<button type="button" tabindex="2">Shell second</button><slot></slot>' +
+            '<button type="button" tabindex="1">Shell first</button>';
+          document.getElementById("sleeping").attachShadow({ mode: "open" }).innerHTML =
+            '<iframe title="Asleep" src="${otherSite}/asleep"></iframe>';
+        </script>`
+      ),
+      "/same": doc("Same", `<button type="button">Same origin</button>`),
+      "/card": doc("Card", `<input aria-label="Card number">`),
+      "/vault": doc("Vault", `<input aria-label="Vault code">`),
+      "/vault-slotted": doc("Vault slotted", `<button type="button">Vault slotted</button>`),
+      "/skipped": doc("Skipped", `<button type="button">Never reached</button>`),
+      "/empty": doc("Empty", `<p>No controls here.</p>`),
+      "/sorted": doc("Sorted", `<button type="button">Sorted first</button>`),
+      "/slotted": doc("Slotted", `<button type="button">Slotted</button>`),
+      "/outer": doc("Outer", `<iframe title="Empty inside" src="/inner-empty"></iframe>`),
+      "/inner-empty": doc("Inner empty", `<p>Nothing here either.</p>`),
+      "/asleep": doc("Asleep", `<button type="button">Under an inert host</button>`)
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    await Promise.all(
+      [
+        frameAt(page, "127.0.0.1", "/same").locator("button"),
+        frameAt(page, "localhost", "/card").locator("input"),
+        frameAt(page, "localhost", "/vault").locator("input"),
+        frameAt(page, "127.0.0.1", "/vault-slotted").locator("button"),
+        frameAt(page, "localhost", "/skipped").locator("button"),
+        frameAt(page, "127.0.0.1", "/empty").locator("p"),
+        frameAt(page, "localhost", "/sorted").locator("button"),
+        frameAt(page, "localhost", "/slotted").locator("button"),
+        frameAt(page, "127.0.0.1", "/inner-empty").locator("p"),
+        frameAt(page, "localhost", "/asleep").locator("button")
+      ].map((element) => element.waitFor())
+    );
+
+    // Chrome's own Tab walk is the truth: a frame's controls come at its <iframe>'s place, sorted
+    // by its tabindex; a frame with tabindex="-1" or under an inert host is skipped; a frame with
+    // nothing to focus is one stop itself, the innermost one when frames nest; a frame inside a
+    // shadow root or slotted into one comes at its place there, after that root's positive
+    // tabindex, a closed root as much as an open one.
+    const reached = [];
+    for (let stop = 0; stop < 15; stop += 1) {
+      const { after } = await judgeKeyPress(page, testInfo.outputPath(`tab-${stop}`), "tab");
+      reached.push([after.name || after.tagName, after.focusOrderIndex, after.focusableCount]);
+    }
+    expect(reached).toEqual(
+      [
+        "Sorted first",
+        "Top first",
+        "Same origin",
+        "In the widget",
+        "Card number",
+        "Vault first",
+        "In the vault",
+        "Vault code",
+        "Vault slotted",
+        "body",
+        "Shell first",
+        "Shell second",
+        "Slotted",
+        "body",
+        "Top last"
+      ].map((name, place) => [name, place, 15])
+    );
+  } finally {
+    await server.close();
+  }
+});
+
+test("focus is still recorded with no place when the page's tab order cannot be counted", async ({
+  page
+}, testInfo) => {
+  const server = await startHtmlServer((request, response) => {
+    const doc = (title: string, body: string) =>
+      `<!doctype html><html lang="en"><head><title>${title}</title></head><body>${body}</body></html>`;
+    const pages: Record<string, string> = {
+      // An <object> holds a frame whose place in the tab order tabbable's rule does not cover.
+      "/": doc(
+        "Embed",
+        `<button type="button">Before</button>
+        <object data="/embedded" type="text/html" title="Embedded"></object>`
+      ),
+      "/embedded": doc("Embedded", `<button type="button">Inside the object</button>`)
+    };
+    const body = pages[new URL(request.url ?? "/", "http://localhost").pathname];
+    response.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" }).end(body);
+  });
+  try {
+    await page.goto(`${server.origin}/`);
+    const embedded = frameAt(page, "127.0.0.1", "/embedded");
+    await embedded.locator("button").waitFor();
+    const focus = await focusAfter(
+      await runAeeOnPage({
+        page,
+        projectRoot: process.cwd(),
+        outputDir: testInfo.outputPath("uncounted"),
+        observers: ["focus"],
+        judges: ["release"],
+        checkpointName: "uncounted",
+        interaction: { kind: "focus", actor: "test" },
+        async performInteraction() {
+          await embedded.locator("button").focus();
+        }
+      })
+    );
+
+    // No place is recorded rather than a wrong one, and the rest of focus is recorded as ever.
+    expect(focus).toEqual(
+      expect.objectContaining({ tagName: "button", name: "Inside the object" })
+    );
+    expect(focus.activeElementChain).toHaveLength(2);
+    expect(focus).not.toHaveProperty("focusOrderIndex");
+    expect(focus).not.toHaveProperty("focusableCount");
   } finally {
     await server.close();
   }

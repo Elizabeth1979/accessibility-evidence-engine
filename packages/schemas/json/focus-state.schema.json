@@ -7,6 +7,7 @@
   "required": [
     "schemaVersion",
     "captureType",
+    "documentHasFocus",
     "documentActiveElement",
     "deepActiveElement",
     "activeElementChain",
@@ -15,6 +16,10 @@
   "properties": {
     "schemaVersion": { "const": "0.1.0" },
     "captureType": { "const": "deep-focus-state" },
+    "documentHasFocus": {
+      "type": "boolean",
+      "description": "The top document's hasFocus(): whether focus is in the page at all. When no element of a document has focus, its <body> is its active element, both when focus is lost inside the page (true) and when Tab has moved focus out of the page to the browser's own controls (false)."
+    },
     "documentActiveElement": { "$ref": "#/$defs/element" },
     "deepActiveElement": { "$ref": "#/$defs/element" },
     "activeElementChain": {
@@ -98,6 +103,16 @@
           "type": "integer",
           "minimum": 0,
           "description": "The DOM node, as the browser session numbers it in its frame's process; recorded for the element with focus in each document. With frameId it joins the element to accessibilityFocus and to the frame's accessibility tree."
+        },
+        "focusOrderIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The element's place in the page's tab order, counted from 0 across the top document and every frame: each document's tab stops as tabbable orders them, and each frame's tab stops at its <iframe> element's place, as Chrome's Tab moves through them. Places compare across frames. Absent when the element is not a tab stop (focusableCount is then still recorded), or when a frame's place or tab stops could not be read (and focusableCount is absent too)."
+        },
+        "focusableCount": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many tab stops the page has, across the top document and every frame. Recorded whenever the page's tab order was counted, so an element with focusableCount and no focusOrderIndex is known not to be a tab stop: a document's <body> without a place is then no element having focus, not a frame's own tab stop."
         },
         "focusVisible": { "type": "boolean" },
         "focusIndicator": {

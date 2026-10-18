@@ -312,7 +312,7 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
     id: journey.id,
     name: journey.name,
     goal: journey.goal,
-    startUrl: new URL(journey.startPath ?? "/", scenario.target.url).href,
+    startUrl: journeyStartUrl(scenario, journey),
     steps: [
       ...(scenario.profile === "playwright-test" ? testFixtureSteps(journey) : PROFILE_STEPS).map(
         (entry) => ({ ...entry })
@@ -352,9 +352,7 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
   const forbiddenActions = uniqueSorted(
     scenario.journeys.flatMap(({ forbiddenActions }) => forbiddenActions)
   );
-  const allowedOrigins = uniqueSorted(
-    (scenario.target.allowedOrigins ?? [scenario.target.url]).map(originOf)
-  );
+  const allowedOrigins = scenarioOrigins(scenario);
   const planPayload = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     scenarioId: scenario.id,
@@ -469,6 +467,19 @@ function originOf(url: string): string {
   return origin === "null" ? `${protocol}//` : origin;
 }
 
+/** The page a journey opens first: its startPath, resolved against the target the way a browser would. */
+export function journeyStartUrl(
+  scenario: Pick<AeeScenario, "target">,
+  journey: Pick<ScenarioJourney, "startPath">
+): string {
+  return new URL(journey.startPath ?? "/", scenario.target.url).href;
+}
+
+/** The origins a scenario may visit: those it lists, or else the target's own. */
+function scenarioOrigins(scenario: AeeScenario): string[] {
+  return uniqueSorted((scenario.target.allowedOrigins ?? [scenario.target.url]).map(originOf));
+}
+
 function validateScenarioSemantics(scenario: AeeScenario): void {
   const journeyIds = scenario.journeys.map(({ id }) => id);
   const duplicateJourneyIds = duplicates(journeyIds);
@@ -488,7 +499,17 @@ function validateScenarioSemantics(scenario: AeeScenario): void {
     }
   }
 
+  const origins = scenarioOrigins(scenario);
   for (const journey of scenario.journeys) {
+    // Every lane refuses to open a page outside these origins, so a journey that starts outside
+    // them could gather no evidence; say so before any browser starts.
+    const startOrigin = originOf(journeyStartUrl(scenario, journey));
+    if (!origins.includes(startOrigin)) {
+      throw new Error(
+        `Journey “${journey.id}” startPath ${JSON.stringify(journey.startPath)} leads to ${startOrigin}, which is not one of the sites this scenario may visit (${origins.join(", ")}). Start at a path on one of those sites, such as "/", or add ${startOrigin} to target.allowedOrigins.`
+      );
+    }
+
     const forbidden = new Set(journey.forbiddenActions);
     const conflicts = journey.allowedActions.filter((action) => forbidden.has(action));
 

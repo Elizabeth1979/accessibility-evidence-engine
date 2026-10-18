@@ -73,6 +73,7 @@ import {
   ACTIVATE_PAGE_CONTROLS,
   comparisonLaneId,
   compileScenarioPlan,
+  journeyStartUrl,
   loadScenario,
   observedPressesLaneId,
   readerLaneId,
@@ -580,7 +581,7 @@ export async function executeScenario(
   const runLane = laneRunner(assessment);
   try {
     for (const journey of scenario.journeys) {
-      const startUrl = new URL(journey.startPath ?? "/", scenario.target.url).href;
+      const startUrl = journeyStartUrl(scenario, journey);
       const allowedOrigins = plan.safety.allowedOrigins;
       // The plan's initial capture and pinned axe rules, on the start page before anything acts.
       const startLaneId = startPageLaneId(journey.id);

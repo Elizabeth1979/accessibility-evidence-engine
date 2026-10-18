@@ -24,9 +24,13 @@ export async function startHtmlServer(
   return {
     origin: `http://127.0.0.1:${address.port}`,
     async close() {
-      await new Promise<void>((resolve, reject) =>
+      const closed = new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve()))
       );
+      // close() waits for every open connection to end, and Chrome keeps spare connections open
+      // that never send a request; Node's closeAllConnections() ends them.
+      server.closeAllConnections();
+      await closed;
     }
   };
 }
