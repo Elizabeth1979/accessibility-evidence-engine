@@ -64,6 +64,11 @@
             "stabilizeAfterInteractionMs": {
               "type": "integer",
               "minimum": 0
+            },
+            "watchWithoutInputMs": {
+              "description": "How long observers watch the page untouched before a press while the virtual reader listens, so a live region that announces on its own is not taken for the press's response.",
+              "type": "integer",
+              "minimum": 0
             }
           },
           "additionalProperties": false

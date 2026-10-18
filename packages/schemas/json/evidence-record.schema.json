@@ -98,7 +98,13 @@
       "then": {
         "properties": {
           "meta": {
-            "properties": { "accessibilityChanges": { "$ref": "#/$defs/accessibilityChanges" } }
+            "properties": {
+              "accessibilityChanges": { "$ref": "#/$defs/accessibilityChanges" },
+              "accessibilityChangesWithoutInput": {
+                "description": "What changed in the tree on its own while the page was left untouched before the interaction.",
+                "$ref": "#/$defs/accessibilityChanges"
+              }
+            }
           }
         }
       }
@@ -113,6 +119,11 @@
           "meta": {
             "properties": {
               "newLiveRegionAnnouncements": {
+                "type": "array",
+                "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
+              },
+              "liveRegionAnnouncementsWithoutInput": {
+                "description": "Live-region updates the reader heard before the interaction, from the page on its own.",
                 "type": "array",
                 "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
               }
@@ -150,14 +161,28 @@
       "additionalProperties": false
     },
     "accessibilityChanges": {
-      "description": "What changed in the browser's accessibility tree between the snapshots before and after the interaction.",
+      "description": "What changed in the browser's accessibility tree between two snapshots: before and after the interaction, or across the untouched watch before it.",
       "type": "object",
       "required": ["changes", "truncated"],
       "properties": {
         "focusedBefore": { "$ref": "#/$defs/accessibilityNodeRef" },
         "focusedAfter": { "$ref": "#/$defs/accessibilityNodeRef" },
         "changes": { "type": "array", "items": { "$ref": "#/$defs/accessibilityChange" } },
-        "truncated": { "type": "boolean" }
+        "truncated": { "type": "boolean" },
+        "liveRegions": { "type": "array", "items": { "$ref": "#/$defs/liveRegion" } }
+      },
+      "additionalProperties": false
+    },
+    "liveRegion": {
+      "description": "A live region that holds a listed change, as Chrome's accessibility tree reports it.",
+      "type": "object",
+      "required": ["nodeId", "role", "politeness", "text"],
+      "properties": {
+        "nodeId": { "type": "integer" },
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "politeness": { "enum": ["polite", "assertive"] },
+        "text": { "type": "string" }
       },
       "additionalProperties": false
     }
