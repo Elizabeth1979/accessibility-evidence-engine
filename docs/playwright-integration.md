@@ -389,7 +389,12 @@ aee run scenario.yml --ci
 The compiled digest must match `approval.approvedPlanDigest`. Every journey's start page is
 checkpointed once before anything acts on it (screenshots, DOM, accessibility tree, focus and the
 pinned axe rules, as the `page-load` lane `<journey>-start-page`) and gets the keyboard and pointer
-sweep; beyond those, execution is limited to concrete `virtualScreenReaderCommands`
+sweep. A frame on the start page whose page is outside `allowedOrigins`, which a redirect can take
+it to, is not read: its `<iframe>` element is still checked on the start page, axe leaves the frame
+out with its element, the screenshots cover it with Playwright's `mask`, its name comes from
+Chrome's accessibility tree, and the report says axe did not check it and names its address, so the
+page is "not decided" until that origin is added or the frame is checked another way. A frame
+with no accessible name fails `frame-title`; beyond those, execution is limited to concrete `virtualScreenReaderCommands`
 and `interactionComparisons`. `allowedActions` define the safety boundary, and only one of them acts
 on its own: `activate-page-controls` lets the sweep press on-page controls. The result includes `aee-report.html`, `aee-report.json`, `aee-report.md`, the compiled
 plan, and one scenario-level `manifest.json` that validates and re-hashes the child-lane evidence.

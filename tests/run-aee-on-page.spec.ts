@@ -1,9 +1,10 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Browser } from "@playwright/test";
+import { PNG } from "pngjs";
 
 import {
   captureElementMap,
@@ -1036,7 +1037,9 @@ test("start-page lane records a redirect outside the approved origin as blocked 
         targetUrl: `${redirector.origin}/start`,
         allowedOrigins: [redirector.origin]
       })
-    ).rejects.toThrow(/Start-page lane blocked origin/);
+    ).rejects.toThrow(
+      `Start-page lane blocked origin ${destination.origin} at ${destination.origin}/outside;`
+    );
     expect(browser.contexts()).toHaveLength(initialContextCount);
     const manifest = JSON.parse(
       await readFile(path.join(outputDir, "start-page-blocked-origin", "manifest.json"), "utf8")
@@ -1050,6 +1053,114 @@ test("start-page lane records a redirect outside the approved origin as blocked 
     await destination.close();
   }
 });
+
+// The other site's page is a frame Chrome renders in the start page's own process when the two
+// share a site (127.0.0.1 on another port), and in a process of its own when they do not
+// (localhost): each is read through a different DevTools session.
+for (const { label, host } of [
+  { label: "the same site", host: "127.0.0.1" },
+  { label: "another site", host: "localhost" }
+]) {
+  test(`start-page lane checks a frame on the start page that a redirect takes outside the allowed origins, on ${label}, and reads nothing inside it`, async ({
+    browser
+  }, testInfo) => {
+    const outside = await startHtmlServer((_request, response) => {
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(
+        `<body style="margin:0;background:rgb(0,255,0)"><h1>Outside heading</h1><img src="/x.png"></body>`
+      );
+    });
+    const outsideOrigin = outside.origin.replace("127.0.0.1", host);
+    const outsideUrl = `${outsideOrigin}/outside`;
+    const reason = `It shows a page from ${outsideOrigin}, which is not an allowed origin; add it to them to check this frame.`;
+    const site = await startHtmlServer((request, response) => {
+      if (request.url === "/offers") {
+        response.writeHead(302, { location: outsideUrl });
+        response.end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "text/html" });
+      response.end(`<!doctype html><html lang="en"><head><title>Start</title></head><body>
+        <main><h1>Start</h1><iframe title="Partner offers" src="/offers" width="300" height="200"></iframe></main>
+      </body></html>`);
+    });
+    const outputDir = testInfo.outputPath("outside-frame-start-page-lanes");
+    const laneDir = path.join(outputDir, "start-page-outside-frame");
+
+    try {
+      const lane = await runStartPageLane({
+        browser,
+        projectRoot: process.cwd(),
+        outputDir,
+        laneId: "start-page-outside-frame",
+        targetUrl: `${site.origin}/`,
+        allowedOrigins: [site.origin]
+      });
+
+      expect(lane.blockedNavigations).toEqual([outsideUrl]);
+      expect(lane.diagnostics).toEqual([
+        `start-page-outside-frame: checkpoint "start page" did not check the frame at ${outsideUrl}. ${reason}`
+      ]);
+      // Nothing the other site's page holds is kept anywhere in the lane's evidence or reports.
+      for (const file of await readdir(laneDir, { recursive: true })) {
+        if (!/\.(json|html|md)$/.test(file)) continue;
+        expect(await readFile(path.join(laneDir, file), "utf8"), file).not.toContain(
+          "Outside heading"
+        );
+      }
+      const artifacts = path.join(laneDir, "start-page-outside-frame-001", "artifacts");
+      // The frame's element is the start page's own, and is still read there.
+      const tree = JSON.parse(
+        await readFile(path.join(artifacts, "accessibility-tree-after.json"), "utf8")
+      );
+      expect(tree.framesNotRead).toEqual([{ url: outsideUrl, reason }]);
+      expect(tree.nodes).toContainEqual(
+        expect.objectContaining({
+          role: expect.objectContaining({ value: "Iframe" }),
+          name: expect.objectContaining({ value: "Partner offers" })
+        })
+      );
+      // axe did not check the frame, so the start page is not reported as passing.
+      const axe = JSON.parse(await readFile(path.join(artifacts, "axe-after.json"), "utf8"));
+      expect(axe.framesNotChecked).toEqual([
+        {
+          url: outsideUrl,
+          reason,
+          name: "Partner offers",
+          selector: ["html > body > main > iframe"]
+        }
+      ]);
+      expect(lane.steps).toEqual([expect.objectContaining({ releaseVerdict: "unknown" })]);
+      const report = JSON.parse(
+        await readFile(
+          path.join(laneDir, "start-page-outside-frame-001", "aee-report.json"),
+          "utf8"
+        )
+      );
+      expect(report.judgments).toContainEqual(
+        expect.objectContaining({
+          judgeId: "axe",
+          verdict: "unknown",
+          summary: expect.stringContaining(
+            `axe did not check the frame “Partner offers” at ${outsideUrl}. ${reason}`
+          )
+        })
+      );
+      // The screenshots cover the frame, so none of the other site's page is in them.
+      for (const screenshot of ["visual-viewport-after.png", "visual-full-page-after.png"]) {
+        const { data } = PNG.sync.read(await readFile(path.join(artifacts, screenshot)));
+        const green = data.findIndex(
+          (_value, at) =>
+            at % 4 === 0 && data[at] === 0 && data[at + 1] === 255 && data[at + 2] === 0
+        );
+        expect(green, screenshot).toBe(-1);
+      }
+    } finally {
+      await site.close();
+      await outside.close();
+    }
+  });
+}
 
 test("input comparison runs declared pointer and keyboard actions in isolated contexts", async ({
   browser

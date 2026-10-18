@@ -1,3 +1,5 @@
+import { redactUrl } from "@aee/core";
+
 /** A lane reached a page outside its allowed origins, so it stopped: the lane is "blocked". */
 export class BlockedOriginError extends Error {}
 
@@ -21,7 +23,7 @@ export function assertAllowedOrigin(
 
   if (!allowedOrigins.includes(origin)) {
     throw new BlockedOriginError(
-      `${laneLabel} blocked origin ${origin}; allowed origins: ${allowedOrigins.join(", ")}.`
+      `${laneLabel} blocked origin ${origin} at ${redactUrl(value)}; allowed origins: ${allowedOrigins.join(", ")}.`
     );
   }
 }
