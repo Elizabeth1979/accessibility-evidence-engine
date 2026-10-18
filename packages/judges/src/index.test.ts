@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_POLICY,
   type AccessibilityChanges,
+  type AccessibilityNodeRef,
   type EvidenceBundle,
   type Judgment
 } from "@aee/core";
@@ -1455,6 +1456,105 @@ test("keyboard judge passes arrow-key navigation when aria-activedescendant chan
   assert.match(judgment.summary, /ArrowDown/);
 });
 
+/**
+ * A Tab press's focus records: the focused button before and after, each with its place in the
+ * page's tab order. The page has a "Pay" button in the top document and a "Pay" and a "Cancel"
+ * button inside a frame, so two of them differ only by the frame and node they are in.
+ */
+function tabRecords(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>
+): EvidenceBundle["records"] {
+  const button = (place: Record<string, unknown>) => ({
+    tagName: "button",
+    role: "button",
+    type: "button",
+    nodePath: "html > body > button",
+    focusableCount: 4,
+    ...place
+  });
+  return (["before", "after"] as const).map((phase) => ({
+    id: `record-focus-${phase}`,
+    runId: "run-1",
+    checkpointId: "checkpoint-1",
+    interactionId: "interaction-1",
+    observerId: "focus",
+    phase,
+    status: "ok",
+    timestamp: "2026-06-21T10:00:01.000Z",
+    meta: { focusTarget: button(phase === "before" ? before : after) }
+  }));
+}
+
+const TOP_PAY = { name: "Pay", frameId: "top", backendDOMNodeId: 7, focusOrderIndex: 0 };
+const FRAME_PAY = {
+  name: "Pay",
+  frameId: "card",
+  framePath: ["iframe#card"],
+  backendDOMNodeId: 7,
+  focusOrderIndex: 1
+};
+const FRAME_CANCEL = { ...FRAME_PAY, name: "Cancel", backendDOMNodeId: 9, focusOrderIndex: 2 };
+
+test("keyboard judge passes a Tab from the top document into a frame by the page's tab order", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(tabRecords(TOP_PAY, FRAME_PAY), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  // Both buttons are "Pay" with the same path in their own documents: only the frame tells them
+  // apart, so focus moved, and forward in the page's tab order.
+  assert.equal(judgment.verdict, "pass");
+  assert.equal(judgment.confidence, 0.95);
+  assert.match(judgment.summary, /advanced forward/);
+  assert.doesNotMatch(judgment.summary, /metadata was unavailable/);
+});
+
+test("keyboard judge passes a Shift+Tab out of a frame back to the top document", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_PAY, TOP_PAY), { kind: "shift-tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(judgment.verdict, "pass");
+  assert.equal(judgment.confidence, 0.95);
+  assert.match(judgment.summary, /moved backward/);
+});
+
+test("keyboard judge orders two controls inside one frame by the page's tab order", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [forward] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_PAY, FRAME_CANCEL), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+  const [wrongWay] = await keyboardJudge!.judge(
+    createBundle(tabRecords(FRAME_CANCEL, FRAME_PAY), { kind: "tab" }),
+    { runId: "run-1" }
+  );
+
+  assert.equal(forward.verdict, "pass");
+  assert.equal(forward.confidence, 0.95);
+  assert.equal(wrongWay.verdict, "fail");
+  assert.match(wrongWay.summary, /wrong direction/);
+});
+
+test("keyboard judge counts focus moving to a like-named control in the same frame as moved", async () => {
+  const keyboardJudge = createDefaultJudgePlugins(["keyboard"])[0];
+  const [judgment] = await keyboardJudge!.judge(
+    createBundle(
+      tabRecords(FRAME_PAY, { ...FRAME_PAY, backendDOMNodeId: 11, focusOrderIndex: 3 }),
+      { kind: "tab" }
+    ),
+    { runId: "run-1" }
+  );
+
+  // Two "Pay" buttons at the same path in one frame are two nodes, so focus did not stall.
+  assert.equal(judgment.verdict, "pass");
+  assert.match(judgment.summary, /advanced forward/);
+});
+
 test("change-response judge passes a click that presses the clicked toggle", async () => {
   const judge = createDefaultJudgePlugins(["change-response"])[0]!;
   const muteButton = { nodeId: 61, role: "button", name: "Mute" };
@@ -1493,6 +1593,134 @@ test("change-response judge fails a click when nothing a person perceives change
   assert.equal(judgment?.severity, "high");
   assertSuggestsPerceivableResponse(judgment?.suggestedFix);
   assert.match(judgment?.suggestedFix ?? "", /not only onto the clicked control/);
+});
+
+const checkoutPage = { nodeId: 1, role: "RootWebArea", name: "Checkout" };
+const nameField = { nodeId: 71, role: "textbox", name: "Name" };
+const cancelButton = { nodeId: 81, role: "button", name: "Cancel" };
+const confirmDialog = { nodeId: 80, role: "dialog", name: "Delete project?" };
+
+/** Focus moving as the focus observer records it in Chrome: the element and its accessibility node. */
+function focusMoves(
+  from: [string, AccessibilityNodeRef],
+  to: [string, AccessibilityNodeRef]
+): PressRecord[] {
+  const focusTarget = ([tagName, { nodeId, role, name }]: [string, AccessibilityNodeRef]) => ({
+    tagName,
+    role,
+    name,
+    accessibilityFocus: { status: "matched", backendDOMNodeId: nodeId, role, name }
+  });
+  return [
+    pressRecord("record-focus-before", "focus", "before", { focusTarget: focusTarget(from) }),
+    pressRecord("record-focus-after", "focus", "after", { focusTarget: focusTarget(to) })
+  ];
+}
+
+// A click focuses the clicked button (HTML's focusing steps), and Chrome focuses the page itself
+// when the clicked element cannot take focus. Neither is the control responding.
+const clickFocusScenarios: Array<{
+  title: string;
+  focus: PressRecord[];
+  accessibilityChanges: AccessibilityChanges;
+  verdict: Judgment["verdict"];
+  summary: RegExp;
+}> = [
+  {
+    title: "fails a click on a dead button that only focuses it",
+    focus: focusMoves(["body", checkoutPage], ["button", saveButton]),
+    accessibilityChanges: { focusedAfter: saveButton, changes: [], truncated: false },
+    verdict: "fail",
+    summary: /No observable response followed the click interaction/
+  },
+  {
+    title: "leaves a click on a dead button that only focuses it undecided while a clock ticks",
+    focus: focusMoves(["body", checkoutPage], ["button", saveButton]),
+    accessibilityChanges: {
+      focusedAfter: saveButton,
+      changes: [{ nodeId: 42, role: "StaticText", name: "10:01", kind: "shown" }],
+      truncated: false
+    },
+    verdict: "unknown",
+    summary: /StaticText "10:01" appeared.*cannot be told/
+  },
+  {
+    title: "fails a click on a dead element that cannot take focus and only blurs the field",
+    focus: focusMoves(["input", nameField], ["body", checkoutPage]),
+    accessibilityChanges: {
+      focusedBefore: nameField,
+      focusedAfter: checkoutPage,
+      changes: [],
+      truncated: false
+    },
+    verdict: "fail",
+    summary: /No observable response followed the click interaction/
+  },
+  {
+    title: "passes a click that moves focus into the dialog it opens",
+    focus: focusMoves(["body", checkoutPage], ["button", cancelButton]),
+    accessibilityChanges: {
+      focusedAfter: cancelButton,
+      changes: [
+        { ...confirmDialog, kind: "shown" },
+        { ...cancelButton, kind: "shown" }
+      ],
+      truncated: false
+    },
+    verdict: "pass",
+    summary: /focus moved/
+  }
+];
+
+for (const scenario of clickFocusScenarios) {
+  test(`change-response judge ${scenario.title}`, async () => {
+    const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+    const bundle = createBundle(
+      [...scenario.focus, accessibilityAfter(scenario.accessibilityChanges), markupAfter(true)],
+      { kind: "click", target: { role: "button", name: "Save" } }
+    );
+
+    const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+    assert.equal(judgment?.verdict, scenario.verdict);
+    assert.match(judgment?.summary ?? "", scenario.summary);
+  });
+}
+
+test("change-response judge does not count a submit focusing the control it acted on", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle(
+    [
+      ...focusMoves(["body", checkoutPage], ["button", saveButton]),
+      accessibilityAfter({ focusedAfter: saveButton, changes: [], truncated: false })
+    ],
+    // Neither role nor name: the control the submit acted on is the one it focused.
+    { kind: "submit", target: undefined }
+  );
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /Focus moved onto button "Save" itself/);
+  assert.ok(judgment?.evidenceRecordIds.includes("record-focus-after"));
+});
+
+test("change-response judge leaves a click undecided when only focus moved and nothing names it", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle(
+    [
+      pressRecord("record-focus-before", "focus", "before", { focusTarget: { tagName: "body" } }),
+      pressRecord("record-focus-after", "focus", "after", {
+        focusTarget: { tagName: "button", name: "Save" }
+      })
+    ],
+    { kind: "click", target: { role: "button", name: "Save" } }
+  );
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /needs the accessibility tree before and after/);
 });
 
 test("change-response judge leaves a press undecided when only the markup changed", async () => {

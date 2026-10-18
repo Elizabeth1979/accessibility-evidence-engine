@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import path from "node:path";
 
 import {
   focusPlace,
@@ -21,14 +20,20 @@ import {
   type CapturedDom,
   type CapturedElement,
   type CdpContext,
-  type CdpSession,
   type DomNodeRef,
   type FramedPage,
   type PageFrame,
   type PageSessions
 } from "./accessibility-tree";
 import { focusPath, frameHeldAt } from "./dom-focus";
-import { callOn, documentOf, nodeOf } from "./frame-documents";
+import {
+  GUIDEPUP_SCRIPT,
+  callOn,
+  frameDocuments,
+  loadPageScript,
+  nodeOf,
+  type FrameDocuments
+} from "./frame-documents";
 
 export type VirtualScreenReaderCommand =
   | "start"
@@ -259,8 +264,7 @@ const START_OF_DOCUMENT = "document";
 /** More single steps than any page holds; a jump that finds nothing stops here. */
 const MAX_STEPS = 10_000;
 
-const BUNDLE_FILE = path.join(__dirname, "guidepup-virtual-screen-reader.js");
-const BUNDLE_GLOBAL = "__aeeGuidepupVirtualScreenReader";
+const BUNDLE_GLOBAL = GUIDEPUP_SCRIPT.global;
 const SPEECH_ENGINE = `@guidepup/virtual-screen-reader ${
   (
     JSON.parse(
@@ -268,7 +272,6 @@ const SPEECH_ENGINE = `@guidepup/virtual-screen-reader ${
     ) as { version: string }
   ).version
 }`;
-let bundleSource: string | undefined;
 
 /** A step of Guidepup's reader in one frame's document. */
 type Action = "start" | "end" | "next" | "previous" | "current";
@@ -298,7 +301,8 @@ interface Cursor {
 interface Reading {
   page: PageSessions;
   cursor: Cursor;
-  document(frame: PageFrame): Promise<string | undefined>;
+  /** Each frame's document and shadow roots, read once for this look at the page. */
+  documents: FrameDocuments;
 }
 
 /**
@@ -386,9 +390,9 @@ export function createPortableVirtualScreenReader(
     async listen() {
       await read(async (reading) => {
         const top = mainFrameOf(reading.page);
-        const document = await reading.document(top);
+        const document = await reading.documents.document(top);
         if (!document) return;
-        await loadGuidepup(top.session, document);
+        await loadPageScript(top.session, document, GUIDEPUP_SCRIPT);
         await callOn(
           top.session,
           document,
@@ -445,19 +449,7 @@ function readingOf(page: PageSessions, cursor: Cursor): Reading {
     cursor.frames.splice(gone);
     delete cursor.on;
   }
-  const documents = new Map<string, Promise<string | undefined>>();
-  return {
-    page,
-    cursor,
-    document(frame) {
-      let document = documents.get(frame.frameId);
-      if (!document) {
-        document = documentOf(page, frame);
-        documents.set(frame.frameId, document);
-      }
-      return document;
-    }
-  };
+  return { page, cursor, documents: frameDocuments(page) };
 }
 
 function frameById(page: PageSessions, frameId: string): PageFrame {
@@ -631,9 +623,9 @@ const READ_STEP = `async function (action) {
  * when it is not there, and reports where it is. A frame with no document to read reads as empty.
  */
 async function guidepup(reading: Reading, frame: PageFrame, action: Action): Promise<Position> {
-  const document = await reading.document(frame);
+  const document = await reading.documents.document(frame);
   if (!document) return { frameId: frame.frameId, phrase: "", isText: false };
-  await loadGuidepup(frame.session, document);
+  await loadPageScript(frame.session, document, GUIDEPUP_SCRIPT);
   const position = await callOn<{
     phrase: string;
     isText: boolean;
@@ -653,30 +645,13 @@ async function guidepup(reading: Reading, frame: PageFrame, action: Action): Pro
   };
 }
 
-/** Loads Guidepup's reader into a frame's document when it does not have it (fresh, or navigated). */
-async function loadGuidepup(cdp: CdpSession, document: string): Promise<void> {
-  const loaded = await callOn<boolean>(
-    cdp,
-    document,
-    `function () { return typeof globalThis.${BUNDLE_GLOBAL} === "object"; }`
-  );
-  if (loaded) return;
-  bundleSource ??= readFileSync(BUNDLE_FILE, "utf8");
-  // The bundle declares its global with \`var\`, which a function body keeps to itself.
-  await callOn(
-    cdp,
-    document,
-    `function () {\n${bundleSource}\nglobalThis.${BUNDLE_GLOBAL} = ${BUNDLE_GLOBAL};\n}`
-  );
-}
-
 /**
  * What the listening reader said since this was last asked, from Guidepup's spoken-phrase log.
  * Nothing when it does not listen to the page, as after the page navigated.
  */
 async function heardSinceLastRead(reading: Reading): Promise<string[]> {
   const top = mainFrameOf(reading.page);
-  const document = await reading.document(top);
+  const document = await reading.documents.document(top);
   if (!document) return [];
   return callOn<string[]>(
     top.session,
@@ -711,7 +686,7 @@ function liveRegionAnnouncement(
 }
 
 async function lastSpokenPhrase(reading: Reading, frame: PageFrame): Promise<string> {
-  const document = await reading.document(frame);
+  const document = await reading.documents.document(frame);
   return document
     ? callOn<string>(
         frame.session,
@@ -900,7 +875,7 @@ function cloneEntry(entry: VirtualScreenReaderEntry): VirtualScreenReaderEntry {
 
 /** The element that has DOM focus, in whichever frame's document holds it. */
 async function focusedNode(reading: Reading): Promise<DomNodeRef | undefined> {
-  return (await focusPath(reading.page, (frame) => reading.document(frame))).at(-1);
+  return (await focusPath(reading.page, reading.documents)).at(-1);
 }
 
 /** The focused element as the DOM snapshot names it, the way an item names its element. */
