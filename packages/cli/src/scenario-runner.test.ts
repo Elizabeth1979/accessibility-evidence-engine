@@ -502,10 +502,9 @@ test("a Tab stop the sweep did not check says so on the Focus layer, naming the 
   report.synthesis = buildScenarioSynthesisForTest(report, sweepViews);
   const html = renderIntegratedHtmlForTest(report, sweepViews);
 
-  assert.match(
-    html,
-    new RegExp(
-      `<span class="marker-number neutral" aria-hidden="true">2</span><span><b>Map of our office</b><small>Not checked\\. ${notChecked.replace(/[.?]/g, "\\$&")}</small><img class="focus-crop" src="sweep-lane/tab-stop-2\\.png"`
+  assert.ok(
+    html.includes(
+      `<span class="marker-number neutral" aria-hidden="true">2</span><span><b>Map of our office</b><small>Not checked. ${notChecked}</small><img class="focus-crop" src="sweep-lane/tab-stop-2.png"`
     )
   );
   assert.doesNotMatch(html, /No visible focus/);
