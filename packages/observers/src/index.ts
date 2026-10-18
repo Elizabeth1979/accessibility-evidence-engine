@@ -69,7 +69,7 @@ export const defaultObserverManifests = [
     displayName: "axe Observer",
     version: "0.2.0",
     kind: "observer" as const,
-    capabilities: ["axe-core-4.13", "wcag-2.2-a-aa", "raw-results"]
+    capabilities: ["axe-core-4.14", "wcag-2.2-a-aa", "raw-results"]
   },
   {
     id: "virtual-screen-reader",
@@ -897,7 +897,7 @@ async function captureAxeRecord(
       phase,
       status: "unsupported",
       timestamp: getTimestamp(),
-      diagnostics: ["Pinned axe 4.13 analysis API is unavailable."]
+      diagnostics: ["Pinned axe 4.14 analysis API is unavailable."]
     };
   }
 
@@ -944,7 +944,7 @@ async function captureAxeRecord(
       phase,
       status: "ok",
       timestamp: getTimestamp(),
-      summary: `axe 4.13 found ${violations} violations, ${advisoryRuleIds.length} advisory best-practice results, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
+      summary: `axe 4.14 found ${violations} violations, ${advisoryRuleIds.length} advisory best-practice results, ${passes} passes, and ${incomplete} incomplete results in the ${phase} state.`,
       ...(phase === "before" ? { beforeStateRef: artifact } : { afterStateRef: artifact }),
       artifacts: artifact ? [artifact] : [],
       meta: {

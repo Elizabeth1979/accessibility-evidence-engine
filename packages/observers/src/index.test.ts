@@ -501,7 +501,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
   const artifactDir = await mkdtemp(path.join(tmpdir(), "aee-axe-"));
   let requested: AxeAnalysisOptions | undefined;
   const rawResult = {
-    testEngine: { name: "axe-core", version: "4.13.0" },
+    testEngine: { name: "axe-core", version: "4.14.0" },
     testRunner: { name: "axe" },
     testEnvironment: { userAgent: "test" },
     toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
@@ -544,7 +544,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     });
     assert.equal(record.status, "ok");
     assert.deepEqual(record.meta, {
-      engineVersion: "4.13.0",
+      engineVersion: "4.14.0",
       ruleSelection: {
         type: "tag",
         values: requested!.tags,
