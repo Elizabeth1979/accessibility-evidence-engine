@@ -383,6 +383,64 @@ test("the sweep lane's pictures cover a frame a redirect takes outside the allow
   }
 });
 
+test("the sweep lane does not judge focus on a frame a redirect takes outside the allowed origins and says it was not checked", async ({
+  browser
+}, testInfo) => {
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(
+      `<!doctype html><html lang="en"><head><title>Another site</title></head><body><p>Another site</p></body></html>`
+    );
+  });
+  // localhost is another site than 127.0.0.1, so Chrome renders its frame in a process of its own.
+  const elsewhereOrigin = elsewhere.origin.replace("127.0.0.1", "localhost");
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/away") {
+      response.writeHead(302, { location: `${elsewhereOrigin}/` });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Frames</title></head>
+  <body>
+    <main>
+      <h1>Frames</h1>
+      <a id="top" href="#top">Back to the top</a>
+      <iframe id="away" title="Embedded" src="/away"></iframe>
+    </main>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    expect(lane.status).toBe("completed");
+    const stop = (selector: string) =>
+      lane.tabStops.find((tabStop) => tabStop.selector === selector)!;
+    // Its pictures are covered, so they cannot tell whether focus shows: the stop says it was not
+    // checked, and why, and keeps its close-up of where the frame is.
+    expect(stop("#away")).not.toHaveProperty("focusVisible");
+    expect(stop("#away").notChecked).toBe(
+      `It shows a page from ${elsewhereOrigin}, which is not an allowed origin; add it to them to check this frame.`
+    );
+    expect(stop("#away").focusCrop).toBeDefined();
+    // The page's own stops are still measured.
+    expect(stop("#top")).toMatchObject({ focusVisible: true });
+    expect(stop("#top")).not.toHaveProperty("notChecked");
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
 test("the sweep lane records a press whose page fails to load, reads no error page and sweeps on", async ({
   browser
 }, testInfo) => {

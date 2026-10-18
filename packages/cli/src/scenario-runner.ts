@@ -4868,8 +4868,9 @@ function addSweepLayers(
     });
     state.layers.focus.push({
       ...common,
-      detail:
-        stop.focusVisible === undefined
+      detail: stop.notChecked
+        ? `Not checked. ${stop.notChecked}`
+        : stop.focusVisible === undefined
           ? "Not measured"
           : stop.focusVisible
             ? "Focus visible"
