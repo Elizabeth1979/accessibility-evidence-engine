@@ -294,33 +294,32 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
   }
 });
 
-test("CLI run refuses a scenario whose ids are too long to name its evidence before running anything", async () => {
+/** Edits the public-site example, then checks each command refuses it before writing any evidence. */
+async function assertCliRefusesExampleBeforeRunning(
+  edit: (scenarioYaml: string) => string,
+  commands: string[],
+  expectedErrors: RegExp[]
+) {
   const cliPath = path.resolve(__dirname, "index.js");
   const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-long-id-"));
-  const longIdScenarioPath = path.join(tempRoot, "scenario.yml");
-  const journeyId = `explore-${"a".repeat(120)}`;
-  const scenarioYaml = await readFile(scenarioPath, "utf8");
-  await writeFile(
-    longIdScenarioPath,
-    scenarioYaml.replace("id: explore-public-homepage", `id: ${journeyId}`),
-    "utf8"
-  );
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-refused-"));
+  const editedScenarioPath = path.join(tempRoot, "scenario.yml");
+  await writeFile(editedScenarioPath, edit(await readFile(scenarioPath, "utf8")), "utf8");
 
   try {
-    await assert.rejects(
-      () =>
-        execFileAsync(process.execPath, [cliPath, "run", longIdScenarioPath], { cwd: tempRoot }),
-      (error: unknown) => {
-        const output = error as { stderr?: string };
-        assert.match(
-          output.stderr ?? "",
-          new RegExp(`Journey “${journeyId}” makes an evidence folder name that is too long`)
-        );
-        assert.match(output.stderr ?? "", /Shorten the journey id by at least 23 characters\./);
-        return true;
-      }
-    );
+    for (const command of commands) {
+      await assert.rejects(
+        () =>
+          execFileAsync(process.execPath, [cliPath, command, editedScenarioPath], {
+            cwd: tempRoot
+          }),
+        (error: unknown) => {
+          const output = error as { stderr?: string };
+          for (const expected of expectedErrors) assert.match(output.stderr ?? "", expected);
+          return true;
+        }
+      );
+    }
     assert.equal(
       await stat(path.join(tempRoot, "aee-output")).catch(() => undefined),
       undefined,
@@ -329,6 +328,28 @@ test("CLI run refuses a scenario whose ids are too long to name its evidence bef
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+}
+
+test("CLI plan and run refuse a journey that starts on another site before opening a browser", async () => {
+  await assertCliRefusesExampleBeforeRunning(
+    (scenarioYaml) => scenarioYaml.replace("startPath: /\n", "startPath: //other.example/\n"),
+    ["plan", "run"],
+    [
+      /Journey “explore-public-homepage” startPath "\/\/other\.example\/" leads to https:\/\/other\.example,/
+    ]
+  );
+});
+
+test("CLI run refuses a scenario whose ids are too long to name its evidence before running anything", async () => {
+  const journeyId = `explore-${"a".repeat(120)}`;
+  await assertCliRefusesExampleBeforeRunning(
+    (scenarioYaml) => scenarioYaml.replace("id: explore-public-homepage", `id: ${journeyId}`),
+    ["run"],
+    [
+      new RegExp(`Journey “${journeyId}” makes an evidence folder name that is too long`),
+      /Shorten the journey id by at least 23 characters\./
+    ]
+  );
 });
 
 test("aee fix explains its usage and refuses what it cannot apply before touching git", async () => {

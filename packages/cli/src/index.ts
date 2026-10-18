@@ -63,6 +63,7 @@ export {
 
 export {
   compileScenarioPlan,
+  journeyStartUrl,
   loadScenario,
   renderScenarioPlan,
   type AeeScenario,
