@@ -43,7 +43,7 @@ Adapts real Playwright pages and virtual fixture pages to the shared execution p
 
 ### `@aee/observers`
 
-Owns observer manifests and built-in DOM, accessibility-tree, element-map, focus, visual, pinned axe 4.13, portable virtual-reader transcript, and network observers. The element map records each heading and image with its accessibility-tree role, name and level and its box on the full-page screenshot, so a report can draw them without querying the page. Guidepup remains an unsupported extension point. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
+Owns observer manifests and built-in DOM, accessibility-tree, element-map, focus, visual, pinned axe 4.14, portable virtual-reader transcript, and network observers. The element map records each heading and image with its accessibility-tree role, name and level and its box on the full-page screenshot, so a report can draw them without querying the page. Guidepup remains an unsupported extension point. Network logs are sanitized again in this layer before persistence so custom page adapters cannot bypass redaction.
 
 ### `@aee/judges`
 

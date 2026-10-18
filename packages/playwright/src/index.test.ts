@@ -26,10 +26,10 @@ import {
 test("enableExperimentalAxeRules switches on axe's experimental rules filed under WCAG A/AA", () => {
   const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"];
 
-  // axe-core 4.13's five; its experimental best-practice rules stay off.
+  // axe-core 4.14's four (4.14 made label-content-name-mismatch a default rule); its
+  // experimental best-practice rules stay off.
   assert.deepEqual(enableExperimentalAxeRules(wcagTags), {
     "css-orientation-lock": { enabled: true },
-    "label-content-name-mismatch": { enabled: true },
     "p-as-heading": { enabled: true },
     "table-fake-caption": { enabled: true },
     "td-has-header": { enabled: true }
@@ -210,7 +210,7 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
         },
         async runAxeAnalysis() {
           return {
-            testEngine: { name: "axe-core", version: "4.13.0" },
+            testEngine: { name: "axe-core", version: "4.14.0" },
             testRunner: { name: "axe" },
             testEnvironment: { userAgent: "unit-test" },
             toolOptions: { runOnly: { type: "tag", values: ["wcag22aa"] } },
