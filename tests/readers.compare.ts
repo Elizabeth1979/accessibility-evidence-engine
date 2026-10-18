@@ -45,7 +45,7 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   await mkdir(dir, { recursive: true });
   const stopRecording = record?.(path.resolve(dir, "real-reader.mp4"));
   const maxSteps = virtual.length + EXTRA_REAL_STEPS;
-  const { phrases, stoppedBecause } = await screenReader
+  const { phrases, stoppedBecause, repeatedAtEnd } = await screenReader
     .navigateToWebContent()
     .then(() => readWithRealReader(screenReader, maxSteps))
     .finally(() => stopRecording?.());
@@ -64,6 +64,7 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
       reader: realReaderName(),
       phrases,
       stoppedBecause,
+      repeatedAtEnd,
       maxSteps,
       attempt: testInfo.retry + 1
     }
