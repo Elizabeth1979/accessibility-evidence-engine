@@ -115,6 +115,120 @@ test("the sweep lane keeps pressed controls inside the allowed origins and repor
   }
 });
 
+test("the sweep lane reads nothing on a page outside the allowed origins that a pressed control reaches through a redirect", async ({
+  browser
+}, testInfo) => {
+  // Each visit shows other text, as another site's page often does, so a sweep that compared a
+  // click and a key press there would report a difference the site under test never made.
+  let visitsElsewhere = 0;
+  const elsewhere = await startHtmlServer((_request, response) => {
+    visitsElsewhere += 1;
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en"><head><title>Elsewhere</title></head>
+  <body><main><h1>Another site, visit ${visitsElsewhere}</h1></main></body>
+</html>`);
+  });
+  // A route handler sees only the first address of a redirect, so the guard alone never stops it.
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/away") {
+      response.writeHead(302, { location: `${elsewhere.origin}/` });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Leave</title></head>
+  <body>
+    <main>
+      <h1>Leave</h1>
+      <button id="away" type="button">Open the other site</button>
+    </main>
+    <script>
+      document.querySelector("#away").addEventListener("click", () => {
+        location.href = "/away";
+      });
+    </script>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: true
+    });
+
+    expect(lane.status).toBe("completed");
+    expect(lane.activated).toEqual(["#away"]);
+    expect(new Set(lane.blockedNavigations)).toEqual(new Set([`${elsewhere.origin}/`]));
+    expect(lane.findings).toEqual([]);
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
+test("the sweep lane reports a control a click takes outside the allowed origins and Enter does not", async ({
+  browser
+}, testInfo) => {
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.end("Another site");
+  });
+  // Each control listens for clicks only, so Enter does nothing, whether the click leaves the
+  // site at once, which the guard stops, or through a redirect, which it does not.
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/away") {
+      response.writeHead(302, { location: `${elsewhere.origin}/` });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Leave by mouse</title></head>
+  <body>
+    <main>
+      <h1>Leave by mouse</h1>
+      <div id="direct" role="button" tabindex="0">Open the other site</div>
+      <div id="redirect" role="button" tabindex="0">Open the other site through this one</div>
+    </main>
+    <script>
+      document.querySelector("#direct").addEventListener("click", () => {
+        location.href = "${elsewhere.origin}/";
+      });
+      document.querySelector("#redirect").addEventListener("click", () => {
+        location.href = "/away";
+      });
+    </script>
+  </body>
+</html>`);
+  });
+  try {
+    const lane = await runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: true
+    });
+
+    expect(lane.status).toBe("completed");
+    expect(lane.activated).toEqual(["#direct", "#redirect"]);
+    expect(new Set(lane.blockedNavigations)).toEqual(new Set([`${elsewhere.origin}/`]));
+    expect(lane.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
+      { kind: "activation-differs", selector: "#direct" },
+      { kind: "activation-differs", selector: "#redirect" }
+    ]);
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
 test("the sweep lane records a start page that redirects outside the allowed origins as blocked and sweeps nothing there", async ({
   browser
 }, testInfo) => {
