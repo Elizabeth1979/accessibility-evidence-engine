@@ -51,11 +51,11 @@ test("loadScenario accepts the user-controlled public site YAML scenario", async
   assert.equal(scenario.journeys[0]?.interactionComparisons?.[0]?.id, "nav-link-hover-focus");
 });
 
-/** Writes the public-site example with its journey changed, and loads it. */
-async function loadExampleWith(change: (journey: Record<string, unknown>) => void) {
+/** Writes the public-site example with its scenario changed, and loads it. */
+async function loadExampleWith(change: (scenario: ExampleScenario) => void) {
   const examplePath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
-  const scenario = parse(await readFile(examplePath, "utf8")) as { journeys: Array<never> };
-  change(scenario.journeys[0]!);
+  const scenario = parse(await readFile(examplePath, "utf8")) as ExampleScenario;
+  change(scenario);
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "aee-cli-scenario-"));
   const scenarioPath = path.join(tempDir, "scenario.yml");
   try {
@@ -66,12 +66,54 @@ async function loadExampleWith(change: (journey: Record<string, unknown>) => voi
   }
 }
 
+interface ExampleScenario {
+  target: { url: string; allowedOrigins?: string[] };
+  journeys: Array<{
+    id: string;
+    startPath?: string;
+    interactionComparisons: Array<{ id: string }>;
+  }>;
+}
+
+test("loadScenario refuses a journey whose startPath leads to a site the scenario may not visit", async () => {
+  // A URL parser reads each of these as "//other.example/": the backslash counts as a slash and
+  // the tab is dropped, so each one leaves the target site.
+  for (const startPath of ["//other.example/", "/\\other.example/", "/\t/other.example/"]) {
+    await assert.rejects(
+      () => loadExampleWith(({ journeys }) => (journeys[0]!.startPath = startPath)),
+      new Error(
+        `Journey “explore-public-homepage” startPath ${JSON.stringify(startPath)} leads to https://other.example, which is not one of the sites this scenario may visit (https://elizabeth1979.github.io). Start at a path on one of those sites, such as "/", or add https://other.example to target.allowedOrigins.`
+      )
+    );
+  }
+});
+
+test("loadScenario refuses a startPath off the target's own site when no allowed origins are listed", async () => {
+  await assert.rejects(
+    () =>
+      loadExampleWith((scenario) => {
+        delete scenario.target.allowedOrigins;
+        scenario.journeys[0]!.startPath = "//other.example/";
+      }),
+    /leads to https:\/\/other\.example, which is not one of the sites this scenario may visit \(https:\/\/elizabeth1979\.github\.io\)/
+  );
+});
+
+test("loadScenario accepts a startPath that leads to another site the scenario lists", async () => {
+  const scenario = await loadExampleWith(({ target, journeys }) => {
+    target.allowedOrigins = [target.url, "https://other.example/"];
+    journeys[0]!.startPath = "//other.example/";
+  });
+
+  assert.equal(scenario.journeys[0]?.startPath, "//other.example/");
+});
+
 test("loadScenario refuses a journey id too long to name the evidence its lanes write", async () => {
   // The sweep lane's evidence folder is named "<journey id>-keyboard-pointer-sweep".
   const journeyId = `explore-${"a".repeat(98)}`;
 
   await assert.rejects(
-    () => loadExampleWith((journey) => (journey.id = journeyId)),
+    () => loadExampleWith(({ journeys }) => (journeys[0]!.id = journeyId)),
     new Error(
       `Journey “${journeyId}” makes an evidence folder name that is too long: its keyboard and pointer sweep would be named “${journeyId}-keyboard-pointer-sweep”, which is 129 characters, and the most is 128. Shorten the journey id by at least 1 character.`
     )
@@ -85,8 +127,8 @@ test("loadScenario refuses a comparison whose ids together are too long to name 
 
   await assert.rejects(
     () =>
-      loadExampleWith((journey) => {
-        (journey.interactionComparisons as Array<{ id: string }>)[0]!.id = comparisonId;
+      loadExampleWith(({ journeys }) => {
+        journeys[0]!.interactionComparisons[0]!.id = comparisonId;
       }),
     new Error(
       `Journey “explore-public-homepage” comparison “${comparisonId}” makes an evidence folder name that is too long: its keyboard action 1 would be named “${runId}”, which is 129 characters, and the most is 128. Shorten the journey id or the comparison id by at least 1 character.`
@@ -96,8 +138,8 @@ test("loadScenario refuses a comparison whose ids together are too long to name 
 
 test("loadScenario accepts ids that name every lane's evidence within the limit", async () => {
   const comparisonId = `nav-${"a".repeat(87)}`;
-  const scenario = await loadExampleWith((journey) => {
-    (journey.interactionComparisons as Array<{ id: string }>)[0]!.id = comparisonId;
+  const scenario = await loadExampleWith(({ journeys }) => {
+    journeys[0]!.interactionComparisons[0]!.id = comparisonId;
   });
 
   assert.equal(

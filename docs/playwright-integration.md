@@ -89,7 +89,7 @@ The keyboard and change-response judges decide whether a press (Enter, Space, a 
 
 - the pressed control's state in Chrome's accessibility tree changed: checked, expanded, pressed, selected, its value or its name, or it left the page. A key press acts on the element that had focus; a click on its target, found by role and name;
 - the same for anything the control names with `aria-controls`, such as the panel a disclosure opens;
-- focus moved;
+- focus moved, except where a click or submit puts it by itself. A click focuses the clicked control ([HTML's focusing steps](https://html.spec.whatwg.org/multipage/interaction.html#focusing-steps), run with focus trigger "click" on a [click focusable](https://html.spec.whatwg.org/multipage/interaction.html#click-focusable) area), and Chrome moves focus to the page itself when what was clicked cannot take focus. Neither is the control responding, so a dead button that is clicked does not pass because the click focused it. Focus moving anywhere else, such as into the dialog the click opened or onto another control, still counts. Where focus landed is read from Chrome's accessibility tree: the node for the focus observer's element (`accessibilityFocus`), or else the tree's focused node. Without either, focus a click moved is not counted, and the judgment says why;
 - Guidepup's virtual screen reader announced a live-region update, as a status message does ([WCAG 4.1.3](https://www.w3.org/WAI/WCAG22/Understanding/status-messages.html)). The reader listens through the press only when the `virtual-screen-reader` observer runs with a reader; the keyboard lane of `runInputComparison` always has one;
 - network activity.
 

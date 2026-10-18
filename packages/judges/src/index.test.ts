@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DEFAULT_POLICY,
   type AccessibilityChanges,
+  type AccessibilityNodeRef,
   type EvidenceBundle,
   type Judgment
 } from "@aee/core";
@@ -1570,6 +1571,134 @@ test("change-response judge fails a click when nothing a person perceives change
   assert.equal(judgment?.verdict, "fail");
   assert.match(judgment?.summary ?? "", /No observable response followed the click interaction/);
   assert.equal(judgment?.severity, "high");
+});
+
+const checkoutPage = { nodeId: 1, role: "RootWebArea", name: "Checkout" };
+const nameField = { nodeId: 71, role: "textbox", name: "Name" };
+const cancelButton = { nodeId: 81, role: "button", name: "Cancel" };
+const confirmDialog = { nodeId: 80, role: "dialog", name: "Delete project?" };
+
+/** Focus moving as the focus observer records it in Chrome: the element and its accessibility node. */
+function focusMoves(
+  from: [string, AccessibilityNodeRef],
+  to: [string, AccessibilityNodeRef]
+): PressRecord[] {
+  const focusTarget = ([tagName, { nodeId, role, name }]: [string, AccessibilityNodeRef]) => ({
+    tagName,
+    role,
+    name,
+    accessibilityFocus: { status: "matched", backendDOMNodeId: nodeId, role, name }
+  });
+  return [
+    pressRecord("record-focus-before", "focus", "before", { focusTarget: focusTarget(from) }),
+    pressRecord("record-focus-after", "focus", "after", { focusTarget: focusTarget(to) })
+  ];
+}
+
+// A click focuses the clicked button (HTML's focusing steps), and Chrome focuses the page itself
+// when the clicked element cannot take focus. Neither is the control responding.
+const clickFocusScenarios: Array<{
+  title: string;
+  focus: PressRecord[];
+  accessibilityChanges: AccessibilityChanges;
+  verdict: Judgment["verdict"];
+  summary: RegExp;
+}> = [
+  {
+    title: "fails a click on a dead button that only focuses it",
+    focus: focusMoves(["body", checkoutPage], ["button", saveButton]),
+    accessibilityChanges: { focusedAfter: saveButton, changes: [], truncated: false },
+    verdict: "fail",
+    summary: /No observable response followed the click interaction/
+  },
+  {
+    title: "leaves a click on a dead button that only focuses it undecided while a clock ticks",
+    focus: focusMoves(["body", checkoutPage], ["button", saveButton]),
+    accessibilityChanges: {
+      focusedAfter: saveButton,
+      changes: [{ nodeId: 42, role: "StaticText", name: "10:01", kind: "shown" }],
+      truncated: false
+    },
+    verdict: "unknown",
+    summary: /StaticText "10:01" appeared.*cannot be told/
+  },
+  {
+    title: "fails a click on a dead element that cannot take focus and only blurs the field",
+    focus: focusMoves(["input", nameField], ["body", checkoutPage]),
+    accessibilityChanges: {
+      focusedBefore: nameField,
+      focusedAfter: checkoutPage,
+      changes: [],
+      truncated: false
+    },
+    verdict: "fail",
+    summary: /No observable response followed the click interaction/
+  },
+  {
+    title: "passes a click that moves focus into the dialog it opens",
+    focus: focusMoves(["body", checkoutPage], ["button", cancelButton]),
+    accessibilityChanges: {
+      focusedAfter: cancelButton,
+      changes: [
+        { ...confirmDialog, kind: "shown" },
+        { ...cancelButton, kind: "shown" }
+      ],
+      truncated: false
+    },
+    verdict: "pass",
+    summary: /focus moved/
+  }
+];
+
+for (const scenario of clickFocusScenarios) {
+  test(`change-response judge ${scenario.title}`, async () => {
+    const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+    const bundle = createBundle(
+      [...scenario.focus, accessibilityAfter(scenario.accessibilityChanges), markupAfter(true)],
+      { kind: "click", target: { role: "button", name: "Save" } }
+    );
+
+    const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+    assert.equal(judgment?.verdict, scenario.verdict);
+    assert.match(judgment?.summary ?? "", scenario.summary);
+  });
+}
+
+test("change-response judge does not count a submit focusing the control it acted on", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle(
+    [
+      ...focusMoves(["body", checkoutPage], ["button", saveButton]),
+      accessibilityAfter({ focusedAfter: saveButton, changes: [], truncated: false })
+    ],
+    // Neither role nor name: the control the submit acted on is the one it focused.
+    { kind: "submit", target: undefined }
+  );
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /Focus moved onto button "Save" itself/);
+  assert.ok(judgment?.evidenceRecordIds.includes("record-focus-after"));
+});
+
+test("change-response judge leaves a click undecided when only focus moved and nothing names it", async () => {
+  const judge = createDefaultJudgePlugins(["change-response"])[0]!;
+  const bundle = createBundle(
+    [
+      pressRecord("record-focus-before", "focus", "before", { focusTarget: { tagName: "body" } }),
+      pressRecord("record-focus-after", "focus", "after", {
+        focusTarget: { tagName: "button", name: "Save" }
+      })
+    ],
+    { kind: "click", target: { role: "button", name: "Save" } }
+  );
+
+  const [judgment] = await judge.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.match(judgment?.summary ?? "", /needs the accessibility tree before and after/);
 });
 
 test("change-response judge leaves a press undecided when only the markup changed", async () => {

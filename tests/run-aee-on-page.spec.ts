@@ -1514,6 +1514,81 @@ test("runAeeOnPage fails change-response judging when a click produces no observ
   );
 });
 
+// A click focuses the clicked button (HTML's focusing steps), and Chrome focuses the page when the
+// clicked element cannot take focus. Neither is the control responding.
+const clickFocusScenarios: Array<{
+  title: string;
+  html: string;
+  script?: () => void;
+  verdict: "pass" | "fail";
+  summary: string;
+}> = [
+  {
+    title: "clicking a button that does nothing is not a pass, though the click focuses it",
+    html: `<main><button id="clicked" type="button">Save</button></main>`,
+    verdict: "fail",
+    summary: 'Focus moved onto button "Save" itself, which a click on it does by itself'
+  },
+  {
+    title: "clicking a dead element that cannot take focus is not a pass, though it blurs a field",
+    html: `<main>
+      <label>Name <input id="name"></label>
+      <div id="clicked" role="button">Save</div>
+    </main>`,
+    script: () => (document.querySelector("#name") as HTMLInputElement).focus(),
+    verdict: "fail",
+    summary: "Focus moved to the page itself"
+  },
+  {
+    title: "clicking a button that moves focus into the dialog it opens passes",
+    html: `<main>
+      <button id="clicked" type="button">Save</button>
+      <div role="dialog" aria-label="Save changes?" hidden><button id="cancel">Cancel</button></div>
+    </main>`,
+    script: () => {
+      document.querySelector("#clicked")!.addEventListener("click", () => {
+        (document.querySelector("[role=dialog]") as HTMLElement).hidden = false;
+        (document.querySelector("#cancel") as HTMLButtonElement).focus();
+      });
+    },
+    verdict: "pass",
+    summary: "focus moved"
+  }
+];
+
+for (const scenario of clickFocusScenarios) {
+  test(`runAeeOnPage: ${scenario.title}`, async ({ page }, testInfo) => {
+    await page.setContent(scenario.html);
+    if (scenario.script) await page.evaluate(scenario.script);
+
+    const result = await runAeeOnPage({
+      page,
+      projectRoot: process.cwd(),
+      outputDir: testInfo.outputPath("aee-click-focus-output"),
+      observers: ["focus", "dom", "accessibility-tree"],
+      judges: ["change-response"],
+      interaction: { kind: "click", actor: "test", target: { role: "button", name: "Save" } },
+      async performInteraction({ page: interactionPage }) {
+        await interactionPage.click("#clicked");
+      }
+    });
+
+    const report = JSON.parse(
+      await readFile(
+        result.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"))!,
+        "utf8"
+      )
+    ) as JsonReport;
+    expect(report.judgments).toContainEqual(
+      expect.objectContaining({
+        judgeId: "change-response",
+        verdict: scenario.verdict,
+        summary: expect.stringContaining(scenario.summary)
+      })
+    );
+  });
+}
+
 test("runAeeOnPage fails keyboard judging when space does not activate a custom button", async ({
   page
 }, testInfo) => {
