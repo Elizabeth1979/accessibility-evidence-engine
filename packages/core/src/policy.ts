@@ -11,6 +11,12 @@ export interface CapturePolicy {
   includeAccessibilityTree: boolean;
   includeDomSnapshot: boolean;
   stabilizeAfterInteractionMs: number;
+  /**
+   * How long observers watch the page untouched before a press, while the virtual reader listens,
+   * so a live region that announces on its own (a ticking clock) is not taken for the press's
+   * response. A region that updates less often than this can still go unnoticed.
+   */
+  watchWithoutInputMs: number;
 }
 
 export interface ObserverPolicy {
@@ -43,7 +49,8 @@ export const DEFAULT_POLICY: AeePolicyConfig = {
     includeScreenshots: true,
     includeAccessibilityTree: true,
     includeDomSnapshot: true,
-    stabilizeAfterInteractionMs: 250
+    stabilizeAfterInteractionMs: 250,
+    watchWithoutInputMs: 1500
   },
   observers: {
     perObserverTimeoutMs: 5000,

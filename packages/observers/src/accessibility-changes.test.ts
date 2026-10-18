@@ -143,3 +143,93 @@ test("a snapshot that is not a CDP accessibility tree is not compared", () => {
   assert.equal(diffAccessibilityTrees({ role: "WebArea" }, { nodes: [] }), undefined);
   assert.equal(diffAccessibilityTrees(null, { nodes: [] }), undefined);
 });
+
+test("a change inside a live region names the region: its nearest polite or assertive ancestor, with its text", () => {
+  // <p aria-live="polite" aria-label="Clock">Time <span>10:00:01</span></p>
+  // <div role="status"></div> <div aria-live="off">…</div>
+  const tree = (time: string, status: string[], off: string) => {
+    const clock = axNode(
+      2,
+      "paragraph",
+      "Clock",
+      { live: { type: "token", value: "polite" } },
+      { parentId: "1", childIds: ["3", "4"] }
+    );
+    const label = axNode(3, "StaticText", "Time", {}, { parentId: "2" });
+    // Chrome leaves the span out of what a screen reader perceives, but keeps it in the tree.
+    const span = { ...axNode(4, "generic", ""), parentId: "2", childIds: ["5"], ignored: true };
+    const timeText = axNode(5, "StaticText", time, {}, { parentId: "4" });
+    const statusRegion = axNode(
+      6,
+      "status",
+      "",
+      { live: { type: "token", value: "polite" } },
+      { parentId: "1", childIds: status.length ? ["7"] : [] }
+    );
+    const statusText = status.map((text) => axNode(7, "StaticText", text, {}, { parentId: "6" }));
+    const silent = axNode(
+      8,
+      "generic",
+      "",
+      { live: { type: "token", value: "off" } },
+      { parentId: "1", childIds: ["9"] }
+    );
+    const silentText = axNode(9, "StaticText", off, {}, { parentId: "8" });
+    const page = axNode(1, "RootWebArea", "Shop", {}, { childIds: ["2", "6", "8"] });
+    return {
+      nodes: [page, clock, label, span, timeText, statusRegion, ...statusText, silent, silentText]
+    };
+  };
+
+  const changes = diffAccessibilityTrees(
+    tree("10:00:01", [], "3 items"),
+    tree("10:00:02", ["Saved"], "4 items")
+  );
+
+  assert.deepEqual(changes?.liveRegions, [
+    { nodeId: 2, role: "paragraph", name: "Clock", politeness: "polite", text: "Time 10:00:02" },
+    { nodeId: 6, role: "status", politeness: "polite", text: "Saved" }
+  ]);
+  // The region marked off changed too, but a screen reader does not announce it.
+  assert.equal(changes?.changes.length, 3);
+});
+
+test("a region that left the page is named with its text from before", () => {
+  const region = (shown: boolean) =>
+    shown
+      ? [
+          axNode(
+            2,
+            "alert",
+            "",
+            { live: { type: "token", value: "assertive" } },
+            { parentId: "1", childIds: ["3"] }
+          ),
+          axNode(3, "StaticText", "Card declined", {}, { parentId: "2" })
+        ]
+      : [];
+  const page = (shown: boolean) =>
+    axNode(1, "RootWebArea", "Pay", {}, { childIds: shown ? ["2"] : [] });
+
+  const changes = diffAccessibilityTrees(
+    { nodes: [page(true), ...region(true)] },
+    { nodes: [page(false)] }
+  );
+
+  assert.deepEqual(changes?.liveRegions, [
+    { nodeId: 2, role: "alert", politeness: "assertive", text: "Card declined" }
+  ]);
+});
+
+test("changes outside any live region name none", () => {
+  const changes = diffAccessibilityTrees(
+    { nodes: [axNode(1, "RootWebArea", "Shop", {}, { childIds: [] })] },
+    {
+      nodes: [
+        axNode(1, "RootWebArea", "Shop", {}, { childIds: ["2"] }),
+        axNode(2, "StaticText", "Welcome", {}, { parentId: "1" })
+      ]
+    }
+  );
+  assert.equal(changes?.liveRegions, undefined);
+});

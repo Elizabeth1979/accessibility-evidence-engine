@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { executeRun, type ObserverPlugin } from "@aee/core";
+
 import {
   createAccessibilityTreeObserver,
   createAxeObserver,
@@ -210,6 +212,128 @@ test("the virtual-reader observer listens before the press and keeps only its li
   assert.equal(listening, true);
   assert.equal(before.meta?.newLiveRegionAnnouncements, undefined);
   assert.deepEqual(after.meta?.newLiveRegionAnnouncements, [announcement(2, "Saved")]);
+});
+
+test("the virtual-reader observer keeps what the page announced on its own before the press apart from the press's announcements", async () => {
+  const announcement = (sequence: number, text: string) => ({
+    sequence,
+    timestamp: "2026-09-13T00:00:00.000Z",
+    politeness: "polite" as const,
+    text
+  });
+  const transcript = {
+    entries: [],
+    liveRegionAnnouncements: [announcement(1, "10:00:00")]
+  };
+  const observer = createVirtualScreenReaderObserver();
+  const context: RuntimeObserverContext = {
+    runId: "run-reader-own",
+    page: {
+      async content() {
+        return '<p aria-live="polite"></p>';
+      },
+      async listenVirtualScreenReader() {},
+      async snapshotVirtualScreenReaderTranscript() {
+        return transcript;
+      }
+    }
+  };
+
+  await observer.setup!(context);
+  // The page is left untouched; its clock announces twice.
+  transcript.liveRegionAnnouncements.push(announcement(2, "10:00:01"), announcement(3, "10:00:02"));
+  const [before] = await observer.captureBefore!(context);
+  transcript.liveRegionAnnouncements.push(announcement(4, "10:00:03"));
+  const [after] = await observer.captureAfter!(context);
+
+  assert.deepEqual(before.meta?.liveRegionAnnouncementsWithoutInput, [
+    announcement(2, "10:00:01"),
+    announcement(3, "10:00:02")
+  ]);
+  assert.match(before.summary ?? "", /live regions announced 2 updates on their own/);
+  assert.deepEqual(after.meta?.newLiveRegionAnnouncements, [announcement(4, "10:00:03")]);
+  assert.equal(after.meta?.liveRegionAnnouncementsWithoutInput, undefined);
+});
+
+test("the accessibility-tree observer records which live regions changed while the page was left untouched", async () => {
+  const observer = createAccessibilityTreeObserver();
+  let time = "10:00:01";
+  const context: RuntimeObserverContext = {
+    runId: "run-accessibility-watch",
+    page: {
+      async content() {
+        return '<p aria-live="polite">10:00:01</p>';
+      },
+      async snapshotAccessibilityTree() {
+        return {
+          nodes: [
+            {
+              nodeId: "2",
+              ignored: false,
+              role: { type: "role", value: "paragraph" },
+              properties: [{ name: "live", value: { type: "token", value: "polite" } }],
+              childIds: ["3"],
+              backendDOMNodeId: 2
+            },
+            {
+              nodeId: "3",
+              parentId: "2",
+              ignored: false,
+              role: { type: "role", value: "StaticText" },
+              name: { type: "computedString", value: time },
+              properties: [],
+              backendDOMNodeId: 3
+            }
+          ]
+        };
+      }
+    }
+  };
+
+  await observer.startWatchWithoutInput!(context);
+  time = "10:00:02";
+  const [before] = await observer.captureBefore!(context);
+
+  assert.deepEqual(before.meta?.accessibilityChangesWithoutInput, {
+    changes: [
+      {
+        nodeId: 3,
+        role: "StaticText",
+        name: "10:00:02",
+        kind: "name",
+        before: "10:00:01",
+        after: "10:00:02"
+      }
+    ],
+    truncated: false,
+    liveRegions: [{ nodeId: 2, role: "paragraph", politeness: "polite", text: "10:00:02" }]
+  });
+  assert.match(before.summary ?? "", /while the page was left untouched, 1 change/);
+});
+
+test("the accessibility-tree observer says when the tree could not be read as the watch started", async () => {
+  const observer = createAccessibilityTreeObserver();
+  let calls = 0;
+  const context: RuntimeObserverContext = {
+    runId: "run-accessibility-watch-error",
+    page: {
+      async content() {
+        return "<p></p>";
+      },
+      async snapshotAccessibilityTree() {
+        calls += 1;
+        if (calls === 1) throw new Error("Target closed");
+        return { nodes: [] };
+      }
+    }
+  };
+
+  await observer.startWatchWithoutInput!(context);
+  const [before] = await observer.captureBefore!(context);
+
+  assert.equal(before.status, "ok");
+  assert.equal(before.meta?.accessibilityChangesWithoutInput, undefined);
+  assert.match(before.diagnostics?.[0] ?? "", /could not be read.*Target closed/);
 });
 
 test("createVirtualScreenReaderObserver writes canonical JSON and readable text", async () => {
@@ -638,4 +762,58 @@ test("createNetworkObserver redacts sensitive network data before writing artifa
   } finally {
     await rm(artifactDir, { recursive: true, force: true });
   }
+});
+
+test("a run watches the page untouched before an interaction that can change it, and not before one that only reads", async () => {
+  const events: string[] = [];
+  const recorder: ObserverPlugin = {
+    manifest: {
+      id: "recorder",
+      displayName: "Recorder",
+      version: "0.0.0",
+      kind: "observer",
+      capabilities: []
+    },
+    async startWatchWithoutInput() {
+      events.push("watch");
+    },
+    async captureBefore() {
+      events.push("before");
+      return [];
+    }
+  };
+  const run = (interactionReadsOnly: boolean) =>
+    executeRun({
+      runId: "run-watch",
+      checkpoint: {
+        id: "checkpoint-1",
+        runId: "run-watch",
+        timestamp: "2026-09-13T00:00:00.000Z",
+        trigger: "manual"
+      },
+      interaction: {
+        id: "interaction-1",
+        runId: "run-watch",
+        kind: "enter",
+        actor: "test",
+        timestamp: "2026-09-13T00:00:00.000Z"
+      },
+      observerContext: { runId: "run-watch" },
+      observerPlugins: [recorder],
+      judgePlugins: [],
+      watchWithoutInputMs: 40,
+      interactionReadsOnly,
+      async executeInteraction() {
+        events.push("press");
+      }
+    });
+
+  const started = Date.now();
+  await run(false);
+  assert.deepEqual(events, ["watch", "before", "press"]);
+  assert.ok(Date.now() - started >= 40);
+
+  events.length = 0;
+  await run(true);
+  assert.deepEqual(events, ["press"]);
 });

@@ -152,7 +152,8 @@ test("validateSchema rejects malformed nested policy values", () => {
     policy: {
       capture: {
         includeScreenshots: "yes",
-        stabilizeAfterInteractionMs: -1
+        stabilizeAfterInteractionMs: -1,
+        watchWithoutInputMs: 1.5
       },
       release: {
         unknownBehavior: "approve-everything"
@@ -166,6 +167,7 @@ test("validateSchema rejects malformed nested policy values", () => {
   assert.equal(result.valid, false);
   assert.match(result.errors.join(" "), /must be boolean/);
   assert.match(result.errors.join(" "), /must be >= 0/);
+  assert.match(result.errors.join(" "), /watchWithoutInputMs must be integer/);
   assert.match(result.errors.join(" "), /must be equal to one of the allowed values/);
   assert.match(result.errors.join(" "), /must be >= 1/);
 });
@@ -449,6 +451,64 @@ test("validateSchema checks the new live-region announcements a reader record ca
   assert.match(
     result.errors.join(" "),
     /newLiveRegionAnnouncements\/0 is missing required property "sequence"/
+  );
+});
+
+test("validateSchema checks what the page did on its own before a press, and the live regions changes are in", () => {
+  const clock = {
+    nodeId: 2,
+    role: "region",
+    name: "Clock",
+    politeness: "polite",
+    text: "10:00:02"
+  };
+  const treeRecord = (region: Record<string, unknown>) => ({
+    id: "accessibility-tree:before:1",
+    runId: "run-1",
+    observerId: "accessibility-tree",
+    phase: "before",
+    status: "ok",
+    timestamp: "2026-09-13T00:00:00.000Z",
+    meta: {
+      accessibilityChangesWithoutInput: {
+        changes: [
+          {
+            nodeId: 3,
+            role: "StaticText",
+            name: "10:00:02",
+            kind: "name",
+            before: "10:00:01",
+            after: "10:00:02"
+          }
+        ],
+        truncated: false,
+        liveRegions: [region]
+      }
+    }
+  });
+
+  const valid = validateSchema("evidenceRecord", treeRecord(clock));
+  assert.equal(valid.valid, true, valid.errors.join("; "));
+  const offRegion = validateSchema("evidenceRecord", treeRecord({ ...clock, politeness: "off" }));
+  assert.equal(offRegion.valid, false);
+  assert.match(
+    offRegion.errors.join(" "),
+    /accessibilityChangesWithoutInput\/liveRegions\/0\/politeness/
+  );
+
+  const heard = validateSchema("evidenceRecord", {
+    id: "virtual-screen-reader:before:1",
+    runId: "run-1",
+    observerId: "virtual-screen-reader",
+    phase: "before",
+    status: "ok",
+    timestamp: "2026-09-13T00:00:00.000Z",
+    meta: { liveRegionAnnouncementsWithoutInput: [{ politeness: "polite", text: "10:00:01" }] }
+  });
+  assert.equal(heard.valid, false);
+  assert.match(
+    heard.errors.join(" "),
+    /liveRegionAnnouncementsWithoutInput\/0 is missing required property "sequence"/
   );
 });
 
