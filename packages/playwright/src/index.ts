@@ -2052,7 +2052,15 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
     } finally {
       stillRequests.stop();
     }
-    await still.screenshot({ path: screenshotFile, fullPage: true });
+    // A frame a redirect took off-site was not read, so the picture covers it too.
+    const framesLeftOut = await withPageSessions(still.context(), still, (sessions) =>
+      framesNotChecked(framesInsideOrigins(sessions, allowedOrigins))
+    );
+    await still.screenshot({
+      path: screenshotFile,
+      fullPage: true,
+      mask: frameMasks(still, framesLeftOut)
+    });
     const locations = await locateElements(
       still,
       result.findings.map(({ selector }) => selector)

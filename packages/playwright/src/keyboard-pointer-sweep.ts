@@ -20,6 +20,7 @@ import {
   normalizeAllowedOrigins
 } from "./allowed-origins";
 import { locateElements, type ElementLocation } from "./element-locations";
+import { frameMasks, framesNotChecked, type LocatorScope } from "./frames-not-checked";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
 import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-page";
@@ -160,15 +161,20 @@ export interface KeyboardPointerSweepResponse {
   request(): KeyboardPointerSweepRequest;
 }
 
-export interface KeyboardPointerSweepPage extends FramedPage {
+export interface KeyboardPointerSweepPage extends FramedPage, LocatorScope {
   context(): { newCDPSession(page: unknown): Promise<KeyboardPointerSweepCdpSession> };
-  /** Playwright's page screenshot: the sweep cuts each Tab stop's frame from a viewport capture. */
-  screenshot(options: {
+  /**
+   * Playwright's page screenshot: the sweep cuts each Tab stop's frame from a viewport capture.
+   * Its options are as Playwright types them, so its `Page` fits with the `Locator`s it masks.
+   */
+  screenshot(options?: {
     fullPage?: boolean;
     path?: string;
-    animations?: "disabled";
-    caret?: "hide";
+    animations?: "disabled" | "allow";
+    caret?: "hide" | "initial";
     timeout?: number;
+    /** Locators Playwright covers in the picture (`frameMasks`). */
+    mask?: unknown[];
   }): Promise<Uint8Array>;
   goto(url: string): Promise<unknown>;
   reload(): Promise<unknown>;
@@ -350,13 +356,16 @@ async function sweepPage(
 
   await loadPage();
   let framesNotRead: UnreadFrame[] = [];
+  // The browser has still drawn the frames left unread, so the sweep's pictures cover them.
+  let mask: unknown[] = [];
   const findings: SweepFinding[] = (
-    await withPageSessions(page.context(), page, (sessions) => {
+    await withPageSessions(page.context(), page, async (sessions) => {
       const read = allowedOrigins ? framesInsideOrigins(sessions, allowedOrigins) : sessions;
       framesNotRead = read.framesNotRead.map(({ url, reason }) => ({
         url: redactUrl(url),
         reason
       }));
+      mask = frameMasks(page, await framesNotChecked(read));
       return findHeadingLookalikes(read);
     })
   ).map(({ selector, framePath, text, fontSize, fontWeight, bodyFontSize, bodyFontWeight }) => ({
@@ -379,9 +388,9 @@ async function sweepPage(
       )
     );
   }
-  findings.push(...(await textImages(page, probe)));
+  findings.push(...(await textImages(page, probe, mask)));
   const tabStops = await withCdpSession(page.context(), page, (session) =>
-    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep)
+    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep, mask)
   );
   // Tab reaching nothing on a page with controls it reaches natively says the walk did not happen,
   // not that every control is mouse-only, so the sweep decides nothing.
@@ -727,7 +736,8 @@ async function collectTabStops(
   session: CdpSession,
   probe: <T>(request: ProbeRequest) => Promise<T>,
   maxTabStops: number,
-  onStep: KeyboardPointerSweepOptions["onStep"]
+  onStep: KeyboardPointerSweepOptions["onStep"],
+  mask: unknown[]
 ): Promise<SweepTabStop[]> {
   const stops: Array<SweepTabStop & { frame: FocusFrame | null }> = [];
   const isNewStop = (active: SweepTabStop | null): active is SweepTabStop =>
@@ -751,7 +761,7 @@ async function collectTabStops(
     );
     if (!isNewStop(active)) break;
     const frame = await probe<FocusFrame | null>({ mode: "frame", selector: active.selector });
-    const focusedCrop = frame ? await captureFrame(page, frame) : undefined;
+    const focusedCrop = frame ? await captureFrame(page, frame, mask) : undefined;
     stops.push({ ...active, frame, ...(focusedCrop ? { focusedCrop } : {}) });
   }
   await probe({ mode: "blur" });
@@ -759,7 +769,7 @@ async function collectTabStops(
   for (const { frame, ...stop } of stops) {
     if (frame && stop.focusedCrop) {
       await probe({ mode: "scroll-to", x: frame.scrollX, y: frame.scrollY });
-      const unfocused = await captureFrame(page, frame);
+      const unfocused = await captureFrame(page, frame, mask);
       if (unfocused) stop.focusVisible = visiblyDifferent(stop.focusedCrop, unfocused);
     }
     measured.push(stop);
@@ -794,15 +804,22 @@ function visiblyDifferent(first: Uint8Array, second: Uint8Array): boolean {
  * A PNG of one frame, with animations finished and the text caret hidden so that only focus can
  * change it. A capture that times out leaves that stop unmeasured rather than stopping the sweep.
  * The frame is cut from a capture of the whole viewport: Chromium's screencast, which a recording
- * of the sweep is made from, shows a clipped capture for that moment instead of the page.
+ * of the sweep is made from, shows a clipped capture for that moment instead of the page. `mask`
+ * covers the frames the sweep does not read.
  */
 async function captureFrame(
   page: KeyboardPointerSweepPage,
-  { clip, pixelRatio }: FocusFrame
+  { clip, pixelRatio }: FocusFrame,
+  mask: unknown[]
 ): Promise<Uint8Array | undefined> {
   let viewport: Uint8Array;
   try {
-    viewport = await page.screenshot({ animations: "disabled", caret: "hide", timeout: 5_000 });
+    viewport = await page.screenshot({
+      animations: "disabled",
+      caret: "hide",
+      timeout: 5_000,
+      mask
+    });
   } catch (error) {
     if (error instanceof Error && error.name === "TimeoutError") return undefined;
     throw error;
@@ -830,7 +847,8 @@ const MOSTLY_ONE_COLOUR = 0.97;
 /** Images that may be words drawn as pixels: candidates by shape and name, then by their pixels. */
 async function textImages(
   page: KeyboardPointerSweepPage,
-  probe: <T>(request: ProbeRequest) => Promise<T>
+  probe: <T>(request: ProbeRequest) => Promise<T>,
+  mask: unknown[]
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
   for (const image of await namedByTree(
@@ -842,7 +860,7 @@ async function textImages(
       selector: image.selector,
       margin: 0
     });
-    const crop = frame ? await captureFrame(page, frame) : undefined;
+    const crop = frame ? await captureFrame(page, frame, mask) : undefined;
     if (!crop || !drawnInTwoFlatColours(PNG.sync.read(Buffer.from(crop)))) continue;
     findings.push(
       sweepFinding(
