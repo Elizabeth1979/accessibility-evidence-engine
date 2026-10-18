@@ -11,6 +11,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ### Changed
 
+- axe-core and `@axe-core/playwright` move together to 4.14.0. axe 4.14 makes `label-content-name-mismatch` a default WCAG 2.1 A rule instead of an experimental one, so it still runs and blocks release; AEE now switches on four experimental WCAG rules (`css-orientation-lock`, `p-as-heading`, `table-fake-caption`, `td-has-header`). Rule links point at Deque's 4.14 pages.
+
 - A click or submit no longer passes the change-response judge just because it moved focus onto the clicked control. A click focuses what it lands on by itself (HTML's focusing steps), so clicking a button that does nothing passed with "focus moved". It now fails when nothing else in the accessibility tree changed, or is `unknown` when something unrelated did, as for any press with no response of its own. Chrome moving focus to the page when a click lands on something that cannot take focus is not counted either. Focus moving anywhere else, such as into a dialog the click opened, still counts. The judgment says when it set the click's own focus aside, and a failure lists the focus records as evidence. Enter and Space are unchanged: focus is already on the control. Change-response judge 0.3.0.
 - AEE needs Node 22.18 or later on Node 22, or 24.11 or later on Node 24 (`^22.18.0 || >=24.11.0`), up from 22.13. `aee fix` reads source files with `@babel/parser`, which moves to 8.0.7, and Babel 8 supports only that range. CI's oldest-Node job now runs exactly 22.18.
 

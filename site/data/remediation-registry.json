@@ -75,27 +75,27 @@
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "button-name",
           "title": "Buttons must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/button-name"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/button-name"
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "link-name",
           "title": "Links must have discernible text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/link-name"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/link-name"
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "label",
           "title": "Form elements must have labels",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/label"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/label"
         }
       ],
       "patterns": ["buttons", "link", "forms"],
@@ -142,11 +142,11 @@
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "image-alt",
           "title": "Images must have alternative text",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/image-alt"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/image-alt"
         }
       ],
       "patterns": ["image-labeling"],
@@ -232,11 +232,11 @@
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "empty-heading",
           "title": "Headings should not be empty",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/empty-heading"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/empty-heading"
         }
       ],
       "patterns": ["headings"],
@@ -344,11 +344,11 @@
         },
         {
           "standard": "axe-core",
-          "version": "4.13",
+          "version": "4.14",
           "requirementId": "link-in-text-block",
           "title": "Links must be distinguishable without relying on color",
           "relationship": "detection",
-          "url": "https://dequeuniversity.com/rules/axe/4.13/link-in-text-block"
+          "url": "https://dequeuniversity.com/rules/axe/4.14/link-in-text-block"
         }
       ],
       "patterns": ["color-contrast"],

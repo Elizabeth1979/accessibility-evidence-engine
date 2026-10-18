@@ -9,7 +9,7 @@ axe-core decides its rules reliably and cheaply: a missing name, a missing alt, 
 
 ## Decision
 
-Pinned axe-core (4.13) runs at every checkpoint, and its failures block release. The one exception is a rule axe tags as best practice with no WCAG tag: it is reported as advisory ("Best practice") and never blocks release. AEE does not re-implement axe rules.
+Pinned axe-core (4.14) runs at every checkpoint, and its failures block release. The one exception is a rule axe tags as best practice with no WCAG tag: it is reported as advisory ("Best practice") and never blocks release. AEE does not re-implement axe rules.
 
 AEE's own value sits on top of that floor:
 

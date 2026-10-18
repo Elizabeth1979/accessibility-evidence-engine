@@ -37,7 +37,7 @@
     "test:playwright": "npm run build && playwright test"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "4.14.0",
     "@eslint/js": "^10.0.1",
     "@guidepup/guidepup": "^0.36.3",
     "@guidepup/playwright": "^0.20.0",
