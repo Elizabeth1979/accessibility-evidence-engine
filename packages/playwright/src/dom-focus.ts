@@ -2,15 +2,18 @@ import type * as Tabbable from "tabbable";
 
 import {
   mainFrameOf,
+  type CdpSession,
   type DomNodeRef,
   type PageFrame,
   type PageSessions
 } from "./accessibility-tree";
+import { describeFocusElement, type FocusAccessibility } from "./focus-accessibility";
 import {
   callOn,
   frameDocuments,
   loadPageScript,
   nodeOf,
+  objectOn,
   PageObject,
   TABBABLE_SCRIPT,
   type FrameDocuments,
@@ -71,12 +74,14 @@ export async function focusPath(
   return path;
 }
 
-/** How an element with focus, or on the way to it, looks and where it sits. */
-export interface FocusedElement {
+/**
+ * How an element with focus, or on the way to it, looks and where it sits; its role, name, states,
+ * dialog and composite widget are the accessibility tree's, which is what NVDA and JAWS receive
+ * from Chrome. They are absent when the tree does not have the element.
+ */
+export interface FocusedElement extends Partial<FocusAccessibility> {
   tagName: string;
   id?: string;
-  role?: string;
-  name?: string;
   type?: string;
   tabIndex?: number;
   disabled?: boolean;
@@ -89,19 +94,6 @@ export interface FocusedElement {
     outlineStyle: string;
     outlineWidth: string;
     boxShadow: string;
-  };
-  ariaSelected?: boolean;
-  ariaChecked?: boolean;
-  compositeRole?: string;
-  compositeOrientation?: string;
-  compositeItemIndex?: number;
-  compositeItemCount?: number;
-  dialogContext?: {
-    tagName: string;
-    id?: string;
-    role?: string;
-    name?: string;
-    ariaModal?: boolean;
   };
   /**
    * Its place in the page's tab order, counted from 0 across the top document and every frame,
@@ -145,15 +137,91 @@ export interface DomFocusState extends FocusedElement {
   activeDescendant?: FocusedElement;
 }
 
-type ElementDescription = Omit<
+/** What the page itself shows of an element; the rest of a `FocusedElement` is placed after. */
+type PageDescription = Omit<
   FocusedElement,
-  "frameId" | "framePath" | "backendDOMNodeId" | "focusOrderIndex" | "focusableCount"
+  | keyof FocusAccessibility
+  | "frameId"
+  | "framePath"
+  | "backendDOMNodeId"
+  | "focusOrderIndex"
+  | "focusableCount"
 > & {
   /** Its place among its own document's tab stops, as tabbable orders them. */
   tabStop?: number;
 };
 
-/** One document's part of DOM focus, as `describeDocumentFocus` reads it in the page. */
+type ElementDescription = PageDescription & Partial<FocusAccessibility>;
+
+/**
+ * One document's part of the chain to focus, run on the element that has focus there (the one
+ * `ACTIVE_ELEMENT` finds): the document's active element and each shadow root's down to it, which
+ * are the shadow hosts it is inside, read back up through each `getRootNode().host`, closed roots'
+ * hosts too; then the element its `aria-activedescendant` names, looked up in the tree that holds
+ * it (the ARIA ID-reference scope), or null. Kept in the page, for the page and the tree to
+ * describe.
+ */
+const FOCUS_ELEMENTS = `function () {
+  const chain = [this];
+  for (let root = this.getRootNode(); root instanceof ShadowRoot; root = root.host.getRootNode()) {
+    chain.unshift(root.host);
+  }
+  const id = this.getAttribute("aria-activedescendant");
+  return [...chain, id ? this.getRootNode().getElementById(id) : null];
+}`;
+
+const ACTIVE_DESCENDANT_ID = `function () {
+  return this.getAttribute("aria-activedescendant") || undefined;
+}`;
+
+/** The objects of an array kept in the page, in order; a null entry is undefined. */
+async function objectsOf(
+  session: CdpSession,
+  array: PageObject
+): Promise<Array<string | undefined>> {
+  const { result } = (await session.send("Runtime.getProperties", {
+    objectId: array.objectId,
+    ownProperties: true
+  })) as { result: Array<{ name: string; value?: { objectId?: string; subtype?: string } }> };
+  return result
+    .filter(({ name }) => /^\d+$/.test(name))
+    .sort((first, second) => Number(first.name) - Number(second.name))
+    .map(({ value }) => (value?.subtype === "node" ? value.objectId : undefined));
+}
+
+/**
+ * One document's part of DOM focus, read on its focused element: what the page shows of each
+ * element on the way to focus (`describeElement`, in the page) and what the accessibility tree
+ * gives it, read on the same element in its frame's own session.
+ */
+async function readDocumentFocus(
+  session: CdpSession,
+  focusedObjectId: string,
+  pageArguments: [tabbableGlobal: string | null, shadowRoots: PageObject]
+): Promise<DocumentFocus> {
+  const describe = async (objectId: string): Promise<ElementDescription> => ({
+    ...(await callOn<PageDescription>(session, objectId, `${describeElement}`, pageArguments)),
+    ...(await describeFocusElement(session, objectId))
+  });
+  const elements = await objectOn(session, focusedObjectId, FOCUS_ELEMENTS);
+  if (!elements) throw new Error("The page returned no elements on the way to focus.");
+  const objects = await objectsOf(session, elements);
+  const activeDescendantObject = objects.pop();
+  const chain: ElementDescription[] = [];
+  for (const objectId of objects) chain.push(await describe(objectId!));
+  const activeDescendantId = await callOn<string | undefined>(
+    session,
+    focusedObjectId,
+    ACTIVE_DESCENDANT_ID
+  );
+  return {
+    chain,
+    ...(activeDescendantId ? { activeDescendantId } : {}),
+    ...(activeDescendantObject ? { activeDescendant: await describe(activeDescendantObject) } : {})
+  };
+}
+
+/** One document's part of DOM focus. */
 interface DocumentFocus {
   /** The document's active element, then each shadow root's down to the one with focus. */
   chain: ElementDescription[];
@@ -203,12 +271,10 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
     };
     // tabbable is in every frame's page once the page's order is counted, and a place in a
     // document's own tab stops means nothing without it. focusPath read the frame's shadow roots.
-    const focus = await callOn<DocumentFocus>(
-      frame.session,
-      object.objectId,
-      `${describeDocumentFocus}`,
-      [order ? TABBABLE_SCRIPT.global : null, (await documents.shadowRoots(frame))!]
-    );
+    const focus = await readDocumentFocus(frame.session, object.objectId, [
+      order ? TABBABLE_SCRIPT.global : null,
+      (await documents.shadowRoots(frame))!
+    ]);
     const place = { frameId, ...(framePath.length ? { framePath: [...framePath] } : {}) };
     focus.chain.forEach((element, at) => {
       const deepest = at === focus.chain.length - 1;
@@ -431,56 +497,25 @@ function documentTabSequence(
 }
 
 /**
- * Describes DOM focus in one document, run in the page on the element that has focus there (the
- * one `ACTIVE_ELEMENT` finds). The document's active element and each shadow root's on the way
- * down to it are the shadow hosts it is inside, so the chain is read back up through each
- * `getRootNode().host`, closed roots' hosts too. Its place among the document's tab stops is
- * tabbable's, given the document's shadow roots, when the tabbable script `tabbableGlobal` names
- * is loaded. It is sent to the page as source, as Playwright's own `evaluate` sends a function, so
- * it uses nothing from outside itself.
+ * What the page itself shows of one element, run in the page on it: its tag, type and tab index,
+ * whether its focus is visible, and its place among its document's tab stops, which is tabbable's,
+ * given the document's shadow roots, when the tabbable script `tabbableGlobal` names is loaded.
+ * Its role, name and states are the accessibility tree's, read outside the page. It is sent to the
+ * page as source, as Playwright's own `evaluate` sends a function, so it uses nothing from outside
+ * itself.
  */
-function describeDocumentFocus(
+function describeElement(
   this: Element,
   tabbableGlobal: string | null,
   shadowRoots: ShadowRootsInPage
-): DocumentFocus {
-  const COMPOSITE_ITEMS: Record<string, string> = {
-    tablist: '[role="tab"]',
-    radiogroup: '[role="radio"]',
-    listbox: '[role="option"]',
-    menu: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-    menubar: '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
-    tree: '[role="treeitem"]',
-    grid: '[role="gridcell"], [role="rowheader"], [role="columnheader"]'
-  };
+): PageDescription {
   const tabStops: Element[] = tabbableGlobal
     ? (globalThis as unknown as Record<string, typeof Tabbable>)[tabbableGlobal]!.tabbable(
         this.ownerDocument.documentElement,
         shadowRoots
       )
     : [];
-
-  const booleanAttribute = (element: Element, name: string) => {
-    const value = element.getAttribute(name);
-    return value === "true" ? true : value === "false" ? false : undefined;
-  };
   const tagOf = (element: Element) => element.tagName.toLowerCase();
-  const implicitRole = (element: Element, tagName: string): string | undefined => {
-    if (tagName === "a" && element.getAttribute("href")) return "link";
-    if (tagName === "button" || tagName === "summary") return "button";
-    if (tagName === "textarea") return "textbox";
-    if (tagName === "select")
-      return element.getAttribute("multiple") !== null ? "listbox" : "combobox";
-    if (tagName !== "input") return undefined;
-    const type = (element as HTMLInputElement).type.toLowerCase();
-    if (type === "checkbox") return "checkbox";
-    if (type === "radio") return "radio";
-    if (["button", "image", "reset", "submit"].includes(type)) return "button";
-    if (type === "range") return "slider";
-    if (type === "number") return "spinbutton";
-    if (["email", "search", "tel", "text", "url"].includes(type)) return "textbox";
-    return undefined;
-  };
   const nodePathOf = (element: Element) => {
     const segments: string[] = [];
     for (let current: Element | null = element; current; current = current.parentElement) {
@@ -490,106 +525,34 @@ function describeDocumentFocus(
     }
     return segments.join(" > ");
   };
-  // An id reference is looked up in the tree that holds the element: its document or shadow root.
-  const byId = (element: Element, id: string) =>
-    (element.getRootNode() as Document | ShadowRoot).getElementById(id);
-  const compositeOf = (element: Element) => {
-    for (let current = element.parentElement; current; current = current.parentElement) {
-      const role = current.getAttribute("role");
-      if (role && role in COMPOSITE_ITEMS) return { role, element: current };
-    }
-    return undefined;
-  };
-  const dialogOf = (element: Element) => {
-    for (let current: Element | null = element; current; current = current.parentElement) {
-      const role = current.getAttribute("role");
-      const tagName = tagOf(current);
-      if (tagName !== "dialog" && role !== "dialog" && role !== "alertdialog") continue;
-      const labelledById = current.getAttribute("aria-labelledby");
-      const labelledByText = labelledById
-        ? byId(current, labelledById)?.textContent?.trim()
-        : undefined;
-      return {
-        tagName,
-        id: current.id || undefined,
-        role: role ?? (tagName === "dialog" ? "dialog" : undefined),
-        name:
-          current.getAttribute("aria-label") ??
-          (labelledByText || current.textContent?.trim().slice(0, 120)),
-        ariaModal: booleanAttribute(current, "aria-modal")
-      };
-    }
-    return undefined;
-  };
-  const describe = (element: Element): ElementDescription => {
-    const tagName = tagOf(element);
-    const role = element.getAttribute("role") ?? implicitRole(element, tagName);
-    const text = element.textContent?.trim();
-    const canUseTextAsName =
-      Boolean(role) || ["a", "button", "label", "option", "summary", "td", "th"].includes(tagName);
-    const type = (element as HTMLInputElement).type;
-    const tabIndex = (element as HTMLElement).tabIndex;
-    const disabled = (element as HTMLButtonElement).disabled;
-    const style = getComputedStyle(element);
-    let focusVisible: boolean;
-    try {
-      focusVisible = element.matches(":focus-visible");
-    } catch {
-      focusVisible = false;
-    }
-    const outlineVisible = style.outlineStyle !== "none" && style.outlineWidth !== "0px";
-    const shadowVisible = style.boxShadow !== "none";
-    const composite = compositeOf(element);
-    const compositeItems = composite
-      ? Array.from(composite.element.querySelectorAll(COMPOSITE_ITEMS[composite.role]!))
-      : [];
-    const compositeItemIndex = compositeItems.indexOf(element);
-    const tabStop = tabStops.indexOf(element);
-    return {
-      tagName,
-      id: element.id || undefined,
-      role: role ?? undefined,
-      name:
-        element.getAttribute("aria-label") ??
-        element.getAttribute("name") ??
-        (canUseTextAsName && text ? text.slice(0, 120) : undefined),
-      type: typeof type === "string" && type ? type : undefined,
-      tabIndex: typeof tabIndex === "number" ? tabIndex : undefined,
-      disabled: typeof disabled === "boolean" ? disabled : undefined,
-      nodePath: nodePathOf(element),
-      focusVisible,
-      focusIndicator: {
-        visible: focusVisible && (outlineVisible || shadowVisible),
-        outlineColor: style.outlineColor,
-        outlineStyle: style.outlineStyle,
-        outlineWidth: style.outlineWidth,
-        boxShadow: style.boxShadow
-      },
-      ariaSelected: booleanAttribute(element, "aria-selected"),
-      ariaChecked: booleanAttribute(element, "aria-checked"),
-      compositeRole: composite?.role,
-      compositeOrientation: composite
-        ? (composite.element.getAttribute("aria-orientation") ??
-          (composite.role === "tablist" || composite.role === "menubar"
-            ? "horizontal"
-            : "vertical"))
-        : undefined,
-      compositeItemIndex: compositeItemIndex >= 0 ? compositeItemIndex : undefined,
-      compositeItemCount: compositeItems.length > 0 ? compositeItems.length : undefined,
-      dialogContext: dialogOf(element),
-      tabStop: tabStop >= 0 ? tabStop : undefined
-    };
-  };
-
-  const chain = [this];
-  for (let root = this.getRootNode(); root instanceof ShadowRoot; root = root.host.getRootNode()) {
-    chain.unshift(root.host);
+  const type = (this as HTMLInputElement).type;
+  const tabIndex = (this as HTMLElement).tabIndex;
+  const disabled = (this as HTMLButtonElement).disabled;
+  const style = getComputedStyle(this);
+  let focusVisible: boolean;
+  try {
+    focusVisible = this.matches(":focus-visible");
+  } catch {
+    focusVisible = false;
   }
-  const activeDescendantId = this.getAttribute("aria-activedescendant") || undefined;
-  const activeDescendant = activeDescendantId ? byId(this, activeDescendantId) : null;
+  const outlineVisible = style.outlineStyle !== "none" && style.outlineWidth !== "0px";
+  const shadowVisible = style.boxShadow !== "none";
+  const tabStop = tabStops.indexOf(this);
   return {
-    chain: chain.map(describe),
-    activeDescendantId,
-    activeDescendant: activeDescendant ? describe(activeDescendant) : undefined
+    tagName: tagOf(this),
+    id: this.id || undefined,
+    type: typeof type === "string" && type ? type : undefined,
+    tabIndex: typeof tabIndex === "number" ? tabIndex : undefined,
+    disabled: typeof disabled === "boolean" ? disabled : undefined,
+    nodePath: nodePathOf(this),
+    focusVisible,
+    focusIndicator: {
+      visible: focusVisible && (outlineVisible || shadowVisible),
+      outlineColor: style.outlineColor,
+      outlineStyle: style.outlineStyle,
+      outlineWidth: style.outlineWidth,
+      boxShadow: style.boxShadow
+    },
+    tabStop: tabStop >= 0 ? tabStop : undefined
   };
 }

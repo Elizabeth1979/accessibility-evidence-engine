@@ -2293,7 +2293,7 @@ test("runAeeOnPage verifies focus moves inside an opened dialog", async ({ page 
               id: "dialog",
               role: "dialog",
               name: "Delete Project Alpha?",
-              ariaModal: true
+              modal: true
             })
           })
         })

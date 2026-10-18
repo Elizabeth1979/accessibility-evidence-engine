@@ -73,7 +73,7 @@ export async function callOn<Value>(
 }
 
 /** The object a function on the frame's `document` returns, kept in the page. */
-async function objectOn(
+export async function objectOn(
   cdp: CdpSession,
   objectId: string,
   functionDeclaration: string,

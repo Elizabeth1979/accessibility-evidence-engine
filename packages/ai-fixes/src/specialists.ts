@@ -156,25 +156,37 @@ export const IMAGE_ROLES: readonly ImageRole[] = [
   "complex"
 ];
 
-export interface ImageMarkup {
-  role?: string;
-  ariaHidden?: boolean;
-  /** undefined when the attribute is missing; "" is the author marking it decorative. */
-  alt?: string;
+/** What the browser's accessibility tree says about an image, which a screen reader is given. */
+export interface ImageInTree {
+  /** Why the tree leaves it out, such as `emptyAlt`; empty when a screen reader is given it. */
+  ignoredReasons?: string[];
   /** The image is the only content of a link or button, so it names that control. */
   soleContentOfLinkOrButton?: boolean;
 }
 
 /**
- * The role the markup itself decides, before any AI (ported from wcag-alt-generator). A missing
- * alt decides nothing: that is the defect, not a sign the image is decorative.
+ * Why the tree leaves out an image the author marked decorative: alt="", role="presentation" or
+ * "none", or aria-hidden on it or above it. The tree applies WAI-ARIA's conflict rule (§9.3)
+ * first, so an image with a global ARIA attribute such as aria-label, or that takes focus, keeps
+ * its role and is not one of these. An image left out for being hidden or inert is not decorative.
  */
-export function imageRoleFromMarkup(markup: ImageMarkup): ImageRole | undefined {
-  if (markup.soleContentOfLinkOrButton) return "functional";
-  if (markup.role === "presentation" || markup.role === "none" || markup.ariaHidden) {
+const DECORATIVE_REASONS = [
+  "emptyAlt",
+  "presentationalRole",
+  "ariaHiddenElement",
+  "ariaHiddenSubtree"
+];
+
+/**
+ * The role the accessibility tree already decides, before any AI (rules ported from
+ * wcag-alt-generator). An image the tree exposes decides nothing: whether it informs is the
+ * question.
+ */
+export function imageRoleFromTree(image: ImageInTree): ImageRole | undefined {
+  if (image.soleContentOfLinkOrButton) return "functional";
+  if (image.ignoredReasons?.some((reason) => DECORATIVE_REASONS.includes(reason))) {
     return "decorative";
   }
-  if (markup.alt === "") return "decorative";
   return undefined;
 }
 
@@ -183,8 +195,8 @@ export interface ImagePurposeContext {
   /** The image's file name or URL: evidence, never the alternative itself. */
   source?: string;
   currentAlternative?: string;
-  /** The role the markup already decides (imageRoleFromMarkup); the answer must keep it. */
-  markupRole?: ImageRole;
+  /** The role the accessibility tree already decides (imageRoleFromTree); the answer must keep it. */
+  treeRole?: ImageRole;
   linkOrButtonText?: string;
   destinationText?: string;
   caption?: string;
@@ -217,7 +229,7 @@ export const imagePurposeSpecialist: Specialist<ImagePurposeContext, ImagePurpos
     "- functional: it is inside a link or button; the alternative describes the action or destination, not the picture.",
     "- informative: it conveys a simple piece of information; the alternative says what it communicates in this context, in a short phrase.",
     "- complex: a chart, diagram or map whose content a phrase cannot carry; the alternative names what it shows, and the rationale says a longer description is needed next to it.",
-    "When markupRole is given, the markup has already decided the role: keep it.",
+    "When treeRole is given, the browser's accessibility tree has already decided the role: keep it.",
     "If the image contains text, the alternative includes that text. Keep it under 125 characters, do not repeat what the surrounding text already says, and never start with 'image of' or 'picture of'. 'image', 'photo' or a file name is not an alternative."
   ].join("\n"),
   schema: answerSchema({
@@ -234,8 +246,10 @@ export const imagePurposeSpecialist: Specialist<ImagePurposeContext, ImagePurpos
       throw new Error(`classification must be one of ${IMAGE_ROLES.join(", ")}.`);
     }
     const role = classification as ImageRole;
-    if (input.markupRole && role !== input.markupRole) {
-      throw new Error(`The markup makes this image ${input.markupRole}; the answer said ${role}.`);
+    if (input.treeRole && role !== input.treeRole) {
+      throw new Error(
+        `The accessibility tree makes this image ${input.treeRole}; the answer said ${role}.`
+      );
     }
     const suggestedAlternative =
       typeof answer.suggestedAlternative === "string" ? answer.suggestedAlternative.trim() : "";
