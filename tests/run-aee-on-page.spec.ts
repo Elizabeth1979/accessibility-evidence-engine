@@ -10,6 +10,7 @@ import {
   createPortableVirtualScreenReader,
   runInputComparison,
   runAeeOnPage,
+  runStartPageLane,
   runVirtualScreenReaderLane,
   withPageSessions
 } from "@aee/playwright";
@@ -241,7 +242,7 @@ approval:
   }
 });
 
-test("a lane that fails before writing any evidence keeps the report incomplete in every format", async ({
+test("a lane whose browser cannot open a page records it as failed and keeps the report incomplete in every format", async ({
   browser
 }, testInfo) => {
   const server = await startHtmlServer((_request, response) => {
@@ -251,9 +252,9 @@ test("a lane that fails before writing any evidence keeps the report incomplete 
     </body></html>`);
   });
   // The browser cannot open the first lane's context, as when it crashes, disconnects or runs out
-  // of memory, so the start-page lane throws before it writes a manifest. The other lanes complete.
-  // This relies on the start-page lane opening its context before it can record a failure: if that
-  // lane learns to write a "failed" manifest there too, this test needs another trigger.
+  // of memory, so the start-page lane fails before it opens the page and records itself as failed.
+  // The other lanes complete. A lane that leaves no manifest at all is covered in
+  // scenario-runner.test.ts, since no lane is left that fails that way.
   const journeyId = "read-page";
   let contextsOpened = 0;
   const failsFirstContext = new Proxy(browser, {
@@ -324,6 +325,13 @@ approval:
         new RegExp(`^${journeyId}-start-page: The browser could not open a context`)
       )
     ]);
+    // The failed lane is in the run's evidence, not just in its diagnostics.
+    const manifest = JSON.parse(await readFile(result.manifestFile, "utf8")) as {
+      lanes: Array<{ id: string; status: string }>;
+    };
+    expect(manifest.lanes).toContainEqual(
+      expect.objectContaining({ id: `${journeyId}-start-page`, status: "failed" })
+    );
     expect(report.completeness).toMatchObject({
       status: "incomplete",
       plannedLanes: 5,
@@ -998,6 +1006,45 @@ test("virtual-reader lane blocks a redirect outside the approved origin and clos
     );
     expect(blockedManifest.status).toBe("partial");
     expect(blockedManifest.lanes[0].status).toBe("blocked");
+  } finally {
+    await redirector.close();
+    await destination.close();
+  }
+});
+
+test("start-page lane records a redirect outside the approved origin as blocked and closes its context", async ({
+  browser
+}, testInfo) => {
+  const destination = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    response.end("<h1>Outside approved origin</h1>");
+  });
+  const redirector = await startHtmlServer((_request, response) => {
+    response.writeHead(302, { location: `${destination.origin}/outside` });
+    response.end();
+  });
+  const initialContextCount = browser.contexts().length;
+  const outputDir = testInfo.outputPath("blocked-start-page-lanes");
+
+  try {
+    await expect(
+      runStartPageLane({
+        browser,
+        projectRoot: process.cwd(),
+        outputDir,
+        laneId: "start-page-blocked-origin",
+        targetUrl: `${redirector.origin}/start`,
+        allowedOrigins: [redirector.origin]
+      })
+    ).rejects.toThrow(/Start-page lane blocked origin/);
+    expect(browser.contexts()).toHaveLength(initialContextCount);
+    const manifest = JSON.parse(
+      await readFile(path.join(outputDir, "start-page-blocked-origin", "manifest.json"), "utf8")
+    );
+    expect(manifest.status).toBe("partial");
+    expect(manifest.lanes).toEqual([
+      expect.objectContaining({ id: "start-page-blocked-origin", status: "blocked" })
+    ]);
   } finally {
     await redirector.close();
     await destination.close();

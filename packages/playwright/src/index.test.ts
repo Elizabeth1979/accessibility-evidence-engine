@@ -16,6 +16,7 @@ import {
   persistInteractionVideo,
   runAeeOnPage,
   runInputComparison,
+  runStartPageLane,
   toSafeId,
   writeEvidenceManifest,
   verifyMotionControl,
@@ -321,6 +322,41 @@ test("persistInteractionVideo refuses symbolic-link output targets", async () =>
       rm(tempRoot, { recursive: true, force: true }),
       rm(outsideRoot, { recursive: true, force: true })
     ]);
+  }
+});
+
+test("runStartPageLane records a failed lane when the browser cannot open its context", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-start-page-"));
+  // As when the browser has crashed, disconnected or run out of memory.
+  const browserError = new Error("The browser could not open a context.");
+  const browser = {
+    async newContext(): Promise<never> {
+      throw browserError;
+    }
+  };
+
+  try {
+    await assert.rejects(
+      runStartPageLane({
+        browser,
+        projectRoot: tempRoot,
+        outputDir: "aee-output",
+        laneId: "read-start-page",
+        targetUrl: "https://example.com/",
+        allowedOrigins: ["https://example.com"]
+      }),
+      browserError
+    );
+    const manifest = JSON.parse(
+      await readFile(path.join(tempRoot, "aee-output", "read-start-page", "manifest.json"), "utf8")
+    ) as { status: string; lanes: Array<{ id: string; driver: string; status: string }> };
+    assert.equal(manifest.status, "partial");
+    assert.deepEqual(
+      manifest.lanes.map(({ id, driver, status }) => ({ id, driver, status })),
+      [{ id: "read-start-page", driver: "page-load", status: "failed" }]
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 

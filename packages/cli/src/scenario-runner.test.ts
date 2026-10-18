@@ -589,9 +589,16 @@ test("a test whose page the fixture did not check says why, and only a page chec
   }
 });
 
-test("a run that captured no axe result is not decided, never a pass", async () => {
-  // Every planned lane finished and none failed, but no lane ran the rules: a sweep with no actions.
-  const assessmentDir = await mkdtemp(path.join(tmpdir(), "aee-no-axe-"));
+/**
+ * Finishes a one-journey assessment whose only evidence is a completed keyboard and pointer sweep
+ * with no actions, so no lane ran the axe rules.
+ */
+async function finishWithOnlyASweep(input: {
+  scenarioId: string;
+  plannedLanes: number;
+  diagnostics: string[];
+}) {
+  const assessmentDir = await mkdtemp(path.join(tmpdir(), `aee-${input.scenarioId}-`));
   const { manifestFile } = await writeEvidenceManifest({
     assessmentId: "read-keyboard-pointer-sweep",
     rootDir: path.join(assessmentDir, "read-keyboard-pointer-sweep"),
@@ -606,7 +613,7 @@ test("a run that captured no axe result is not decided, never a pass", async () 
   });
   const scenario: AeeScenario = {
     schemaVersion: "0.1.0",
-    id: "no-axe",
+    id: input.scenarioId,
     target: { url: "https://example.com/" },
     standard: { name: "WCAG", version: "2.2", levels: ["A", "AA"] },
     profile: "core",
@@ -616,18 +623,27 @@ test("a run that captured no axe result is not decided, never a pass", async () 
     ],
     approval: { required: true }
   };
-  const result = await finishAssessment({
-    assessmentId: "no-axe-1",
+  return finishAssessment({
+    assessmentId: `${input.scenarioId}-1`,
     assessmentDir,
     scenario,
     plan: compileScenarioPlan(scenario),
     startedAt: new Date().toISOString(),
-    plannedLanes: 1,
+    plannedLanes: input.plannedLanes,
     actions: [],
     findings: [],
     childManifestFiles: [manifestFile],
-    diagnostics: [],
+    diagnostics: input.diagnostics,
     aiProvider: aeeRunModelProvider({})
+  });
+}
+
+test("a run that captured no axe result is not decided, never a pass", async () => {
+  // Every planned lane finished and none failed, but no lane ran the rules: a sweep with no actions.
+  const result = await finishWithOnlyASweep({
+    scenarioId: "no-axe",
+    plannedLanes: 1,
+    diagnostics: []
   });
   const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
     verdict: string;
@@ -649,6 +665,39 @@ test("a run that captured no axe result is not decided, never a pass", async () 
     html,
     /<strong>Start here:<\/strong> Not decided, some evidence is missing or needs a person\./
   );
+});
+
+test("a lane that wrote no manifest keeps the report incomplete in every format", async () => {
+  // Two lanes planned. The sweep completed; the start-page lane threw before it wrote anything, so
+  // the evidence holds one complete lane, and only the lane counts show the other is missing.
+  const result = await finishWithOnlyASweep({
+    scenarioId: "missing-lane",
+    plannedLanes: 2,
+    diagnostics: ["read-start-page: The browser could not open a context."]
+  });
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    status: string;
+    verdict: string;
+    completeness: { status: string; plannedLanes: number; completedLanes: number };
+  };
+
+  assert.deepEqual(
+    {
+      status: report.completeness.status,
+      plannedLanes: report.completeness.plannedLanes,
+      completedLanes: report.completeness.completedLanes
+    },
+    { status: "incomplete", plannedLanes: 2, completedLanes: 1 }
+  );
+  assert.equal(report.status, "partial");
+  assert.equal(report.verdict, "unknown");
+  assert.equal(result.completeness, "incomplete");
+  assert.match(await readFile(result.reportFiles.prComment, "utf8"), /Evidence: incomplete\./);
+  assert.match(
+    await readFile(result.reportFiles.markdown, "utf8"),
+    /\*\*Evidence completeness:\*\* INCOMPLETE/
+  );
+  assert.match(await readFile(result.reportFiles.html, "utf8"), /incomplete · 1\/2 lanes/);
 });
 
 test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a key is set", () => {
