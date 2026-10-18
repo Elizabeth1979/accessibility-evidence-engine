@@ -109,7 +109,10 @@ export interface FocusedElement {
    * when a frame's place or tab stops could not be read, since then no place is certain.
    */
   focusOrderIndex?: number;
-  /** How many tab stops the page has, in every frame; with `focusOrderIndex` only. */
+  /**
+   * How many tab stops the page has, in every frame: recorded whenever the page's tab order was
+   * counted, so an element with a count and no `focusOrderIndex` is known not to be a tab stop.
+   */
   focusableCount?: number;
   /** The frame whose document holds it. */
   frameId: string;
@@ -126,6 +129,12 @@ export type FocusContext = "document" | "shadow-root" | "iframe-document";
 export interface DomFocusState extends FocusedElement {
   schemaVersion: "0.1.0";
   captureType: "deep-focus-state";
+  /**
+   * The top document's `hasFocus()`: whether focus is in the page at all. When no element of a
+   * document has focus its `<body>` is its active element, both when focus is lost inside the page
+   * (true) and when Tab has moved focus out of it, to the browser's own controls (false).
+   */
+  documentHasFocus: boolean;
   /** The top document's `activeElement`. */
   documentActiveElement: FocusedElement;
   /** The element that has focus, in whichever shadow root or frame holds it. */
@@ -156,20 +165,32 @@ interface DocumentFocus {
  * Where DOM focus is: the element that has it, followed into shadow roots and into each frame's
  * own document (`focusPath`), and every active element on the way, each described in its own
  * document. The deepest element names its frame, so it joins to that frame's accessibility tree by
- * `frameId` and `backendDOMNodeId`. Null when no element has focus.
+ * `frameId` and `backendDOMNodeId`. When no element of a document has focus, its `<body>` is its
+ * active element and is recorded, beside whether the page itself has focus (`documentHasFocus`).
+ * Null only when the top document has no active element at all.
  */
 export async function captureDomFocus(page: PageSessions): Promise<DomFocusState | null> {
   const documents = frameDocuments(page);
   const path = await focusPath(page, documents);
-  const order = path.length ? await pageTabOrder(page, documents) : undefined;
+  if (!path.length) return null;
+  const top = mainFrameOf(page);
+  const documentHasFocus = await callOn<boolean>(
+    top.session,
+    (await documents.document(top))!,
+    `function () { return this.hasFocus(); }`
+  );
+  const order = await pageTabOrder(page, documents);
   // A frame with nothing to focus is a tab stop itself; focus on it leaves its document's body
-  // as that document's active element.
+  // as that document's active element. Anything else with no place is not a tab stop.
   const placed = ({ tabStop, ...element }: ElementDescription, frameId: string) => {
+    if (!order) return element;
     const stop = tabStop ?? (element.tagName === "body" ? "frame" : undefined);
-    const index = order && stop !== undefined ? order.indexOf(frameId, stop) : -1;
-    return index < 0
-      ? element
-      : { ...element, focusOrderIndex: index, focusableCount: order!.count };
+    const index = stop === undefined ? -1 : order.indexOf(frameId, stop);
+    return {
+      ...element,
+      ...(index < 0 ? {} : { focusOrderIndex: index }),
+      focusableCount: order.count
+    };
   };
   const chain: Array<{ context: FocusContext; element: FocusedElement }> = [];
   const framePath: string[] = [];
@@ -210,6 +231,7 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
   return {
     schemaVersion: "0.1.0",
     captureType: "deep-focus-state",
+    documentHasFocus,
     ...deepActiveElement,
     documentActiveElement: chain[0]!.element,
     deepActiveElement,
