@@ -586,6 +586,64 @@ test("axe judge returns unknown when only incomplete checks remain", async () =>
   assert.match(judgment?.summary ?? "", /requires review/);
 });
 
+function axeRecordLeavingOutFrames(framesNotChecked: Array<{ url: string; name: string }>) {
+  return {
+    id: "record-axe-after",
+    runId: "run-1",
+    observerId: "axe",
+    phase: "after" as const,
+    status: "ok" as const,
+    timestamp: "2026-10-18T00:00:00.000Z",
+    meta: {
+      violations: 0,
+      incomplete: 0,
+      framesNotChecked: framesNotChecked.map((frame) => ({
+        ...frame,
+        reason:
+          "It shows a page from https://partner.example, which is not an allowed origin; add it to them to check this frame.",
+        selector: ["iframe"]
+      }))
+    }
+  };
+}
+
+test("axe judge does not pass a page with a frame it left out because its origin is not allowed", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    axeRecordLeavingOutFrames([{ url: "https://partner.example/offers", name: "Partner offers" }])
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "unknown");
+  assert.equal(
+    judgment?.summary,
+    "axe found no violations in what it checked. axe did not check the frame “Partner offers” at https://partner.example/offers. It shows a page from https://partner.example, which is not an allowed origin; add it to them to check this frame."
+  );
+});
+
+test("axe judge fails a frame it left out that has no accessible name in Chrome's accessibility tree", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    axeRecordLeavingOutFrames([{ url: "https://partner.example/offers", name: "" }])
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  assert.match(judgment?.summary ?? "", /the frame with no accessible name at https:\/\/partner/);
+  assert.deepEqual(
+    judgment?.findings?.map(({ ruleId, message }) => ({ ruleId, message })),
+    [
+      {
+        ruleId: "frame-title",
+        message:
+          "The frame at https://partner.example/offers has no accessible name in Chrome's accessibility tree."
+      }
+    ]
+  );
+});
+
 test("focus-management judge fails when a dialog opens but focus stays on its trigger", async () => {
   const judge = createDefaultJudgePlugins(["focus-management"])[0];
   const bundle = createBundle(

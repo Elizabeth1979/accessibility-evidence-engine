@@ -1801,8 +1801,28 @@ function createAxeJudge(): JudgePlugin {
           "Review the raw axe nodes; a best-practice result is advisory and does not block release."
       }));
       const advisory = advisoryFindings.length ? { findings: advisoryFindings } : {};
+      // A frame whose page is outside the allowed origins is left out of axe with its element, so
+      // axe's frame-title rule does not see it; its name is Chrome's accessibility tree's.
+      const framesNotChecked = readFramesNotChecked(record.meta);
+      const framesSummary = framesNotChecked
+        .map(
+          ({ url, name, reason }) =>
+            ` axe did not check the frame ${name ? `“${name}”` : "with no accessible name"} at ${url}. ${reason}`
+        )
+        .join("");
+      const unnamedFrameFindings: Finding[] = framesNotChecked
+        .filter(({ name }) => !name)
+        .map(({ url }) => ({
+          id: `axe:${bundle.interaction.id}:frame-title:${url}`,
+          message: `The frame at ${url} has no accessible name in Chrome's accessibility tree.`,
+          severity: "high",
+          ruleId: "frame-title",
+          evidenceRecordIds: [record.id],
+          artifactIds,
+          suggestedFix: "Give the frame a title attribute that describes what it shows."
+        }));
 
-      if (violations > 0) {
+      if (violations > 0 || unnamedFrameFindings.length > 0) {
         const findings: Finding[] = violationRuleIds.map((ruleId) => ({
           id: `axe:${bundle.interaction.id}:${ruleId}`,
           message: `axe reported the ${ruleId} rule as a violation.`,
@@ -1821,19 +1841,19 @@ function createAxeJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "fail",
-            summary: `axe found ${violations} violation${violations === 1 ? "" : "s"}${formatRuleIds(violationRuleIds)}. ${incomplete} check${incomplete === 1 ? " remains" : "s remain"} incomplete${formatRuleIds(incompleteRuleIds)}.`,
+            summary: `axe found ${violations} violation${violations === 1 ? "" : "s"}${formatRuleIds(violationRuleIds)}. ${incomplete} check${incomplete === 1 ? " remains" : "s remain"} incomplete${formatRuleIds(incompleteRuleIds)}.${framesSummary}`,
             severity: "high",
             confidence: 1,
             evidenceRecordIds: [record.id],
             artifactIds,
-            findings: [...findings, ...advisoryFindings],
+            findings: [...findings, ...unnamedFrameFindings, ...advisoryFindings],
             suggestedFix:
               "Resolve the reported axe violations and manually evaluate incomplete checks using the correlated evidence."
           }
         ];
       }
 
-      if (incomplete > 0) {
+      if (incomplete > 0 || framesNotChecked.length > 0) {
         return [
           {
             id: `axe:${bundle.interaction.id}`,
@@ -1841,7 +1861,10 @@ function createAxeJudge(): JudgePlugin {
             judgeVersion: "0.1.0",
             scope: "interaction",
             verdict: "unknown",
-            summary: `axe found no violations, but ${incomplete} check${incomplete === 1 ? " requires" : "s require"} review${formatRuleIds(incompleteRuleIds)}.`,
+            summary:
+              incomplete > 0
+                ? `axe found no violations, but ${incomplete} check${incomplete === 1 ? " requires" : "s require"} review${formatRuleIds(incompleteRuleIds)}.${framesSummary}`
+                : `axe found no violations in what it checked.${framesSummary}`,
             severity: "medium",
             confidence: 1,
             evidenceRecordIds: [record.id],
@@ -1878,6 +1901,20 @@ function getNumberMetaField(
 ): number | undefined {
   const value = meta?.[field];
   return typeof value === "number" ? value : undefined;
+}
+
+/** The frames an axe record lists as left out, such as those outside the allowed origins. */
+function readFramesNotChecked(
+  meta: Record<string, unknown> | undefined
+): Array<{ url: string; name: string; reason: string }> {
+  const value = meta?.framesNotChecked;
+  return Array.isArray(value)
+    ? value.filter(isRecord).map((frame) => ({
+        url: String(frame.url ?? ""),
+        name: typeof frame.name === "string" ? frame.name : "",
+        reason: String(frame.reason ?? "")
+      }))
+    : [];
 }
 
 function getStringArrayMetaField(

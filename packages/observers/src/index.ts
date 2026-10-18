@@ -924,6 +924,10 @@ async function captureAxeRecord(
         ...readRuleIds(normalized.inapplicable)
       ])
     ].sort();
+    // Frames whose pages are outside the allowed origins, left out of the analysis.
+    const framesNotChecked = Array.isArray(normalized.framesNotChecked)
+      ? normalized.framesNotChecked
+      : [];
     const artifact = await maybeWriteArtifact(
       context,
       "axe",
@@ -962,7 +966,8 @@ async function captureAxeRecord(
         violationRuleIds,
         advisoryRuleIds,
         incompleteRuleIds,
-        evaluatedRuleIds
+        evaluatedRuleIds,
+        ...(framesNotChecked.length ? { framesNotChecked } : {})
       }
     };
   } catch (error) {

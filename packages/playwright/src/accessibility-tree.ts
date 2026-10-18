@@ -91,6 +91,8 @@ export const CHROME_ERROR_PAGE = "chrome-error://chromewebdata/";
 export interface UnreadFrame {
   url: string;
   reason: string;
+  /** A frame left out: the `<iframe>` or `<frame>` element that holds it, on a frame that is read. */
+  owner?: DomNodeRef;
 }
 
 export interface AccessibilityTree {
@@ -237,7 +239,7 @@ export async function withPageSessions<Result>(
 export function framesInsideOrigins(page: PageSessions, allowedOrigins: string[]): PageSessions {
   const kept = new Set<string>();
   const framesNotRead = [...page.framesNotRead];
-  const frames = page.frames.filter(({ frameId, parentFrameId, url }) => {
+  const frames = page.frames.filter(({ frameId, parentFrameId, url, ownerBackendNodeId }) => {
     const reason = !parentFrameId
       ? undefined
       : !kept.has(parentFrameId)
@@ -248,7 +250,12 @@ export function framesInsideOrigins(page: PageSessions, allowedOrigins: string[]
             ? undefined
             : `It shows a page from ${new URL(url).origin}, which is not an allowed origin; add it to them to check this frame.`;
     if (reason) {
-      framesNotRead.push({ url, reason });
+      // A frame left out of one that is read keeps its element, which is that frame's own.
+      const owner =
+        parentFrameId && kept.has(parentFrameId) && ownerBackendNodeId !== undefined
+          ? { owner: { frameId: parentFrameId, backendNodeId: ownerBackendNodeId } }
+          : {};
+      framesNotRead.push({ url, reason, ...owner });
       return false;
     }
     kept.add(frameId);
@@ -483,6 +490,7 @@ export async function capturePageDom(
 ): Promise<CapturedDom> {
   const requested = [...new Set([...computedStyles, ...FRAME_OFFSET_STYLES])];
   const sessions = [...new Set(page.frames.map(({ session }) => session))];
+  const read = new Set(page.frames.map(({ frameId }) => frameId));
   const snapshots = await Promise.all(
     sessions.map(
       async (session) =>
@@ -498,6 +506,8 @@ export async function capturePageDom(
   for (const { strings, documents: snapshotDocuments } of snapshots) {
     for (const document of snapshotDocuments) {
       const frameId = strings[document.frameId]!;
+      // A process's snapshot holds every document it renders, a frame left unread among them.
+      if (!read.has(frameId)) continue;
       documents.set(frameId, frameDocument(frameId, strings, document, requested));
       const { index = [], value = [] } = document.nodes.contentDocumentIndex ?? {};
       index.forEach((owner, at) => {
