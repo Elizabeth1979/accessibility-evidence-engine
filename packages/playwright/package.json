@@ -97,7 +97,7 @@
     "@aee/reporter": "0.8.0",
     "@aee/schemas": "0.8.0",
     "@axe-core/playwright": "4.13.0",
-    "axe-core": "4.13.0",
+    "axe-core": "4.14.0",
     "pngjs": "7.0.0",
     "@guidepup/virtual-screen-reader": "0.32.1",
     "tabbable": "6.5.0"
