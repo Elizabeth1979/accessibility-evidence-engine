@@ -63,6 +63,7 @@ import {
 import {
   sweepKeyboardAndPointer,
   type KeyboardPointerSweepPage,
+  type KeyboardPointerSweepRequest,
   type ObservedPresses,
   type SweepFinding,
   type SweepStep,
@@ -391,6 +392,8 @@ export interface KeyboardPointerSweepLanePage
 export interface KeyboardPointerSweepLaneContext<
   TPage extends KeyboardPointerSweepLanePage
 > extends KeyboardPointerSweepLaneRouter {
+  /** Every request its pages send, redirects included, which its route handler does not see. */
+  on(event: "request", listener: (request: KeyboardPointerSweepRequest) => void): unknown;
   newPage(): Promise<TPage>;
   close(): Promise<void>;
 }
@@ -444,7 +447,10 @@ export interface KeyboardPointerSweepLaneDocument {
   pressedBy?: "sweep" | "test";
   startedAt: string;
   finishedAt: string;
-  /** Navigations outside the allowed origins, stopped before they left the page. */
+  /**
+   * Navigations outside the allowed origins: stopped before they left the page, or, when a
+   * redirect took one there (the browser follows a redirect before the guard is asked), not read.
+   */
   blockedNavigations: string[];
   tabStops?: KeyboardPointerSweepLaneTabStop[];
   activated?: string[];
@@ -1787,6 +1793,26 @@ function navigationGuard(
   };
 }
 
+/**
+ * Records each navigation a redirect took outside the allowed origins. A route handler is called
+ * only for the first address of a redirect (Playwright's `page.route`), so the guard never sees
+ * the hop, and the browser follows it; the sweep then reads nothing there.
+ */
+function redirectsLeaving(
+  allowedOrigins: string[],
+  blockedNavigations: string[]
+): (request: KeyboardPointerSweepRequest) => void {
+  return (request) => {
+    if (
+      request.isNavigationRequest() &&
+      request.redirectedFrom() &&
+      !allowedOrigins.includes(new URL(request.url()).origin)
+    ) {
+      blockedNavigations.push(request.url());
+    }
+  };
+}
+
 interface SweepPages<TPage> {
   page: TPage;
   still: TPage;
@@ -1804,16 +1830,21 @@ interface SweepPages<TPage> {
 async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
   target: LaneTarget<KeyboardPointerSweepLaneBrowser<TPage>, TPage>,
   laneOutputDir: string,
-  guard: KeyboardPointerSweepLaneRouteHandler
+  guard: {
+    route: KeyboardPointerSweepLaneRouteHandler;
+    redirects: (request: KeyboardPointerSweepRequest) => void;
+  }
 ): Promise<SweepPages<TPage>> {
   if (!target.browser) {
     const { page } = target;
-    await page.route("**/*", guard);
+    await page.route("**/*", guard.route);
+    page.on("request", guard.redirects);
     return {
       page,
       still: page,
       close: async () => {
-        await page.unroute("**/*", guard);
+        page.off("request", guard.redirects);
+        await page.unroute("**/*", guard.route);
       }
     };
   }
@@ -1826,7 +1857,10 @@ async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
     await unrecorded.close();
   };
   try {
-    for (const context of [recorded, unrecorded]) await context.route("**/*", guard);
+    for (const context of [recorded, unrecorded]) {
+      await context.route("**/*", guard.route);
+      context.on("request", guard.redirects);
+    }
     const page = await recorded.newPage();
     return { page, still: await unrecorded.newPage(), video: page.video?.(), close };
   } catch (error) {
@@ -1839,8 +1873,8 @@ async function openSweepPages<TPage extends KeyboardPointerSweepLanePage>(
  * Sweeps one page by keyboard and pointer in its own recorded browser context, then records the
  * result, and, from a fresh load in an unrecorded context, a full-page screenshot and where each
  * finding is on it. Given a test's page instead, it does both on that page, from a fresh load of
- * the target, so the sweep keeps the test's session, routes and storage. Every navigation is
- * stopped unless it stays inside the allowed origins.
+ * the target, so the sweep keeps the test's session, routes and storage. Every navigation outside
+ * the allowed origins is stopped, or, when a redirect takes it there, recorded and not read.
  */
 /**
  * Records the presses a test made, as observePresses watched them, as a sweep lane of their own:
@@ -1950,11 +1984,10 @@ export async function runKeyboardPointerSweepLane<TPage extends KeyboardPointerS
   try {
     // Opened in here, so a browser that fails to open them (a crash, a disconnect, running out of
     // memory) still leaves the lane's record and manifest below.
-    pages = await openSweepPages<TPage>(
-      options,
-      laneOutputDir,
-      navigationGuard(allowedOrigins, blockedNavigations)
-    );
+    pages = await openSweepPages<TPage>(options, laneOutputDir, {
+      route: navigationGuard(allowedOrigins, blockedNavigations),
+      redirects: redirectsLeaving(allowedOrigins, blockedNavigations)
+    });
     const { page, still } = pages;
     const result = await sweepKeyboardAndPointer({
       page,

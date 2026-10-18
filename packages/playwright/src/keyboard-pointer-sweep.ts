@@ -6,9 +6,14 @@ import {
   withCdpSession,
   withPageSessions,
   type CdpSession,
-  type FramedPage
+  type FramedPage,
+  type PlaywrightFrameLike
 } from "./accessibility-tree";
-import { assertAllowedOrigin, normalizeAllowedOrigins } from "./allowed-origins";
+import {
+  assertAllowedOrigin,
+  BlockedOriginError,
+  normalizeAllowedOrigins
+} from "./allowed-origins";
 import { locateElements, type ElementLocation } from "./element-locations";
 import { findHeadingLookalikes } from "./heading-lookalikes";
 import { comparePointerAndKeyboardOutcomes } from "./pointer-keyboard-comparison";
@@ -121,9 +126,14 @@ export interface KeyboardPointerSweepCdpSession {
 }
 
 export interface KeyboardPointerSweepRequest {
+  url(): string;
   method(): string;
   resourceType(): string;
   failure(): { errorText: string } | null;
+  isNavigationRequest(): boolean;
+  frame(): PlaywrightFrameLike;
+  /** The request whose redirect sent this one, when a redirect did. */
+  redirectedFrom(): KeyboardPointerSweepRequest | null;
 }
 
 export interface KeyboardPointerSweepResponse {
@@ -176,9 +186,10 @@ export interface KeyboardPointerSweepOptions {
   activateControls: boolean;
   maxTabStops?: number;
   /**
-   * The origins the page may load from. A redirect passes a route handler by, so each time the
-   * sweep loads the page it checks where the page landed, and stops before reading or pressing
-   * anything on a page outside them.
+   * The origins the page may load from. A redirect passes a route handler by, so the sweep checks
+   * where the page is before and after each read, and reads nothing on a page outside them: when
+   * loading the page lands there it stops, and when a press goes there it records only where the
+   * press went.
    */
   allowedOrigins?: string[];
   /** Called as each step finishes, so a recording of the sweep can say what it shows. */
@@ -266,11 +277,15 @@ interface ColourOnlyItem extends ProbedElement {
   state?: string;
 }
 
-interface ActivationOutcome {
-  url: string;
-  text: string;
-  states: Record<string, string | null>;
-}
+/**
+ * What a press left on the page, or, when it went outside the allowed origins, only where it went:
+ * that page is not read.
+ */
+type ActivationOutcome =
+  { url: string; text: string; states: Record<string, string | null> } | { leftTo: string };
+
+/** Names the sweep in the error that stops it at a page outside the allowed origins. */
+const SWEEP_LABEL = "Keyboard and pointer sweep";
 
 /** Runs every keyboard and pointer check on one page, resetting it between checks. */
 export async function sweepKeyboardAndPointer(
@@ -293,8 +308,9 @@ async function sweepPage(
   const allowedOrigins =
     options.allowedOrigins &&
     normalizeAllowedOrigins(options.allowedOrigins, "keyboard and pointer sweep");
-  const probe = probeOf(page);
-  const settle = () => onLoadedPage(page, () => waitForQuietPage(page, openRequests));
+  const probe = probeOf(page, allowedOrigins);
+  const settle = () =>
+    onLoadedPage(page, () => waitForQuietPage(page, openRequests), allowedOrigins);
   const loadPage = () => loadAfresh(page, url, openRequests, allowedOrigins);
 
   await loadPage();
@@ -379,7 +395,7 @@ async function sweepPage(
         ...(await timed(
           onStep,
           () => `Press ${describeElement(control)} with ${control.key}, then click it`,
-          () => pressControl(page, probe, settle, loadPage, control)
+          () => pressControl(page, probe, settle, loadPage, control, allowedOrigins)
         ))
       );
     }
@@ -388,20 +404,38 @@ async function sweepPage(
   return { url, tabStops, activated, findings };
 }
 
-/** A press can load another page while the page is being read: read the page it loaded. */
-async function onLoadedPage<T>(page: KeyboardPointerSweepPage, read: () => Promise<T>): Promise<T> {
+/**
+ * A press can load another page while the page is being read: read the page it loaded. A page
+ * outside the allowed origins is not read: where the page is is checked before the read, and
+ * again after it, since a page can finish loading while the read is on its way.
+ */
+async function onLoadedPage<T>(
+  page: KeyboardPointerSweepPage,
+  read: () => Promise<T>,
+  allowedOrigins?: string[]
+): Promise<T> {
+  const readInside = async () => {
+    if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+    const result = await read();
+    if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
+    return result;
+  };
   try {
-    return await read();
+    return await readInside();
   } catch (error) {
     if (page.isClosed() || !/Execution context was destroyed/.test(String(error))) throw error;
     await page.waitForLoadState();
-    return read();
+    return readInside();
   }
 }
 
-function probeOf(page: KeyboardPointerSweepPage) {
+function probeOf(page: KeyboardPointerSweepPage, allowedOrigins?: string[]) {
   return <T>(request: ProbeRequest): Promise<T> =>
-    onLoadedPage(page, async () => (await page.evaluate(runSweepProbe, request)) as T);
+    onLoadedPage(
+      page,
+      async () => (await page.evaluate(runSweepProbe, request)) as T,
+      allowedOrigins
+    );
 }
 
 /** A finding of a press the test made, placed on the page as the test left it after the press. */
@@ -573,7 +607,7 @@ async function loadAfresh(
 ): Promise<void> {
   await page.goto(url);
   if (new URL(url).hash) await page.reload();
-  if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, "Keyboard and pointer sweep");
+  if (allowedOrigins) assertAllowedOrigin(page.url(), allowedOrigins, SWEEP_LABEL);
   await waitForQuietPage(page, openRequests);
 }
 
@@ -828,11 +862,14 @@ async function pressControl(
   probe: <T>(request: ProbeRequest) => Promise<T>,
   settle: () => Promise<void>,
   loadPage: () => Promise<void>,
-  control: PressableControl
+  control: PressableControl,
+  allowedOrigins: string[] | undefined
 ): Promise<SweepFinding[]> {
   const findings: SweepFinding[] = [];
   const target = page.locator(control.selector);
   let loadedDocument = 0;
+  // Where the last press went, when it went outside the allowed origins.
+  let leftTo: string | undefined;
   // What the keyboard press did, read as it happens.
   const pressed: { focusLost: boolean; newText: NewText; failedRequests: string[] } = {
     focusLost: false,
@@ -844,23 +881,34 @@ async function pressControl(
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
       await loadPage();
+      leftTo = undefined;
       loadedDocument = await probe<number>({ mode: "document" });
     },
     performPointerInteraction: async () => {
-      await target.click();
-      await settle();
+      leftTo = await navigationLeavingDuring(page, allowedOrigins, async () => {
+        await target.click();
+        await settle();
+      });
     },
     performKeyboardInteraction: async () => {
       await probe({ mode: "watch-changes", selector: control.selector });
       pressed.failedRequests = await failedRequestsDuring(page, async () => {
-        await target.press(control.key);
-        await settle();
+        leftTo = await navigationLeavingDuring(page, allowedOrigins, async () => {
+          await target.press(control.key);
+          await settle();
+        });
       });
+      // The page a press left for is not read, and the one it left stays only because the
+      // navigation was stopped, which is not what a user sees.
+      if (leftTo) return;
       pressed.focusLost = await probe<boolean>({ mode: "focus-lost", document: loadedDocument });
       const newText = await probe<ProbedNewText>({ mode: "new-text", selector: control.selector });
       pressed.newText = newText && { ...newText, pressed: control };
     },
-    captureOutcome: () => probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
+    captureOutcome: async () =>
+      leftTo
+        ? { leftTo }
+        : probe<ActivationOutcome>({ mode: "outcome", selector: control.selector })
   });
   if (comparison.verdict === "fail") {
     findings.push(
@@ -929,6 +977,42 @@ function announcementFindings(
  * the page cancelled, as a page load does to the requests still open, did not fail. Each is named
  * by its method and outcome, never its address, which can carry personal data.
  */
+/**
+ * The address of the first page outside the allowed origins that the top frame set out to load
+ * while `run` ran, whether the navigation guard stopped it there or a redirect took it there. A
+ * read that found the page there, which the sweep refuses, then ends `run` without an error.
+ */
+async function navigationLeavingDuring(
+  page: KeyboardPointerSweepPage,
+  allowedOrigins: string[] | undefined,
+  run: () => Promise<void>
+): Promise<string | undefined> {
+  if (!allowedOrigins) {
+    await run();
+    return undefined;
+  }
+  let leftTo: string | undefined;
+  const onRequest = (request: KeyboardPointerSweepRequest) => {
+    if (
+      !leftTo &&
+      request.isNavigationRequest() &&
+      request.frame() === page.mainFrame() &&
+      !allowedOrigins.includes(new URL(request.url()).origin)
+    ) {
+      leftTo = request.url();
+    }
+  };
+  page.on("request", onRequest);
+  try {
+    await run();
+  } catch (error) {
+    if (!(leftTo && error instanceof BlockedOriginError)) throw error;
+  } finally {
+    page.off("request", onRequest);
+  }
+  return leftTo;
+}
+
 async function failedRequestsDuring(
   page: KeyboardPointerSweepPage,
   run: () => Promise<void>
