@@ -53,7 +53,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | B2  | Score the AI's suggested names and alt text                       | Word overlap with one fixed answer                             | `promptfoo` rubric or similarity checks                             | Question                          | M      |
 | B3  | Check the test lab's heading outline                              | Tag names (`H1`, `H2`)                                         | Playwright aria snapshots or `getByRole` heading levels             | Replace                           | S      |
 | B4  | Remove VoiceOver's usage hints                                    | English regex                                                  | Guidepup start-up settings                                          | Question                          | S      |
-| C1  | Call OpenAI and local models                                      | Hand-written `fetch`, very likely broken for OpenAI            | Official `openai` SDK                                               | Replace                           | S      |
+| C1  | Call OpenAI and local models                                      | Hand-written `fetch`, broken for OpenAI                        | Official `openai` SDK                                               | Built (`openai` 7.28.0)           | S      |
 | C2  | Validate evidence files                                           | Ajv with strict mode off; hand reading with quiet defaults     | Ajv defaults plus the existing validator                            | Replace                           | S / M  |
 | C3  | Give AI agents the findings (MCP)                                 | Shortened PR-comment text                                      | MCP structured output with the full report                          | Replace                           | S      |
 | C4  | Post the PR comment                                               | Hand-written GitHub calls                                      | `@actions/github` plus `@octokit/plugin-retry`                      | Replace                           | S      |
@@ -82,7 +82,7 @@ These are proposals only. Each would be its own piece of work with its own PR, v
 4. **A3, "did the press do something?"**, from Chrome's state changes and Guidepup's announcements.
 5. **A4, tab order and lost focus.**
 6. **A9, axe's structured results** instead of reading its English text.
-7. **C1, the OpenAI client.** It very likely fails on every call today.
+7. **C1, the OpenAI client.** Built: the old client failed on every reply shaped as the API sends it.
 8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid.
 9. **B3, the heading outline from the accessibility tree.**
 10. **A12, selectors**, then **A13, the focus pixel diff**, then **A16, colour maths.**
@@ -721,6 +721,8 @@ A smaller related item: the Claude client parses JSON itself, while the installe
 
 **Verdict: replace** both hand-written clients with the `openai` SDK.
 
+**Built.** The bug was real. A unit test that fakes OpenAI's reply as the API sends it (the shape of the SDK's `Response` type, with the answer in `output[].content[]` and no top-level `output_text`) failed on the old client with "OpenAI Responses output did not include output_text.", for a plain request and for one with a screenshot. Both clients now call the `openai` SDK 7.28.0: OpenAI through `responses.parse`, and local models through `chat.completions.parse` with `baseURL` set to `AEE_LLM_BASE_URL`, so both read the answer with the SDK's structured-output parsing against the specialist's strict schema. The same tests pass, with new ones for an OpenAI refusal (an error, never a suggestion) and a retried 503. The local client sets every OpenAI credential itself, because the SDK otherwise reads `OPENAI_API_KEY`, `OPENAI_ADMIN_KEY`, `OPENAI_ORG_ID` and `OPENAI_PROJECT_ID` from the environment and would send them to the local server; a test holds that. It keeps no retries, as before. Still not run against the live OpenAI API: a live test is ready and runs when `OPENAI_API_KEY` and `AEE_LLM_MODEL` are set. The Claude client is unchanged; its JSON parsing was not broken, so moving it to the Anthropic SDK's parse helper stays a separate, smaller item.
+
 **Effort:** S.
 
 ### C2. Validating evidence files
@@ -832,7 +834,7 @@ Each of these is a like-for-like swap with a maintained tool. All are effort S e
 
 ## What this audit could not verify
 
-- **The OpenAI `output_text` problem (C1)** is shown from the SDK source, not from a live call.
+- **The OpenAI `output_text` problem (C1)** is shown from the SDK source and a unit test with the API's reply shape, not from a live call. The fix is built; it has not been run against the live API either.
 - **The VoiceOver setting key** that turns hints off (B4).
 - **`mdast-util-to-markdown`'s escaping guarantee** (C15).
 - **Whether Playwright has any public action hook** (C16). The search was inconclusive.
