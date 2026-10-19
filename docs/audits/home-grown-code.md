@@ -39,7 +39,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | A6  | Record an element's states in the reader transcript               | Keeps 6 states, drops description and value                    | Every property Chrome returns                                       | Replace                           | S      |
 | A7  | Know which roles must have a name                                 | Hand-written list (wrong in places)                            | `aria-query` `accessibleNameRequired`, or the matching axe result   | Built (`aria-query`, ARIA 1.2)    | S      |
 | A8  | Index the accessibility tree; images left out                     | Keeps role, name and level; one "decorative" label; no iframes | Chrome's tree is the tool; stop dropping its data                   | Keep the tool, fix the glue       | S–M    |
-| A9  | Read axe's results                                                | Regex on axe's English text; every rule "high"                 | axe's own structured data (`check.data`, `impact`, targets)         | Replace                           | S–M    |
+| A9  | Read axe's results                                                | Regex on axe's English text; every rule "high"                 | axe's own structured data (`check.data`, `impact`, targets)         | Built (axe's structured data)     | S–M    |
 | A10 | Which axe rules run                                               | Five WCAG A/AA rules silently skipped                          | Turn on axe's `experimental` tag                                    | Decided: run them (blocking open) | S      |
 | A11 | Decide whether new text is announced                              | Own live-region rules                                          | Guidepup's live-region engine, or Chrome's live properties          | Question                          | M      |
 | A12 | Point at an element (CSS selectors)                               | Three generators; some not unique                              | `@medv/finder`; axe's own targets                                   | Replace                           | M      |
@@ -81,7 +81,7 @@ These are proposals only. Each would be its own piece of work with its own PR, v
 3. **A6, A7 and A8, stop dropping information.** Keep every state, description, value and reason Chrome gives, and take the "must have a name" list from `aria-query`.
 4. **A3, "did the press do something?"**, from Chrome's state changes and Guidepup's announcements.
 5. **A4, tab order and lost focus.**
-6. **A9, axe's structured results** instead of reading its English text.
+6. **A9, axe's structured results** instead of reading its English text. Built: severity follows axe's impact, contrast numbers come from `check.data`, and shadow-root targets keep their full path.
 7. **C1, the OpenAI client.** Built: the old client failed on every reply shaped as the API sends it.
 8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid.
 9. **B3, the heading outline from the accessibility tree.**
@@ -368,6 +368,15 @@ So an unlabelled progress bar is never reported.
 - ADR 0002 already says findings take their WCAG criteria from axe's tags.
 
 **Verdict: replace** the text parsing with axe's structured fields, typed with axe's own `axe.d.ts`. Keep targets as arrays, and carry axe's impact and tags into each finding.
+
+**Built.** Each of the four problems had a test that failed on the old code first, and passes now:
+
+- **Severity.** A judge test with four rules of each impact got "high" for all four. axe's observer now records each blocking rule's impact (`meta.violationImpacts`), and the axe judge maps it one step for each: critical to `critical`, serious to `high`, moderate to `medium`, minor to `low`. A rule with no impact keeps `high`. The judgment stays `high` and fails on any WCAG violation, so the release gate decides exactly as before. Checked in axe 4.14 in Chromium: each of its 105 rules has one impact, so a rule's severity is the same at every checkpoint.
+- **Contrast.** A report test whose axe message and failure summary are in French, with large text needing 3:1, gave no numbers and no proposed colour on the old code. The report now reads axe's `fgColor`, `bgColor`, `contrastRatio`, `expectedContrastRatio`, `fontSize` and `fontWeight` (axe-core 4.14's `color-contrast` check, checked in its source), through one reader in [`playwright/src/axe-results.ts`](../../packages/playwright/src/axe-results.ts) that the pixel measurement uses too. All three regular expressions on axe's text are gone.
+- **AEE's pixel measurement.** It no longer rewrites axe's message. The report says it in AEE's words from `aeeContrast`'s numbers.
+- **Shadow DOM.** A real-browser test with an unnamed button in a shadow root located the host, 800 by 150 pixels, instead of the 40 by 30 button; a report test turned `[["#app-shell", "button.icon"]]` into `#app-shell,button.icon`. The element is now found by walking each shadow root, the report writes `#app-shell >>> button.icon`, and each affected element keeps axe's whole target array.
+
+Left as follow-ups: AEE's pixel contrast check still measures only texts in the top document's own tree, and the page around an element is captured for the AI only for those; an element inside a frame or a shadow root gets none (it used to get the frame's or the host's, a different element). axe's `tags` already reach each finding (ADR 0002).
 
 **Effort:** S–M.
 

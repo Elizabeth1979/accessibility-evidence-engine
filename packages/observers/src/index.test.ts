@@ -508,8 +508,18 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
     timestamp: "2026-09-13T00:00:00.000Z",
     url: "https://example.com/",
     violations: [
-      { id: "button-name", tags: ["cat.name-role-value", "wcag2a", "wcag412"], nodes: [] },
-      { id: "empty-heading", tags: ["cat.name-role-value", "best-practice"], nodes: [] }
+      {
+        id: "button-name",
+        impact: "critical",
+        tags: ["cat.name-role-value", "wcag2a", "wcag412"],
+        nodes: []
+      },
+      {
+        id: "empty-heading",
+        impact: "minor",
+        tags: ["cat.name-role-value", "best-practice"],
+        nodes: []
+      }
     ],
     passes: [{ id: "document-title", nodes: [] }],
     incomplete: [{ id: "color-contrast", nodes: [] }],
@@ -556,6 +566,7 @@ test("createAxeObserver preserves complete pinned axe output", async () => {
       incomplete: 1,
       inapplicable: 1,
       violationRuleIds: ["button-name"],
+      violationImpacts: { "button-name": "critical" },
       advisoryRuleIds: ["empty-heading"],
       incompleteRuleIds: ["color-contrast"],
       evaluatedRuleIds: [

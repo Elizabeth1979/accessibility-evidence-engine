@@ -1823,10 +1823,11 @@ function createAxeJudge(): JudgePlugin {
         }));
 
       if (violations > 0 || unnamedFrameFindings.length > 0) {
+        const impacts = isRecord(record.meta?.violationImpacts) ? record.meta.violationImpacts : {};
         const findings: Finding[] = violationRuleIds.map((ruleId) => ({
           id: `axe:${bundle.interaction.id}:${ruleId}`,
           message: `axe reported the ${ruleId} rule as a violation.`,
-          severity: "high",
+          severity: severityForAxeImpact(impacts[ruleId]),
           ruleId,
           evidenceRecordIds: [record.id],
           artifactIds,
@@ -1925,6 +1926,23 @@ function getStringArrayMetaField(
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
+}
+
+/**
+ * AEE's severity for axe's impact, one step for each: critical stays critical, serious is high,
+ * moderate is medium and minor is low. A rule axe gives no impact keeps "high", as every axe
+ * violation had before. It labels a finding only: whether the judgment blocks release does not
+ * depend on it.
+ */
+const SEVERITY_BY_AXE_IMPACT: Record<string, Finding["severity"]> = {
+  critical: "critical",
+  serious: "high",
+  moderate: "medium",
+  minor: "low"
+};
+
+function severityForAxeImpact(impact: unknown): Finding["severity"] {
+  return (typeof impact === "string" && SEVERITY_BY_AXE_IMPACT[impact]) || "high";
 }
 
 function formatRuleIds(ruleIds: string[]): string {

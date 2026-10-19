@@ -1,3 +1,5 @@
+import type { AxeTargetStep } from "./axe-results";
+
 /** Where an element sits on the whole page, so a report can point at it on a full-page screenshot. */
 export interface ElementLocation {
   x: number;
@@ -13,23 +15,31 @@ export interface ElementLocationPage {
 }
 
 /**
- * Locates the first element each selector matches, in page coordinates. A selector that matches
- * nothing, or does not parse, gets null, so the result lines up with the selectors.
+ * Locates the first element each selector matches, in page coordinates. A selector may be a path
+ * through shadow roots, as axe's targets give one: each next selector is matched inside the
+ * shadow root of the element before it. A selector that matches nothing, or does not parse, gets
+ * null, so the result lines up with the selectors.
  */
 export async function locateElements(
   page: ElementLocationPage,
-  selectors: string[]
+  selectors: AxeTargetStep[]
 ): Promise<Array<ElementLocation | null>> {
-  return (await page.evaluate((requested: string[]) => {
+  return (await page.evaluate((requested: AxeTargetStep[]) => {
     const root = document.documentElement;
     const pageWidth = Math.max(root.scrollWidth, document.body?.scrollWidth ?? 0);
     const pageHeight = Math.max(root.scrollHeight, document.body?.scrollHeight ?? 0);
-    const find = (selector: string): Element | null => {
+    const find = (step: AxeTargetStep): Element | null => {
+      let element: Element | null = null;
+      let scope: ParentNode | null = document;
       try {
-        return selector ? document.querySelector(selector) : null;
+        for (const selector of typeof step === "string" ? [step] : step) {
+          element = selector && scope ? scope.querySelector(selector) : null;
+          scope = element?.shadowRoot ?? null;
+        }
       } catch {
         return null;
       }
+      return element;
     };
     return requested.map((selector) => {
       const element = find(selector);

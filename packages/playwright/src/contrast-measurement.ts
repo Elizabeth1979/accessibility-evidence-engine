@@ -1,5 +1,6 @@
 import { PNG } from "pngjs";
 
+import { axeContrastData } from "./axe-results";
 import type { ElementLocationPage } from "./element-locations";
 
 /**
@@ -47,8 +48,7 @@ export interface ContrastMeasuringPage extends ElementLocationPage {
 
 interface AxeNodeLike {
   target: unknown[];
-  any?: Array<{ message?: string; data?: unknown }>;
-  failureSummary?: string;
+  any?: Array<{ id?: string; data?: unknown }>;
 }
 
 interface AxeRuleLike<Node extends AxeNodeLike> {
@@ -68,9 +68,10 @@ type TextProbe =
 
 /**
  * Settles the `color-contrast` checks axe left incomplete because of what is behind the text.
- * Each text it decides moves to the rule's passes or violations, with its measurement attached as
- * `aeeContrast` and, when it fails, the measured colors in axe's own wording. Every other check,
- * and every text it cannot decide, stays exactly as axe reported it.
+ * Each text it decides moves to the rule's passes or violations with its measurement attached as
+ * `aeeContrast`, and axe's own message and data left as axe wrote them: reports read the numbers
+ * from `aeeContrast`, never from text. Every other check, and every text it cannot decide, stays
+ * exactly as axe reported it.
  */
 export async function settleContrastByPixels<
   Node extends AxeNodeLike,
@@ -98,11 +99,7 @@ export async function settleContrastByPixels<
     const measurement = measurements[index]!;
     const annotated = { ...node, aeeContrast: measurement };
     if (measurement.verdict === "pass" || measurement.verdict === "fail") {
-      decided.set(node, {
-        node:
-          measurement.verdict === "fail" ? withMeasuredFailure(annotated, measurement) : annotated,
-        verdict: measurement.verdict
-      });
+      decided.set(node, { node: annotated, verdict: measurement.verdict });
     } else {
       measuredNodes.set(node, annotated);
     }
@@ -129,13 +126,8 @@ interface ContrastCheck {
 
 /** Why axe could not decide, and the ratio it required: 3:1 for large text, 4.5:1 otherwise. */
 function contrastCheck(node: AxeNodeLike): ContrastCheck {
-  const data = node.any?.[0]?.data;
-  const record = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};
-  const required = /^([0-9.]+):1$/.exec(String(record.expectedContrastRatio ?? ""))?.[1];
-  return {
-    reason: String(record.messageKey ?? ""),
-    requiredRatio: required ? Number(required) : 4.5
-  };
+  const data = axeContrastData(node);
+  return { reason: data?.messageKey ?? "", requiredRatio: data?.requiredRatio ?? 4.5 };
 }
 
 /** A node in the page itself; one inside a frame or shadow root has a longer target. */
@@ -158,21 +150,6 @@ function withNodes<Node extends AxeNodeLike>(
         entry === existing ? { ...entry, nodes: [...entry.nodes, ...nodes] } : entry
       )
     : [...rules, { ...template, nodes }];
-}
-
-/** A failing node described in axe's own words, so reports read its colors and required ratio. */
-function withMeasuredFailure<Node extends AxeNodeLike>(
-  node: Node,
-  measurement: MeasuredContrast
-): Node {
-  const { foreground, lowest, highest, requiredRatio } = measurement;
-  const message = `Measured from the screenshot, the text has a contrast of ${lowest.ratio} to ${highest.ratio} against what is behind it (foreground color: ${foreground}, background color: ${lowest.background}; foreground color: ${foreground}, background color: ${highest.background}). Expected contrast ratio of ${requiredRatio}:1`;
-  const [first, ...rest] = node.any ?? [];
-  return {
-    ...node,
-    any: [{ ...first, message }, ...rest],
-    failureSummary: `Fix any of the following:\n  ${message}`
-  };
 }
 
 /**

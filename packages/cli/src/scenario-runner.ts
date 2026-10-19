@@ -25,14 +25,19 @@ import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
   announcedWithoutName,
+  contrastReading,
+  describeAxeTarget,
   inputComparisonLaneId,
   runInputComparison,
   runKeyboardPointerSweepLane,
   runStartPageLane,
   writeObservedPressesLane,
   runVirtualScreenReaderLane,
+  readAxeTarget,
   SWEEP_FINDING_CONCEPTS,
+  type AxeTarget,
   type ContrastMeasurement,
+  type ContrastReading,
   type ElementContext,
   type ElementMap,
   type EvidenceManifest,
@@ -226,7 +231,9 @@ interface AxeRuleView {
 }
 
 interface AxeNodeView {
+  /** axe's path to the element as one line; `targetPath` keeps it as axe gave it. */
   target: string;
+  targetPath?: AxeTarget;
   html?: string;
   failureSummary?: string;
   targetBox?: AxeTargetBox;
@@ -236,6 +243,8 @@ interface AxeNodeView {
   undecided?: { key: string; message: string };
   /** AEE's measurement of the pixels behind a text whose contrast axe could not decide. */
   contrast?: ContrastMeasurement;
+  /** The text's contrast, from axe's check data or AEE's screenshot measurement. */
+  reading?: ContrastReading;
 }
 
 export interface AxeTargetBox {
@@ -386,6 +395,10 @@ export interface FindingInstanceSynthesis {
   tagName?: string;
   detail?: string;
   targetBox?: AxeTargetBox;
+  /** axe's own path to the element, through every frame and shadow root it is in. */
+  target?: AxeTarget;
+  /** The text's measured contrast, for a contrast finding. */
+  contrast?: ContrastReading;
 }
 
 export interface ScenarioSynthesis {
@@ -1696,19 +1709,25 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).map((rule) => {
     const rawNodes = Array.isArray(rule.nodes) ? rule.nodes.filter(isRecord) : [];
-    const nodes = rawNodes.map((node) => ({
-      target: Array.isArray(node.target) ? framedSelector(node.target.map(String)) : "",
-      html: optionalStringField(node, "html"),
-      failureSummary: optionalStringField(node, "failureSummary"),
-      targetBox: axeTargetBox(node.aeeTarget),
-      context: isRecord(node.aeeContext)
-        ? (node.aeeContext as unknown as ElementContext)
-        : undefined,
-      undecided: undecidedReason(node),
-      contrast: isRecord(node.aeeContrast)
-        ? (node.aeeContrast as unknown as ContrastMeasurement)
-        : undefined
-    }));
+    const nodes = rawNodes.map((node) => {
+      const targetPath = readAxeTarget(node.target);
+      const reading = contrastReading(node);
+      return {
+        target: targetPath ? describeAxeTarget(targetPath) : "",
+        ...(targetPath ? { targetPath } : {}),
+        html: optionalStringField(node, "html"),
+        failureSummary: optionalStringField(node, "failureSummary"),
+        targetBox: axeTargetBox(node.aeeTarget),
+        context: isRecord(node.aeeContext)
+          ? (node.aeeContext as unknown as ElementContext)
+          : undefined,
+        undecided: undecidedReason(node),
+        contrast: isRecord(node.aeeContrast)
+          ? (node.aeeContrast as unknown as ContrastMeasurement)
+          : undefined,
+        ...(reading ? { reading } : {})
+      };
+    });
     const targets = nodes.map(({ target }) => target).filter(Boolean);
     const htmlSamples = nodes
       .map(({ html }) => html)
@@ -2073,22 +2092,23 @@ function contrastDetail(findings: FindingSynthesis[]): string {
   const instances = findings.flatMap(({ instances }) => instances);
   const count = instances.length;
   const noun = contrastSubject(instances) === "link" ? "link" : "text element";
-  const ratios = [
-    ...new Set(
-      instances.flatMap(({ detail }) => {
-        const ratio = requiredContrastRatio(detail ?? "");
-        return ratio ? [ratio] : [];
-      })
-    )
-  ];
+  const ratios = requiredContrastRatios(instances);
   const required = ratios.length === 1 ? `${ratios[0]}:1 ` : "";
   return `${count} ${noun}${count === 1 ? " falls" : "s fall"} below the required ${required}contrast ratio.`;
 }
 
-/** The ratio axe required, from its own failure text ("Expected contrast ratio of 4.5:1"). */
-function requiredContrastRatio(text: string): number | undefined {
-  const ratio = /Expected contrast ratio of ([0-9.]+):1/i.exec(text)?.[1];
-  return ratio ? Number(ratio) : undefined;
+/** The ratios the measured texts need, highest first: 4.5 for most text, 3 for large text. */
+function requiredContrastRatios(instances: FindingInstanceSynthesis[]): number[] {
+  return [
+    ...new Set(instances.flatMap(({ contrast }) => (contrast ? [contrast.requiredRatio] : [])))
+  ].sort((first, second) => second - first);
+}
+
+/** A contrast AEE measured from the screenshot, in its own words from its numbers. */
+function screenshotContrastText({ foreground, backgrounds, requiredRatio }: ContrastReading) {
+  const ratios = backgrounds.map(({ ratio }) => `${ratio}:1`).join(" to ");
+  const colors = backgrounds.map(({ color }) => color).join(" to ");
+  return `Measured from the screenshot: ${foreground} has ${ratios} against what is behind it (${colors}), where ${requiredRatio}:1 is needed.`;
 }
 
 /** Pure synthesis entry point used to verify cross-evidence reporting without launching a browser. */
@@ -2097,6 +2117,11 @@ export function buildScenarioSynthesisForTest(
   views: unknown
 ): ScenarioSynthesis {
   return buildScenarioSynthesis(report, views as IntegratedHtmlViews);
+}
+
+/** Pure entry point used to verify how a raw axe result list is read into the report's views. */
+export function axeRuleViewsForTest(value: unknown): unknown[] {
+  return axeRuleViews(value);
 }
 
 /** Pure HTML entry point used to verify the portable report without running a browser journey. */
@@ -2211,7 +2236,7 @@ function buildFindingSynthesis(
   const maximumAffectedNodes = Math.max(0, ...allRules.map(({ nodeCount }) => nodeCount));
   const instances = findingInstances(ruleId, representative);
   const componentCount = new Set(instances.map(({ component }) => component)).size;
-  const remediation = findingRemediation(ruleId, representative);
+  const remediation = findingRemediation(ruleId, representative, instances);
   return {
     ruleId,
     title: representative?.help ?? String(finding.message ?? ruleId),
@@ -2335,7 +2360,7 @@ function sweepFindingInstance(
       finding.label ||
       unnamedLabel(finding.text) ||
       elementLabel(undefined, finding.selector, index),
-    selector: framedSelector([...(finding.framePath ?? []), finding.selector]),
+    selector: describeAxeTarget([...(finding.framePath ?? []), finding.selector]),
     targetBox: finding.targetBox,
     detail: finding.summary
   };
@@ -2347,14 +2372,6 @@ function sweepFindingInstance(
  */
 function unnamedLabel(text: string | undefined): string | undefined {
   return text ? `Shows “${text}”, no accessible name` : undefined;
-}
-
-/**
- * An element's path through the frames it is in, outermost `<iframe>` first, as the report shows
- * axe-core's frame-crossing targets.
- */
-function framedSelector(path: string[]): string {
-  return path.join(" → ");
 }
 
 function actionArtifactPath(
@@ -2418,7 +2435,9 @@ function findingInstances(
         target,
         html: rule.htmlSamples[index],
         failureSummary: rule.failureSummary,
-        targetBox: undefined
+        targetBox: undefined,
+        targetPath: undefined,
+        reading: undefined
       }));
   const seen = new Set<string>();
   return nodes.flatMap((node, index) => {
@@ -2433,10 +2452,16 @@ function findingInstances(
         selector,
         ...(tagName ? { tagName } : {}),
         targetBox: node.targetBox,
-        detail: node.failureSummary
-          ?.replace(/^Fix any of the following:\s*/i, "")
-          .replace(/\s+/g, " ")
-          .trim()
+        ...(node.targetPath ? { target: node.targetPath } : {}),
+        ...(node.reading ? { contrast: node.reading } : {}),
+        // axe's message for a text the screenshot settled still says axe could not decide.
+        detail:
+          node.reading?.measuredBy === "screenshot"
+            ? screenshotContrastText(node.reading)
+            : node.failureSummary
+                ?.replace(/^Fix any of the following:\s*/i, "")
+                .replace(/\s+/g, " ")
+                .trim()
       }
     ];
   });
@@ -2496,17 +2521,17 @@ function elementLabel(html: string | undefined, selector: string, index: number)
 
 function findingRemediation(
   ruleId: string,
-  rule: AxeRuleView | undefined
+  rule: AxeRuleView | undefined,
+  instances: FindingInstanceSynthesis[]
 ): FindingSynthesis["remediation"] {
-  const measured = rule?.failureSummaries
+  const measured = [...new Set(instances.flatMap(({ detail }) => (detail ? [detail] : [])))]
     .slice(0, 3)
-    .map((summary) => summary.replace(/^Fix any of the following:\s*/i, "").trim())
     .join(" ");
   if (ruleId === "aria-required-parent") {
     return {
       deterministic:
         'For ordinary navigation links, remove role="menuitem" and keep native link semantics. If the controls intentionally form an application-style menu, place each menuitem inside an element with role="menu", role="menubar", or role="group" and implement the complete keyboard pattern. ' +
-        (measured ?? "Rerun the ARIA parent relationship check after changing the structure."),
+        (measured || "Rerun the ARIA parent relationship check after changing the structure."),
       ai: {
         used: false,
         status: "not-applicable",
@@ -2521,11 +2546,12 @@ function findingRemediation(
     };
   }
   if (ruleId === "color-contrast") {
-    const required = requiredContrastRatio(measured ?? "") ?? 4.5;
+    const ratios = requiredContrastRatios(instances);
+    const required = ratios.length ? ratios.map((ratio) => `${ratio}:1`).join(" or ") : "4.5:1";
     return {
       deterministic:
         (measured ? `${measured} ` : "") +
-        `Choose a brand-approved foreground/background token pair that computes to at least ${required}:1 for this text, then verify every applicable default, hover, focus, and active state.`,
+        `Choose a brand-approved foreground/background token pair that computes to at least ${required} for this text, then verify every applicable default, hover, focus, and active state.`,
       ai: {
         used: false,
         status: "available-if-needed",
@@ -2533,7 +2559,7 @@ function findingRemediation(
           "A visual specialist may locate complex foreground/background regions or explain brand intent when deterministic extraction is inconclusive. The final contrast ratio and token selection must still be calculated deterministically."
       },
       verification: [
-        `Recompute the exact contrast ratio from final rendered colors and require at least ${required}:1.`,
+        `Recompute the exact contrast ratio from final rendered colors and require at least ${required}.`,
         "Compare the corrected state with the full-page visual and DOM computed styles.",
         "Rerun the same keyboard, pointer, and virtual-reader checkpoints."
       ]
@@ -4248,7 +4274,7 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
     const visibleTargets = finding.instances
       .map(
         (instance, index) =>
-          `<li><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></li>`
+          `<li><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance) ? ` · ${escapeHtml(instanceMeasurement(instance)!)} contrast` : ""}</span></li>`
       )
       .join("");
     const targetCrops = locatedTargets.length
@@ -4259,7 +4285,7 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
             const centerY = ((targetBox.y + targetBox.height / 2) / targetBox.pageHeight) * 100;
             const left = (targetBox.x / targetBox.pageWidth) * 100;
             const width = Math.max((targetBox.width / targetBox.pageWidth) * 100, 4);
-            return `<a class="target-crop image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`${instance.label} in ${instance.component}`)}" data-original-label="Open complete page capture" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance.detail) ? ` · ${escapeHtml(instanceMeasurement(instance.detail)!)} contrast` : ""}</span></a>`;
+            return `<a class="target-crop image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(`${instance.label} in ${instance.component}`)}" data-original-label="Open complete page capture" style="--target-x:${centerX.toFixed(3)}%;--target-y:${centerY.toFixed(3)}%;--target-left:${left.toFixed(3)}%;--target-width:${width.toFixed(3)}%"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page crop locating ${escapeAttribute(instance.label)} in the ${escapeAttribute(instance.component)}"><i aria-hidden="true"></i><b>${index + 1}. ${escapeHtml(instance.label)}</b><span>${escapeHtml(instance.component)}${instanceMeasurement(instance) ? ` · ${escapeHtml(instanceMeasurement(instance)!)} contrast` : ""}</span></a>`;
           })
           .join("")}</div>`
       : `<a class="image-viewer-trigger" href="${encodeURI(screenshot)}" data-image-viewer data-view-title="${escapeAttribute(findingFixLabel(finding))}" data-original-label="Open complete page capture"><span class="issue-crop"><img loading="lazy" src="${encodeURI(screenshot)}" alt="Page context for ${escapeAttribute(findingFixLabel(finding))}"><b>Visual context only</b></span></a>`;
@@ -4268,8 +4294,9 @@ function renderCurrentEvidence(finding: FindingSynthesis, screenshot?: string): 
   return `<figure class="current-state"><div class="semantic-evidence"><strong>No visual capture was available</strong><p>Use the exact element locations below with the DOM and Axe evidence.</p></div><figcaption><strong>Current evidence</strong><span>${finding.instanceCount} affected page location${finding.instanceCount === 1 ? "" : "s"}</span></figcaption></figure>`;
 }
 
-function instanceMeasurement(detail?: string): string | undefined {
-  return /contrast of\s+([0-9.]+)/i.exec(detail ?? "")?.[1]?.concat(":1");
+/** A text's lowest measured contrast, as the crop's caption gives it. */
+function instanceMeasurement({ contrast }: FindingInstanceSynthesis): string | undefined {
+  return contrast ? `${Math.min(...contrast.backgrounds.map(({ ratio }) => ratio))}:1` : undefined;
 }
 
 function renderPatternLink(finding: FindingSynthesis): string {
@@ -4382,7 +4409,7 @@ function citedEvidence(ids: string[]): string {
 
 function renderProposedFix(finding: FindingSynthesis): string {
   if (finding.ruleId === "color-contrast") {
-    const preview = contrastFixPreview(finding.remediation.deterministic);
+    const preview = contrastFixPreview(finding.instances);
     if (preview) {
       return `<figure class="proposed-state contrast-preview"><div class="preview-stage"><div class="contrast-pair"><span class="color-field" style="background:${escapeAttribute(preview.background)}" role="img" aria-label="Current foreground ${escapeAttribute(preview.current)} on background ${escapeAttribute(preview.background)}"><i style="background:${escapeAttribute(preview.current)}" aria-hidden="true"></i></span><strong>Current pair</strong><small><code>${escapeHtml(preview.current)}</code> on <code>${escapeHtml(preview.background)}</code> · ${preview.currentRatio}:1</small></div><div class="contrast-pair"><span class="color-field" style="background:${escapeAttribute(preview.background)}" role="img" aria-label="Candidate foreground ${escapeAttribute(preview.candidate)} on background ${escapeAttribute(preview.background)}"><i style="background:${escapeAttribute(preview.candidate)}" aria-hidden="true"></i></span><strong>Passing candidate</strong><small><code>${escapeHtml(preview.candidate)}</code> on <code>${escapeHtml(preview.background)}</code> · ${preview.candidateRatio}:1</small></div></div><figcaption><strong>Proposed fix</strong><span>Candidate foreground <code>${escapeHtml(preview.candidate)}</code> passes against the hardest captured background; confirm it as a brand token.</span></figcaption></figure>`;
     }
@@ -4390,24 +4417,28 @@ function renderProposedFix(finding: FindingSynthesis): string {
   return `<figure class="proposed-state"><div class="preview-stage"><p>${escapeHtml(finding.remediation.deterministic)}</p></div><figcaption><strong>Proposed fix</strong><span>Verify the implementation against the same authored journey.</span></figcaption></figure>`;
 }
 
-function contrastFixPreview(remediation: string): {
+/**
+ * The first measured text's color and the smallest change to it that passes against every
+ * background measured, each at the ratio its own text needs.
+ */
+function contrastFixPreview(instances: FindingInstanceSynthesis[]): {
   current: string;
   candidate: string;
   background: string;
   currentRatio: string;
   candidateRatio: string;
 } | null {
-  const pairs = [
-    ...remediation.matchAll(
-      /foreground color:\s*(#[0-9a-f]{6}).*?background color:\s*(#[0-9a-f]{6})/gi
-    )
-  ].map((match) => ({ foreground: match[1]!.toLowerCase(), background: match[2]!.toLowerCase() }));
-  if (!pairs.length) return null;
-  const current = pairs[0]!.foreground;
+  const readings = instances.flatMap(({ contrast }) => (contrast ? [contrast] : []));
+  if (!readings.length) return null;
+  const current = readings[0]!.foreground.toLowerCase();
+  const pairs = readings.flatMap(({ backgrounds, requiredRatio }) =>
+    backgrounds.map(({ color }) => ({ background: color.toLowerCase(), requiredRatio }))
+  );
   const backgrounds = [...new Set(pairs.map(({ background }) => background))];
-  const required = requiredContrastRatio(remediation) ?? 4.5;
   const passes = (color: string) =>
-    backgrounds.every((background) => contrastRatio(color, background) >= required);
+    pairs.every(
+      ({ background, requiredRatio }) => contrastRatio(color, background) >= requiredRatio
+    );
   // The smallest step toward black or white that passes on every captured background.
   let candidate: string | undefined;
   for (let step = 1; step <= 100 && !candidate; step += 1) {
@@ -4826,7 +4857,7 @@ function addElementMapLayers(state: PageState, map: ElementMap): void {
             : element.alt === "ignored"
               ? `Screen readers skip it (Chrome: ${element.ignoredReasons?.join(", ") || "ignored"})`
               : "No text alternative",
-        detail: framedSelector([...(element.framePath ?? []), element.selector]),
+        detail: describeAxeTarget([...(element.framePath ?? []), element.selector]),
         tone: element.alt === "missing" ? "fail" : "neutral",
         ...(element.alt === "missing" ? { flag: "No alt" } : {})
       });

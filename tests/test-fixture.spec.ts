@@ -144,8 +144,11 @@ test("an existing spec with only its import swapped produces findings", async ()
   expect(gradients.verdict).toBe("fail");
   const contrast = gradients.synthesis.findings.find(({ ruleId }) => ruleId === "color-contrast");
   expect(contrast?.instances.map(({ selector }) => selector)).toEqual(["#pale"]);
+  expect(contrast?.instances[0]?.contrast).toEqual(
+    expect.objectContaining({ measuredBy: "screenshot", requiredRatio: 4.5 })
+  );
   expect(contrast?.instances[0]?.detail).toMatch(
-    /^Measured from the screenshot, the text has a contrast of 2\.\d+ to 2\.\d+ .*Expected contrast ratio of 4\.5:1$/
+    /^Measured from the screenshot: #[0-9a-f]{6} has 2\.\d+:1 to 2\.\d+:1 against what is behind it \(#[0-9a-f]{6} to #[0-9a-f]{6}\), where 4\.5:1 is needed\.$/
   );
   // What the pixels cannot settle is left for a person, each text once with why.
   expect(gradients.synthesis.undecidedContrast).toEqual([
