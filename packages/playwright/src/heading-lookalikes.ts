@@ -6,6 +6,7 @@ import {
   type CapturedElement,
   type PageSessions
 } from "./accessibility-tree";
+import { placeOf } from "./element-selectors";
 
 /** A line of text styled like a heading that the accessibility tree does not expose as one. */
 export interface HeadingLookalike {
@@ -124,27 +125,33 @@ export async function findHeadingLookalikes(page: PageSessions): Promise<Heading
 
   const lines = new Map<CapturedElement, typeof runs>();
   for (const run of runs) lines.set(run.line, [...(lines.get(run.line) ?? []), run]);
-  return [...lines].flatMap(([line, lineRuns]) => {
+  const found = [...lines].flatMap(([line, lineRuns]) => {
     const text = lineRuns.map((run) => run.text).join(" ");
     const shown = (line.visualBounds?.width ?? 0) > 1 && (line.visualBounds?.height ?? 0) > 1;
-    const title = lineRuns[0]!;
     return shown &&
       text.length <= MAX_TITLE_LENGTH &&
       /\p{L}/u.test(text) &&
       lineRuns.every(looksLikeTitle) &&
       !lineRuns.some((run) => run.inTextRole || isControlName(run))
-      ? [
-          {
-            selector: line.nodePath,
-            ...(line.framePath.length ? { framePath: line.framePath } : {}),
-            text,
-            fontSize: title.fontSize,
-            fontWeight: title.fontWeight,
-            bodyFontSize,
-            bodyFontWeight
-          }
-        ]
+      ? [{ line, text, title: lineRuns[0]! }]
       : [];
+  });
+  const paths = await dom.paths(found.map(({ line }) => line));
+  return found.flatMap(({ text, title }, at) => {
+    const path = paths[at];
+    if (!path) return [];
+    const { nodePath, framePath } = placeOf(path);
+    return [
+      {
+        selector: nodePath,
+        ...(framePath.length ? { framePath } : {}),
+        text,
+        fontSize: title.fontSize,
+        fontWeight: title.fontWeight,
+        bodyFontSize,
+        bodyFontWeight
+      }
+    ];
   });
 }
 
