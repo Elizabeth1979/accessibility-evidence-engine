@@ -95,6 +95,8 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        # A self-hosted runner behind a proxy sets HTTPS_PROXY; Node's fetch follows it only when told.
+        NODE_USE_ENV_PROXY: "1"
         AEE_FAIL_ON: ${{ inputs.fail-on }}
         AEE_OUTPUT: ${{ runner.temp }}/aee-output
         AEE_REPORTS: ${{ inputs.reports }}
