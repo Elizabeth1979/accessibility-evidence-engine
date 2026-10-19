@@ -29,15 +29,14 @@ import {
   type SchemaName
 } from "@aee/schemas";
 
-import { runVerifiedFix, type AcceptedFix } from "./fix-command";
+import { parseCommandLine, type CommandLine } from "./command-line";
+import { runVerifiedFix, type VerifiedFixOptions } from "./fix-command";
 import {
   buildPullRequestComment,
   commentImageUrl,
-  FAIL_ON_VALUES,
   failsOn,
   postStickyComment,
-  uploadCommentImages,
-  type FailOn
+  uploadCommentImages
 } from "./pr-comment";
 import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
 import { executeScenario, openScenarioReport } from "./scenario-runner";
@@ -287,86 +286,36 @@ async function writeReporterArtifacts(
 }
 
 export async function main(argv: string[]): Promise<void> {
-  const command = argv[0];
-
-  if (!command) {
-    throw new Error(
-      `Usage: aee plan <scenario.yml> [--json] | aee run <scenario.yml> [--open] [--ci] [--output <dir>] | aee run <config.json> | aee comment <folder>... [--fail-on blocking|incomplete|never] [--post] | ${FIX_USAGE}`
-    );
-  }
-
-  if (command === "comment") {
-    await runCommentCommand(argv.slice(1));
-    return;
-  }
-
-  if (command === "fix") {
-    await runFixCommand(argv.slice(1));
-    return;
-  }
-
-  if (command === "plan") {
-    const scenarioPath = argv[1];
-
-    if (!scenarioPath || scenarioPath.startsWith("--")) {
-      throw new Error("Usage: aee plan <scenario.yml> [--json]");
+  const commandLine = parseCommandLine(argv);
+  switch (commandLine.command) {
+    case "plan": {
+      const plan = compileScenarioPlan(await loadScenario(path.resolve(commandLine.scenarioPath)));
+      process.stdout.write(
+        commandLine.json ? `${JSON.stringify(plan, null, 2)}\n` : renderScenarioPlan(plan)
+      );
+      return;
     }
-
-    const scenario = await loadScenario(path.resolve(scenarioPath));
-    const plan = compileScenarioPlan(scenario);
-    process.stdout.write(
-      argv.includes("--json") ? `${JSON.stringify(plan, null, 2)}\n` : renderScenarioPlan(plan)
-    );
-    return;
-  }
-
-  const configPath = command === "run" ? argv[1] : command;
-
-  if (!configPath || configPath.startsWith("--")) {
-    throw new Error("Usage: aee run <config.json>");
-  }
-
-  if (/\.ya?ml$/i.test(configPath)) {
-    const scenarioOptions = parseScenarioRunOptions(argv.slice(2));
-    const result = await executeScenario(path.resolve(configPath), {
-      outputDir: scenarioOptions.outputDir
-    });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-    if (scenarioOptions.open) openScenarioReport(result.reportFiles.html);
-    if (scenarioOptions.ci && (result.verdict !== "pass" || result.completeness !== "complete")) {
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  const result = await executeConfig(path.resolve(configPath));
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-}
-
-function parseScenarioRunOptions(argv: string[]): {
-  open: boolean;
-  ci: boolean;
-  outputDir?: string;
-} {
-  let outputDir: string | undefined;
-  const allowedFlags = new Set(["--open", "--ci", "--output"]);
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!;
-    if (!allowedFlags.has(argument)) throw new Error(`Unknown scenario run option: ${argument}`);
-    if (argument === "--output") {
-      const value = argv[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error("--output requires a directory path.");
+    case "run": {
+      const result = await executeScenario(path.resolve(commandLine.scenarioPath), {
+        outputDir: commandLine.outputDir
+      });
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      if (commandLine.open) openScenarioReport(result.reportFiles.html);
+      if (commandLine.ci && (result.verdict !== "pass" || result.completeness !== "complete")) {
+        process.exitCode = 1;
       }
-      outputDir = value;
-      index += 1;
+      return;
     }
+    case "run-config": {
+      const result = await executeConfig(path.resolve(commandLine.configPath));
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return;
+    }
+    case "comment":
+      return runCommentCommand(commandLine);
+    case "fix":
+      return runFixCommand(commandLine);
   }
-  return {
-    open: argv.includes("--open"),
-    ci: argv.includes("--ci"),
-    ...(outputDir ? { outputDir } : {})
-  };
 }
 
 /**
@@ -374,36 +323,12 @@ function parseScenarioRunOptions(argv: string[]): {
  * it, adds it to the GitHub job summary, and with `--post` keeps it as the pull request's one AEE
  * comment. The exit code follows `--fail-on` (default blocking).
  */
-async function runCommentCommand(argv: string[]): Promise<void> {
-  const folders: string[] = [];
-  let failOn: FailOn = "blocking";
-  let post = false;
-  let images = false;
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!;
-    if (argument === "--post") post = true;
-    else if (argument === "--images") images = true;
-    else if (argument === "--fail-on") {
-      const value = argv[index + 1] as FailOn;
-      if (!FAIL_ON_VALUES.includes(value)) {
-        throw new Error(`--fail-on must be one of ${FAIL_ON_VALUES.join(", ")}.`);
-      }
-      failOn = value;
-      index += 1;
-    } else if (argument.startsWith("--")) throw new Error(`Unknown comment option: ${argument}`);
-    else folders.push(argument);
-  }
-  if (folders.length === 0) {
-    throw new Error(
-      "Usage: aee comment <folder>... [--fail-on blocking|incomplete|never] [--post [--images]]"
-    );
-  }
-  if (images && !post) {
-    throw new Error(
-      "--images needs --post: the pictures are uploaded to the repository the comment is posted on."
-    );
-  }
-
+async function runCommentCommand({
+  folders,
+  failOn,
+  post,
+  images
+}: Extract<CommandLine, { command: "comment" }>): Promise<void> {
   const env = process.env;
   const runUrl =
     env.GITHUB_SERVER_URL && env.GITHUB_REPOSITORY && env.GITHUB_RUN_ID
@@ -472,57 +397,13 @@ async function runCommentCommand(argv: string[]): Promise<void> {
   if (failsOn(comment.verdict, failOn)) process.exitCode = 1;
 }
 
-const FIX_USAGE =
-  'aee fix <scenario.yml> <assessment-folder> --accept "<#id>[=<name>]"... --source <file> --start <command> [--output <dir>]';
-
 /**
  * `aee fix`: applies the accepted name proposals from one assessment on a new branch, starts the app
  * from that branch, reruns the same approved scenario and prints what the rerun confirmed. The exit
  * code is 0 only when every fix is verified.
  */
-async function runFixCommand(argv: string[]): Promise<void> {
-  const positionals: string[] = [];
-  const accept: AcceptedFix[] = [];
-  const values: Record<string, string> = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index]!;
-    if (!argument.startsWith("--")) {
-      positionals.push(argument);
-      continue;
-    }
-    const value = argv[index + 1];
-    if (!["--accept", "--source", "--start", "--output"].includes(argument)) {
-      throw new Error(`Unknown fix option: ${argument}`);
-    }
-    if (value === undefined || value.startsWith("--"))
-      throw new Error(`${argument} needs a value.`);
-    index += 1;
-    if (argument === "--accept") {
-      const [selector = "", ...name] = value.split("=");
-      accept.push(name.length ? { selector, name: name.join("=") } : { selector });
-    } else values[argument] = value;
-  }
-  const [scenarioPath, assessmentDir] = positionals;
-  const sourceFile = values["--source"];
-  const startCommand = values["--start"];
-  if (
-    positionals.length !== 2 ||
-    !scenarioPath ||
-    !assessmentDir ||
-    !accept.length ||
-    !sourceFile ||
-    !startCommand
-  ) {
-    throw new Error(`Usage: ${FIX_USAGE}`);
-  }
-  const result = await runVerifiedFix({
-    scenarioPath,
-    assessmentDir,
-    accept,
-    sourceFile,
-    startCommand,
-    outputDir: values["--output"]
-  });
+async function runFixCommand(options: VerifiedFixOptions): Promise<void> {
+  const result = await runVerifiedFix(options);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   for (const { selector, verdict, checks } of result.verifications) {
     process.stderr.write(
