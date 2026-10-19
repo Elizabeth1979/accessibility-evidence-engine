@@ -7,6 +7,7 @@ import { expect, test, type Browser } from "@playwright/test";
 import { PNG } from "pngjs";
 
 import {
+  announcedWithoutName,
   captureElementMap,
   createPortableVirtualScreenReader,
   runInputComparison,
@@ -868,6 +869,46 @@ test("portable virtual reader supports item, heading, landmark, control, and cur
   const transcript = await reader.snapshot();
   expect(transcript.entries).toHaveLength(9);
   expect(transcript.entries.every(({ focusMoved }) => !focusMoved)).toBe(true);
+});
+
+test("portable virtual reader flags the unnamed items WAI-ARIA 1.2 requires a name for, and not a tab", async ({
+  page
+}) => {
+  await page.setContent(`
+    <main>
+      <h1>Upload</h1>
+      <progress value="4" max="10"></progress>
+      <div role="progressbar" aria-valuenow="40"></div>
+      <meter value="3" max="10"></meter>
+      <div role="tablist" aria-label="Views">
+        <div id="summary-tab" role="tab" aria-selected="true" aria-controls="summary"></div>
+      </div>
+      <div id="summary" role="tabpanel"><p>Two files left</p></div>
+      <div role="tooltip"><p>Uploads pause offline</p></div>
+      <div role="tooltip"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt=""></div>
+      <div role="region"><p>Recent uploads</p></div>
+    </main>
+  `);
+  const reader = createPortableVirtualScreenReader(page);
+  await reader.command("start");
+  while (await reader.peek("next-item")) await reader.command("next-item");
+
+  // The reader stops at the start and the end of a container; each element counts once.
+  const read = new Map(
+    (await reader.snapshot()).entries.flatMap(({ item }) => (item ? [[item.nodePath, item]] : []))
+  );
+  const roles = (flagged: boolean) =>
+    [...read.values()]
+      .filter((item) => announcedWithoutName(item) === flagged)
+      .map(({ role }) => role);
+  // An unnamed <progress>, role="progressbar", <meter>, tabpanel and tooltip: ARIA 1.2 requires each
+  // to be named. The tooltip whose text names it is not flagged.
+  expect(roles(true)).toEqual(["progressbar", "progressbar", "meter", "tabpanel", "tooltip"]);
+  // A tab is named by its content in ARIA 1.2 and needs no name, so an empty one is not flagged.
+  expect(roles(false)).toContain("tab");
+  // Chrome exposes a region with no name as a generic container, as Core-AAM says, so the reader
+  // never reads it as a region.
+  expect([...read.values()].map(({ role }) => role)).not.toContain("region");
 });
 
 test("virtual-reader lane owns an isolated context and recaptures every command", async ({

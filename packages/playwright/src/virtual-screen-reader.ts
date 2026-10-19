@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
+import { roles as ariaRoles } from "aria-query";
+
 import {
+  ariaRoleOf,
   focusPlace,
   frameNotes,
   READER_NOTES_LEGEND,
@@ -241,20 +244,22 @@ const CONTROL_ROLES = new Set([
   "textbox"
 ]);
 
-/** Roles that need an accessible name (ARIA: "accessible name required"). */
-const NAME_REQUIRED_ROLES = new Set([
-  ...CONTROL_ROLES,
-  "alertdialog",
-  "dialog",
-  "heading",
-  "image"
-]);
+/**
+ * The roles WAI-ARIA 1.2 marks "Accessible Name Required: True", with the graphics and digital
+ * publishing modules' roles, from aria-query, which follows the ARIA 1.2 Recommendation.
+ */
+const NAME_REQUIRED_ROLES = new Set<string>(
+  ariaRoles
+    .entries()
+    .filter(([, role]) => role.accessibleNameRequired)
+    .map(([name]) => name)
+);
 
-/** Whether the reader announced an item whose role needs a name without one. */
+/** Whether the reader announced an item whose role ARIA requires a name for without one. */
 export function announcedWithoutName(
   item: Pick<VirtualScreenReaderItem, "role" | "name">
 ): boolean {
-  return NAME_REQUIRED_ROLES.has(item.role) && !item.name;
+  return NAME_REQUIRED_ROLES.has(ariaRoleOf(item.role)) && !item.name;
 }
 
 /** What Guidepup's reader says at each end of what it reads. */

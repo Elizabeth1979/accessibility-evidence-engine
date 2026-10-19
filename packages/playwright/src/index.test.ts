@@ -8,6 +8,7 @@ import type { EvidenceRecord, Judgment } from "@aee/core";
 
 import {
   aggregateEvidenceManifests,
+  announcedWithoutName,
   comparePointerAndKeyboardOutcomes,
   enableExperimentalAxeRules,
   framesInsideOrigins,
@@ -761,6 +762,44 @@ test("runAeeOnPage honors capture policy filters and stabilization waits", async
     stabilizeAfterInteractionMs: 40,
     watchWithoutInputMs: 1500
   });
+});
+
+test("announcedWithoutName flags the roles WAI-ARIA 1.2 requires to be named, as Chrome names them", () => {
+  const unnamed = (role: string) => announcedWithoutName({ role });
+  // ARIA 1.2's "Accessible Name Required: True" roles a hand-kept list left out. Chrome calls `img`
+  // "image".
+  for (const role of [
+    "meter",
+    "progressbar",
+    "radiogroup",
+    "tree",
+    "treegrid",
+    "treeitem",
+    "grid",
+    "table",
+    "tabpanel",
+    "tooltip",
+    "region",
+    "columnheader",
+    "rowheader",
+    "application",
+    "graphics-document",
+    "graphics-symbol",
+    "button",
+    "link",
+    "heading",
+    "dialog",
+    "alertdialog",
+    "image"
+  ]) {
+    assert.equal(unnamed(role), true, role);
+  }
+  // ARIA 1.2 names a tab from its content and does not require a name; nor a group, a text or a
+  // generic container.
+  for (const role of ["tab", "group", "generic", "text", "list", "paragraph"]) {
+    assert.equal(unnamed(role), false, role);
+  }
+  assert.equal(announcedWithoutName({ role: "progressbar", name: "Upload" }), false);
 });
 
 test("toSafeId joins the words of any text into a short hyphenated id", () => {
