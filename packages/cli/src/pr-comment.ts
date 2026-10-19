@@ -44,7 +44,8 @@ export function failsOn(verdict: ScenarioIntegratedReport["verdict"], failOn: Fa
 export interface CommentResult {
   body: string;
   verdict: ScenarioIntegratedReport["verdict"];
-  reports: number;
+  /** Each assessment read, in full, with the folder its evidence paths are relative to. */
+  assessments: Array<{ report: ScenarioIntegratedReport; dir: string }>;
   /** The pictures the comment shows, by file name, to upload before it is posted. */
   images: Map<string, Buffer>;
 }
@@ -70,7 +71,7 @@ export async function buildPullRequestComment(
   return {
     body: renderPullRequestSummary(reports, runUrl, pictures?.imageFor),
     verdict: overallVerdict(reports),
-    reports: reports.length,
+    assessments,
     images: pictures?.files ?? new Map()
   };
 }

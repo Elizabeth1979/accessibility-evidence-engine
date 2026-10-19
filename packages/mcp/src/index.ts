@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { buildPullRequestComment, executeScenario } from "@aee/cli";
+import { bundledSchema, validateSchema } from "@aee/schemas";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -16,15 +17,56 @@ const { version } = JSON.parse(readFileSync(path.join(__dirname, "../package.jso
 
 const text = (value: string) => ({ content: [{ type: "text" as const, text: value }] });
 
-/** A run's fixes as its pull-request comment lists them: blocking first, each with its pattern. */
-async function findings(folder: string): Promise<string> {
+/**
+ * An assessment exactly as AEE wrote it, checked against AEE's own integrated-report schema, which
+ * is also what the client is given to check it with.
+ */
+const assessmentReport = z
+  .unknown()
+  .superRefine((report, context) => {
+    for (const message of validateSchema("scenarioReport", report).errors) {
+      context.addIssue({ code: "custom", message });
+    }
+  })
+  .meta(bundledSchema("scenarioReport"));
+
+/** What `findings` and `run` return as structured content: every assessment, in full. */
+const findingsOutput = {
+  verdict: z
+    .enum(["pass", "fail", "unknown"])
+    .describe("The run's verdict: fail if any assessment fails, pass only if every one passes."),
+  assessments: z
+    .array(
+      z.object({
+        folder: z
+          .string()
+          .describe("The assessment's folder; the report's evidence paths are relative to it."),
+        report: assessmentReport
+      })
+    )
+    .describe(
+      "Every assessment's whole report: each finding with all its elements, WCAG criteria, checkpoints, evidence paths, remediation and verification steps, and any AI suggestion, labelled as AI."
+    )
+};
+
+/**
+ * A run's fixes, twice: in full as structured content, for an agent to act on every element, and
+ * as the pull-request comment's shorter text, for a client that reads only text.
+ */
+async function findings(folder: string, note?: string) {
   const comment = await buildPullRequestComment([path.resolve(folder)]);
-  if (comment.reports === 0) {
+  if (comment.assessments.length === 0) {
     throw new Error(
       `No AEE assessment was found under ${folder}. Run \`aee run <scenario.yml>\` or tests that import @aee/cli/test first.`
     );
   }
-  return comment.body;
+  return {
+    ...text([comment.body, ...(note ? [note] : [])].join("\n\n")),
+    structuredContent: {
+      verdict: comment.verdict,
+      assessments: comment.assessments.map(({ report, dir }) => ({ folder: dir, report }))
+    }
+  };
 }
 
 /**
@@ -66,16 +108,17 @@ export function createServer(): McpServer {
     {
       title: "Read a run's fixes",
       description:
-        "Reads the AEE assessments under a folder (an `aee run` output or a test run's report folder) and returns their fixes as the pull-request comment lists them: blocking first, each with the element, the fix, its a11y-skills pattern and any AI suggestion, labelled as AI.",
+        "Reads the AEE assessments under a folder (an `aee run` output or a test run's report folder). Its structured content is each assessment's whole report: every finding with all its elements, WCAG criteria, evidence paths, fix, a11y-skills pattern and any AI suggestion, labelled as AI. Its text is the shorter pull-request comment.",
       inputSchema: {
         folder: z
           .string()
           .min(1)
           .describe("The folder holding the assessments, such as aee-output.")
       },
+      outputSchema: findingsOutput,
       annotations: { readOnlyHint: true, openWorldHint: false }
     },
-    async ({ folder }) => text(await findings(folder))
+    async ({ folder }) => findings(folder)
   );
 
   server.registerTool(
@@ -83,7 +126,7 @@ export function createServer(): McpServer {
     {
       title: "Run an approved scenario",
       description:
-        "Runs an AEE scenario whose plan a person has approved (`aee plan`, then approval.approvedPlanDigest) in a headless browser, and returns its fixes. An unapproved scenario is refused. It opens only the scenario's own target.",
+        "Runs an AEE scenario whose plan a person has approved (`aee plan`, then approval.approvedPlanDigest) in a headless browser, and returns its fixes as `findings` does. An unapproved scenario is refused. It opens only the scenario's own target.",
       inputSchema: {
         scenario: z.string().min(1).describe("Path to the approved scenario YAML file."),
         output: z
@@ -91,11 +134,12 @@ export function createServer(): McpServer {
           .optional()
           .describe("Where to write the assessment; defaults to aee-output.")
       },
+      outputSchema: findingsOutput,
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true }
     },
     async ({ scenario, output }) => {
       const result = await executeScenario(path.resolve(scenario), { outputDir: output });
-      return text(`${await findings(result.outputDir)}\n\nFull report: ${result.reportFiles.html}`);
+      return findings(result.outputDir, `Full report: ${result.reportFiles.html}`);
     }
   );
 

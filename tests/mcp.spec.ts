@@ -1,4 +1,4 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -10,8 +10,13 @@ import { compileScenarioPlan, loadScenario } from "@aee/cli";
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 import { contract } from "./test-lab-helpers";
 
+type ToolResult = {
+  content: Array<{ text?: string }>;
+  structuredContent?: { verdict: string; assessments: Array<{ folder: string; report: unknown }> };
+};
+
 const textOf = (result: unknown) =>
-  (result as { content: Array<{ text?: string }> }).content.map(({ text }) => text).join("\n");
+  (result as ToolResult).content.map(({ text }) => text).join("\n");
 
 test("a coding agent runs an approved scenario through aee-mcp, reads its fixes and gets the pattern for one", async () => {
   const testInfo = test.info();
@@ -56,18 +61,29 @@ approval:
       })
     );
     const output = testInfo.outputPath("aee-output");
-    const run = textOf(
-      await client.callTool({ name: "run", arguments: { scenario: scenarioPath, output } })
-    );
+    const ran = (await client.callTool({
+      name: "run",
+      arguments: { scenario: scenarioPath, output }
+    })) as ToolResult;
+    const run = textOf(ran);
     expect(run).toContain("## Accessibility: release blocked");
     expect(run).toContain("patterns/buttons.instructions.md");
     expect(run).toMatch(/Full report: .*aee-report\.html$/);
 
     // The same fixes from the folder later, and the pattern behind one of them.
-    const findings = textOf(
-      await client.callTool({ name: "findings", arguments: { folder: output } })
+    const read = (await client.callTool({
+      name: "findings",
+      arguments: { folder: output }
+    })) as ToolResult;
+    expect(textOf(read)).toBe(run.slice(0, run.lastIndexOf("\n\nFull report:")));
+
+    // Beside the text, the whole report as AEE wrote it, which the client checked against its schema.
+    expect(read.structuredContent).toEqual(ran.structuredContent);
+    const [assessment] = read.structuredContent!.assessments;
+    expect(read.structuredContent!.verdict).toBe("fail");
+    expect(assessment!.report).toEqual(
+      JSON.parse(await readFile(path.join(assessment!.folder, "aee-report.json"), "utf8"))
     );
-    expect(findings).toBe(run.slice(0, run.lastIndexOf("\n\nFull report:")));
     const explained = textOf(
       await client.callTool({ name: "explain", arguments: { topic: "button-name" } })
     );
