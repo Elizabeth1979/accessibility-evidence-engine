@@ -9,12 +9,13 @@ import {
   symlinkSync,
   writeFileSync
 } from "node:fs";
-import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
+
+import { serveDirectory } from "./serve-directory.mjs";
 
 const expectedPackages = [
   "@aee/ai-fixes",
@@ -28,13 +29,6 @@ const expectedPackages = [
   "@aee/schemas"
 ];
 const workspaceRoot = path.resolve(import.meta.dirname, "..");
-/** What the test lab's page loads. */
-const CONTENT_TYPES = {
-  ".html": "text/html",
-  ".css": "text/css",
-  ".js": "text/javascript",
-  ".svg": "image/svg+xml"
-};
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), "aee-package-check-"));
 const packDirectory = path.join(temporaryRoot, "packs");
 const installDirectory = path.join(temporaryRoot, "consumer");
@@ -225,14 +219,7 @@ try {
 
   // And `aee run` works on it: the test lab's fixed page passes, as the Accessibility workflow
   // checks on the Playwright AEE is developed on, served at the address its scenario names.
-  const site = createServer(async (request, response) => {
-    const file = path.join(installDirectory, "site", new URL(request.url, "http://site").pathname);
-    const body = await readFile(file).catch(() => undefined);
-    response.writeHead(body ? 200 : 404, {
-      "content-type": CONTENT_TYPES[path.extname(file)] ?? "application/octet-stream"
-    });
-    response.end(body);
-  });
+  const site = createServer(serveDirectory(path.join(installDirectory, "site")));
   await new Promise((resolve) => site.listen(4173, "127.0.0.1", resolve));
   const run = await promisify(execFile)(
     "npx",

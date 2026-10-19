@@ -67,6 +67,7 @@ import {
   type PatternLink
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
+import { stringify as stringifyCsv } from "csv-stringify/sync";
 
 import {
   COMMENT_CROP,
@@ -4186,14 +4187,11 @@ const CSV_COLUMNS: Array<[string, (ticket: FixTicket) => string]> = [
 ];
 
 /**
- * Every fix as one CSV row (RFC 4180), for an issue tracker's import. A cell a spreadsheet would
- * run as a formula, one starting with =, +, -, @ or a tab, is kept as text.
+ * Every fix as one CSV row (RFC 4180, rows ending in CRLF), for an issue tracker's import. A cell a
+ * spreadsheet would run as a formula, one starting with =, +, -, @, a tab or a carriage return or
+ * with a full-width =, +, - or @, starts with a single quote so it stays text, as OWASP advises.
  */
 function renderFixesCsv(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {
-  const cell = (value: string) => {
-    const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
-    return /[",\n\r]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
-  };
   const rows = [
     CSV_COLUMNS.map(([name]) => name),
     ...report.synthesis.findings.map((finding) => {
@@ -4201,7 +4199,13 @@ function renderFixesCsv(report: ScenarioIntegratedReport, views: IntegratedHtmlV
       return CSV_COLUMNS.map(([, value]) => value(ticket));
     })
   ];
-  return `${rows.map((row) => row.map(cell).join(",")).join("\r\n")}\r\n`;
+  // Naming a record delimiter stops csv-stringify quoting a cell with a lone line break unless
+  // quote_record_delimiter is set, and a spreadsheet starts a new row at any line break.
+  return stringifyCsv(rows, {
+    record_delimiter: "windows",
+    quote_record_delimiter: true,
+    escape_formulas: true
+  });
 }
 
 function renderFixPlanner(report: ScenarioIntegratedReport, views: IntegratedHtmlViews): string {

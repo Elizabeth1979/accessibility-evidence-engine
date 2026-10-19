@@ -914,9 +914,7 @@ test("the sweep hovers only what a mouse can reach, such as not a skip link park
     activateControls: false
   });
 
-  expect(result.tabStops.map(({ selector }) => selector)).toEqual([
-    "html > body:nth-of-type(1) > a:nth-of-type(1)"
-  ]);
+  expect(result.tabStops.map(({ selector }) => selector)).toEqual(["a"]);
   expect(result.findings.map(({ kind, label }) => ({ kind, label }))).toEqual([
     { kind: "hover-only", label: "Renews on 1 March" }
   ]);
@@ -1061,7 +1059,7 @@ test("the sweep counts a tab arrow keys reach as reachable, and reports a mouse 
   // second and third panels' buttons, which Tab never met, are not reported either.
   expect(result.tabStops.map(({ selector }) => selector)).toEqual([
     "#first",
-    "#panel-first > button:nth-of-type(1)"
+    "#panel-first > .open"
   ]);
   expect(result.findings.map(({ kind, selector }) => ({ kind, selector }))).toEqual([
     { kind: "pointer-only", selector: "#more" }
@@ -1424,7 +1422,7 @@ test("the sweep reports an item that stands out from its like neighbours by colo
   // disabled button.
   const colourOnly = result.findings.filter(({ kind }) => kind === "colour-only");
   expect(colourOnly.map(({ selector, label }) => ({ selector, label }))).toEqual([
-    { selector: "#colour > a:nth-of-type(2)", label: "Reports" }
+    { selector: '#colour > .current[href="#b"][aria-current="page"]', label: "Reports" }
   ]);
   expect(colourOnly[0]?.summary).toContain("Stands out from its 2 neighbours by colour alone");
   expect(colourOnly[0]?.summary).toContain("color: rgb(29, 78, 216) instead of rgb(31, 41, 55)");
