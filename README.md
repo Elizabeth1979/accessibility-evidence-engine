@@ -152,7 +152,7 @@ Use the Action at the same version: `uses: Elizabeth1979/accessibility-evidence-
 
 ## Coding agents (MCP)
 
-`@aee/mcp` is an MCP server for coding agents. Its `explain` tool answers "explain button-name" (or `pointer-only`, `dialog-modal`, "icon button") with the [a11y-skills](https://github.com/Elizabeth1979/a11y-skills) pattern the reports link to, at the same pinned commit: the rules with good and bad examples, a complete example, the WCAG criteria and a checklist. `findings` reads a folder of AEE assessments and returns their fixes as the pull-request comment lists them, and `run` runs a scenario a person has approved. It cannot apply a fix; `aee fix` does that after review. Once it is [installed](#install-from-github), add it to Claude Code from the project:
+`@aee/mcp` is an MCP server for coding agents. Its `explain` tool answers "explain button-name" (or `pointer-only`, `dialog-modal`, "icon button") with the [a11y-skills](https://github.com/Elizabeth1979/a11y-skills) pattern the reports link to, at the same pinned commit: the rules with good and bad examples, a complete example, the WCAG criteria and a checklist. `findings` reads a folder of AEE assessments and returns each one's whole report as structured content, with the pull-request comment as its text, and `run` runs a scenario a person has approved. It cannot apply a fix; `aee fix` does that after review. Once it is [installed](#install-from-github), add it to Claude Code from the project:
 
 ```bash
 claude mcp add aee -- npx aee-mcp

@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { SWEEP_FINDING_CONCEPTS } from "@aee/playwright";
+import { marked, type Tokens } from "marked";
+import { Parser, type CST } from "yaml";
 import {
   conceptForAxeRule,
   patternLink,
@@ -15,6 +17,9 @@ const PATTERNS_DIR = path.join(
   path.dirname(require.resolve("a11y-skills/package.json")),
   "patterns"
 );
+const PATTERN_FILE = ".instructions.md";
+/** Where the index's links are relative to; only their file names are read. */
+const INDEX_URL = "file:///patterns/INDEX.md";
 
 /** How a topic was read, in the order they are tried, and how the answer says so. */
 const READ_AS = {
@@ -109,23 +114,69 @@ function explanation(
           `WCAG ${requirementId} ${title}${level ? ` (${level})` : ""}`
       ),
     alsoConsider: [],
-    // The front matter is for editors that load patterns by file type, not for the reader.
-    markdown: source.replace(/^---\n[\s\S]*?\n---\n+/, "")
+    markdown: withoutFrontMatter(source)
   };
 }
 
 function patternIds(): string[] {
   return readdirSync(PATTERNS_DIR).flatMap((file) =>
-    file.endsWith(".instructions.md") ? [file.slice(0, -".instructions.md".length)] : []
+    file.endsWith(PATTERN_FILE) ? [file.slice(0, -PATTERN_FILE.length)] : []
   );
 }
 
 /** The index's rows, "what you are building" → pattern, in the order the index lists them. */
 function routes(): Array<{ words: Set<string>; pattern: string }> {
-  const index = readFileSync(path.join(PATTERNS_DIR, "INDEX.md"), "utf8");
-  return [...index.matchAll(/^\|(.+)\|\s*\[([\w-]+)\]\([\w-]+\.instructions\.md\)\s*\|$/gm)].map(
-    ([, text, pattern]) => ({ words: new Set(words(`${text} ${pattern}`)), pattern: pattern! })
+  return indexRoutes(readFileSync(path.join(PATTERNS_DIR, "INDEX.md"), "utf8"));
+}
+
+/**
+ * The routes in an a11y-skills index, read as markdown: each table row that links to a pattern
+ * file routes the words of the whole row to that pattern, and a row linking to two routes to both.
+ */
+export function indexRoutes(index: string): Array<{ words: Set<string>; pattern: string }> {
+  const tables: Tokens.Table[] = [];
+  marked.walkTokens(marked.lexer(withoutFrontMatter(index)), (token) => {
+    // marked types an extension's token as any type name too, so "table" alone does not narrow.
+    if (token.type === "table") tables.push(token as Tokens.Table);
+  });
+  return tables.flatMap(({ rows }) =>
+    rows.flatMap((row) => {
+      const text: string[] = [];
+      const patterns: string[] = [];
+      marked.walkTokens(
+        row.flatMap(({ tokens }) => tokens),
+        (token) => {
+          if (token.type === "text" || token.type === "codespan") text.push(token.text);
+          if (token.type === "link") {
+            const file = path.posix.basename(new URL(token.href, INDEX_URL).pathname);
+            if (file.endsWith(PATTERN_FILE)) patterns.push(file.slice(0, -PATTERN_FILE.length));
+          }
+        }
+      );
+      const rowWords = new Set(words(text.join(" ")));
+      return patterns.map((pattern) => ({ words: rowWords, pattern }));
+    })
   );
+}
+
+/**
+ * A pattern's markdown without its front matter, which is for editors that load patterns by file
+ * type, not for the reader. Front matter is a YAML document opened by the file's first line, so
+ * YAML's own parser says where it ends: at the next document's `---` line.
+ */
+export function withoutFrontMatter(source: string): string {
+  const [frontMatter, rest] = [...new Parser().parse(source)].filter(
+    (token): token is CST.Document => token.type === "document"
+  );
+  if (frontMatter?.start[0]?.type !== "doc-start" || rest?.start[0]?.type !== "doc-start") {
+    return source;
+  }
+  let end = rest.offset;
+  for (const token of rest.start.slice(1)) {
+    if (token.type === "newline") end = token.offset + token.source.length;
+    else if (token.type !== "space") break;
+  }
+  return source.slice(end);
 }
 
 /** The patterns whose index rows share the most words with the topic, best first. */

@@ -83,6 +83,14 @@ const schemaTitles: Record<SchemaName, string> = {
   evidenceManifest: "AEE evidence manifest"
 };
 
+/** The Ajv options AEE's schemas compile under: strict mode, with union types allowed. */
+export const schemaAjvOptions = {
+  allErrors: true,
+  strictTypes: true,
+  strictTuples: true,
+  allowUnionTypes: true
+} as const;
+
 /**
  * The Ajv instance AEE validates with, holding every AEE schema.
  *
@@ -102,12 +110,7 @@ const schemaTitles: Record<SchemaName, string> = {
  * a required property.
  */
 export function createSchemaAjv(): Ajv2020 {
-  const ajv = new Ajv2020({
-    allErrors: true,
-    strictTypes: true,
-    strictTuples: true,
-    allowUnionTypes: true
-  });
+  const ajv = new Ajv2020(schemaAjvOptions);
 
   addFormats(ajv);
 
@@ -149,6 +152,41 @@ export function assertValidSchema(
   }
 
   throw new Error(`Invalid ${label}: ${result.errors.join("; ")}`);
+}
+
+/**
+ * A schema as one self-contained document, for a reader that has none of AEE's other schema files,
+ * such as an MCP client checking a tool's output. Each AEE schema it refers to, directly or through
+ * another, is embedded under `$defs` with its own `$id`, which is how JSON Schema 2020-12 bundles a
+ * schema (Core §9.3), so every relative `$ref` resolves inside the document unchanged.
+ */
+export function bundledSchema(schemaName: SchemaName): AnySchemaObject {
+  const root: AnySchemaObject = schemaDocuments[schemaName];
+  const embedded = new Map<string, AnySchemaObject>();
+  const embedReferences = (document: AnySchemaObject) => {
+    for (const ref of references(document)) {
+      const target = new URL(ref, document.$id);
+      target.hash = "";
+      const [name, referenced] =
+        Object.entries(schemaDocuments).find(([, { $id }]) => $id === target.href) ?? [];
+      if (!name || !referenced || referenced === root || embedded.has(name)) {
+        continue;
+      }
+      embedded.set(name, referenced);
+      embedReferences(referenced);
+    }
+  };
+  embedReferences(root);
+  return { ...root, $defs: { ...root.$defs, ...Object.fromEntries(embedded) } };
+}
+
+/** Every `$ref` in a schema document, in any subschema. */
+function references(schema: unknown): string[] {
+  if (Array.isArray(schema)) return schema.flatMap(references);
+  if (typeof schema !== "object" || schema === null) return [];
+  return Object.entries(schema).flatMap(([key, value]) =>
+    key === "$ref" && typeof value === "string" ? [value] : references(value)
+  );
 }
 
 function getSchemaValidator(schemaName: SchemaName): ValidateFunction {
