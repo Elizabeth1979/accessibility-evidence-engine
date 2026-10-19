@@ -149,7 +149,71 @@ test("a Claude refusal is an error, never an answer", async () => {
   );
 });
 
-test("a local model is asked over the OpenAI-compatible chat API, held to the schema its prompt also carries, with thinking off", async () => {
+/** A reply as an OpenAI-compatible chat API (OpenAI, Ollama, LM Studio, vLLM) sends it. */
+function chatCompletion(value: unknown) {
+  return {
+    id: "chatcmpl-test",
+    object: "chat.completion",
+    created: 1_760_000_000,
+    model: "tiny",
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content: JSON.stringify(value), refusal: null },
+        logprobs: null,
+        finish_reason: "stop"
+      }
+    ],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+  };
+}
+
+/** One text part of a Responses API message, holding a JSON answer. */
+function outputText(value: unknown) {
+  return { type: "output_text", text: JSON.stringify(value), annotations: [] };
+}
+
+/**
+ * A reply as OpenAI's Responses API sends it over the wire, with these message parts. It has no
+ * top-level `output_text`: the official SDK adds that field on the client, by joining the
+ * message's `output_text` parts (`addOutputText` in the SDK's `lib/ResponsesParser`).
+ */
+function openAiResponse(...content: Array<Record<string, unknown>>) {
+  return {
+    id: "resp_test",
+    object: "response",
+    created_at: 1_760_000_000,
+    status: "completed",
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    max_output_tokens: null,
+    model: "test-model",
+    output: [{ type: "message", id: "msg_test", status: "completed", role: "assistant", content }],
+    parallel_tool_calls: true,
+    previous_response_id: null,
+    reasoning: { effort: null, summary: null },
+    store: false,
+    temperature: 1,
+    text: { format: { type: "json_schema", name: "accessible_name_specialist", strict: true } },
+    tool_choice: "auto",
+    tools: [],
+    top_p: 1,
+    truncation: "disabled",
+    usage: {
+      input_tokens: 1,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: 1,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: 2
+    },
+    user: null,
+    metadata: {}
+  };
+}
+
+test("a local model is asked over the OpenAI-compatible chat API, held to the schema its prompt also carries, with thinking off and no OpenAI key", async () => {
+  let authorization: string | undefined;
   let requestBody: {
     model?: string;
     reasoning_effort?: string;
@@ -161,13 +225,17 @@ test("a local model is asked over the OpenAI-compatible chat API, held to the sc
     request.on("data", (chunk: Buffer) => (body += chunk.toString()));
     request.on("end", () => {
       requestBody = JSON.parse(body) as typeof requestBody;
+      authorization = request.headers.authorization;
       assert.equal(request.url, "/v1/chat/completions");
       response.setHeader("Content-Type", "application/json");
-      response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }));
+      response.end(JSON.stringify(chatCompletion(answer)));
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
+  // A key meant for OpenAI, which the SDK would otherwise read from the environment.
+  const openAiKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "openai-only-key";
   try {
     const provider = createLocalModelProvider({
       // A trailing slash in the configured address is ignored.
@@ -183,7 +251,10 @@ test("a local model is asked over the OpenAI-compatible chat API, held to the sc
       json_schema: { name: "accessible_name_specialist", strict: true, schema }
     });
     assert.ok(requestBody.messages?.[0].content.includes(JSON.stringify(schema)));
+    assert.equal(authorization, "Bearer local");
   } finally {
+    if (openAiKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = openAiKey;
     server.close();
   }
 });
@@ -195,7 +266,7 @@ test("OpenAI's Responses API gets a strict, named schema and store: false", asyn
     model: "test-model",
     async fetch(_input, init) {
       requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return new Response(JSON.stringify({ output_text: JSON.stringify(answer) }), {
+      return new Response(JSON.stringify(openAiResponse(outputText(answer))), {
         status: 200,
         headers: { "Content-Type": "application/json" }
       });
@@ -210,6 +281,45 @@ test("OpenAI's Responses API gets a strict, named schema and store: false", asyn
     strict: true,
     schema
   });
+});
+
+test("an OpenAI refusal is an error, never an answer", async () => {
+  const provider = createOpenAiResponsesModelProvider({
+    apiKey: "test-key",
+    model: "test-model",
+    async fetch() {
+      return new Response(
+        JSON.stringify(openAiResponse({ type: "refusal", refusal: "I can't help with that." })),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  });
+
+  await assert.rejects(
+    askSpecialist(accessibleNameSpecialist, context, provider),
+    /OpenAI declined to answer \(I can't help with that\.\)/
+  );
+});
+
+test("a failed OpenAI request is retried before it is given up", async () => {
+  const statuses = [503, 200];
+  const provider = createOpenAiResponsesModelProvider({
+    apiKey: "test-key",
+    model: "test-model",
+    async fetch() {
+      const status = statuses.shift() ?? 500;
+      return new Response(
+        JSON.stringify(
+          status === 200 ? openAiResponse(outputText(answer)) : { error: { message: "busy" } }
+        ),
+        // Told to retry at once, so the test does not wait out the SDK's back-off.
+        { status, headers: { "Content-Type": "application/json", "retry-after-ms": "0" } }
+      );
+    }
+  });
+
+  assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
+  assert.deepEqual(statuses, []);
 });
 
 const screenshot = { mediaType: "image/png" as const, base64: "iVBORw0KGgo=" };
@@ -247,7 +357,7 @@ test("each provider sends the element's screenshot as an image beside the eviden
     context,
     createLocalModelProvider({
       model: "tiny",
-      fetch: reply({ choices: [{ message: { content: JSON.stringify(seeingAnswer) } }] })
+      fetch: reply(chatCompletion(seeingAnswer))
     }),
     screenshot
   );
@@ -263,14 +373,15 @@ test("each provider sends the element's screenshot as an image beside the eviden
     createOpenAiResponsesModelProvider({
       apiKey: "test-key",
       model: "test-model",
-      fetch: reply({ output_text: JSON.stringify(seeingAnswer) })
+      fetch: reply(openAiResponse(outputText(seeingAnswer)))
     }),
     screenshot
   );
   const [openAiUser] = bodies[1]?.input as [{ content: unknown[] }];
   assert.deepEqual(openAiUser.content[1], {
     type: "input_image",
-    image_url: `data:image/png;base64,${screenshot.base64}`
+    image_url: `data:image/png;base64,${screenshot.base64}`,
+    detail: "auto"
   });
 });
 
@@ -289,10 +400,10 @@ test("a model that cannot see images is asked again without one, and from then o
           status: 400
         });
       }
-      return new Response(
-        JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify(chatCompletion(answer)), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      });
     }
   });
 
@@ -335,5 +446,15 @@ test("live: Claude names an icon-only button", async (t) => {
   }
 
   const fix = await proposeAccessibleLabelFix(context, createModelProvider({ provider: "claude" }));
+  assert.match(fix.patches?.[0] ?? "", /aria-label="[^"]+"/);
+});
+
+test("live: OpenAI names an icon-only button", async (t) => {
+  if (!process.env.OPENAI_API_KEY || !process.env.AEE_LLM_MODEL) {
+    t.skip("OPENAI_API_KEY and AEE_LLM_MODEL are not both set");
+    return;
+  }
+
+  const fix = await proposeAccessibleLabelFix(context, createModelProvider({ provider: "openai" }));
   assert.match(fix.patches?.[0] ?? "", /aria-label="[^"]+"/);
 });

@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@aee/core": "0.8.0",
-    "@anthropic-ai/sdk": "^0.134.0"
+    "@anthropic-ai/sdk": "^0.134.0",
+    "openai": "7.28.0"
   }
 }

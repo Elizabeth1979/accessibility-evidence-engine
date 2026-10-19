@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 /** The JSON Schema of a specialist's answer: an object whose every field is required. */
 export type AnswerSchema = {
@@ -72,7 +73,7 @@ export interface CreateModelProviderOptions {
   env?: Record<string, string | undefined>;
   /** A preconfigured Claude client (tests, a proxy). */
   claudeClient?: Anthropic;
-  /** The Fetch implementation for the OpenAI and local providers. */
+  /** The Fetch implementation the OpenAI SDK uses for the OpenAI and local providers (tests, a proxy). */
   fetch?: typeof globalThis.fetch;
 }
 
@@ -204,6 +205,12 @@ export const DEFAULT_LOCAL_MODEL = "gemma4:e4b";
  */
 export const LOCAL_MODEL_TIMEOUT_MS = 10 * 60_000;
 
+/**
+ * The key sent to a local runtime that has none. The OpenAI SDK will not start without a key, and
+ * local runtimes ignore it (Ollama's own guide passes "ollama").
+ */
+const LOCAL_MODEL_PLACEHOLDER_KEY = "local";
+
 export interface LocalModelProviderOptions {
   /** An OpenAI-compatible base URL; defaults to Ollama's. */
   baseUrl?: string;
@@ -218,30 +225,37 @@ export interface LocalModelProviderOptions {
 
 /**
  * A model on this machine (Ollama, LM Studio, llama.cpp, vLLM) through the OpenAI-compatible chat
- * API: no key and no cloud. The request asks the runtime to hold the answer to the schema
- * (`response_format` json_schema, which Ollama, llama.cpp, LM Studio and vLLM enforce as the model
- * writes); the prompt carries the schema too, for a runtime that only reads it, and the specialist
- * checks the answer either way. Thinking is off (`reasoning_effort: "none"`): an answer is a
- * few fields, and on a machine with no GPU a thinking model's hidden reasoning is 400 to 700
- * tokens, about a minute, before each one.
+ * API, called with the official OpenAI SDK pointed at the local `baseURL`: no cloud. The request
+ * asks the runtime to hold the answer to the schema (`response_format` json_schema, which Ollama,
+ * llama.cpp, LM Studio and vLLM enforce as the model writes); the prompt carries the schema too,
+ * for a runtime that only reads it, and the specialist checks the answer either way. Thinking is
+ * off (`reasoning_effort: "none"`): an answer is a few fields, and on a machine with no GPU a
+ * thinking model's hidden reasoning is 400 to 700 tokens, about a minute, before each one.
+ *
+ * Every OpenAI credential is set here rather than read from the environment, so an
+ * OPENAI_API_KEY, admin key, organization or project meant for OpenAI never goes to this server.
+ * Requests are not retried: a local answer can take minutes, and a server that timed out once
+ * would only time out again.
  */
 export function createLocalModelProvider(options: LocalModelProviderOptions = {}): ModelProvider {
-  const baseUrl = withoutTrailingSlashes(options.baseUrl ?? DEFAULT_LOCAL_BASE_URL);
   const model = options.model ?? DEFAULT_LOCAL_MODEL;
-  const activeFetch = options.fetch ?? globalThis.fetch;
+  const client = new OpenAI({
+    baseURL: options.baseUrl ?? DEFAULT_LOCAL_BASE_URL,
+    apiKey: options.apiKey || LOCAL_MODEL_PLACEHOLDER_KEY,
+    adminAPIKey: null,
+    organization: null,
+    project: null,
+    timeout: options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS,
+    maxRetries: 0,
+    fetch: options.fetch
+  });
 
   return {
     id: `local:${model}`,
     async ask(request) {
-      const response = await activeFetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {})
-        },
-        body: JSON.stringify({
+      try {
+        const completion = await client.chat.completions.parse({
           model,
-          stream: false,
           temperature: 0,
           reasoning_effort: "none",
           response_format: {
@@ -263,25 +277,22 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
                 : JSON.stringify(request.input)
             }
           ]
-        }),
-        signal: AbortSignal.timeout(options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS)
-      });
-
-      if (!response.ok) {
+        });
+        const message = completion.choices[0]?.message;
+        if (message?.refusal) {
+          throw new Error(`The local model declined to answer (${message.refusal}).`);
+        }
+        if (message?.parsed == null) {
+          throw new Error("The local model returned no structured answer.");
+        }
+        return message.parsed;
+      } catch (error) {
         // A model with no vision, such as a text-only one in Ollama, says so in its error.
-        if (request.image && /image/i.test(await response.text())) {
+        if (request.image && error instanceof OpenAI.APIError && /image/i.test(error.message)) {
           throw new ImageInputUnsupportedError(model);
         }
-        throw new Error(`Local model request failed with status ${response.status}.`);
+        throw error;
       }
-      const payload = (await response.json()) as {
-        choices?: Array<{ message?: { content?: unknown } }>;
-      };
-      const content = payload.choices?.[0]?.message?.content;
-      if (typeof content !== "string") {
-        throw new Error("Local model response had no message content.");
-      }
-      return JSON.parse(content);
     }
   };
 }
@@ -289,10 +300,16 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
 export interface OpenAiResponsesModelProviderOptions {
   apiKey: string;
   model: string;
+  /** Defaults to the SDK's own: OPENAI_BASE_URL, else OpenAI's API. */
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
 }
 
+/**
+ * OpenAI through the official SDK's Responses API, with a strict structured output. The SDK reads
+ * the answer out of the reply's message parts and parses it (`output_parsed`), and retries a failed
+ * request twice, as it does by default.
+ */
 export function createOpenAiResponsesModelProvider(
   options: OpenAiResponsesModelProviderOptions
 ): ModelProvider {
@@ -304,68 +321,53 @@ export function createOpenAiResponsesModelProvider(
     throw new Error("An OpenAI model is required.");
   }
 
-  const activeFetch = options.fetch ?? globalThis.fetch;
-
-  if (!activeFetch) {
-    throw new Error("A Fetch API implementation is required.");
-  }
+  const client = new OpenAI({
+    apiKey: options.apiKey,
+    baseURL: options.baseUrl,
+    fetch: options.fetch
+  });
 
   return {
     id: `openai-responses:${options.model}`,
     async ask(request) {
-      const response = await activeFetch(
-        `${options.baseUrl ?? "https://api.openai.com/v1"}/responses`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${options.apiKey}`,
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            model: options.model,
-            store: false,
-            instructions: request.instructions,
-            input: request.image
-              ? [
-                  {
-                    role: "user",
-                    content: [
-                      { type: "input_text", text: JSON.stringify(request.input) },
-                      { type: "input_image", image_url: dataUrl(request.image) }
-                    ]
-                  }
+      const response = await client.responses.parse({
+        model: options.model,
+        store: false,
+        instructions: request.instructions,
+        input: request.image
+          ? [
+              {
+                role: "user",
+                content: [
+                  { type: "input_text", text: JSON.stringify(request.input) },
+                  { type: "input_image", image_url: dataUrl(request.image), detail: "auto" }
                 ]
-              : JSON.stringify(request.input),
-            text: {
-              format: {
-                type: "json_schema",
-                name: request.name,
-                strict: true,
-                schema: request.schema
               }
-            }
-          })
+            ]
+          : JSON.stringify(request.input),
+        text: {
+          format: {
+            type: "json_schema",
+            name: request.name,
+            strict: true,
+            schema: request.schema
+          }
         }
-      );
+      });
 
-      if (!response.ok) {
-        throw new Error(`OpenAI Responses request failed with status ${response.status}.`);
+      const refusal = response.output
+        .flatMap((item) => (item.type === "message" ? item.content : []))
+        .find((part) => part.type === "refusal");
+      if (refusal) {
+        throw new Error(`OpenAI declined to answer (${refusal.refusal}).`);
       }
-
-      const payload = (await response.json()) as { output_text?: unknown };
-
-      if (typeof payload.output_text !== "string") {
-        throw new Error("OpenAI Responses output did not include output_text.");
+      if (response.output_parsed == null) {
+        const reason = response.incomplete_details?.reason;
+        throw new Error(
+          `OpenAI returned no structured answer (status ${response.status ?? "unknown"}${reason ? `: ${reason}` : ""}).`
+        );
       }
-
-      return JSON.parse(payload.output_text);
+      return response.output_parsed;
     }
   };
-}
-
-/** A loop, not a regex: the URL comes from configuration, and /\/+$/ is slow on many slashes. */
-function withoutTrailingSlashes(url: string): string {
-  let end = url.length;
-  while (end > 0 && url[end - 1] === "/") end -= 1;
-  return url.slice(0, end);
 }
