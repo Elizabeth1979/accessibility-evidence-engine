@@ -395,6 +395,7 @@ interface JsonReport {
     judgeId: string;
     verdict: string;
     summary?: string;
+    findings?: Array<{ ruleId?: string; severity: string }>;
   }>;
 }
 
@@ -633,6 +634,58 @@ test("runAeeOnPage preserves axe 4.14 WCAG results and locates failing elements"
       })
     );
   }
+});
+
+test("runAeeOnPage keeps axe's path into a shadow root, locates that element and keeps axe's impact", async ({
+  page
+}, testInfo) => {
+  // The host is much larger than the nameless button inside it, so locating the host is wrong.
+  await page.setContent(`
+    <html lang="en">
+      <head><title>Shadow evidence</title></head>
+      <body>
+        <main>
+          <h1>Settings</h1>
+          <div id="toolbar" style="display: block; padding: 120px 0 0 200px; width: 600px"></div>
+        </main>
+        <script>
+          document.querySelector("#toolbar").attachShadow({ mode: "open" }).innerHTML =
+            '<button class="icon" style="width: 40px; height: 30px"></button>';
+        </script>
+      </body>
+    </html>
+  `);
+  const box = await page.locator("#toolbar button.icon").boundingBox();
+
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir: testInfo.outputPath("aee-axe-shadow-output"),
+    observers: ["axe"],
+    judges: ["axe", "release"],
+    checkpointName: "axe-shadow-target",
+    interaction: {
+      kind: "custom",
+      actor: "test",
+      target: { role: "document", name: "Shadow fixture" }
+    }
+  });
+
+  const raw = JSON.parse(await readFile(result.artifactFiles[0]!, "utf8"));
+  const buttonName = raw.violations.find(({ id }: { id: string }) => id === "button-name");
+  expect(buttonName.nodes[0].target).toEqual([["#toolbar", "button"]]);
+  expect(buttonName.nodes[0].aeeTarget).toEqual(
+    expect.objectContaining({ x: box!.x, y: box!.y, width: box!.width, height: box!.height })
+  );
+  const jsonReportPath = result.reporterFiles.find((filePath) =>
+    filePath.endsWith("aee-report.json")
+  );
+  const report = JSON.parse(await readFile(jsonReportPath!, "utf8")) as JsonReport;
+  const axeJudgment = report.judgments.find(({ judgeId }) => judgeId === "axe");
+  expect(axeJudgment?.verdict).toBe("fail");
+  expect(axeJudgment?.findings?.find(({ ruleId }) => ruleId === "button-name")?.severity).toBe(
+    "critical"
+  );
 });
 
 test("runAeeOnPage runs axe's experimental WCAG rules and blocks release on them", async ({

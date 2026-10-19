@@ -9,6 +9,7 @@ import { writeEvidenceManifest } from "@aee/playwright";
 import { compileScenarioPlan, type AeeScenario } from "./scenario";
 import {
   aeeRunModelProvider,
+  axeRuleViewsForTest,
   buildScenarioSynthesisForTest,
   finishAssessment,
   renderFixesCsvForTest,
@@ -314,22 +315,204 @@ test("a contrast failure on plain text is called text, not a link", () => {
 });
 
 test("a contrast failure on a dark background proposes a lighter color that passes", () => {
-  const { report, views } = exampleSynthesisInputs();
-  const failureSummary =
-    "Fix any of the following: Element has insufficient color contrast of 2.13 (foreground color: #3f4c48, background color: #07110f, font size: 12.0pt (16px), font weight: normal). Expected contrast ratio of 4.5:1";
-  for (const axeReport of views.axeReports) {
-    const contrast = axeReport.violations.find(({ id }) => id === "color-contrast")!;
-    contrast.nodes = contrast.nodes.map((node) => ({ ...node, failureSummary }));
-    contrast.failureSummaries = [failureSummary];
-  }
-
-  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const { report, views } = withRawAxeRules([
+    rawContrastRule({
+      target: ["#footer-note"],
+      html: '<p id="footer-note">Terms apply</p>',
+      any: [
+        {
+          id: "color-contrast",
+          impact: "serious",
+          message: "Element has insufficient color contrast of 2.13",
+          data: {
+            fgColor: "#3f4c48",
+            bgColor: "#07110f",
+            contrastRatio: 2.13,
+            fontSize: "12.0pt (16px)",
+            fontWeight: "normal",
+            messageKey: null,
+            expectedContrastRatio: "4.5:1"
+          }
+        }
+      ]
+    })
+  ]);
   const fixRow = renderIntegratedHtmlForTest(report, views).match(
     /<article [^>]*id="review-color-contrast">[\s\S]*?<\/article>/
   )?.[0];
 
   assert.match(fixRow ?? "", /<code>#3f4c48<\/code> on <code>#07110f<\/code> · 2\.13:1/);
   assert.match(fixRow ?? "", /<code>#757e7b<\/code> on <code>#07110f<\/code> · 4\.59:1/);
+});
+
+/** A raw axe `color-contrast` result with one node, as axe 4.14 writes it. */
+function rawContrastRule(node: Record<string, unknown>) {
+  return {
+    id: "color-contrast",
+    impact: "serious",
+    tags: ["cat.color", "wcag2aa", "wcag143"],
+    help: "Elements must meet minimum color contrast ratio thresholds",
+    description: "color-contrast description",
+    nodes: [{ impact: "serious", all: [], none: [], ...node }]
+  };
+}
+
+/** The example's views with its color-contrast result replaced by these raw axe rules. */
+function withRawAxeRules(rules: Array<{ id: string; impact: string; [field: string]: unknown }>) {
+  const inputs = exampleSynthesisInputs();
+  for (const { id, impact } of rules) {
+    if (inputs.report.findings.some(({ ruleId }) => ruleId === id)) continue;
+    inputs.report.findings.push({
+      ruleId: id,
+      severity: impact,
+      occurrences: [{}]
+    } as unknown as ScenarioIntegratedReport["findings"][number]);
+  }
+  for (const axeReport of inputs.views.axeReports) {
+    axeReport.violations = [
+      axeReport.violations[0]!,
+      ...(axeRuleViewsForTest(rules) as typeof axeReport.violations)
+    ];
+  }
+  inputs.report.synthesis = buildScenarioSynthesisForTest(inputs.report, inputs.views);
+  return inputs;
+}
+
+test("a contrast finding takes its numbers from axe's check data, not its English text", () => {
+  // axe's words in another language: nothing may be read from them.
+  const { report, views } = withRawAxeRules([
+    rawContrastRule({
+      target: ["#notice"],
+      html: '<p id="notice">Opening hours</p>',
+      any: [
+        {
+          id: "color-contrast",
+          impact: "serious",
+          message: "Le contraste est insuffisant",
+          data: {
+            fgColor: "#3f4c48",
+            bgColor: "#07110f",
+            contrastRatio: 2.13,
+            fontSize: "18.0pt (24px)",
+            fontWeight: "normal",
+            messageKey: null,
+            expectedContrastRatio: "3:1"
+          }
+        }
+      ],
+      failureSummary: "Corrigez l'un des éléments suivants : Le contraste est insuffisant"
+    })
+  ]);
+  const contrast = report.synthesis.findings.find(({ ruleId }) => ruleId === "color-contrast");
+  const fixRow = renderIntegratedHtmlForTest(report, views).match(
+    /<article [^>]*id="review-color-contrast">[\s\S]*?<\/article>/
+  )?.[0];
+
+  assert.deepEqual(contrast?.instances[0]?.contrast, {
+    measuredBy: "axe",
+    foreground: "#3f4c48",
+    backgrounds: [{ color: "#07110f", ratio: 2.13 }],
+    requiredRatio: 3,
+    fontSize: "18.0pt (24px)",
+    fontWeight: "normal"
+  });
+  assert.equal(
+    report.synthesis.status.find(({ id }) => id === "contrast")?.detail,
+    "1 text element falls below the required 3:1 contrast ratio."
+  );
+  assert.match(contrast?.remediation.verification[0] ?? "", /at least 3:1\./);
+  assert.match(fixRow ?? "", /<code>#3f4c48<\/code> on <code>#07110f<\/code> · 2\.13:1/);
+  const candidate =
+    /Passing candidate<\/strong><small><code>#[0-9a-f]{6}<\/code> on <code>#07110f<\/code> · ([0-9.]+):1/.exec(
+      fixRow ?? ""
+    );
+  assert.ok(Number(candidate?.[1]) >= 3);
+  assert.ok(Number(candidate?.[1]) < 4.5);
+});
+
+test("a contrast failure measured from the screenshot is told in AEE's words from its numbers", () => {
+  // axe's own message still says it could not decide; AEE's measurement settles it.
+  const { report } = withRawAxeRules([
+    rawContrastRule({
+      target: ["#banner-title"],
+      html: '<h2 id="banner-title">Summer sale</h2>',
+      any: [
+        {
+          id: "color-contrast",
+          impact: "serious",
+          message:
+            "Element's background color could not be determined due to a background gradient",
+          data: {
+            fontSize: "12.0pt (16px)",
+            fontWeight: "normal",
+            messageKey: "bgGradient",
+            expectedContrastRatio: "4.5:1"
+          }
+        }
+      ],
+      failureSummary:
+        "Fix any of the following:\n  Element's background color could not be determined due to a background gradient",
+      aeeContrast: {
+        verdict: "fail",
+        requiredRatio: 4.5,
+        foreground: "#ffffff",
+        lowest: { ratio: 2.1, background: "#b0b0b0" },
+        highest: { ratio: 2.45, background: "#a0a0a0" }
+      }
+    })
+  ]);
+  const instance = report.synthesis.findings.find(({ ruleId }) => ruleId === "color-contrast")
+    ?.instances[0];
+
+  assert.deepEqual(instance?.contrast, {
+    measuredBy: "screenshot",
+    foreground: "#ffffff",
+    backgrounds: [
+      { color: "#b0b0b0", ratio: 2.1 },
+      { color: "#a0a0a0", ratio: 2.45 }
+    ],
+    requiredRatio: 4.5,
+    fontSize: "12.0pt (16px)",
+    fontWeight: "normal"
+  });
+  assert.equal(
+    instance?.detail,
+    "Measured from the screenshot: #ffffff has 2.1:1 to 2.45:1 against what is behind it (#b0b0b0 to #a0a0a0), where 4.5:1 is needed."
+  );
+});
+
+test("an element inside a shadow root or a frame keeps axe's whole path to it", () => {
+  const nameless = (target: unknown[]) => ({
+    target,
+    html: '<button class="icon"></button>',
+    any: [],
+    failureSummary: "Fix any of the following: Element does not have inner text"
+  });
+  const { report } = withRawAxeRules([
+    {
+      id: "button-name",
+      impact: "critical",
+      tags: ["cat.name-role-value", "wcag2a", "wcag412"],
+      help: "Buttons must have discernible text",
+      description: "button-name description",
+      nodes: [
+        nameless([["#app-shell", "button.icon"]]),
+        nameless(["iframe#chat", ["chat-widget", "button.icon"]])
+      ]
+    }
+  ]);
+  const finding = report.synthesis.findings.find(({ ruleId }) => ruleId === "button-name");
+
+  assert.deepEqual(
+    finding?.instances.map(({ selector, target }) => ({ selector, target })),
+    [
+      { selector: "#app-shell >>> button.icon", target: [["#app-shell", "button.icon"]] },
+      {
+        selector: "iframe#chat → chat-widget >>> button.icon",
+        target: ["iframe#chat", ["chat-widget", "button.icon"]]
+      }
+    ]
+  );
 });
 
 test("a best-practice result is reported as advisory and never blocks release", () => {

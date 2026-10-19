@@ -91,6 +91,7 @@ import {
   type PlaywrightVideoLike
 } from "./interaction-video";
 export * from "./accessibility-tree";
+export * from "./axe-results";
 export * from "./contrast-measurement";
 export * from "./element-context";
 export * from "./element-locations";
@@ -2427,18 +2428,28 @@ async function createObserverPage(
           const targets = result.violations.flatMap((rule, ruleIndex) =>
             rule.nodes.map((node, nodeIndex) => ({
               key: `${ruleIndex}:${nodeIndex}`,
-              selector: String(node.target[0] ?? ""),
-              // Only an element an AI specialist may be asked about gets its surroundings captured.
-              needsContext: Boolean(conceptForAxeRule(rule.id)?.ai.specialistId)
+              // axe's step in the top document: the element itself, through any shadow roots, or
+              // the frame it is in, which is where it shows on the top page's screenshot.
+              step: node.target[0] ?? "",
+              // Only an element an AI specialist may be asked about gets its surroundings
+              // captured, and only one in the top document's own tree, which the capture reads.
+              contextSelector:
+                conceptForAxeRule(rule.id)?.ai.specialistId &&
+                node.target.length === 1 &&
+                typeof node.target[0] === "string"
+                  ? node.target[0]
+                  : undefined
             }))
           );
           const locatablePage = evaluatablePage as EvaluatablePageLike & ElementLocationPage;
-          const contextTargets = targets.filter(({ needsContext }) => needsContext);
+          const contextTargets = targets.flatMap(({ key, contextSelector }) =>
+            contextSelector ? [{ key, selector: contextSelector }] : []
+          );
           const locationByKey = byTargetKey(
             targets,
             await locateElements(
               locatablePage,
-              targets.map(({ selector }) => selector)
+              targets.map(({ step }) => step)
             )
           );
           // An AI specialist is asked only with the element as the accessibility tree has it.

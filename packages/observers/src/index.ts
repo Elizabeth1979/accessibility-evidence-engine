@@ -914,6 +914,7 @@ async function captureAxeRecord(
     const incomplete = incompleteGroups.blocking.length;
     const inapplicable = arrayLength(normalized.inapplicable);
     const violationRuleIds = readRuleIds(violationGroups.blocking);
+    const violationImpacts = readRuleImpacts(violationGroups.blocking);
     const advisoryRuleIds = readRuleIds(violationGroups.advisory);
     const incompleteRuleIds = readRuleIds(incompleteGroups.blocking);
     const evaluatedRuleIds = [
@@ -964,6 +965,7 @@ async function captureAxeRecord(
         incomplete,
         inapplicable,
         violationRuleIds,
+        violationImpacts,
         advisoryRuleIds,
         incompleteRuleIds,
         evaluatedRuleIds,
@@ -1008,6 +1010,17 @@ function readRuleIds(value: unknown): string[] {
 
   return value.flatMap((entry) =>
     isRecord(entry) && typeof entry.id === "string" ? [entry.id] : []
+  );
+}
+
+/** Each rule's impact as axe gives it (`minor` to `critical`), by rule id. */
+function readRuleImpacts(value: unknown): Record<string, string> {
+  return Object.fromEntries(
+    (Array.isArray(value) ? value : []).flatMap((entry) =>
+      isRecord(entry) && typeof entry.id === "string" && typeof entry.impact === "string"
+        ? [[entry.id, entry.impact]]
+        : []
+    )
   );
 }
 

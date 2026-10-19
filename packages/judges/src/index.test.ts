@@ -175,6 +175,47 @@ test("axe judge fails violations and preserves incomplete checks as unresolved c
   );
 });
 
+test("axe judge takes each finding's severity from axe's impact, and still fails on any", async () => {
+  const judge = createDefaultJudgePlugins(["axe"])[0];
+  const bundle = createBundle([
+    {
+      id: "record-axe-after",
+      runId: "run-1",
+      observerId: "axe",
+      phase: "after",
+      status: "ok",
+      timestamp: "2026-09-13T00:00:00.000Z",
+      meta: {
+        violations: 4,
+        incomplete: 0,
+        violationRuleIds: ["image-alt", "color-contrast", "list", "meta-viewport-large"],
+        violationImpacts: {
+          "image-alt": "critical",
+          "color-contrast": "serious",
+          list: "moderate",
+          "meta-viewport-large": "minor"
+        },
+        incompleteRuleIds: []
+      }
+    }
+  ]);
+
+  const [judgment] = await judge!.judge(bundle, { runId: "run-1" });
+
+  assert.equal(judgment?.verdict, "fail");
+  // The judgment blocks release whatever the impact, as it did before: every WCAG rule counts.
+  assert.equal(judgment?.severity, "high");
+  assert.deepEqual(
+    judgment?.findings?.map(({ ruleId, severity }) => ({ ruleId, severity })),
+    [
+      { ruleId: "image-alt", severity: "critical" },
+      { ruleId: "color-contrast", severity: "high" },
+      { ruleId: "list", severity: "medium" },
+      { ruleId: "meta-viewport-large", severity: "low" }
+    ]
+  );
+});
+
 test("axe judge reports best-practice results as advisory findings that never fail", async () => {
   const judge = createDefaultJudgePlugins(["axe"])[0];
   const bundle = createBundle([
