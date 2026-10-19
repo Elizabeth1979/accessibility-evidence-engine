@@ -98,6 +98,7 @@
       "then": {
         "properties": {
           "meta": {
+            "type": "object",
             "properties": {
               "accessibilityChanges": { "$ref": "#/$defs/accessibilityChanges" },
               "accessibilityChangesWithoutInput": {
@@ -117,6 +118,7 @@
       "then": {
         "properties": {
           "meta": {
+            "type": "object",
             "properties": {
               "newLiveRegionAnnouncements": {
                 "type": "array",
