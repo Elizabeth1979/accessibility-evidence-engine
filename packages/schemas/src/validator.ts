@@ -83,16 +83,45 @@ const schemaTitles: Record<SchemaName, string> = {
   evidenceManifest: "AEE evidence manifest"
 };
 
-const ajv = new Ajv2020({
+/** The Ajv options AEE's schemas compile under: strict mode, with union types allowed. */
+export const schemaAjvOptions = {
   allErrors: true,
-  strict: false
-});
+  strictTypes: true,
+  strictTuples: true,
+  allowUnionTypes: true
+} as const;
 
-addFormats(ajv);
+/**
+ * The Ajv instance AEE validates with, holding every AEE schema.
+ *
+ * Strict mode is on, so a schema authoring mistake fails when the schema compiles instead of
+ * being ignored (https://ajv.js.org/strict-mode.html). Ajv rejects unknown keywords and
+ * formats and ignored keywords by default (`strictSchema`); `strictTypes` and `strictTuples`
+ * only log by default, so they are raised to errors here: a keyword such as `minItems` with no
+ * `type` saying which values it applies to fails the compile.
+ *
+ * `allowUnionTypes` lets `type` list several types, as JSON Schema's `type` keyword allows
+ * (a state's value before and after a press is a string, number, boolean or null). Without it,
+ * strict types asks for the same thing written as an `anyOf`.
+ *
+ * `strictRequired` stays at Ajv's default, off. Ajv compiles `allOf`, `anyOf`, `oneOf`, `not`
+ * and `if`/`then`/`else` before the `properties` beside them, so it rejects a `required` inside
+ * them although the enclosing schema declares the property: the way JSON Schema conditions
+ * a required property.
+ */
+export function createSchemaAjv(): Ajv2020 {
+  const ajv = new Ajv2020(schemaAjvOptions);
 
-for (const schemaDocument of Object.values(schemaDocuments)) {
-  ajv.addSchema(schemaDocument);
+  addFormats(ajv);
+
+  for (const schemaDocument of Object.values(schemaDocuments)) {
+    ajv.addSchema(schemaDocument);
+  }
+
+  return ajv;
 }
+
+const ajv = createSchemaAjv();
 
 const validatorCache = new Map<SchemaName, ValidateFunction>();
 

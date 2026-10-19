@@ -54,7 +54,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | B3  | Check the test lab's heading outline                              | Tag names (`H1`, `H2`)                                         | Playwright aria snapshots or `getByRole` heading levels             | Built (Playwright 1.64)           | S      |
 | B4  | Remove VoiceOver's usage hints                                    | English regex                                                  | Guidepup start-up settings                                          | Question                          | S      |
 | C1  | Call OpenAI and local models                                      | Hand-written `fetch`, broken for OpenAI                        | Official `openai` SDK                                               | Built (`openai` 7.28.0)           | S      |
-| C2  | Validate evidence files                                           | Ajv with strict mode off; hand reading with quiet defaults     | Ajv defaults plus the existing validator                            | Replace                           | S / M  |
+| C2  | Validate evidence files                                           | Ajv with strict mode off; hand reading with quiet defaults     | Ajv defaults plus the existing validator                            | Strict mode built; C2b open       | S / M  |
 | C3  | Give AI agents the findings (MCP)                                 | Shortened PR-comment text                                      | MCP structured output with the full report                          | Built (MCP structured output)     | S      |
 | C4  | Post the PR comment                                               | Hand-written GitHub calls                                      | `@actions/github` plus `@octokit/plugin-retry`                      | Replace                           | S      |
 | C5  | Read command-line options                                         | Three hand-written parsers                                     | Node's built-in `util.parseArgs`                                    | Replace                           | S      |
@@ -83,7 +83,7 @@ These are proposals only. Each would be its own piece of work with its own PR, v
 5. **A4, tab order and lost focus.**
 6. **A9, axe's structured results** instead of reading its English text. Built: severity follows axe's impact, contrast numbers come from `check.data`, and shadow-root targets keep their full path.
 7. **C1, the OpenAI client.** Built: the old client failed on every reply shaped as the API sends it.
-8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid.
+8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid. Strict mode is built (C2a); validating the evidence files instead of reading them by hand (C2b) is still open.
 9. **B3, the heading outline from the accessibility tree.** Built: the tag check counted a hidden heading and missed a `role="heading"` one.
 10. **A12, selectors**, then **A13, the focus pixel diff**, then **A16, colour maths.**
 11. **C3, the full report for AI agents.** Built: an agent gets every finding in full as structured content, under AEE's own report schema.
@@ -757,6 +757,20 @@ A smaller related item: the Claude client parses JSON itself, while the installe
 - So the switch-off isn't needed, and it is a disabled check, which the owner's rules forbid.
 
 **Verdict: replace.** Turn strict mode back on (S), and validate every evidence file that has a schema instead of reading it by hand (M).
+
+**C2a, strict mode: built.** Turning strict mode on found more than the one warning above, because Ajv's defaults only log `strictTypes`; raised to errors, it rejected three mistakes in AEE's own schemas, all a keyword with no type:
+
+- `evidence-record.schema.json`: the accessibility-tree record's `meta` and the reader record's `meta` gave `properties` with no `"type": "object"`.
+- `virtual-screen-reader-lane.schema.json`: a completed lane's `steps` had `minItems: 1` with no `"type": "array"`.
+
+Each now names its type. They let no wrong data through, since the property's top-level definition already gave the type. The validator now runs with Ajv's defaults plus `strictTypes` and `strictTuples` as errors, so the next such mistake fails the build instead of being logged. Two other things strict mode reported are not mistakes:
+
+- **Union types** (`"type": ["string", "number"]`, used three times). JSON Schema allows a list of types, so `allowUnionTypes` is on.
+- **`strictRequired`** (36 conditional `required` keys). It stays at Ajv's default, off. Ajv compiles `if`/`then`, `anyOf` and `oneOf` before the `properties` beside them, so it flags a `required` there even when the property is declared, and every one of the 36 is.
+
+A unit test compiles every schema, and another checks that strict mode rejects a missing type, an unknown keyword and an unknown format.
+
+**C2b, evidence files validated by their schemas: open.** The report code still reads evidence files by hand with quiet defaults.
 
 ### C3. Giving AI agents the findings (MCP)
 
