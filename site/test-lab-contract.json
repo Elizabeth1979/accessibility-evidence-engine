@@ -11,13 +11,23 @@
       "title": "Demo page with issues",
       "url": "test-case.html",
       "summary": "A normal-looking workspace page with the issues below built in. The engine must find every one.",
-      "headingOutline": ["H1", "H2", "H3", "H2"]
+      "headingOutline": [
+        { "level": 1, "name": "Workspace overview" },
+        { "level": 2, "name": "Projects" },
+        { "level": 3, "name": "Workspace settings" },
+        { "level": 2, "name": "" }
+      ]
     },
     "fixed": {
       "title": "The same page, fixed",
       "url": "test-case.html?case=fixed",
       "summary": "Every issue fixed. Any finding here is a false alarm.",
-      "headingOutline": ["H1", "H2", "H2", "H2"]
+      "headingOutline": [
+        { "level": 1, "name": "Workspace overview" },
+        { "level": 2, "name": "Projects" },
+        { "level": 2, "name": "Workspace settings" },
+        { "level": 2, "name": "Usage this week" }
+      ]
     }
   },
   "issues": [

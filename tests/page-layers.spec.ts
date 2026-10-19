@@ -3,7 +3,7 @@ import { pathToFileURL } from "node:url";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 
-import { contract, readerWalk, runOnLabPage } from "./test-lab-helpers";
+import { contract, readerWalk, runOnLabPage, type LabPage } from "./test-lab-helpers";
 
 const layers = ["headings", "tab-order", "images", "focus"] as const;
 const reports: Record<"issues" | "fixed", string> = { issues: "", fixed: "" };
@@ -41,6 +41,10 @@ async function switchLayersOn(page: Page) {
   return panel;
 }
 
+/** The Page view labels each heading by its level, as "H1", "H2" and so on. */
+const headingLabels = ({ headingOutline }: LabPage) =>
+  headingOutline.map(({ level }) => `H${level}`);
+
 /**
  * A layer's items on the first picture that has the layer. Headings and images are drawn on every
  * picture they were measured with: the page as it loaded, and the page as the reader read it.
@@ -67,7 +71,7 @@ for (const [device, width] of [
     // indented under Projects, where the lab's wrong-heading-level issue puts it.
     const headings = items(panel, "headings");
     await expect(headings.locator(".marker-number")).toHaveText(
-      contract.pages.issues.headingOutline
+      headingLabels(contract.pages.issues)
     );
     await expect(headings.filter({ hasText: "Empty heading" })).toHaveCount(1);
     await expect(headings.filter({ hasText: "Workspace settings" })).toHaveAttribute(
@@ -128,7 +132,7 @@ test("the fixed page shows the same layers with nothing flagged", async ({ page 
   const panel = await switchLayersOn(page);
 
   await expect(items(panel, "headings").locator(".marker-number")).toHaveText(
-    contract.pages.fixed.headingOutline
+    headingLabels(contract.pages.fixed)
   );
   await expect(items(panel, "images")).toHaveCount(2);
   await expect(items(panel, "tab-order").filter({ hasText: "Export report" })).toHaveCount(1);
