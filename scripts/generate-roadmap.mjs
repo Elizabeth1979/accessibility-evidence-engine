@@ -4,14 +4,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
-import { parsePlan } from "./master-plan.mjs";
+import { parsePlan, planUrl } from "./master-plan.mjs";
 import { inline, renderSitePage } from "./site-page.mjs";
 
 const root = process.cwd();
 const planPath = path.join(root, "docs", "MASTER-PLAN.md");
 const outPath = path.join(root, "site", "roadmap.html");
-const planUrl =
-  "https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/MASTER-PLAN.md";
 
 const milestones = parsePlan(await readFile(planPath, "utf8"));
 if (milestones.length === 0) throw new Error("No milestones found in docs/MASTER-PLAN.md");
@@ -19,6 +17,7 @@ if (milestones.length === 0) throw new Error("No milestones found in docs/MASTER
 const current = milestones.find((m) => m.steps.some((s) => !s.done));
 const allSteps = milestones.flatMap((m) => m.steps);
 const doneCount = allSteps.filter((s) => s.done).length;
+const planText = (value) => inline(value, planUrl);
 
 await writeFile(outPath, renderPage());
 process.stdout.write(`Generated roadmap: ${doneCount}/${allSteps.length} steps done.\n`);
@@ -31,7 +30,7 @@ function renderPage() {
     body: `      <h1>Roadmap</h1>
       <p class="lede">${doneCount} of ${allSteps.length} steps done.${
         current
-          ? ` Now: <strong>${current.id} — ${inline(current.title)}</strong>.`
+          ? ` Now: <strong>${current.id} — ${planText(current.title)}</strong>.`
           : " <strong>The plan is complete.</strong>"
       }</p>
       <p>
@@ -61,7 +60,7 @@ function renderStation(m) {
   return `          <li class="station ${state}">
             <a href="#${m.id.toLowerCase()}"${state === "now" ? ' aria-current="step"' : ""}>
               <span class="m-id">${m.id}</span>
-              <span class="s-title">${inline(m.title)}</span>
+              <span class="s-title">${planText(m.title)}</span>
               <span class="visually-hidden">, ${status}</span>
             </a>
           </li>`;
@@ -75,13 +74,13 @@ function renderMilestone(m) {
   // and some browser + screen reader pairs flatten a heading inside a button.
   return `        <li class="milestone ${state}" id="${m.id.toLowerCase()}">
           <div class="m-head">
-            <h2><span class="m-id">${m.id}</span> ${inline(m.title)}</h2>
+            <h2><span class="m-id">${m.id}</span> ${planText(m.title)}</h2>
             ${label ? `<span class="m-tag">${label}</span>` : ""}
             <span class="m-count"><span aria-hidden="true">${done}/${m.steps.length}</span><span class="visually-hidden">${done} of ${m.steps.length} steps done</span></span>
           </div>
-          ${m.outcome ? `<p class="m-outcome">${inline(m.outcome)}</p>` : ""}
+          ${m.outcome ? `<p class="m-outcome">${planText(m.outcome)}</p>` : ""}
           <details${state === "now" ? " open" : ""}>
-            <summary>${m.steps.length} step${m.steps.length === 1 ? "" : "s"}<span class="visually-hidden"> in ${m.id}</span>${m.when ? ` · ${inline(m.when)}` : ""}</summary>
+            <summary>${m.steps.length} step${m.steps.length === 1 ? "" : "s"}<span class="visually-hidden"> in ${m.id}</span>${m.when ? ` · ${planText(m.when)}` : ""}</summary>
             <ul class="steps">
 ${m.steps.map(renderStep).join("\n")}
             </ul>
@@ -93,8 +92,8 @@ function renderStep(s) {
   return `              <li class="${s.done ? "step-done" : "step-todo"}">
                 <span class="step-id"><span class="visually-hidden">${s.done ? "Done:" : "To do:"} </span>${s.id}</span>
                 <div>
-                  <p>${inline(s.text)}</p>
-                  ${s.doneWhen ? `<p class="done-when"><strong>Done when:</strong> ${inline(s.doneWhen)}</p>` : ""}
+                  <p>${planText(s.text)}</p>
+                  ${s.doneWhen ? `<p class="done-when"><strong>Done when:</strong> ${planText(s.doneWhen)}</p>` : ""}
                 </div>
               </li>`;
 }

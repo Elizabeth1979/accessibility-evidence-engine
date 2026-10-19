@@ -1,4 +1,9 @@
 // Reads docs/MASTER-PLAN.md into milestones and their steps, for every page generated from it.
+
+// Where the plan lives on GitHub: its link on the site, and the base for its relative links.
+export const planUrl =
+  "https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/main/docs/MASTER-PLAN.md";
+
 export function parsePlan(markdown) {
   const result = [];
   for (const line of markdown.split("\n")) {
