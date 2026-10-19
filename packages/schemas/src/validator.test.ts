@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 import axe from "axe-core";
 
 import { schemaCatalog, type SchemaName } from "./index";
@@ -12,7 +14,13 @@ import {
   remediationRegistry,
   type RemediationRegistry
 } from "./remediation-registry";
-import { assertValidSchema, createSchemaAjv, validateSchema } from "./validator";
+import {
+  assertValidSchema,
+  bundledSchema,
+  createSchemaAjv,
+  schemaAjvOptions,
+  validateSchema
+} from "./validator";
 
 const sampleArtifact = {
   id: "artifact-1",
@@ -920,6 +928,30 @@ test("validateSchema accepts an integrated scenario report", () => {
   });
 
   assert.deepEqual(result, { valid: true, errors: [] });
+});
+
+test("a bundled schema resolves every reference without AEE's other schema files", () => {
+  // The report refers to the run, which refers to the checkpoint and interaction in turn.
+  const bundled = bundledSchema("report");
+  assert.deepEqual(Object.keys(bundled.$defs ?? {}).sort(), [
+    "checkpoint",
+    "common",
+    "evidenceBundle",
+    "evidenceRecord",
+    "finding",
+    "interaction",
+    "judgment",
+    "run"
+  ]);
+  const standalone = new Ajv2020(schemaAjvOptions);
+  addFormats(standalone);
+  assert.doesNotThrow(() => standalone.compile(bundled));
+  for (const name of Object.keys(schemaCatalog) as SchemaName[]) {
+    assert.doesNotThrow(
+      () => addFormats(new Ajv2020(schemaAjvOptions)).compile(bundledSchema(name)),
+      name
+    );
+  }
 });
 
 test("validateSchema accepts the canonical remediation registry", () => {

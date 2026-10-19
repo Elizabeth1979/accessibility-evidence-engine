@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +8,7 @@ import { promisify } from "node:util";
 import test from "node:test";
 
 import type { EvidenceRecord, Judgment } from "@aee/core";
+import canonicalize from "canonicalize";
 
 import {
   compileScenarioPlan,
@@ -174,6 +176,62 @@ test("compileScenarioPlan produces a stable plan digest that can be explicitly a
   assert.equal(approvedPlan.approval.status, "approved");
 });
 
+test("a plan's digest is the SHA-256 of its RFC 8785 canonical JSON", async () => {
+  const scenario = await loadScenario(
+    path.resolve(__dirname, "../../../examples/public-site/scenario.yml")
+  );
+  const { planDigest, approval, ...payload } = compileScenarioPlan(scenario);
+
+  assert.equal(approval.required, true);
+  assert.equal(
+    planDigest,
+    `sha256:${createHash("sha256").update(canonicalize(payload)!).digest("hex")}`
+  );
+});
+
+test("CLI plan gives the same digest whatever language the machine is set to", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-locale-"));
+  const localeScenarioPath = path.join(tempRoot, "scenario.yml");
+  // Estonian sorts “z” between “s” and “t”, so a sort by the machine's language orders these
+  // permissions differently in Tallinn than in New York.
+  const scenarioYaml = (await readFile(scenarioPath, "utf8")).replace(
+    "      - activate-public-links\n",
+    "      - activate-public-links\n      - zoom-page\n      - tab-to-page-end\n"
+  );
+  await writeFile(localeScenarioPath, scenarioYaml, "utf8");
+  const machine = (language: string) => ({ ...process.env, LANG: language, LC_ALL: language });
+
+  try {
+    const { stdout: estonianOrder } = await execFileAsync(
+      process.execPath,
+      ["-p", "['t', 'z'].sort((left, right) => left.localeCompare(right)).join('')"],
+      { env: machine("et_EE.UTF-8") }
+    );
+    assert.equal(
+      estonianOrder.trim(),
+      "zt",
+      "Node must follow LC_ALL for this test to mean anything"
+    );
+
+    const planDigests = await Promise.all(
+      ["en_US.UTF-8", "et_EE.UTF-8", "lt_LT.UTF-8", "C"].map(async (language) => {
+        const { stdout } = await execFileAsync(
+          process.execPath,
+          [cliPath, "plan", localeScenarioPath, "--json"],
+          { env: machine(language) }
+        );
+        return (JSON.parse(stdout) as { planDigest: string }).planDigest;
+      })
+    );
+
+    assert.equal(new Set(planDigests).size, 1, planDigests.join("\n"));
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test("a test's plan lists the keyboard sweep and the reader only for a page the fixture checked", () => {
   const journey = {
     id: "test",
@@ -286,6 +344,44 @@ test("CLI run refuses to execute a scenario until its exact plan is approved", a
         const output = error as { stderr?: string };
         assert.match(output.stderr ?? "", /Cannot run scenario “public-site-homepage”/);
         assert.match(output.stderr ?? "", /until plan sha256:[a-f0-9]+ is approved/);
+        return true;
+      }
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("CLI says why an approval stopped matching, and that it may only be the digest that changed", async () => {
+  const cliPath = path.resolve(__dirname, "index.js");
+  const scenarioPath = path.resolve(__dirname, "../../../examples/public-site/scenario.yml");
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-cli-mismatch-"));
+  const staleScenarioPath = path.join(tempRoot, "scenario.yml");
+  const scenarioYaml = await readFile(scenarioPath, "utf8");
+  await writeFile(
+    staleScenarioPath,
+    scenarioYaml.replace(/^(\s{2}approvedPlanDigest:).*$/m, `$1 sha256:${"0".repeat(64)}`),
+    "utf8"
+  );
+  const reason =
+    /it was approved with AEE 0\.8\.0 or earlier, whose digest depended on the language/;
+
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [cliPath, "plan", staleScenarioPath]);
+    assert.match(stdout, /Approval: DIGEST-MISMATCH/);
+    assert.match(stdout, reason);
+    assert.match(
+      stdout,
+      /approve it again: copy its plan digest into approval\.approvedPlanDigest/
+    );
+
+    await assert.rejects(
+      () => execFileAsync(process.execPath, [cliPath, "run", staleScenarioPath]),
+      (error: unknown) => {
+        const output = error as { stderr?: string };
+        assert.match(output.stderr ?? "", /Cannot run scenario “public-site-homepage”/);
+        assert.match(output.stderr ?? "", reason);
+        assert.match(output.stderr ?? "", /approve plan sha256:[a-f0-9]{64} in approval/);
         return true;
       }
     );

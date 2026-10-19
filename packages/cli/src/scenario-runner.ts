@@ -78,6 +78,7 @@ import {
   ACTIVATE_PAGE_CONTROLS,
   comparisonLaneId,
   compileScenarioPlan,
+  DIGEST_MISMATCH_EXPLANATION,
   journeyStartUrl,
   loadScenario,
   observedPressesLaneId,
@@ -943,6 +944,11 @@ export function openScenarioReport(reportFile: string): void {
 function assertScenarioCanRun(plan: ScenarioPlan): void {
   if (plan.readiness.status === "blocked") {
     throw new Error(`Cannot run scenario “${plan.scenarioId}”: ${plan.readiness.summary}`);
+  }
+  if (plan.approval.status === "digest-mismatch") {
+    throw new Error(
+      `Cannot run scenario “${plan.scenarioId}”. ${DIGEST_MISMATCH_EXPLANATION} Run aee plan to see it, then approve plan ${plan.planDigest} in approval.approvedPlanDigest.`
+    );
   }
   if (plan.approval.status !== "approved") {
     throw new Error(
