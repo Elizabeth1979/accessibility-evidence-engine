@@ -10,6 +10,7 @@ import type {
   InputComparisonExpectation,
   InputComparisonObservationRequest
 } from "@aee/playwright";
+import canonicalize from "canonicalize";
 import { parseDocument } from "yaml";
 
 export type ScenarioProfile = AssessmentProfile;
@@ -399,6 +400,13 @@ export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {
   return plan;
 }
 
+/**
+ * Why a saved approval no longer matches. Up to AEE 0.8.0 a plan's digest depended on the
+ * machine's language, so an approval made then can stop matching once with no change to the plan.
+ */
+export const DIGEST_MISMATCH_EXPLANATION =
+  "The approved digest in approval.approvedPlanDigest does not match this plan. Either the scenario changed since it was approved, or it was approved with AEE 0.8.0 or earlier, whose digest depended on the language the machine was set to. Review the plan to check it is still what you want to run.";
+
 export function renderScenarioPlan(plan: ScenarioPlan): string {
   const lines = [
     `AEE assessment plan: ${plan.scenarioId}`,
@@ -447,6 +455,12 @@ export function renderScenarioPlan(plan: ScenarioPlan): string {
     lines.push(
       "",
       "Execution is blocked for this profile. AEE will not convert a partial run into an overall pass."
+    );
+  } else if (plan.approval.status === "digest-mismatch") {
+    lines.push(
+      "",
+      DIGEST_MISMATCH_EXPLANATION,
+      "If it is, approve it again: copy its plan digest into approval.approvedPlanDigest and run aee plan again."
     );
   } else if (plan.approval.status !== "approved") {
     lines.push(
@@ -632,29 +646,21 @@ function step(id: string, label: string): ScenarioPlan["journeys"][number]["step
   return { id, label, source: "profile" };
 }
 
-function digest(value: unknown): string {
-  return `sha256:${createHash("sha256").update(stableStringify(value)).digest("hex")}`;
+/**
+ * The SHA-256 of the value's RFC 8785 canonical JSON: keys in UTF-16 code-unit order and numbers
+ * written the one way ECMAScript does, so every machine gets the same digest for the same plan.
+ */
+function digest(value: object): string {
+  // canonicalize returns undefined only for a value JSON cannot hold, never for an object.
+  return `sha256:${createHash("sha256").update(canonicalize(value)!).digest("hex")}`;
 }
 
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((entry) => stableStringify(entry)).join(",")}]`;
-  }
-
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right));
-    return `{${entries
-      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
-      .join(",")}}`;
-  }
-
-  return JSON.stringify(value) ?? "null";
-}
-
+/**
+ * Unique values in UTF-16 code-unit order. A plan's digest covers these lists, so their order must
+ * not depend on the machine's language, as `localeCompare`'s does.
+ */
 function uniqueSorted(values: string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  return [...new Set(values)].sort();
 }
 
 function duplicates(values: string[]): string[] {
@@ -666,7 +672,7 @@ function duplicates(values: string[]): string[] {
     seen.add(value);
   }
 
-  return [...duplicateValues].sort((left, right) => left.localeCompare(right));
+  return [...duplicateValues].sort();
 }
 
 function humanize(value: string): string {
