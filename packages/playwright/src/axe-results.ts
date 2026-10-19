@@ -64,7 +64,8 @@ export function readAxeTarget(value: unknown): AxeTarget | undefined {
 
 /**
  * axe's path as one line a person can read: frames joined by "→", and each step into a shadow
- * root by ">>>", the deep combinator Puppeteer and WebdriverIO accept for the same path.
+ * root by ">>>", the deep combinator Puppeteer and WebdriverIO accept for the same path. The page
+ * runs it too (`element-selectors`), so it uses nothing from outside itself.
  */
 export function describeAxeTarget(target: AxeTarget): string {
   return target.map((step) => (Array.isArray(step) ? step.join(" >>> ") : step)).join(" → ");

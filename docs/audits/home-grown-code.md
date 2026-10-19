@@ -42,7 +42,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | A9  | Read axe's results                                                | Regex on axe's English text; every rule "high"                 | axe's own structured data (`check.data`, `impact`, targets)         | Built (axe's structured data)     | S–M    |
 | A10 | Which axe rules run                                               | Five WCAG A/AA rules silently skipped                          | Turn on axe's `experimental` tag                                    | Decided: run them (blocking open) | S      |
 | A11 | Decide whether new text is announced                              | Own live-region rules                                          | Guidepup's live-region engine, or Chrome's live properties          | Question                          | M      |
-| A12 | Point at an element (CSS selectors)                               | Three generators; some not unique                              | `@medv/finder`; axe's own targets                                   | Replace                           | M      |
+| A12 | Point at an element (CSS selectors)                               | Three generators; some not unique                              | `@medv/finder`; axe's own targets                                   | Built (axe-core's own selectors)  | M      |
 | A13 | Detect a visible focus indicator                                  | Own pixel diff, plus an outline-only guess                     | `pixelmatch`                                                        | Replace (one setting to decide)   | S      |
 | A14 | Composite widgets: roles and expected keys                        | Hand-written role list and key table                           | Roles: `aria-query` or Chrome. Keys: no tool                        | Roles: question. Keys: keep       | S      |
 | A15 | Reader jump commands (next heading, landmark, control)            | Rebuilt on top of "next"                                       | Guidepup's own `moveToNextHeading` and others                       | Question                          | S–M    |
@@ -85,7 +85,7 @@ These are proposals only. Each would be its own piece of work with its own PR, v
 7. **C1, the OpenAI client.** Built: the old client failed on every reply shaped as the API sends it.
 8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid. Strict mode is built (C2a); validating the evidence files instead of reading them by hand (C2b) is still open.
 9. **B3, the heading outline from the accessibility tree.** Built: the tag check counted a hidden heading and missed a `role="heading"` one.
-10. **A12, selectors**, then **A13, the focus pixel diff**, then **A16, colour maths.**
+10. **A12, selectors**, then **A13, the focus pixel diff**, then **A16, colour maths.** A12 is built: every selector is axe-core's own.
 11. **C3, the full report for AI agents.** Built: an agent gets every finding in full as structured content, under AEE's own report schema.
 12. **The small plumbing batch**, one PR each: C4, C5, C6, C7, C9, C11, C12, C13. C7 is built: a plan's digest no longer depends on the machine's language.
 13. **C8, generated types.**
@@ -452,6 +452,21 @@ It ignores:
 - For axe results, use axe's own full target arrays.
 
 **Verdict: replace** the in-page generators with `@medv/finder`. Remove the 8-step cap, and keep axe's targets whole.
+
+**Built, with axe-core's own generator instead of `@medv/finder`.** The choice was measured in Chromium on a generic page: two lists built the same way, ten levels deep, a button in a component's open shadow root, and 1,500 cards (4,545 elements).
+
+- `@medv/finder` 4.0.2 runs in the page, but has no path through shadow roots. For the button in the shadow root it returns `button`, which selects a different button in the page. On the deep lists it found nothing in its default 1 second and fell back to a full positional path; given 50 seconds, it crashed with "Maximum call stack size exceeded" after 1.6.
+- `css-selector-generator` 3.9.4 also gives only the part inside the shadow root.
+- axe-core's generator (`new axe.utils.DqElement(element).selector`, after `axe.setup`, both in axe 4.14's `axe.d.ts`) gave `section:nth-child(3) > div > … > li:nth-child(2) > button` and `["order-card", "button"]`, the very strings `axe.run` put in its `target`. One index served 300 elements of the 4,545-element page in 67 ms; indexing again for each element took 62 ms each, so AEE indexes once per call.
+
+One shared function in the page ([`element-selectors.ts`](../../packages/playwright/src/element-selectors.ts)) now replaces all three generators. axe-core is loaded as a plain script under its own global, and the page's own `window.axe` is put back. A shadow root is written `#host >>> button`, with `describeAxeTarget` from A9. Four tests in [`tests/element-selectors.spec.ts`](../../tests/element-selectors.spec.ts) failed on the old code, and pass now:
+
+- **The reader:** both lists' buttons had the same two eight-step paths, which select the first list's.
+- **The element map:** the same, and the shadow root's image had a path that selects nothing.
+- **The focus observer:** the path for all four list buttons was the same, and the shadow root's button was `div > button`, another button in the page.
+- **The sweep:** its positional path never matched axe's for the same button.
+
+Verdicts are unchanged. Which report fields change is in the changelog. Left open: Guidepup's reader reads no shadow root at all (guidepup/virtual-screen-reader#183), and a frame inside a shadow root still cannot be left out of axe's run, since axe's `exclude` takes no shadow path from AEE yet.
 
 **Effort:** M.
 
