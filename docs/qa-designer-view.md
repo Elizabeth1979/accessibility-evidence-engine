@@ -62,7 +62,7 @@ A heading level can be wrong without skipping one: the lab's Workspace settings 
 The announcement list sits in the Page view, beside the path it lists, rather than on the Tested journeys tab: selecting an item outlines its element, which the journeys tab has no picture for. The reader table stays on the Tested journeys tab as the full evidence.
 
 - **Each item, in order:** its number, the phrase as announced, and its role and name in words. That replaces sr-visualizer's colour dot, which showed its place in the list, not a meaning.
-- **"No name":** an item announced without a name is marked "No name" in Finding Red, the same rule as the Virtual reader status row.
+- **"No name":** an item announced without a name, whose role WAI-ARIA 1.2 requires a name for ("Accessible Name Required", from `aria-query`), is marked "No name" in Finding Red, the same rule as the Virtual reader status row.
 - **Selecting an item** outlines its element on the page, which is the Screen reader path layer.
   - The list items are buttons with `aria-current` on the selected one.
   - Previous and Next move through them, with "3 of 6".

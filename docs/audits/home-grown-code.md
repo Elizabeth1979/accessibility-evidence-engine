@@ -37,7 +37,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | A4  | Work out tab order and whether focus was lost                     | DOM-order list; `<body>` counts as focus                       | `tabbable`, or the real Tab walk the sweep already records          | Replace                           | M      |
 | A5  | Decide an element's role for the AI (decorative image or not)     | Reads the `role` attribute only                                | Chrome's computed role; `dom-accessibility-api` as fallback         | Replace                           | S–M    |
 | A6  | Record an element's states in the reader transcript               | Keeps 6 states, drops description and value                    | Every property Chrome returns                                       | Replace                           | S      |
-| A7  | Know which roles must have a name                                 | Hand-written list (wrong in places)                            | `aria-query` `accessibleNameRequired`, or the matching axe result   | Replace                           | S      |
+| A7  | Know which roles must have a name                                 | Hand-written list (wrong in places)                            | `aria-query` `accessibleNameRequired`, or the matching axe result   | Built (`aria-query`, ARIA 1.2)    | S      |
 | A8  | Index the accessibility tree; images left out                     | Keeps role, name and level; one "decorative" label; no iframes | Chrome's tree is the tool; stop dropping its data                   | Keep the tool, fix the glue       | S–M    |
 | A9  | Read axe's results                                                | Regex on axe's English text; every rule "high"                 | axe's own structured data (`check.data`, `impact`, targets)         | Replace                           | S–M    |
 | A10 | Which axe rules run                                               | Five WCAG A/AA rules silently skipped                          | Turn on axe's `experimental` tag                                    | Decided: run them (blocking open) | S      |
@@ -309,6 +309,8 @@ So an unlabelled progress bar is never reported.
 - **axe rules.** axe already has a rule for most of these roles (`button-name`, `link-name`, `aria-meter-name`, `aria-progressbar-name`, `aria-tooltip-name` and others). The matching axe result could be attached instead.
 
 **Verdict: replace** with `aria-query`'s flag, or link to the matching axe rule.
+
+**Built.** The owner chose WAI-ARIA 1.2. The reader now takes the roles from `aria-query` 5.3.2's `accessibleNameRequired`, with Chrome's `image` read as ARIA's `img`. Checked against the ARIA 1.2 Recommendation's source (w3c/aria, branch `2023-06_REC`): `aria-query` has every role ARIA 1.2 marks "Accessible Name Required: True" except `form`, which ARIA 1.2 marks True and `aria-query` marks false. That gap changes nothing AEE reports, because Chrome exposes an unnamed form (and an unnamed region) as a generic container, so the reader never reads one as a form. axe's own role table (`axe.utils.getStandards().ariaRoles`) was not used: it leaves out 13 of ARIA 1.2's roles, among them heading, region, table, tree and tabpanel, and adds `toolbar`, which ARIA 1.2 does not require to be named.
 
 **Effort:** S.
 

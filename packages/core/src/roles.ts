@@ -17,3 +17,15 @@ const SPOKEN_ROLES = new Map([
 export function spokenRoleOf(browserRole: string): string {
   return SPOKEN_ROLES.get(browserRole) ?? browserRole;
 }
+
+/**
+ * Chromium's role names (CDP `AXNode.role`) that differ from the WAI-ARIA 1.2 role they expose.
+ * Chromium gives every other ARIA role its ARIA name; ARIA 1.2's `img` it calls `image`, the name
+ * ARIA 1.3 adopts with `img` as its synonym.
+ */
+const ARIA_ROLES = new Map([["image", "img"]]);
+
+/** The WAI-ARIA 1.2 role a browser role stands for, so ARIA's own role data applies to it. */
+export function ariaRoleOf(browserRole: string): string {
+  return ARIA_ROLES.get(browserRole) ?? browserRole;
+}
