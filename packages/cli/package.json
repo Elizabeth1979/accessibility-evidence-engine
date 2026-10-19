@@ -19,6 +19,13 @@
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "test": [
+        "dist/test-fixture.d.ts"
+      ]
+    }
+  },
   "bin": {
     "aee": "dist/index.js"
   },
