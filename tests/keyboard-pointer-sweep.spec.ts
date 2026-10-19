@@ -441,6 +441,147 @@ test("the sweep lane does not judge focus on a frame a redirect takes outside th
   }
 });
 
+// A frame with two links of its own, then a button on the page that a mouse user's cursor marks as
+// one to click: Tab goes through both links and on to the button.
+const twoLinks = `<!doctype html>
+<html lang="en"><head><title>Panel</title></head>
+  <body><a id="first" href="#first">First link</a> <a id="second" href="#second">Second link</a></body>
+</html>`;
+const framedPage = (frameSrc: string) => `<!doctype html>
+<html lang="en">
+  <head><title>Framed</title></head>
+  <body>
+    <main>
+      <h1>Framed</h1>
+      <iframe id="panel" title="Panel" src="${frameSrc}"></iframe>
+      <button id="save" type="button" style="cursor: pointer">Save</button>
+    </main>
+  </body>
+</html>`;
+
+test("the sweep walks Tab through a frame's own controls and on to the page's controls after it", async ({
+  page
+}) => {
+  const site = await startHtmlServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(request.url === "/panel" ? twoLinks : framedPage("/panel"));
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    // Tab reaches the button after the frame, so it is not a control for a mouse only.
+    expect(result.findings).toEqual([]);
+    // The frame is one Tab stop of the page, whichever of its links has focus.
+    expect(result.tabStops.map(({ selector }) => selector)).toEqual(["#panel", "#save"]);
+  } finally {
+    await site.close();
+  }
+});
+
+test("the sweep walks Tab through another site's frame it reads and on to the page's controls after it", async ({
+  page
+}) => {
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(twoLinks);
+  });
+  // localhost is another site than 127.0.0.1, so Chrome renders its frame in a process of its own.
+  const elsewhereOrigin = elsewhere.origin.replace("127.0.0.1", "localhost");
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(framedPage(`${elsewhereOrigin}/`));
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: `${site.origin}/`,
+      allowedOrigins: [site.origin, elsewhereOrigin],
+      activateControls: false
+    });
+
+    expect(result.framesNotRead).toEqual([]);
+    expect(result.findings).toEqual([]);
+    expect(result.tabStops.map(({ selector }) => selector)).toEqual(["#panel", "#save"]);
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
+test("the sweep walks Tab through a frame outside the allowed origins without reading it, and on to the page's controls after it", async ({
+  page
+}) => {
+  const elsewhere = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(twoLinks);
+  });
+  // localhost is another site than 127.0.0.1, so Chrome renders its frame in a process of its own.
+  const elsewhereOrigin = elsewhere.origin.replace("127.0.0.1", "localhost");
+  const site = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(framedPage(`${elsewhereOrigin}/`));
+  });
+  try {
+    const result = await sweepKeyboardAndPointer({
+      page,
+      url: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls: false
+    });
+
+    expect(result.findings).toEqual([]);
+    // Tab moves between the frame's links unseen, so the frame stays one stop, not checked.
+    expect(result.tabStops.map(({ selector, notChecked }) => ({ selector, notChecked }))).toEqual([
+      {
+        selector: "#panel",
+        notChecked: `It shows a page from ${elsewhereOrigin}, which is not an allowed origin; add it to them to check this frame.`
+      },
+      { selector: "#save", notChecked: undefined }
+    ]);
+  } finally {
+    await site.close();
+    await elsewhere.close();
+  }
+});
+
+test("the sweep walks Tab through a component's own controls and on to the page's controls after it", async ({
+  page
+}) => {
+  // The page's active element is the component's host for each control in its shadow root.
+  const result = await sweepKeyboardAndPointer({
+    page,
+    url: `data:text/html,${encodeURIComponent(`<!doctype html>
+<html lang="en">
+  <head><title>Component</title></head>
+  <body>
+    <main>
+      <h1>Component</h1>
+      <pager-controls id="pager"></pager-controls>
+      <button id="save" type="button" style="cursor: pointer">Save</button>
+    </main>
+    <script>
+      customElements.define("pager-controls", class extends HTMLElement {
+        constructor() {
+          super();
+          this.attachShadow({ mode: "open" }).innerHTML =
+            '<button type="button">Previous</button> <button type="button">Next</button>';
+        }
+      });
+    </script>
+  </body>
+</html>`)}`,
+    activateControls: false
+  });
+
+  expect(result.findings).toEqual([]);
+  expect(result.tabStops.map(({ selector }) => selector)).toEqual(["#pager", "#save"]);
+});
+
 test("the sweep lane records a press whose page fails to load, reads no error page and sweeps on", async ({
   browser
 }, testInfo) => {

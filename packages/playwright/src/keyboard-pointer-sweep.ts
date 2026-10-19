@@ -7,10 +7,12 @@ import {
   describeSelectedElement,
   CHROME_ERROR_PAGE,
   framesInsideOrigins,
+  mainFrameOf,
   withCdpSession,
   withPageSessions,
-  type CdpSession,
+  type DomNodeRef,
   type FramedPage,
+  type PageSessions,
   type PlaywrightFrameLike,
   type UnreadFrame
 } from "./accessibility-tree";
@@ -19,7 +21,9 @@ import {
   BlockedOriginError,
   normalizeAllowedOrigins
 } from "./allowed-origins";
+import { focusPath } from "./dom-focus";
 import { locateElements, type ElementLocation } from "./element-locations";
+import { frameDocuments } from "./frame-documents";
 import {
   frameMasks,
   framesNotChecked,
@@ -219,6 +223,10 @@ export interface KeyboardPointerSweepOptions {
    * submit buttons are never pressed.
    */
   activateControls: boolean;
+  /**
+   * The most times the walk presses Tab: each press is a Tab stop a keyboard user meets, including
+   * each one inside a frame or a component's shadow root.
+   */
   maxTabStops?: number;
   /**
    * The origins the page may load from. A redirect passes a route handler by, so the sweep checks
@@ -365,6 +373,10 @@ async function sweepPage(
   const settle = () => onLoadedPage(page, () => waitForQuietPage(page, openRequests), checkPage);
   const loadPage = () => loadAfresh(page, url, openRequests, allowedOrigins);
 
+  // The frames the sweep reads: those inside the allowed origins, when there are any.
+  const readFrames = (sessions: PageSessions) =>
+    allowedOrigins ? framesInsideOrigins(sessions, allowedOrigins) : sessions;
+
   await loadPage();
   let framesNotRead: UnreadFrame[] = [];
   // The browser has still drawn the frames left unread, so the sweep's pictures cover them.
@@ -372,7 +384,7 @@ async function sweepPage(
   let mask: unknown[] = [];
   const findings: SweepFinding[] = (
     await withPageSessions(page.context(), page, async (sessions) => {
-      const read = allowedOrigins ? framesInsideOrigins(sessions, allowedOrigins) : sessions;
+      const read = readFrames(sessions);
       framesNotRead = read.framesNotRead.map(({ url, reason }) => ({
         url: redactUrl(url),
         reason
@@ -402,8 +414,16 @@ async function sweepPage(
     );
   }
   findings.push(...(await textImages(page, probe, mask)));
-  const tabStops = await withCdpSession(page.context(), page, (session) =>
-    collectTabStops(page, session, probe, options.maxTabStops ?? 200, onStep, mask, unreadFrames)
+  const tabStops = await withPageSessions(page.context(), page, (sessions) =>
+    collectTabStops(
+      page,
+      readFrames(sessions),
+      probe,
+      options.maxTabStops ?? 200,
+      onStep,
+      mask,
+      unreadFrames
+    )
   );
   // Tab reaching nothing on a page with controls it reaches natively says the walk did not happen,
   // not that every control is mouse-only, so the sweep decides nothing.
@@ -740,14 +760,22 @@ async function timed<Result>(
 }
 
 /**
- * Presses Tab from the top of the page until focus returns to a stop already reached, capturing
+ * Presses Tab from the top of the page until focus returns to where it has already been, capturing
  * each stop's surroundings with focus. Then, with focus on nothing, it captures the same regions
  * again: focus is visible where the two differ, which is what WCAG 2.4.7 asks for. A stop that is
  * one of `unreadFrames` is covered by `mask` in both captures, so its focus is not checked.
+ *
+ * A stop is an element of the top document. The top document names a frame's element, or a
+ * component's shadow host, as its active element for every control inside it, so where focus is is
+ * followed into shadow roots and into the frames the sweep reads (`focusPath`, through each frame's
+ * own session): Tab moving between the controls inside goes on through them, and the frame or host
+ * is one stop. Inside a frame the sweep does not read, Tab moves where the sweep cannot see, and
+ * focus stays on the frame's element; that is Tab moving through the frame too, so the walk goes on
+ * until focus leaves it.
  */
 async function collectTabStops(
   page: KeyboardPointerSweepPage,
-  session: CdpSession,
+  frames: PageSessions,
   probe: <T>(request: ProbeRequest) => Promise<T>,
   maxTabStops: number,
   onStep: KeyboardPointerSweepOptions["onStep"],
@@ -757,37 +785,53 @@ async function collectTabStops(
   // Tab stops are elements of the top document, so only a frame whose element is there can be one.
   const unreadStops = unreadFrames.filter(({ selector }) => selector.length === 1);
   const stops: Array<SweepTabStop & { frame: FocusFrame | null }> = [];
-  const isNewStop = (active: SweepTabStop | null): active is SweepTabStop =>
-    active !== null && !stops.some(({ selector }) => selector === active.selector);
+  const isNewStop = (selector: string) => !stops.some((stop) => stop.selector === selector);
+  const { session } = mainFrameOf(frames);
+  const documents = frameDocuments(frames);
+  // Each element focus has been on, in whichever frame's document holds it.
+  const visited: string[] = [];
   await probe({ mode: "start-at-top" });
   for (let index = 0; index < maxTabStops; index += 1) {
     const active = await timed(
       onStep,
-      (found) => (isNewStop(found) ? `Tab ${stops.length + 1}: ${describeElement(found)}` : ""),
-      async (): Promise<SweepTabStop | null> => {
+      (found) => (found?.stop ? `Tab ${stops.length + 1}: ${describeElement(found.stop)}` : ""),
+      async (): Promise<{ focused: DomNodeRef; stop?: SweepTabStop } | null> => {
         await page.keyboard.press("Tab");
-        const element = await probe<LocatedElement | null>({ mode: "active" });
-        if (!element) return null;
+        const focused = (await focusPath(frames, documents)).at(-1);
+        const element = focused && (await probe<LocatedElement | null>({ mode: "active" }));
+        if (!focused || !element) return null;
+        if (!isNewStop(element.selector)) return { focused };
         const described = await describeFocusedElement(session);
         return {
-          selector: element.selector,
-          label: described?.name ?? "",
-          ...(described ? { role: described.role } : {})
+          focused,
+          stop: {
+            selector: element.selector,
+            label: described?.name ?? "",
+            ...(described ? { role: described.role } : {})
+          }
         };
       }
     );
-    if (!isNewStop(active)) break;
-    const frame = await probe<FocusFrame | null>({ mode: "frame", selector: active.selector });
+    if (!active) break;
+    const place = `${active.focused.frameId} ${active.focused.backendNodeId}`;
+    if (visited.includes(place)) {
+      // Focus still on the element of a frame the sweep does not read: Tab moved inside the frame.
+      if (place === visited.at(-1) && (await holdsFrame(frames, active.focused))) continue;
+      break;
+    }
+    visited.push(place);
+    if (!active.stop) continue;
+    const frame = await probe<FocusFrame | null>({ mode: "frame", selector: active.stop.selector });
     const focusedCrop = frame ? await captureFrame(page, frame, mask) : undefined;
     const unread = unreadStops.length
       ? await probe<number>({
           mode: "same-element",
-          selector: active.selector,
+          selector: active.stop.selector,
           among: unreadStops.map(({ selector: [element] }) => element)
         })
       : -1;
     stops.push({
-      ...active,
+      ...active.stop,
       frame,
       ...(focusedCrop ? { focusedCrop } : {}),
       ...(unread >= 0 ? { notChecked: unreadStops[unread]!.reason } : {})
@@ -804,6 +848,21 @@ async function collectTabStops(
     measured.push(stop);
   }
   return measured;
+}
+
+/**
+ * Whether the element holds a frame (`DOM.describeNode` names the frame of a frame's element). Focus
+ * the walk follows ends on one only when it is inside a frame the sweep does not read.
+ */
+async function holdsFrame(
+  frames: PageSessions,
+  { frameId, backendNodeId }: DomNodeRef
+): Promise<boolean> {
+  const { session } = frames.frames.find((frame) => frame.frameId === frameId)!;
+  const { node } = (await session.send("DOM.describeNode", { backendNodeId })) as {
+    node: { frameId?: string };
+  };
+  return node.frameId !== undefined;
 }
 
 /** A colour channel moving by more than this, out of 255, is a change a person could see. */
