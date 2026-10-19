@@ -9,7 +9,7 @@ import process from "node:process";
 
 import prettier from "prettier";
 
-import { parsePlan } from "./master-plan.mjs";
+import { parsePlan, planUrl } from "./master-plan.mjs";
 import { escapeHtml, inline, replaceBetweenMarkers } from "./site-page.mjs";
 
 const root = process.cwd();
@@ -125,7 +125,7 @@ function renderMilestone({ id, title, outcome, steps }) {
   const state = steps.some(({ done }) => done) ? "In progress" : "Coming soon";
   return `<li class="feature-card coming-soon">
   <p class="coming-soon-label">${state} · ${escapeHtml(id)}</p>
-  <h3>${inline(title)}</h3>
-  <p>${inline(outcome)}</p>
+  <h3>${inline(title, planUrl)}</h3>
+  <p>${inline(outcome, planUrl)}</p>
 </li>`;
 }

@@ -7,6 +7,8 @@ import {
   type PageFrame,
   type PageSessions
 } from "./accessibility-tree";
+import { describeAxeTarget } from "./axe-results";
+import { elementSelectors } from "./element-selectors";
 import { describeFocusElement, type FocusAccessibility } from "./focus-accessibility";
 import {
   callOn,
@@ -85,7 +87,10 @@ export interface FocusedElement extends Partial<FocusAccessibility> {
   type?: string;
   tabIndex?: number;
   disabled?: boolean;
-  /** Its id, or its tag path up to the nearest ancestor with one, in the tree that holds it. */
+  /**
+   * Its path in the document that holds it, as axe-core writes it in a result's `target`: the
+   * shortest selector that selects it alone, with each step into a shadow root after ">>>".
+   */
   nodePath: string;
   focusVisible: boolean;
   focusIndicator: {
@@ -141,6 +146,7 @@ export interface DomFocusState extends FocusedElement {
 type PageDescription = Omit<
   FocusedElement,
   | keyof FocusAccessibility
+  | "nodePath"
   | "frameId"
   | "framePath"
   | "backendDOMNodeId"
@@ -151,7 +157,9 @@ type PageDescription = Omit<
   tabStop?: number;
 };
 
-type ElementDescription = PageDescription & Partial<FocusAccessibility>;
+type ElementDescription = PageDescription &
+  Pick<FocusedElement, "nodePath"> &
+  Partial<FocusAccessibility>;
 
 /**
  * One document's part of the chain to focus, run on the element that has focus there (the one
@@ -191,22 +199,31 @@ async function objectsOf(
 
 /**
  * One document's part of DOM focus, read on its focused element: what the page shows of each
- * element on the way to focus (`describeElement`, in the page) and what the accessibility tree
- * gives it, read on the same element in its frame's own session.
+ * element on the way to focus (`describeElement`, in the page), its path in the document (axe-core's,
+ * `elementSelectors`), and what the accessibility tree gives it, read on the same element in its
+ * frame's own session.
  */
 async function readDocumentFocus(
   session: CdpSession,
   focusedObjectId: string,
   pageArguments: [tabbableGlobal: string | null, shadowRoots: PageObject]
 ): Promise<DocumentFocus> {
-  const describe = async (objectId: string): Promise<ElementDescription> => ({
-    ...(await callOn<PageDescription>(session, objectId, `${describeElement}`, pageArguments)),
-    ...(await describeFocusElement(session, objectId))
-  });
   const elements = await objectOn(session, focusedObjectId, FOCUS_ELEMENTS);
   if (!elements) throw new Error("The page returned no elements on the way to focus.");
   const objects = await objectsOf(session, elements);
   const activeDescendantObject = objects.pop();
+  const described = [...objects, activeDescendantObject].filter(
+    (objectId): objectId is string => objectId !== undefined
+  );
+  const paths = await elementSelectors(
+    session,
+    described.map((objectId) => new PageObject(objectId))
+  );
+  const describe = async (objectId: string): Promise<ElementDescription> => ({
+    ...(await callOn<PageDescription>(session, objectId, `${describeElement}`, pageArguments)),
+    nodePath: describeAxeTarget([paths[described.indexOf(objectId)]!]),
+    ...(await describeFocusElement(session, objectId))
+  });
   const chain: ElementDescription[] = [];
   for (const objectId of objects) chain.push(await describe(objectId!));
   const activeDescendantId = await callOn<string | undefined>(
@@ -515,16 +532,6 @@ function describeElement(
         shadowRoots
       )
     : [];
-  const tagOf = (element: Element) => element.tagName.toLowerCase();
-  const nodePathOf = (element: Element) => {
-    const segments: string[] = [];
-    for (let current: Element | null = element; current; current = current.parentElement) {
-      const id = current.id ? `#${current.id}` : "";
-      segments.unshift(`${tagOf(current)}${id}`);
-      if (id) break;
-    }
-    return segments.join(" > ");
-  };
   const type = (this as HTMLInputElement).type;
   const tabIndex = (this as HTMLElement).tabIndex;
   const disabled = (this as HTMLButtonElement).disabled;
@@ -539,12 +546,11 @@ function describeElement(
   const shadowVisible = style.boxShadow !== "none";
   const tabStop = tabStops.indexOf(this);
   return {
-    tagName: tagOf(this),
+    tagName: this.tagName.toLowerCase(),
     id: this.id || undefined,
     type: typeof type === "string" && type ? type : undefined,
     tabIndex: typeof tabIndex === "number" ? tabIndex : undefined,
     disabled: typeof disabled === "boolean" ? disabled : undefined,
-    nodePath: nodePathOf(this),
     focusVisible,
     focusIndicator: {
       visible: focusVisible && (outlineVisible || shadowVisible),

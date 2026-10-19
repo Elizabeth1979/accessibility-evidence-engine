@@ -4,8 +4,10 @@ import {
   fetchAccessibilityNode,
   fetchAccessibilityTree,
   type AccessibilityNode,
+  type CapturedElement,
   type PageSessions
 } from "./accessibility-tree";
+import { placeOf } from "./element-selectors";
 
 /**
  * How an image is exposed: with a text alternative, left out of the accessibility tree (screen
@@ -73,22 +75,38 @@ export async function captureElementMap(page: PageSessions): Promise<ElementMap>
     .map((node) => ({ node, at: order(node) }))
     .filter(({ at }) => at !== -1)
     .sort((left, right) => left.at - right.at)
-    .map(({ node }) => node);
-  return { schemaVersion: "0.1.0", captureType: "element-map", elements: nodes.flatMap(toEntries) };
+    .flatMap(({ node }) => {
+      const ref = domNodeOf(node);
+      const element = ref && dom.element(ref);
+      // Only what the page lays out; an empty heading still has a place on the page.
+      return element?.layoutBounds ? [{ node, element, box: element.layoutBounds }] : [];
+    });
+  const paths = await dom.paths(nodes.map(({ element }) => element));
+  return {
+    schemaVersion: "0.1.0",
+    captureType: "element-map",
+    elements: nodes.flatMap((laidOut, at) => {
+      const path = paths[at];
+      return path ? toEntries(laidOut, placeOf(path)) : [];
+    })
+  };
 
-  function toEntries(node: AccessibilityNode): ElementMapEntry[] {
-    const ref = domNodeOf(node);
-    const element = ref && dom.element(ref);
-    // Only what the page lays out; an empty heading still has a place on the page.
-    if (!element?.layoutBounds) return [];
+  function toEntries(
+    {
+      node,
+      element,
+      box
+    }: { node: AccessibilityNode; element: CapturedElement; box: ElementMapEntry["box"] },
+    { nodePath, framePath }: ReturnType<typeof placeOf>
+  ): ElementMapEntry[] {
     const role = String(node.role?.value ?? "");
     const name = typeof node.name?.value === "string" ? node.name.value.trim() : "";
     const common = {
       role,
       name,
-      selector: element.nodePath,
-      ...(element.framePath.length ? { framePath: element.framePath } : {}),
-      box: element.layoutBounds
+      selector: nodePath,
+      ...(framePath.length ? { framePath } : {}),
+      box
     };
     if (!node.ignored && role === "heading") {
       return [{ kind: "heading", ...common, level: headingLevel(node) }];

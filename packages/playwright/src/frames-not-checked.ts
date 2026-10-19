@@ -8,7 +8,6 @@ import {
   type DomNodeRef,
   type PageSessions
 } from "./accessibility-tree";
-import { callOn } from "./frame-documents";
 
 /**
  * A frame left out of the page's checks (`framesInsideOrigins`), such as one whose page is outside
@@ -40,7 +39,7 @@ export async function framesNotChecked(page: PageSessions): Promise<FrameNotChec
   const dom = await capturePageDom(page);
   return Promise.all(
     leftOut.map(async ({ url, reason, owner }) => {
-      const selector = owner && (await selectorOf(page, dom, owner));
+      const selector = owner && (await selectorOf(dom, owner));
       if (!owner || !selector) {
         throw new Error(
           `No selector names the element that holds the frame at ${redactUrl(url)} on its own, so the frame cannot be kept out of the checks.`
@@ -77,51 +76,18 @@ export function frameMasks(page: LocatorScope, frames: FrameNotChecked[]): unkno
 }
 
 /**
- * The element's `nodePath`, after the `nodePath` of each frame's element it is inside, outermost
- * first. Undefined when one of them is not the only element its path selects in its document, or is
- * inside a shadow root, where a selector in the document does not reach it.
+ * The element's path in each document from the top one down, axe-core's own (`CapturedDom.paths`),
+ * which selects it alone in its document. Undefined when it, or a frame's element it is inside, is
+ * gone or is inside a shadow root, where a selector in the document does not reach it.
  */
 async function selectorOf(
-  page: PageSessions,
   dom: CapturedDom,
   element: DomNodeRef
 ): Promise<[string, ...string[]] | undefined> {
-  const outerFirst: string[] = [];
-  for (let ref: DomNodeRef | undefined = element; ref;) {
-    const frame = page.frames.find(({ frameId }) => frameId === ref!.frameId)!;
-    const nodePath = dom.element(ref)?.nodePath;
-    if (!nodePath || !(await selectsOnlyItself(page, ref, nodePath))) return undefined;
-    outerFirst.unshift(nodePath);
-    ref =
-      frame.parentFrameId && frame.ownerBackendNodeId !== undefined
-        ? { frameId: frame.parentFrameId, backendNodeId: frame.ownerBackendNodeId }
-        : undefined;
-  }
-  const [outer, ...inner] = outerFirst;
-  return outer === undefined ? undefined : [outer, ...inner];
-}
-
-async function selectsOnlyItself(
-  page: PageSessions,
-  { frameId, backendNodeId }: DomNodeRef,
-  selector: string
-): Promise<boolean> {
-  const { session } = page.frames.find((frame) => frame.frameId === frameId)!;
-  const { object } = (await session.send("DOM.resolveNode", { backendNodeId })) as {
-    object: { objectId?: string };
-  };
-  if (!object.objectId) return false;
-  try {
-    return await callOn<boolean>(
-      session,
-      object.objectId,
-      `function (selector) {
-        const matches = this.ownerDocument.querySelectorAll(selector);
-        return matches.length === 1 && matches[0] === this;
-      }`,
-      [selector]
-    );
-  } finally {
-    await session.send("Runtime.releaseObject", { objectId: object.objectId });
-  }
+  const [path] = await dom.paths([element]);
+  if (!path) return undefined;
+  const [outer, ...inner] = [...path.frames, path.element];
+  return typeof outer === "string" && inner.every((step) => typeof step === "string")
+    ? [outer, ...inner]
+    : undefined;
 }
