@@ -1221,7 +1221,7 @@ for (const { label, host } of [
           url: outsideUrl,
           reason,
           name: "Partner offers",
-          selector: ["iframe"]
+          selector: ["html > body > main > iframe"]
         }
       ]);
       expect(lane.steps).toEqual([expect.objectContaining({ releaseVerdict: "unknown" })]);

@@ -29,7 +29,6 @@ import {
   type PageSessions
 } from "./accessibility-tree";
 import { focusPath, frameHeldAt } from "./dom-focus";
-import { placeOf } from "./element-selectors";
 import {
   GUIDEPUP_SCRIPT,
   callOn,
@@ -358,14 +357,11 @@ export function createPortableVirtualScreenReader(
         // Focus is read before the DOM snapshot, so the snapshot holds the element it is on.
         const focusAfter = await focusedNode(reading);
         const dom = await capturePageDom(reading.page);
-        const element = position && elementAt(dom, position);
-        const [before, after] = [focusBefore, focusAfter].map((node) => node && dom.element(node));
-        const places = await placesOf(dom, [element, before, after]);
-        const item = position && (await itemAt(reading.page, position, element, places));
+        const item = position && (await itemAt(reading.page, dom, position));
         if (item) currentItem = item;
         const crossed = await framesCrossed(reading.page, dom, framesBefore, cursor.frames);
-        const domFocusBefore = focusAt(before, places);
-        const domFocusAfter = focusAt(after, places);
+        const domFocusBefore = focusAt(dom, focusBefore);
+        const domFocusAfter = focusAt(dom, focusAfter);
         const entry: VirtualScreenReaderEntry = {
           sequence: entries.length + 1,
           timestamp: new Date().toISOString(),
@@ -387,13 +383,9 @@ export function createPortableVirtualScreenReader(
           record: new Set(readInThisPass),
           countSteps: true
         });
-        const position = moved?.position;
-        const dom = position && (await capturePageDom(reading.page));
-        const element = position && dom && elementAt(dom, position);
         const item =
-          position &&
-          dom &&
-          (await itemAt(reading.page, position, element, await placesOf(dom, [element])));
+          moved?.position &&
+          (await itemAt(reading.page, await capturePageDom(reading.page), moved.position));
         // Step back exactly as far as the command went, so peeking leaves the reader where it was.
         const back: Primitive = forward(command) ? "previous" : "next";
         for (let steps = 0; steps < (moved?.steps ?? 0); steps++) await step(reading, back);
@@ -713,52 +705,25 @@ async function lastSpokenPhrase(reading: Reading, frame: PageFrame): Promise<str
     : "";
 }
 
-/** Where elements are, as `placeOf` names them. */
-type Places = Map<CapturedElement, ReturnType<typeof placeOf>>;
-
-/**
- * Each element's place, from axe-core's path to it (`CapturedDom.paths`), read in one call, so axe
- * indexes each frame's document once. An element that is gone has none.
- */
-async function placesOf(
-  dom: CapturedDom,
-  elements: Array<CapturedElement | undefined>
-): Promise<Places> {
-  const found = elements.filter((element) => element !== undefined);
-  const paths = await dom.paths(found);
-  return new Map(
-    found.flatMap((element, at) => {
-      const path = paths[at];
-      return path ? [[element, placeOf(path)] as const] : [];
-    })
-  );
-}
-
-/** The element the reader is on, or the one that holds the text it is on. */
-function elementAt(dom: CapturedDom, position: Position): CapturedElement | undefined {
-  const ref = domNodeAt(position);
-  return ref && dom.closestElement(ref);
-}
-
 /** The item for where the reader is: the browser's role, name and states, and where it is drawn. */
 async function itemAt(
   page: PageSessions,
-  position: Position,
-  element: CapturedElement | undefined,
-  places: Places
+  dom: CapturedDom,
+  position: Position
 ): Promise<VirtualScreenReaderItem | undefined> {
   const ref = domNodeAt(position);
-  const { nodePath, framePath } = (element && places.get(element)) ?? {};
-  if (!ref || !element || nodePath === undefined || !framePath) return undefined;
+  if (!ref) return undefined;
+  const element = dom.closestElement(ref);
+  if (!element) return undefined;
   // A path names an element in its own document; the frames it is inside make it unique.
-  const place = [...framePath, nodePath].join(" >>> ");
+  const place = [...element.framePath, element.nodePath].join(" >>> ");
   const at = {
-    nodePath,
+    nodePath: element.nodePath,
     tagName: element.tagName,
     ...(element.visualBounds ? { visualBounds: element.visualBounds } : {}),
     backendDOMNodeId: ref.backendNodeId,
     frameId: ref.frameId,
-    ...(framePath.length ? { framePath } : {})
+    ...(element.framePath.length ? { framePath: [...element.framePath] } : {})
   };
   if (position.isText) {
     return {
@@ -834,11 +799,10 @@ async function describeFrame(
       ? { frameId: parentFrameId, backendNodeId: ownerBackendNodeId }
       : undefined;
   const element = owner && dom.element(owner);
-  const place = element && (await placesOf(dom, [element])).get(element);
   const name = owner && textValue((await fetchAccessibilityNode(page, owner))?.name);
   return {
     frameId,
-    framePath: place ? [...place.framePath, place.nodePath] : [],
+    framePath: element ? [...element.framePath, element.nodePath] : [],
     ...(name ? { name } : {})
   };
 }
@@ -919,19 +883,18 @@ async function focusedNode(reading: Reading): Promise<DomNodeRef | undefined> {
   return (await focusPath(reading.page, reading.documents)).at(-1);
 }
 
-/** The focused element, named the way an item names its element. */
+/** The focused element as the DOM snapshot names it, the way an item names its element. */
 function focusAt(
-  element: CapturedElement | undefined,
-  places: Places
+  dom: CapturedDom,
+  node: DomNodeRef | undefined
 ): VirtualScreenReaderFocus | undefined {
-  const place = element && places.get(element);
+  const element = node && dom.element(node);
   return (
-    element &&
-    place && {
-      nodePath: place.nodePath,
+    element && {
+      nodePath: element.nodePath,
       backendDOMNodeId: element.backendNodeId,
       frameId: element.frameId,
-      ...(place.framePath.length ? { framePath: place.framePath } : {})
+      ...(element.framePath.length ? { framePath: [...element.framePath] } : {})
     }
   );
 }

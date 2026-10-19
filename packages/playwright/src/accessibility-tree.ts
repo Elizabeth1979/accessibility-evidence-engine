@@ -1,9 +1,5 @@
 import { redactUrl } from "@aee/core";
 
-import type { AxeTargetStep } from "./axe-results";
-import { elementSelectors, type ElementPath } from "./element-selectors";
-import { PageObject } from "./frame-documents";
-
 /** A Chrome DevTools Protocol session, as Playwright's `CDPSession` provides it. */
 export interface CdpSession {
   send(method: string, params?: Record<string, unknown>): Promise<unknown>;
@@ -398,8 +394,15 @@ async function describeEvaluatedElement(
 /** An element as one CDP DOM snapshot records it. */
 export interface CapturedElement {
   tagName: string;
+  /** Its id, or up to eight tag steps with their position among same-tag siblings, in its document. */
+  nodePath: string;
   /** The frame whose document holds it. */
   frameId: string;
+  /**
+   * The `<iframe>` elements it is inside, outermost first, each as a path in the document that
+   * holds it, the way axe-core's `target` lists a node inside frames. Empty in the top document.
+   */
+  framePath: string[];
   backendNodeId: number;
   attribute(name: string): string | undefined;
   /** The computed styles the snapshot was asked for, by property name. */
@@ -420,11 +423,6 @@ export interface CapturedDom {
   ancestorElements(node: DomNodeRef): CapturedElement[];
   /** The elements with this tag in every frame, in the page's document order. */
   elements(tagName: string): DomNodeRef[];
-  /**
-   * axe-core's path to each element across frames, as axe gives it in a result's `target`
-   * (`elementSelectors`), read from the page as it is now. Undefined for one that is gone.
-   */
-  paths(elements: DomNodeRef[]): Promise<Array<ElementPath | undefined>>;
 }
 
 interface DomSnapshotDocument {
@@ -464,6 +462,7 @@ interface FrameDocument {
   parentOf(index: number): number;
   isElement(index: number): boolean;
   tagName(index: number): string;
+  nodePath(index: number): string;
   backendNodeId(index: number): number;
   attribute(index: number, name: string): string | undefined;
   style(index: number, name: string): string;
@@ -523,15 +522,15 @@ export async function capturePageDom(
     if (index !== undefined) owners.set(frameId, { frameId: parentFrameId, index });
   }
 
-  // Where each frame's document starts on the page. A frame whose element is not laid out is not
-  // drawn, so its elements get no box.
-  const placement = new Map<string, { origin?: { x: number; y: number } }>();
+  // Where each frame's document starts on the page, and the elements it is inside. A frame whose
+  // element is not laid out is not drawn, so its elements get no box.
+  const placement = new Map<string, { origin?: { x: number; y: number }; framePath: string[] }>();
   for (const { frameId } of page.frames) {
     const owner = owners.get(frameId);
     const parent = owner && placement.get(owner.frameId);
     const holder = owner && documents.get(owner.frameId);
     if (!owner || !parent || !holder) {
-      placement.set(frameId, { origin: { x: 0, y: 0 } });
+      placement.set(frameId, { origin: { x: 0, y: 0 }, framePath: [] });
       continue;
     }
     const box = holder.box(owner.index);
@@ -545,7 +544,8 @@ export async function capturePageDom(
               y: parent.origin.y + box.y + inset.y - scroll.y
             }
           }
-        : {})
+        : {}),
+      framePath: [...parent.framePath, holder.nodePath(owner.index)]
     });
   }
 
@@ -574,12 +574,14 @@ export async function capturePageDom(
     const key = `${document.frameId}\u0000${index}`;
     const known = captured.get(key);
     if (known) return known;
-    const { origin } = placement.get(document.frameId) ?? {};
+    const { origin, framePath } = placement.get(document.frameId) ?? { framePath: [] };
     const box = document.box(index);
     const onPage = box && origin && { ...box, x: origin.x + box.x, y: origin.y + box.y };
     const element: CapturedElement = {
       tagName: document.tagName(index),
+      nodePath: document.nodePath(index),
       frameId: document.frameId,
+      framePath,
       backendNodeId: document.backendNodeId(index),
       order: order.get(document.frameId)?.[index] ?? -1,
       attribute: (name) => document.attribute(index, name),
@@ -603,62 +605,8 @@ export async function capturePageDom(
     }
     return found;
   };
-  // The element that holds a frame, in its parent frame's document, when the snapshot has it.
-  const frameElement = (frameId: string): DomNodeRef | undefined => {
-    const owner = owners.get(frameId);
-    const holder = owner && documents.get(owner.frameId);
-    return owner && holder
-      ? { frameId: owner.frameId, backendNodeId: holder.backendNodeId(owner.index) }
-      : undefined;
-  };
-  // axe's path to each element in its own document, read in one call for each frame.
-  const stepsOf = async (nodes: DomNodeRef[]) => {
-    const steps = new Map<string, AxeTargetStep>();
-    const keyOf = ({ frameId, backendNodeId }: DomNodeRef) => `${frameId}\u0000${backendNodeId}`;
-    for (const frame of page.frames) {
-      const inFrame = nodes.filter(({ frameId }) => frameId === frame.frameId);
-      if (!inFrame.length) continue;
-      const objectGroup = "aee-element-paths";
-      const resolved = await Promise.all(
-        inFrame.map(async ({ backendNodeId }) => {
-          const { object } = (await frame.session.send("DOM.resolveNode", {
-            backendNodeId,
-            objectGroup
-          })) as { object: { objectId?: string } };
-          return object.objectId;
-        })
-      );
-      const found = inFrame.filter((_, at) => resolved[at] !== undefined);
-      try {
-        const foundSteps = await elementSelectors(
-          frame.session,
-          resolved.flatMap((objectId) => (objectId === undefined ? [] : [new PageObject(objectId)]))
-        );
-        found.forEach((node, at) => steps.set(keyOf(node), foundSteps[at]!));
-      } finally {
-        await frame.session.send("Runtime.releaseObjectGroup", { objectGroup });
-      }
-    }
-    return (node: DomNodeRef) => steps.get(keyOf(node));
-  };
 
   return {
-    async paths(elements) {
-      const chains = elements.map((element) => {
-        const chain = [element];
-        for (let held = frameElement(element.frameId); held; held = frameElement(held.frameId)) {
-          chain.unshift(held);
-        }
-        return chain;
-      });
-      const stepOf = await stepsOf(chains.flat());
-      return chains.map((chain) => {
-        const steps = chain.map(stepOf).filter((step) => step !== undefined);
-        if (steps.length < chain.length) return undefined;
-        const element = steps.pop()!;
-        return { frames: steps, element };
-      });
-    },
     element({ frameId, backendNodeId }) {
       const document = documents.get(frameId);
       const index = document?.indexOf(backendNodeId);
@@ -706,6 +654,33 @@ function frameDocument(
     const styles = box === undefined ? [] : (layout.styles?.[box] ?? []);
     return strings[styles[requested.indexOf(name)] ?? -1] ?? "";
   };
+  const elementChildren = new Map<number, number[]>();
+  nodes.parentIndex.forEach((parent, index) => {
+    if (!isElement(index)) return;
+    const siblings = elementChildren.get(parent) ?? [];
+    siblings.push(index);
+    elementChildren.set(parent, siblings);
+  });
+  const nodePath = (index: number) => {
+    const id = attribute(index, "id");
+    if (id)
+      return /^[A-Za-z_][\w-]*$/.test(id) ? `#${id}` : `[id="${id.replace(/["\\]/g, "\\$&")}"]`;
+    const segments: string[] = [];
+    for (
+      let current = index;
+      current >= 0 && isElement(current) && segments.length < 8;
+      current = nodes.parentIndex[current]!
+    ) {
+      const tag = tagName(current);
+      const sameTag = (elementChildren.get(nodes.parentIndex[current]!) ?? []).filter(
+        (sibling) => tagName(sibling) === tag
+      );
+      segments.unshift(
+        sameTag.length > 1 ? `${tag}:nth-of-type(${sameTag.indexOf(current) + 1})` : tag
+      );
+    }
+    return segments.join(" > ");
+  };
   return {
     frameId,
     nodeCount: nodes.backendNodeId.length,
@@ -713,6 +688,7 @@ function frameDocument(
     parentOf: (index) => nodes.parentIndex[index]!,
     isElement,
     tagName,
+    nodePath,
     backendNodeId: (index) => nodes.backendNodeId[index]!,
     attribute,
     style,

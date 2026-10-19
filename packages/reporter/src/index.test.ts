@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ReporterInput } from "@aee/core";
-import { marked } from "marked";
+import { marked, type Token, type Tokens } from "marked";
 
 import { createMarkdownReporter } from "./index";
 
@@ -138,22 +138,50 @@ const sampleJudgments = [
 ];
 
 /**
- * The report as GitHub-flavoured Markdown shows it, one block per line: headings keep their tag,
- * a table row is its cells joined by " | ", a list item starts with "- ", code is in backticks,
- * and any other markup is left out.
+ * The report as GitHub-flavoured Markdown shows it, read from marked's tokens, one block per line:
+ * a heading is wrapped in its tag, a table row is its cells joined by " | ", a list item starts
+ * with "- ", code is in backticks, and any other markup is left out.
  */
-async function shownText(markdown: string): Promise<string> {
-  const html = await marked.parse(markdown, { gfm: true });
-  return html
-    .replace(/<\/t[dh]>\n<t[dh][^>]*>/g, " | ")
-    .replace(/<li>/g, "- ")
-    .replace(/<\/?code>/g, "`")
-    .replace(/<(?!\/?h\d>)[^>]+>/g, "")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&amp;", "&");
+function shownText(markdown: string): string {
+  return marked.lexer(markdown, { gfm: true }).flatMap(shownLines).join("\n");
+}
+
+/** One block of the report as shownText writes it, from marked's tokens. */
+function shownLines(token: Token): string[] {
+  switch (token.type) {
+    case "heading": {
+      const { depth, tokens } = token as Tokens.Heading;
+      return [`<h${depth}>${inlineText(tokens)}</h${depth}>`];
+    }
+    case "table": {
+      const { header, rows } = token as Tokens.Table;
+      return [header, ...rows].map((cells) =>
+        cells.map(({ tokens }) => inlineText(tokens)).join(" | ")
+      );
+    }
+    case "list":
+      return (token as Tokens.List).items.map(({ tokens }) => `- ${inlineText(tokens)}`);
+    case "space":
+      return [];
+    default:
+      return [inlineText([token])];
+  }
+}
+
+/**
+ * The words a reader sees in some tokens, with code in backticks. Only tokens without children
+ * add text, since walkTokens visits a token's children too.
+ */
+function inlineText(tokens: Token[]): string {
+  const text: string[] = [];
+  marked.walkTokens(tokens, (token) => {
+    if (token.type === "codespan") text.push(`\`${(token as Tokens.Codespan).text}\``);
+    else if (token.type === "br") text.push(" ");
+    else if (!("tokens" in token && token.tokens?.length)) {
+      text.push("text" in token && typeof token.text === "string" ? token.text : token.raw);
+    }
+  });
+  return text.join("");
 }
 
 const sampleInput: ReporterInput = {
@@ -218,7 +246,7 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
   const [artifact] = await reporter.render(sampleInput);
 
   assert.equal(artifact.label, "aee-report.md");
-  const shown = await shownText(artifact.content);
+  const shown = shownText(artifact.content);
   assert.match(shown, /^<h2>Run Summary<\/h2>$/m);
   assert.match(shown, /^Verdicts \| pass 0, fail 2, unknown 1$/m);
   assert.match(shown, /^<h2>Triage<\/h2>$/m);
@@ -255,5 +283,5 @@ test("createMarkdownReporter safely escapes table control characters", async () 
 
   const [artifact] = await reporter.render(input);
 
-  assert.match(await shownText(artifact.content), /^Policy \| strict\\mode\|review next$/m);
+  assert.match(shownText(artifact.content), /^Policy \| strict\\mode\|review next$/m);
 });

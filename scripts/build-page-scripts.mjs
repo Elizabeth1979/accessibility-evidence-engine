@@ -1,9 +1,7 @@
 // Builds the libraries @aee/playwright runs inside a page as plain scripts: Guidepup's virtual
-// screen reader, tabbable for the page's tab order, and axe-core for its selectors. Guidepup and
-// tabbable publish ES modules, and a page's Content-Security-Policy can refuse to import a module; a
-// plain script evaluated over the DevTools protocol runs on any page, which is how Deque's official
-// @axe-core/playwright loads axe. axe-core gets a global of its own, so AEE always uses the axe it
-// pins, whichever axe a page loads itself.
+// screen reader, and tabbable for the page's tab order. Both publish ES modules, and a page's
+// Content-Security-Policy can refuse to import a module; a plain script evaluated over the DevTools
+// protocol runs on any page, which is how Deque's official @axe-core/playwright loads axe.
 import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -29,12 +27,6 @@ const PAGE_SCRIPTS = [
     entry: "tabbable",
     globalName: "__aeeTabbable",
     outName: "tabbable"
-  },
-  {
-    packageName: "axe-core",
-    entry: "axe-core/axe.min.js",
-    globalName: "__aeeAxe",
-    outName: "axe"
   }
 ];
 

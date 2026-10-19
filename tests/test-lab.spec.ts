@@ -347,19 +347,21 @@ test("the portable reader announces the demo page's markup as HTML-AAM maps it",
     ];
 
     // Only the page's own header is a banner; the project card's <header> is inside an <article>.
-    expect(paths("banner"), labPage.url).toEqual([".site-header"]);
+    expect(paths("banner"), labPage.url).toEqual(["html > body > header"]);
     // The logo in the heading has alt="", so only the chart is an image, and on the demo page the
     // banner drawn as an image of its words.
     expect(paths("image"), labPage.url).toEqual(
       labPage === contract.pages.fixed ? ["#usage-chart"] : ["#upgrade-banner", "#usage-chart"]
     );
     // The breadcrumb's current page is an <a> without href: read as text, not as a link.
-    expect(paths("link"), labPage.url).not.toContain('a[aria-current="page"]');
+    expect(paths("link"), labPage.url).not.toContain(
+      "html > body > main > nav > ol > li:nth-of-type(2) > a"
+    );
     expect(items, labPage.url).toContainEqual(
       expect.objectContaining({
         role: "text",
         text: "Workspace overview",
-        nodePath: 'a[aria-current="page"]'
+        nodePath: "html > body > main > nav > ol > li:nth-of-type(2) > a"
       })
     );
     // HTML-AAM makes an unnamed form no landmark, and screen readers do not announce one. Guidepup's

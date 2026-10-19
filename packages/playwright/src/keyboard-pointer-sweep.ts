@@ -23,11 +23,6 @@ import {
 } from "./allowed-origins";
 import { focusPath } from "./dom-focus";
 import { locateElements, type ElementLocation } from "./element-locations";
-import {
-  ELEMENT_SELECTORS_GLOBAL,
-  loadElementSelectors,
-  type ElementSelectorsInPage
-} from "./element-selectors";
 import { frameDocuments } from "./frame-documents";
 import {
   frameMasks,
@@ -524,41 +519,7 @@ async function onLoadedPage<T>(
 
 function probeOf(page: KeyboardPointerSweepPage, checkPage?: () => void) {
   return <T>(request: ProbeRequest): Promise<T> =>
-    onLoadedPage(
-      page,
-      async () => {
-        const run = () =>
-          page.evaluate(runSweepProbe, {
-            request,
-            selectorsGlobal: ELEMENT_SELECTORS_GLOBAL,
-            missing: SELECTORS_MISSING
-          });
-        let result = await run();
-        // A document the page has just loaded has no selectors yet; the probe did nothing.
-        if (result === SELECTORS_MISSING) {
-          await loadSelectors(page);
-          result = await run();
-        }
-        return result as T;
-      },
-      checkPage
-    );
-}
-
-/** What the probe answers, before it does anything, in a document with no selectors loaded. */
-const SELECTORS_MISSING = "aee:selectors-missing";
-
-/**
- * Loads axe-core's selectors (`loadElementSelectors`) into the page's top document, which the
- * probe names elements with.
- */
-async function loadSelectors(page: KeyboardPointerSweepPage): Promise<void> {
-  await withCdpSession(page.context(), page, async (session) => {
-    const { result } = (await session.send("Runtime.evaluate", { expression: "document" })) as {
-      result: { objectId: string };
-    };
-    await loadElementSelectors(session, result.objectId);
-  });
+    onLoadedPage(page, async () => (await page.evaluate(runSweepProbe, request)) as T, checkPage);
 }
 
 /** A finding of a press the test made, placed on the page as the test left it after the press. */
@@ -1291,23 +1252,17 @@ function sweepFinding(
 
 /**
  * Runs inside the page, so it must be self-contained: Playwright serializes it and nothing
- * from this module's scope is available there. It names an element by axe-core's own path to it,
- * as axe's results do (`ElementSelectorsInPage`, which `loadSelectors` put in the page).
+ * from this module's scope is available there.
  */
-function runSweepProbe({
-  request,
-  selectorsGlobal,
-  missing
-}: {
-  request: ProbeRequest;
-  selectorsGlobal: string;
-  missing: string;
-}): unknown {
-  const selectors = (globalThis as unknown as Record<string, ElementSelectorsInPage | undefined>)[
-    selectorsGlobal
-  ];
-  if (!selectors) return missing;
-  const selectorFor = (element: Element): string => selectors.textOf(element);
+function runSweepProbe(request: ProbeRequest): unknown {
+  const selectorFor = (element: Element): string => {
+    if (element.id) return `#${CSS.escape(element.id)}`;
+    const parent = element.parentElement;
+    if (!parent) return element.tagName.toLowerCase();
+    const sameTag = [...parent.children].filter((child) => child.tagName === element.tagName);
+    const position = sameTag.indexOf(element) + 1;
+    return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${position})`;
+  };
   // The text a sighted person sees in an element. A control's name comes from the accessibility
   // tree instead, outside the page, since text is only one of the places a name can come from.
   const shownText = (element: Element): string =>

@@ -15,14 +15,24 @@ import {
   verifyMotionControl
 } from "@aee/playwright";
 
-import { serveDirectory } from "./serve-directory.mjs";
-
 const projectRoot = process.cwd();
 const siteRoot = path.join(projectRoot, "site");
 const issueRunId = "recorded-modal-focus-issue";
 const fixedRunId = "recorded-modal-focus-fixed";
 const outputRoot = path.join(siteRoot, "demo-artifacts");
 const port = Number.parseInt(process.env.AEE_DEMO_PORT ?? "4173", 10);
+
+const contentTypes = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".html", "text/html; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".md", "text/markdown; charset=utf-8"],
+  [".mp4", "video/mp4"],
+  [".png", "image/png"],
+  [".svg", "image/svg+xml"],
+  [".webm", "video/webm"]
+]);
 
 await Promise.all([
   rm(path.join(outputRoot, "recorded-keyboard-save"), { recursive: true, force: true }),
@@ -45,7 +55,26 @@ await Promise.all([
   rm(path.join(outputRoot, "playwright-aee-demo.webm"), { force: true })
 ]);
 
-const server = createServer(serveDirectory(siteRoot));
+const server = createServer(async (request, response) => {
+  try {
+    const requestUrl = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    const relativePath = requestUrl.pathname === "/" ? "index.html" : requestUrl.pathname.slice(1);
+    const targetPath = path.resolve(siteRoot, relativePath);
+
+    if (!targetPath.startsWith(`${siteRoot}${path.sep}`)) {
+      response.writeHead(403).end("Forbidden");
+      return;
+    }
+
+    const body = await readFile(targetPath);
+    response.writeHead(200, {
+      "Content-Type": contentTypes.get(path.extname(targetPath)) ?? "application/octet-stream"
+    });
+    response.end(body);
+  } catch {
+    response.writeHead(404).end("Not found");
+  }
+});
 
 await new Promise((resolve, reject) => {
   server.once("error", reject);

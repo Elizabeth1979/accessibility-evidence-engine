@@ -4,8 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { parse as parseCsv } from "csv-parse/sync";
-
 import type { ReporterInput } from "@aee/core";
 import { writeEvidenceManifest } from "@aee/playwright";
 import { createMarkdownReporter } from "@aee/reporter";
@@ -1113,45 +1111,4 @@ test("the fixes CSV has one quoted row per fix, and keeps page text that looks l
   for (let match = row.exec(csv); match; match = row.exec(csv)) read.push(match[0]);
   assert.equal(read.join(""), csv);
   assert.equal(read.length, report.synthesis.findings.length + 1);
-});
-
-test("the fixes CSV opens in a spreadsheet with page text in its own cell, as text, whatever it holds", () => {
-  // Page text a spreadsheet would split, join or run as a formula (OWASP CSV injection), and the
-  // full-width = + - @ that Apple Numbers turns into the ASCII ones before reading a formula.
-  const pageText = [
-    "Save, then close",
-    'Say "hello"',
-    "Line one\nLine two",
-    "Line one\r\nLine two",
-    '=HYPERLINK("https://example.com","Click")',
-    "+1 555 0100",
-    "-5 items",
-    "@SUM(A1:A2)",
-    "\tIndented",
-    "＝1+1",
-    "＋1",
-    "－1",
-    "＠SUM(A1)",
-    "Envoyer — 送信 ✓ café"
-  ];
-  const formula = /^[=+\-@\t\r＝＋－＠]/;
-  for (const text of pageText) {
-    const { report, views } = exampleSynthesisInputs();
-    report.synthesis = buildScenarioSynthesisForTest(report, views);
-    const instance = report.synthesis.findings[0]!.instances[0]!;
-    instance.detail = text;
-    instance.selector = `[aria-label="${text}"]`;
-    // A spreadsheet ends a row at any line break outside quotes, not only at the file's own.
-    const [header, ...rows] = parseCsv(renderFixesCsvForTest(report, views), {
-      record_delimiter: ["\r\n", "\n", "\r"],
-      relax_column_count: true
-    }) as string[][];
-    const column = (name: string) => rows[0]![header!.indexOf(name)];
-    const label = JSON.stringify(text);
-    assert.equal(rows.length, report.synthesis.findings.length, label);
-    for (const row of rows) assert.equal(row.length, header!.length, label);
-    assert.ok(column("Actual")?.startsWith(formula.test(text) ? `'${text}\n` : `${text}\n`), label);
-    assert.equal(column("Elements")?.split("; ")[0], `[aria-label="${text}"]`, label);
-    for (const cell of rows.flat()) assert.doesNotMatch(cell, formula, label);
-  }
 });

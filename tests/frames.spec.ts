@@ -574,15 +574,15 @@ test("the focus observer's DOM focus names the button inside a cross-site frame,
       role: "button",
       name: "Pay now",
       type: "button",
-      nodePath: "button",
+      nodePath: "html > body > button",
       frameId: other.frameId,
-      framePath: ["#cross"],
+      framePath: ["iframe#cross"],
       backendDOMNodeId: expect.any(Number)
     });
     const frameElement = expect.objectContaining({
       tagName: "iframe",
       id: "cross",
-      nodePath: "#cross",
+      nodePath: "iframe#cross",
       frameId: frames![0]!.frameId
     });
     expect(focus).toEqual(
@@ -592,8 +592,8 @@ test("the focus observer's DOM focus names the button inside a cross-site frame,
         documentActiveElement: frameElement,
         deepActiveElement: button,
         activeElementChain: [
-          expect.objectContaining({ context: "document", nodePath: "#cross" }),
-          expect.objectContaining({ context: "iframe-document", nodePath: "button" })
+          expect.objectContaining({ context: "document", nodePath: "iframe#cross" }),
+          expect.objectContaining({ context: "iframe-document", nodePath: "html > body > button" })
         ]
       })
     );
@@ -658,19 +658,18 @@ test("the focus observer labels each step from a shadow root into a cross-site f
     );
 
     // The top document names the shadow host, its shadow root the frame, and the frame's own
-    // document the listbox, whose active option is looked up in that document. The frame's path
-    // steps into the shadow root, as axe writes it, so it selects the frame from the page.
+    // document the listbox, whose active option is looked up in that document.
     expect(focus).toEqual(
       expect.objectContaining({
         role: "listbox",
         name: "Saved cards",
         activeElementChain: [
-          expect.objectContaining({ context: "document", nodePath: "#widget" }),
-          expect.objectContaining({ context: "shadow-root", nodePath: "#widget >>> #card" }),
+          expect.objectContaining({ context: "document", nodePath: "payment-widget#widget" }),
+          expect.objectContaining({ context: "shadow-root", nodePath: "iframe#card" }),
           expect.objectContaining({
             context: "iframe-document",
             role: "listbox",
-            framePath: ["#widget >>> #card"]
+            framePath: ["iframe#card"]
           })
         ],
         activeDescendantId: "visa",
@@ -678,7 +677,7 @@ test("the focus observer labels each step from a shadow root into a cross-site f
           role: "option",
           name: "Visa ending 4242",
           selected: true,
-          framePath: ["#widget >>> #card"]
+          framePath: ["iframe#card"]
         })
       })
     );
@@ -701,7 +700,7 @@ test("DOM focus names the focused control inside a cross-site frame, not the fra
 
     // Before, focus was read in the top document only, which names the <iframe>: "#cross".
     const inCross = {
-      nodePath: "button",
+      nodePath: "html > body > button",
       backendDOMNodeId: expect.any(Number),
       frameId: other.frameId,
       framePath: ["#cross"]
@@ -724,7 +723,7 @@ test("DOM focus names the focused control inside a cross-site frame, not the fra
       name: "Pay now"
     });
     expect(renderPortableVirtualScreenReaderTranscript(await reader.snapshot())).toContain(
-      "   DOM focus: #cross >>> button -> #cross >>> button; moved: no\n"
+      "   DOM focus: #cross >>> html > body > button -> #cross >>> html > body > button; moved: no\n"
     );
   } finally {
     await server.close();

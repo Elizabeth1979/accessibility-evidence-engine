@@ -1,6 +1,7 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 
 import type { Browser, TestInfo } from "@playwright/test";
 
@@ -34,8 +35,33 @@ export async function startHtmlServer(
   };
 }
 
+const contentTypes: Record<string, string> = {
+  ".css": "text/css",
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript",
+  ".json": "application/json",
+  ".svg": "image/svg+xml"
+};
+
 /** Serves the files in one directory, so a scenario can reach them over http. */
-export { serveDirectory } from "../scripts/serve-directory.mjs";
+export function serveDirectory(root: string): RequestHandler {
+  const base = path.resolve(root);
+  return (request, response) => {
+    const { pathname } = new URL(request.url ?? "/", "http://localhost");
+    const filePath = path.join(base, decodeURIComponent(pathname));
+    if (!filePath.startsWith(`${base}${path.sep}`)) {
+      response.writeHead(403).end();
+      return;
+    }
+    readFile(filePath).then(
+      (body) => {
+        const type = contentTypes[path.extname(filePath)] ?? "application/octet-stream";
+        response.writeHead(200, { "content-type": type }).end(body);
+      },
+      () => response.writeHead(404).end()
+    );
+  };
+}
 
 /**
  * Writes a scenario, approves the exact plan it compiles to and runs it. The YAML must end with

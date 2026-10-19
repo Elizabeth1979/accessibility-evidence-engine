@@ -260,11 +260,6 @@ export interface PageScript {
   /** Its file next to this module in `dist`. */
   file: string;
   global: string;
-  /**
-   * Globals the script also sets on the page as it loads, which the page gets back as it had them,
-   * so loading it changes nothing the page itself uses.
-   */
-  restores?: string[];
 }
 
 export const GUIDEPUP_SCRIPT: PageScript = {
@@ -273,12 +268,6 @@ export const GUIDEPUP_SCRIPT: PageScript = {
 };
 
 export const TABBABLE_SCRIPT: PageScript = { file: "tabbable.js", global: "__aeeTabbable" };
-
-/**
- * axe-core, for its selectors (`element-selectors`); axe's own runs load it themselves. Loading
- * axe also sets the page's `window.axe`, which may be the page's own axe.
- */
-export const AXE_SCRIPT: PageScript = { file: "axe.js", global: "__aeeAxe", restores: ["axe"] };
 
 const scriptSources = new Map<string, string>();
 
@@ -290,7 +279,7 @@ const scriptSources = new Map<string, string>();
 export async function loadPageScript(
   cdp: CdpSession,
   documentObjectId: string,
-  { file, global, restores = [] }: PageScript
+  { file, global }: PageScript
 ): Promise<void> {
   const loaded = await callOn<boolean>(
     cdp,
@@ -307,17 +296,6 @@ export async function loadPageScript(
   await callOn(
     cdp,
     documentObjectId,
-    `function () {
-      const __aeeRestored = ${JSON.stringify(restores)}.map((name) => [
-        name,
-        Object.getOwnPropertyDescriptor(globalThis, name)
-      ]);
-      ${source}
-      globalThis.${global} = ${global};
-      for (const [name, descriptor] of __aeeRestored) {
-        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
-        else delete globalThis[name];
-      }
-    }`
+    `function () {\n${source}\nglobalThis.${global} = ${global};\n}`
   );
 }
