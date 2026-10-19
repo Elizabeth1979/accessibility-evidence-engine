@@ -94,10 +94,10 @@ test("the Action's comment step, run twice on a pull request, leaves exactly one
   expect(comments).toHaveLength(1);
   expect(comments[0]!.body).toMatch(/^<!-- aee-pr-comment -->\n## Accessibility: release blocked/);
   expect(requests).toEqual([
-    "GET /repos/owner/app/issues/7/comments Bearer test-token",
-    "POST /repos/owner/app/issues/7/comments Bearer test-token",
-    "GET /repos/owner/app/issues/7/comments Bearer test-token",
-    "PATCH /repos/owner/app/issues/comments/1 Bearer test-token"
+    "GET /repos/owner/app/issues/7/comments token test-token",
+    "POST /repos/owner/app/issues/7/comments token test-token",
+    "GET /repos/owner/app/issues/7/comments token test-token",
+    "PATCH /repos/owner/app/issues/comments/1 token test-token"
   ]);
   // The job summary shows the comment too, for pull requests whose token cannot post.
   expect(await readFile(summaryFile, "utf8")).toContain(comments[0]!.body);
