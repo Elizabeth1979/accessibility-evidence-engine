@@ -355,15 +355,15 @@ test("CLI run refuses a scenario whose ids are too long to name its evidence bef
 test("aee fix explains its usage and refuses what it cannot apply before touching git", async () => {
   await assert.rejects(
     () => main(["fix", "scenario.yml"]),
-    /^Error: Usage: aee fix <scenario\.yml>/
+    /^Error: aee fix: <assessment-folder> is missing\.\nUsage: aee fix <scenario\.yml>/
   );
   await assert.rejects(
     () => main(["fix", "scenario.yml", "folder", "--bogus", "x"]),
-    /Unknown fix option: --bogus/
+    /aee fix: Unknown option '--bogus'/
   );
   await assert.rejects(
     () => main(["fix", "scenario.yml", "folder", "--accept"]),
-    /--accept needs a value/
+    /aee fix: Option '--accept <value>' argument missing/
   );
 
   const assessment = await mkdtemp(path.join(os.tmpdir(), "aee-fix-"));
