@@ -40,6 +40,20 @@
     },
     "activeDescendantId": { "type": "string", "minLength": 1 },
     "activeDescendant": { "$ref": "#/$defs/element" },
+    "requestedTarget": {
+      "type": "object",
+      "description": "Whether the element the interaction's target selector selects, resolved in the page by Playwright as the action resolved it, is the element with focus. focused: it selects one element and that element has focus; not-focused: it selects one element and focus is on another, or deeper inside it; unresolved: which element it means, or whether that one has focus, cannot be told (reason). Recorded only when the interaction's target has a selector.",
+      "required": ["selector", "status"],
+      "properties": {
+        "selector": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["focused", "not-focused", "unresolved"] },
+        "matchCount": { "type": "integer", "minimum": 0 },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "if": { "properties": { "status": { "const": "unresolved" } } },
+      "then": { "required": ["reason"] },
+      "additionalProperties": false
+    },
     "accessibilityFocus": {
       "type": "object",
       "required": ["status"],

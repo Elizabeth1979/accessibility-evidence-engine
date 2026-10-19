@@ -902,6 +902,86 @@ test("focus-management judge leaves a target unknown when the capture has no acc
   assert.equal(judgment?.verdict, "unknown");
 });
 
+/**
+ * A focus action on `selector`, whose after capture has focus on a button in a frame whose path in
+ * its own document is "button", and records `requestedTarget` when given.
+ */
+function selectorFocusBundle(selector: string, requestedTarget?: Record<string, unknown>) {
+  const button = {
+    nodePath: "button",
+    framePath: ["iframe"],
+    tagName: "button",
+    role: "button",
+    name: "Save"
+  };
+  return createBundle(
+    [
+      {
+        id: "record-focus-before",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "before",
+        status: "ok",
+        timestamp: "2026-10-19T10:00:01.000Z",
+        meta: { focusTarget: { nodePath: "body", tagName: "body" } }
+      },
+      {
+        id: "record-focus-after",
+        runId: "run-1",
+        observerId: "focus",
+        phase: "after",
+        status: "ok",
+        timestamp: "2026-10-19T10:00:01.100Z",
+        meta: {
+          focusTarget: {
+            ...button,
+            deepActiveElement: button,
+            ...(requestedTarget ? { requestedTarget } : {})
+          }
+        }
+      }
+    ],
+    { kind: "focus", meta: { focusExpectation: "target" }, target: { selector } }
+  );
+}
+
+test("focus-management judge reads whether the selected element has focus, not the selector's text", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
+  const judgeFocus = (selector: string, requestedTarget?: Record<string, unknown>) =>
+    judge.judge(selectorFocusBundle(selector, requestedTarget), { runId: "run-1" });
+
+  // The page's own button is requested; focus is on the frame's, whose path reads the same.
+  const [other] = await judgeFocus("button", {
+    selector: "button",
+    status: "not-focused",
+    matchCount: 1
+  });
+  assert.equal(other?.verdict, "fail");
+  assert.match(other?.summary ?? "", /requested target \(selector button\).*at iframe >>> button/);
+
+  // The same element, selected another way than its path.
+  const [same] = await judgeFocus("main button", {
+    selector: "main button",
+    status: "focused",
+    matchCount: 1
+  });
+  assert.equal(same?.verdict, "pass");
+
+  // Without the page's answer the selector's text is not compared, even when it reads the same.
+  const [unrecorded] = await judgeFocus("button");
+  assert.equal(unrecorded?.verdict, "unknown");
+  assert.match(unrecorded?.summary ?? "", /does not say whether the element button selects/);
+
+  const [several] = await judgeFocus("button", {
+    selector: "button",
+    status: "unresolved",
+    matchCount: 2,
+    reason: "The selector button selects 2 elements, so which one was requested cannot be told."
+  });
+  assert.equal(several?.verdict, "unknown");
+  assert.match(several?.summary ?? "", /selects 2 elements/);
+});
+
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
   const releaseJudge = createDefaultJudgePlugins(["release"])[0];
   const bundle = createBundle([
