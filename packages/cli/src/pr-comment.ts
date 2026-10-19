@@ -1,6 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { Octokit } from "@octokit/core";
+import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { retry } from "@octokit/plugin-retry";
+import { throttling } from "@octokit/plugin-throttling";
+import { RequestError } from "@octokit/request-error";
+
 import { commentImages } from "./comment-images";
 import {
   overallVerdict,
@@ -90,33 +96,65 @@ export interface StickyCommentTarget extends GitHubTarget {
 }
 
 /**
- * Calls GitHub's REST API as the target's token. A call marked optional answers nothing for a 404,
- * such as for a branch that does not exist yet; any other failure throws with GitHub's answer.
+ * Octokit with what posting a comment needs: pages of comments, a retry when GitHub's servers
+ * briefly fail, and a wait when GitHub asks clients to slow down. Writes are spaced out as GitHub
+ * asks of integrations, so a run that uploads pictures does not trip its secondary rate limit.
+ */
+const GitHubClient = Octokit.plugin(paginateRest, retry, throttling);
+
+/** How often, and for how long at most, AEE waits when GitHub says to slow down. */
+const RATE_LIMIT_RETRIES = 2;
+const LONGEST_RATE_LIMIT_WAIT_SECONDS = 120;
+
+/**
+ * Calls GitHub's REST API as the target's token, at the target's API (GitHub Enterprise Server has
+ * its own). A failure throws a RequestError naming the call, its status and GitHub's answer.
  */
 function gitHubApi(target: GitHubTarget) {
-  const request = target.fetch ?? globalThis.fetch;
-  const api = (target.apiUrl ?? "https://api.github.com").replace(/\/$/, "");
-  const headers = {
-    Accept: "application/vnd.github+json",
-    Authorization: `Bearer ${target.token}`,
-    "Content-Type": "application/json",
-    "X-GitHub-Api-Version": "2022-11-28"
-  };
-  const call = async (method: string, url: string, payload?: unknown, optional = false) => {
-    const response = await request(url, {
-      method,
-      headers,
-      ...(payload === undefined ? {} : { body: JSON.stringify(payload) })
-    });
-    if (optional && response.status === 404) return undefined;
-    if (!response.ok) {
-      throw new Error(
-        `GitHub ${method} ${url} answered ${response.status}: ${await response.text()}`
+  const [owner = "", repo = ""] = target.repository.split("/");
+  const slowDown =
+    (limit: string) =>
+    (
+      retryAfter: number,
+      options: { method: string; url: string },
+      octokit: Octokit,
+      retryCount: number
+    ) => {
+      const next =
+        retryCount >= RATE_LIMIT_RETRIES
+          ? `giving up after waiting ${RATE_LIMIT_RETRIES} times`
+          : retryAfter > LONGEST_RATE_LIMIT_WAIT_SECONDS
+            ? `it resets in ${retryAfter} s, too long to wait`
+            : undefined;
+      octokit.log.warn(
+        `GitHub's ${limit} was reached on ${options.method} ${options.url}; ${next ?? `trying again in ${retryAfter} s`}.`
       );
+      return next === undefined;
+    };
+  const octokit = new GitHubClient({
+    auth: target.token,
+    baseUrl: (target.apiUrl ?? "https://api.github.com").replace(/\/$/, ""),
+    ...(target.fetch ? { request: { fetch: target.fetch } } : {}),
+    throttle: {
+      onRateLimit: slowDown("hourly request limit"),
+      onSecondaryRateLimit: slowDown("secondary rate limit")
     }
-    return response.json() as Promise<unknown>;
-  };
-  return { repo: `${api}/repos/${target.repository}`, api, call };
+  });
+  octokit.hook.before("request", (options) => {
+    options.headers["x-github-api-version"] = "2022-11-28";
+  });
+  // Registered after the plugins, so it sees each call's last answer, once retries are done.
+  octokit.hook.error("request", (error) => {
+    if (!(error instanceof RequestError)) throw error;
+    const { method, url } = error.request;
+    // With no response, GitHub was never reached, and Octokit's status 500 is its own.
+    const outcome = error.response ? `answered ${error.status}` : "could not be reached";
+    throw new RequestError(`GitHub ${method} ${url} ${outcome}: ${error.message}`, error.status, {
+      request: error.request,
+      ...(error.response ? { response: error.response } : {})
+    });
+  });
+  return { octokit, repo: { owner, repo } };
 }
 
 /** The branch the comment's pictures are kept on, apart from the project's own code. */
@@ -137,41 +175,65 @@ export async function uploadCommentImages(
   target: GitHubTarget
 ): Promise<void> {
   if (files.size === 0) return;
-  const { repo, call } = gitHubApi(target);
-  const ref = (await call(
-    "GET",
-    `${repo}/git/ref/heads/${COMMENT_IMAGE_BRANCH}`,
-    undefined,
-    true
-  )) as { object: { sha: string } } | undefined;
-  const parent = ref?.object.sha;
+  const { octokit, repo } = gitHubApi(target);
+  // A branch that does not exist yet is a 404.
+  const parent = await octokit
+    .request("GET /repos/{owner}/{repo}/git/ref/{ref}", {
+      ...repo,
+      ref: `heads/${COMMENT_IMAGE_BRANCH}`
+    })
+    .then(
+      ({ data }) => data.object.sha,
+      (error: unknown) => {
+        if (error instanceof RequestError && error.status === 404) return undefined;
+        throw error;
+      }
+    );
   const baseTree = parent
-    ? ((await call("GET", `${repo}/git/commits/${parent}`)) as { tree: { sha: string } }).tree.sha
+    ? (
+        await octokit.request("GET /repos/{owner}/{repo}/git/commits/{commit_sha}", {
+          ...repo,
+          commit_sha: parent
+        })
+      ).data.tree.sha
     : undefined;
   const entries = [];
   for (const [name, data] of files) {
-    const blob = (await call("POST", `${repo}/git/blobs`, {
+    const blob = await octokit.request("POST /repos/{owner}/{repo}/git/blobs", {
+      ...repo,
       content: data.toString("base64"),
       encoding: "base64"
-    })) as { sha: string };
-    entries.push({ path: name, mode: "100644", type: "blob", sha: blob.sha });
+    });
+    entries.push({
+      path: name,
+      mode: "100644" as const,
+      type: "blob" as const,
+      sha: blob.data.sha
+    });
   }
-  const tree = (await call("POST", `${repo}/git/trees`, {
+  const tree = await octokit.request("POST /repos/{owner}/{repo}/git/trees", {
+    ...repo,
     ...(baseTree ? { base_tree: baseTree } : {}),
     tree: entries
-  })) as { sha: string };
-  if (tree.sha === baseTree) return;
-  const commit = (await call("POST", `${repo}/git/commits`, {
+  });
+  if (tree.data.sha === baseTree) return;
+  const commit = await octokit.request("POST /repos/{owner}/{repo}/git/commits", {
+    ...repo,
     message: "Add pictures for an AEE pull-request comment",
-    tree: tree.sha,
+    tree: tree.data.sha,
     parents: parent ? [parent] : []
-  })) as { sha: string };
+  });
   if (parent) {
-    await call("PATCH", `${repo}/git/refs/heads/${COMMENT_IMAGE_BRANCH}`, { sha: commit.sha });
+    await octokit.request("PATCH /repos/{owner}/{repo}/git/refs/{ref}", {
+      ...repo,
+      ref: `heads/${COMMENT_IMAGE_BRANCH}`,
+      sha: commit.data.sha
+    });
   } else {
-    await call("POST", `${repo}/git/refs`, {
+    await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
+      ...repo,
       ref: `refs/heads/${COMMENT_IMAGE_BRANCH}`,
-      sha: commit.sha
+      sha: commit.data.sha
     });
   }
 }
@@ -184,25 +246,25 @@ export async function postStickyComment(
   body: string,
   target: StickyCommentTarget
 ): Promise<{ action: "created" | "updated"; url: string }> {
-  const { api, call } = gitHubApi(target);
+  const { octokit, repo } = gitHubApi(target);
+  const issue = { ...repo, issue_number: target.pullNumber };
 
-  const issueComments = `${api}/repos/${target.repository}/issues/${target.pullNumber}/comments`;
-  for (let page = 1; ; page += 1) {
-    const comments = (await call("GET", `${issueComments}?per_page=100&page=${page}`)) as Array<{
-      id: number;
-      body?: string;
-    }>;
+  for await (const { data: comments } of octokit.paginate.iterator(
+    "GET /repos/{owner}/{repo}/issues/{issue_number}/comments",
+    { ...issue, per_page: 100 }
+  )) {
     const existing = comments.find(({ body: text }) => text?.startsWith(PR_COMMENT_MARKER));
     if (existing) {
-      const updated = (await call(
-        "PATCH",
-        `${api}/repos/${target.repository}/issues/comments/${existing.id}`,
-        { body }
-      )) as { html_url: string };
-      return { action: "updated", url: updated.html_url };
+      const updated = await octokit.request(
+        "PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}",
+        { ...repo, comment_id: existing.id, body }
+      );
+      return { action: "updated", url: updated.data.html_url };
     }
-    if (comments.length < 100) break;
   }
-  const created = (await call("POST", issueComments, { body })) as { html_url: string };
-  return { action: "created", url: created.html_url };
+  const created = await octokit.request(
+    "POST /repos/{owner}/{repo}/issues/{issue_number}/comments",
+    { ...issue, body }
+  );
+  return { action: "created", url: created.data.html_url };
 }

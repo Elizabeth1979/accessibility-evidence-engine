@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { commentImageUrl, failsOn, uploadCommentImages } from "./pr-comment";
+import { commentImageUrl, failsOn, postStickyComment, uploadCommentImages } from "./pr-comment";
 import {
   PR_COMMENT_MARKER,
   renderPullRequestSummary,
@@ -164,21 +164,32 @@ test("pictures are shown from the images branch of the repository the comment is
   );
 });
 
-/** A fake GitHub API that records each call and answers from the given replies, in order. */
-function fakeGitHub(replies: Array<{ status: number; body?: unknown }>) {
+/** A reply from the fake GitHub API: its status, JSON body and any headers GitHub would send. */
+interface FakeReply {
+  status: number;
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+/**
+ * A fake GitHub API at `apiUrl` that records each call, as a path below the repository, and
+ * answers from the given replies, in order, with JSON as GitHub does.
+ */
+function fakeGitHub(replies: FakeReply[], apiUrl = "https://api.github.com") {
   const calls: Array<{ method: string; url: string; body?: unknown }> = [];
   const fetch = (async (url: string, init: { method: string; body?: string }) => {
     calls.push({
       method: init.method,
-      url: url.replace("https://api.github.com/repos/owner/app", ""),
+      url: url.replace(`${apiUrl}/repos/owner/app`, ""),
       ...(init.body ? { body: JSON.parse(init.body) as unknown } : {})
     });
     const reply = replies.shift()!;
     return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
-      status: reply.status
+      status: reply.status,
+      headers: { "content-type": "application/json; charset=utf-8", ...reply.headers }
     });
   }) as unknown as typeof globalThis.fetch;
-  return { calls, target: { repository: "owner/app", token: "token", fetch } };
+  return { calls, target: { repository: "owner/app", token: "token", apiUrl, fetch } };
 }
 
 test("the first pictures create the images branch, with no history of the project's own", async () => {
@@ -191,8 +202,9 @@ test("the first pictures create the images branch, with no history of the projec
   ]);
   await uploadCommentImages(new Map([["a.png", Buffer.from("png")]]), target);
 
+  // The ref is one path parameter, "heads/aee-images", which Octokit encodes as GitHub's docs show.
   assert.deepEqual(calls, [
-    { method: "GET", url: "/git/ref/heads/aee-images" },
+    { method: "GET", url: "/git/ref/heads%2Faee-images" },
     { method: "POST", url: "/git/blobs", body: { content: "cG5n", encoding: "base64" } },
     {
       method: "POST",
@@ -229,7 +241,7 @@ test("later pictures are added to the branch, and pictures already on it add not
   });
   assert.deepEqual(later.calls.at(5), {
     method: "PATCH",
-    url: "/git/refs/heads/aee-images",
+    url: "/git/refs/heads%2Faee-images",
     body: { sha: "commit2" }
   });
 
@@ -251,5 +263,91 @@ test("a token that cannot write the branch fails the upload with GitHub's answer
   await assert.rejects(
     uploadCommentImages(new Map([["a.png", Buffer.from("png")]]), target),
     /answered 403: .*Resource not accessible by integration/
+  );
+});
+
+const BODY = `${PR_COMMENT_MARKER}\n## Accessibility: release blocked`;
+const posted = { status: 201, body: { id: 1, html_url: "https://github.com/owner/app/pull/7#1" } };
+
+test("a comment GitHub answers 'slow down' to is posted once GitHub says it may try again", async () => {
+  // GitHub's secondary rate limit: a 403 that names it, with how many seconds to wait.
+  const { calls, target } = fakeGitHub([
+    { status: 200, body: [] },
+    {
+      status: 403,
+      body: { message: "You have exceeded a secondary rate limit. Please wait a few minutes." },
+      headers: { "retry-after": "1" }
+    },
+    posted
+  ]);
+  const started = Date.now();
+  assert.deepEqual(await postStickyComment(BODY, { ...target, pullNumber: 7 }), {
+    action: "created",
+    url: "https://github.com/owner/app/pull/7#1"
+  });
+  assert.deepEqual(
+    calls.map(({ method }) => method),
+    ["GET", "POST", "POST"]
+  );
+  assert.ok(Date.now() - started >= 1_000, "it waited the second GitHub asked for");
+});
+
+test("a comment is posted after GitHub's servers briefly fail", async () => {
+  const { calls, target } = fakeGitHub([
+    { status: 502, body: { message: "Server Error" } },
+    { status: 200, body: [] },
+    posted
+  ]);
+  assert.equal((await postStickyComment(BODY, { ...target, pullNumber: 7 })).action, "created");
+  assert.equal(calls.length, 3);
+});
+
+test("a token out of requests for the hour fails at once, rather than holding the job", async () => {
+  const inAnHour = String(Math.floor(Date.now() / 1000) + 3_600);
+  const { calls, target } = fakeGitHub([
+    {
+      status: 403,
+      body: { message: "API rate limit exceeded for installation." },
+      headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": inAnHour }
+    }
+  ]);
+  await assert.rejects(
+    postStickyComment(BODY, { ...target, pullNumber: 7 }),
+    /answered 403: .*API rate limit exceeded/
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("on a pull request with many comments, the one AEE comment is found and updated", async () => {
+  const comments = Array.from({ length: 150 }, (_, index) => ({
+    id: index + 1,
+    body: index === 129 ? `${BODY}, earlier run` : `Comment ${index + 1}`
+  }));
+  const next = "https://api.github.com/repos/owner/app/issues/7/comments?per_page=100&page=2";
+  const { calls, target } = fakeGitHub([
+    { status: 200, body: comments.slice(0, 100), headers: { link: `<${next}>; rel="next"` } },
+    { status: 200, body: comments.slice(100) },
+    { status: 200, body: { id: 130, html_url: "https://github.com/owner/app/pull/7#130" } }
+  ]);
+  assert.deepEqual(await postStickyComment(BODY, { ...target, pullNumber: 7 }), {
+    action: "updated",
+    url: "https://github.com/owner/app/pull/7#130"
+  });
+  assert.deepEqual(calls.at(-1), {
+    method: "PATCH",
+    url: "/issues/comments/130",
+    body: { body: BODY }
+  });
+});
+
+test("on GitHub Enterprise Server, the comment is posted to its API", async () => {
+  const { calls, target } = fakeGitHub(
+    [{ status: 200, body: [] }, posted],
+    "https://github.example.com/api/v3"
+  );
+  assert.equal((await postStickyComment(BODY, { ...target, pullNumber: 7 })).action, "created");
+  assert.deepEqual(
+    calls.map(({ method, url }) => `${method} ${url.replace(/\?.*/, "")}`),
+    ["GET /issues/7/comments", "POST /issues/7/comments"]
   );
 });
