@@ -59,7 +59,7 @@ Owns fixture configuration loading, path resolution, schema validation, virtual-
 
 ### `@aee/mcp`
 
-The MCP server for coding agents, over stdio (`aee-mcp`). `explain` resolves an axe rule id, a sweep finding id or a registry concept through the remediation registry, and a pattern name or UI element through the a11y-skills index, then returns that pattern's file from the a11y-skills commit the registry pins, which it installs as a dependency. `findings` and `run` return the pull-request comment `@aee/cli` renders. It holds no rules and calls no model, and applying fixes stays with `aee fix`.
+The MCP server for coding agents, over stdio (`aee-mcp`). `explain` resolves an axe rule id, a sweep finding id or a registry concept through the remediation registry, and a pattern name or UI element through the a11y-skills index (read with the `marked` lexer), then returns that pattern's file from the a11y-skills commit the registry pins, which it installs as a dependency. `findings` and `run` return each assessment's whole report as MCP structured content, under AEE's own report schema, with the pull-request comment `@aee/cli` renders as the text. It holds no rules and calls no model, and applying fixes stays with `aee fix`.
 
 ## Dependency graph
 

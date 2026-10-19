@@ -467,7 +467,7 @@ async function runCommentCommand(argv: string[]): Promise<void> {
   }
 
   process.stderr.write(
-    `${comment.reports} assessment${comment.reports === 1 ? "" : "s"}, verdict ${comment.verdict}, fail-on ${failOn}.\n`
+    `${comment.assessments.length} assessment${comment.assessments.length === 1 ? "" : "s"}, verdict ${comment.verdict}, fail-on ${failOn}.\n`
   );
   if (failsOn(comment.verdict, failOn)) process.exitCode = 1;
 }
