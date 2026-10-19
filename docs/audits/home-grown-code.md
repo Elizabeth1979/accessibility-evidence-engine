@@ -51,7 +51,7 @@ Effort: **S** is under a day, **M** is one to three days, **L** is more.
 | A18 | Real screen reader                                                | Placeholder only                                               | `@guidepup/guidepup` with NVDA (installed, unused)                  | Built (real screen readers)       | L      |
 | B1  | Compare AEE's reader with a real reader                           | Word-overlap score with role and state words removed           | `diff` (jsdiff) two-way alignment                                   | Replace, and one question         | S      |
 | B2  | Score the AI's suggested names and alt text                       | Word overlap with one fixed answer                             | `promptfoo` rubric or similarity checks                             | Question                          | M      |
-| B3  | Check the test lab's heading outline                              | Tag names (`H1`, `H2`)                                         | Playwright aria snapshots or `getByRole` heading levels             | Replace                           | S      |
+| B3  | Check the test lab's heading outline                              | Tag names (`H1`, `H2`)                                         | Playwright aria snapshots or `getByRole` heading levels             | Built (Playwright 1.64)           | S      |
 | B4  | Remove VoiceOver's usage hints                                    | English regex                                                  | Guidepup start-up settings                                          | Question                          | S      |
 | C1  | Call OpenAI and local models                                      | Hand-written `fetch`, broken for OpenAI                        | Official `openai` SDK                                               | Built (`openai` 7.28.0)           | S      |
 | C2  | Validate evidence files                                           | Ajv with strict mode off; hand reading with quiet defaults     | Ajv defaults plus the existing validator                            | Replace                           | S / M  |
@@ -84,7 +84,7 @@ These are proposals only. Each would be its own piece of work with its own PR, v
 6. **A9, axe's structured results** instead of reading its English text. Built: severity follows axe's impact, contrast numbers come from `check.data`, and shadow-root targets keep their full path.
 7. **C1, the OpenAI client.** Built: the old client failed on every reply shaped as the API sends it.
 8. **C2, Ajv strict mode back on**, and evidence files validated by their schemas. This is a switched-off check, which the owner's rules forbid.
-9. **B3, the heading outline from the accessibility tree.**
+9. **B3, the heading outline from the accessibility tree.** Built: the tag check counted a hidden heading and missed a `role="heading"` one.
 10. **A12, selectors**, then **A13, the focus pixel diff**, then **A16, colour maths.**
 11. **C3, the full report for AI agents.**
 12. **The small plumbing batch**, one PR each: C4, C5, C6, C7, C9, C11, C12, C13.
@@ -675,6 +675,8 @@ Until then, the published percentages overstate what the number shows.
 **Tested alternative.** Playwright's `toMatchAriaSnapshot`, where headings carry a `level` ([docs](https://playwright.dev/docs/aria-snapshots)), or `getByRole('heading', { level })`.
 
 **Verdict: replace.** It is spec-backed and records more about each heading.
+
+**Built.** The gap was real. A new test page with an `<h1>`, a `<div role="heading" aria-level="2">`, an `aria-hidden` `<h2>`, an `<h3 role="presentation">` and an empty `<h2>` failed on the old check: it listed `H1, H2, H3, H2`, counting the hidden heading and the one with its role removed, and missing the `role="heading"` one, while a screen reader lists three headings. The check now reads the headings from the accessibility tree with Playwright 1.64's `getByRole("heading")`, which leaves out what is hidden from assistive technology, and checks each one's level with `toMatchAriaSnapshot` and its exact accessible name with `toHaveAccessibleName`; the name is checked on its own because an aria snapshot with a name of `""` matches any name. The expected outline in `site/test-lab-contract.json` now gives each heading's level and name, such as `{ "level": 2, "name": "Projects" }`, so it also catches a renamed or emptied heading; the Page view's tests read their "H1", "H2" labels from the same levels. The fixture lives in the test file, so the public lab page is unchanged. The lab's two pages use plain heading tags, so their outline was already right; this guards the check, not the pages.
 
 **Effort:** S.
 

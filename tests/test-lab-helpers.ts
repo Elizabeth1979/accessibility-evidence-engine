@@ -9,10 +9,16 @@ import { SWEEP_FINDING_CONCEPTS } from "@aee/playwright";
 
 import { runApprovedScenario, serveDirectory, startHtmlServer } from "./scenario-helpers";
 
+// A heading as a screen reader lists it: its level and accessible name, from the accessibility tree.
+export interface LabHeading {
+  level: number;
+  name: string;
+}
+
 export interface LabPage {
   title: string;
   url: string;
-  headingOutline: string[];
+  headingOutline: LabHeading[];
 }
 
 export interface LabIssue {

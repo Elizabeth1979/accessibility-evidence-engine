@@ -20,6 +20,7 @@ import {
   labFixtureModel,
   readerWalk,
   runOnLabPage,
+  type LabHeading,
   type LabPage
 } from "./test-lab-helpers";
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
@@ -43,9 +44,35 @@ async function axeRules(page: Page) {
   return result.violations.map(({ id }) => id).sort();
 }
 
-async function headingOutline(page: Page) {
-  return page.locator("h1,h2,h3,h4,h5,h6").evaluateAll((nodes) => nodes.map((n) => n.tagName));
+// The headings in the accessibility tree, in page order, each with its level and accessible name.
+// An aria snapshot with a name of "" matches any name, so the name is checked on its own.
+async function expectHeadingOutline(page: Page, outline: LabHeading[]) {
+  const headings = page.getByRole("heading");
+  await expect(headings).toHaveCount(outline.length);
+  for (const [index, { level, name }] of outline.entries()) {
+    const heading = headings.nth(index);
+    await expect(heading).toMatchAriaSnapshot(`- heading [level=${level}]`);
+    await expect(heading).toHaveAccessibleName(name);
+  }
 }
+
+test("the heading outline is what a screen reader lists, not the heading tags", async ({
+  page
+}) => {
+  // A box with the heading role is a heading; a heading hidden from screen readers, or with its
+  // role removed, is not one.
+  await page.setContent(`
+    <h1>Workspace overview</h1>
+    <div role="heading" aria-level="2">Projects</div>
+    <h2 aria-hidden="true">Archived projects</h2>
+    <h3 role="presentation">Notes</h3>
+    <h2></h2>`);
+  await expectHeadingOutline(page, [
+    { level: 1, name: "Workspace overview" },
+    { level: 2, name: "Projects" },
+    { level: 2, name: "" }
+  ]);
+});
 
 const expectedSweepKinds = contract.issues.flatMap(({ sweepFinding }) =>
   sweepFinding ? [sweepFinding] : []
@@ -79,7 +106,7 @@ test("every issue belongs to a registry concept and has exactly one way it is fo
 test("the demo page shows exactly the issues' axe rules", async ({ page }) => {
   await open(page, issuesPage);
   expect(await axeRules(page)).toEqual([...expectedAxeRules].sort());
-  expect(await headingOutline(page)).toEqual(issuesPage.headingOutline);
+  await expectHeadingOutline(page, issuesPage.headingOutline);
   const defects = await page.locator("body").getAttribute("data-defects");
   expect(defects?.split(" ").sort()).toEqual(contract.issues.map(({ id }) => id).sort());
 });
@@ -87,7 +114,7 @@ test("the demo page shows exactly the issues' axe rules", async ({ page }) => {
 test("the fixed page has no axe findings", async ({ page }) => {
   await open(page, fixedPage);
   expect(await axeRules(page)).toEqual([]);
-  expect(await headingOutline(page)).toEqual(fixedPage.headingOutline);
+  await expectHeadingOutline(page, fixedPage.headingOutline);
   await expect(page.locator("body")).toHaveAttribute("data-defects", "");
 });
 
