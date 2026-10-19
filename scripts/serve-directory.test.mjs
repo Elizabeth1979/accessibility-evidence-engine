@@ -1,7 +1,7 @@
 // The one server for AEE's own test pages: the Playwright tests, the package check and the demo
 // recording all serve a directory with it, so what it serves, and what it refuses, is tested here.
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -100,7 +100,10 @@ test("a file written after the server started is served as it is now", async () 
   const late = path.join(root, "written-later.json");
   writeFileSync(late, '{"run":1}');
   assert.equal((await get("/written-later.json")).body, '{"run":1}');
-  writeFileSync(late, '{"run":2, "longer":true}');
+  // Replace the file the way a build does, by renaming a finished file over it: rewriting it in
+  // place could change bytes the server is still streaming from the first answer.
+  writeFileSync(`${late}.next`, '{"run":2, "longer":true}');
+  renameSync(`${late}.next`, late);
   assert.equal((await get("/written-later.json")).body, '{"run":2, "longer":true}');
 });
 
