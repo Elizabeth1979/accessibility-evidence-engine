@@ -5,13 +5,14 @@ import test from "node:test";
 
 import axe from "axe-core";
 
+import { schemaCatalog, type SchemaName } from "./index";
 import {
   conceptForAxeRule,
   patternForAxeRule,
   remediationRegistry,
   type RemediationRegistry
 } from "./remediation-registry";
-import { assertValidSchema, validateSchema } from "./validator";
+import { assertValidSchema, createSchemaAjv, validateSchema } from "./validator";
 
 const sampleArtifact = {
   id: "artifact-1",
@@ -122,6 +123,55 @@ const sampleRun = {
 const evidenceManifestExample = JSON.parse(
   readFileSync("docs/examples/evidence-run-manifest.example.json", "utf8")
 ) as unknown;
+
+test("every AEE schema compiles with Ajv's strict mode on", () => {
+  for (const schemaName of Object.keys(schemaCatalog) as SchemaName[]) {
+    assert.doesNotThrow(() => validateSchema(schemaName, {}), `${schemaName} does not compile`);
+  }
+});
+
+test("Ajv's strict mode rejects a schema authoring mistake instead of ignoring it", () => {
+  const ajv = createSchemaAjv();
+
+  assert.throws(
+    () => ajv.compile({ type: "object", properties: { steps: { minItems: 1 } } }),
+    /strict mode: missing type "array" for keyword "minItems"/
+  );
+  assert.throws(
+    () =>
+      ajv.compile({
+        type: "object",
+        properties: { meta: { properties: { name: { type: "string" } } } }
+      }),
+    /strict mode: missing type "object" for keyword "properties"/
+  );
+  assert.throws(
+    () => ajv.compile({ type: "object", schemaVersion: "1.0.0" }),
+    /strict mode: unknown keyword: "schemaVersion"/
+  );
+  assert.throws(
+    () => ajv.compile({ type: "string", format: "not-a-format" }),
+    /unknown format "not-a-format"/
+  );
+});
+
+test("Ajv's strict mode accepts union types and a property required only under a condition", () => {
+  const ajv = createSchemaAjv();
+  const validate = ajv.compile({
+    type: "object",
+    properties: {
+      status: { enum: ["completed", "failed"] },
+      value: { type: ["string", "number"] },
+      transcript: { type: "string" }
+    },
+    if: { properties: { status: { const: "completed" } } },
+    then: { required: ["transcript"] }
+  });
+
+  assert.equal(validate({ status: "completed", value: 3, transcript: "Button, Save" }), true);
+  assert.equal(validate({ status: "completed", value: "3" }), false);
+  assert.equal(validate({ status: "failed", value: true }), false);
+});
 
 test("validateSchema accepts a valid CLI config payload", () => {
   const result = validateSchema("cliConfig", {
