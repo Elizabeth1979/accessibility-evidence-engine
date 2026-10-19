@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import type { ReporterInput } from "@aee/core";
 import { writeEvidenceManifest } from "@aee/playwright";
+import { createMarkdownReporter } from "@aee/reporter";
+import { marked } from "marked";
 
 import { compileScenarioPlan, type AeeScenario } from "./scenario";
 import {
@@ -14,6 +17,7 @@ import {
   finishAssessment,
   renderFixesCsvForTest,
   renderIntegratedHtmlForTest,
+  renderIntegratedMarkdown,
   renderPullRequestComment,
   type PageChecksSkipped,
   type ScenarioActionReport,
@@ -729,10 +733,159 @@ test("the PR comment puts blocking fixes first and AI last, and shows page text 
   assert.ok(comment.includes("- `@octocat </details><img src=x> see #12` at "));
   assert.ok(
     comment.includes(
-      "**Fix:** Fix @\u200boctocat&#39;s &lt;b&gt;menu&lt;/b&gt; \\[link\\]\\(https://example.com\\)"
+      "**Fix:** Fix \\@\u200boctocat\\'s \\<b\\>menu\\<\\/b\\> \\[link\\]\\(https\\:\\/\\/example\\.com\\)"
     )
   );
   assert.equal(comment.match(/<details>/g)?.length, comment.match(/<\/details>\n/g)?.length);
+});
+
+/** Every ASCII punctuation character; CommonMark lets a backslash escape each one (spec 0.31.2, section 2.4). */
+const PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+
+/** Page text, such as a button's name, that is Markdown, HTML or a link when it is not escaped. */
+const PAGE_TEXT = [
+  "*New*",
+  "_New_",
+  "**Save**",
+  "~~Old~~",
+  "[Draft]",
+  "[Help](https://example.com)",
+  "![Logo](logo.png)",
+  "<b>Bold</b>",
+  "<!-- note -->",
+  "&copy; Example",
+  "`code`",
+  "www.example.com",
+  "https://example.com",
+  "help@example.com",
+  "<https://example.com>",
+  "a | b",
+  "back\\slash",
+  "\\*kept\\*",
+  "# Title",
+  "- Item",
+  "+ Item",
+  "1. Item",
+  "> Quote",
+  "===",
+  ...[...PUNCTUATION].map((character) => `Save ${character}draft${character} now`)
+];
+
+/**
+ * Each place page text lands in some Markdown, rendered by marked as GitHub-flavoured Markdown:
+ * the page texts the HTML does not show exactly as written there, by place. A zero-width space
+ * that stops a mention is not counted.
+ */
+async function pageTextShownWrongly(
+  render: (text: string) => string | Promise<string>,
+  places: Record<string, (shown: string) => string>
+): Promise<string[]> {
+  const wrong: string[] = [];
+  for (const text of PAGE_TEXT) {
+    const html = (await marked.parse(await render(text), { gfm: true })).replaceAll("\u200b", "");
+    const shown = text
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+    for (const [place, expected] of Object.entries(places)) {
+      if (!html.includes(expected(shown))) wrong.push(`${place}: ${text}`);
+    }
+  }
+  return wrong;
+}
+
+test("the PR comment shows page text as itself", async () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const wrong = await pageTextShownWrongly(
+    (text) => {
+      report.synthesis.findings[0]!.remediation.deterministic = text;
+      return renderPullRequestComment(report);
+    },
+    { "fix line": (shown) => `<p><strong>Fix:</strong> ${shown}</p>` }
+  );
+  assert.deepEqual(wrong, []);
+});
+
+test("the Markdown report shows page text as itself in headings, tables and code", async () => {
+  const { report, views } = exampleSynthesisInputs();
+  report.synthesis = buildScenarioSynthesisForTest(report, views);
+  const [finding] = report.synthesis.findings;
+  const wrong = await pageTextShownWrongly(
+    (text) => {
+      finding!.title = text;
+      finding!.instances[0]!.label = text;
+      finding!.instances[0]!.selector = text;
+      finding!.remediation.deterministic = text;
+      return renderIntegratedMarkdown(report);
+    },
+    {
+      heading: (shown) => `<h3>${finding!.ruleId} — ${shown}</h3>`,
+      "table cell": (shown) => `<td>${shown}</td>`,
+      "code in a table cell": (shown) => `<td><code>${shown}</code></td>`,
+      paragraph: (shown) => `<p><strong>Deterministic remediation:</strong> ${shown}</p>`
+    }
+  );
+  assert.deepEqual(wrong, []);
+});
+
+test("the reporter's Markdown shows page text as itself in tables, lists and headings", async () => {
+  const reporter = createMarkdownReporter();
+  const input = (text: string): ReporterInput => ({
+    run: {
+      id: "run",
+      version: "0.1.0",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      status: "completed"
+    },
+    bundles: [
+      {
+        runId: "run",
+        interaction: {
+          id: "interaction",
+          runId: "run",
+          checkpointId: "checkpoint",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          actor: "test",
+          kind: "tab",
+          target: { role: "button", name: text }
+        },
+        records: [],
+        artifacts: [],
+        correlation: {
+          strategy: "observer-record-grouping",
+          participatingObserverIds: [],
+          notes: []
+        }
+      }
+    ],
+    records: [],
+    judgments: [
+      {
+        id: "judgment",
+        judgeId: "keyboard",
+        judgeVersion: "0.1.0",
+        scope: "interaction",
+        verdict: "fail",
+        summary: text,
+        evidenceRecordIds: [],
+        suggestedFix: text
+      }
+    ],
+    findings: [],
+    artifacts: []
+  });
+  const wrong = await pageTextShownWrongly(
+    async (text) => (await reporter.render(input(text)))[0]!.content,
+    {
+      "table cell": (shown) => `<td>${shown}</td>`,
+      "list item": (shown) => `<li>${shown}</li>`,
+      heading: (shown) => `<h2>Bundle 1: <code>tab</code> on button &quot;${shown}&quot;</h2>`
+    }
+  );
+  assert.deepEqual(wrong, []);
 });
 
 test("scenario synthesis clearly reports an empty authored scope", () => {
