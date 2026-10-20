@@ -176,3 +176,123 @@ test("the sweep names each Tab stop by axe's own path to it", async ({ page }) =
     await server.close();
   }
 });
+
+interface FocusJudgmentReport {
+  records: Array<{ observerId: string; phase: string; meta?: Record<string, unknown> }>;
+  judgments: Array<{ judgeId: string; verdict: string; summary: string }>;
+}
+
+/**
+ * Runs a focus action on `selector` as a scenario's focus step does (`focusExpectation: "target"`)
+ * and returns the focus judge's judgment, with the element that has focus afterwards as the focus
+ * observer wrote it.
+ */
+async function judgeFocusOn(
+  page: Page,
+  outputDir: string,
+  selector: string,
+  focus: () => Promise<void> = () => page.locator(selector).focus()
+) {
+  const result = await runAeeOnPage({
+    page,
+    projectRoot: process.cwd(),
+    outputDir,
+    observers: ["focus"],
+    judges: ["focus-management"],
+    checkpointName: "focus-target",
+    interaction: {
+      kind: "focus",
+      actor: "test",
+      target: { selector },
+      meta: { focusExpectation: "target" }
+    },
+    performInteraction: focus
+  });
+  const report = JSON.parse(
+    await readFile(
+      result.reporterFiles.find((file) => file.endsWith("aee-report.json"))!,
+      "utf8"
+    )
+  ) as FocusJudgmentReport;
+  const after = report.records.find(
+    (record) => record.observerId === "focus" && record.phase === "after"
+  )?.meta?.focusTarget as { deepActiveElement: { nodePath: string; framePath?: string[] } };
+  return {
+    judgment: report.judgments.find(({ judgeId }) => judgeId === "focus-management")!,
+    focused: after.deepActiveElement
+  };
+}
+
+test("the focus judge fails focus on a different button whose path reads the same", async ({
+  page
+}, testInfo) => {
+  // Two identical Save buttons: the first in an embedded frame, the second in the page. Focusing
+  // the page's button moves focus to the frame's, as a misplaced focus handler would.
+  await page.setContent(`
+    <iframe title="Draft" srcdoc="<main><button type='button'>Save</button></main>"></iframe>
+    <main><button type="button">Save</button></main>
+    <script>
+      document.querySelector("main > button").addEventListener("focus", () => {
+        document.querySelector("iframe").contentDocument.querySelector("button").focus();
+      });
+    </script>
+  `);
+  await page.frameLocator("iframe").locator("button").waitFor();
+  const selector = "button";
+
+  const { judgment, focused } = await judgeFocusOn(page, testInfo.outputPath("other"), selector);
+
+  // The frame's button has the same path in its own document as the scenario's selector, so
+  // comparing the two as text passed it. It is not the element the selector selects.
+  expect(focused.framePath).toHaveLength(1);
+  expect(focused.nodePath).toBe(selector);
+  expect(judgment.verdict).toBe("fail");
+});
+
+test("the focus judge passes the requested element however its selector is written", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<form><button id="save" type="submit">Save</button></form>`);
+  const selector = 'form > button[type="submit"]';
+
+  const { judgment, focused } = await judgeFocusOn(page, testInfo.outputPath("same"), selector);
+
+  // axe writes the button as "#save"; the scenario's selector selects the same button.
+  expect(focused.nodePath).toBe("#save");
+  expect(judgment.verdict).toBe("pass");
+});
+
+test("the focus judge finds the requested element in a shadow root, and not its host", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<save-bar></save-bar>`);
+  await page.evaluate(() => {
+    const host = document.querySelector("save-bar")!;
+    host.attachShadow({ mode: "open" }).innerHTML = `<button type="button">Save</button>`;
+    host.setAttribute("tabindex", "-1");
+  });
+
+  // Playwright's selector reaches into the open shadow root, as the scenario's action does.
+  const inside = await judgeFocusOn(page, testInfo.outputPath("inside"), "save-bar button");
+  expect(inside.focused.nodePath).toBe("save-bar >>> button");
+  expect(inside.judgment.verdict).toBe("pass");
+
+  // The host is requested, but focus is on the button inside it.
+  const host = await judgeFocusOn(page, testInfo.outputPath("host"), "save-bar", () =>
+    page.locator("save-bar button").focus()
+  );
+  expect(host.judgment.verdict).toBe("fail");
+});
+
+test("the focus judge leaves focus unknown when the selector selects several elements", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<button type="button">Save</button><button type="button">Save</button>`);
+
+  const { judgment } = await judgeFocusOn(page, testInfo.outputPath("several"), "button", () =>
+    page.locator("button").first().focus()
+  );
+
+  expect(judgment.verdict).toBe("unknown");
+  expect(judgment.summary).toMatch(/selects 2 elements/);
+});

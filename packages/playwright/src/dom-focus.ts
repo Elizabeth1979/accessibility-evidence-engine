@@ -327,6 +327,115 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
 }
 
 /**
+ * Whether the element an interaction's target selector selects is the element with focus. The
+ * focus judge reads this rather than comparing the selector's text with `nodePath`: two elements
+ * can have the same path in their own documents, and one element can be selected in many ways.
+ */
+export interface RequestedTargetFocus {
+  /** The selector, as the interaction's target gives it. */
+  selector: string;
+  /**
+   * - `focused`: the selector selects one element, and it is the element with focus;
+   * - `not-focused`: it selects one element, and focus is on another, or deeper inside it (in its
+   *   shadow root or its frame);
+   * - `unresolved`: which element it means, or whether that one has focus, cannot be told
+   *   (`reason`).
+   */
+  status: "focused" | "not-focused" | "unresolved";
+  /** How many elements the selector selects in the page, when it could be resolved. */
+  matchCount?: number;
+  reason?: string;
+}
+
+/** A page that resolves a selector as a scenario's action does: Playwright's `page.locator`. */
+export interface SelectorPage {
+  locator(selector: string): {
+    evaluateAll(pageFunction: (elements: Element[]) => ActiveChainPlace): Promise<unknown>;
+  };
+}
+
+/**
+ * Where the elements a selector selects stand on the way to focus, run in the page by Playwright
+ * on all of them: how many they are, and, for one, how many documents and shadow roots there are
+ * from it up to the top page (`roots`) when it is the active element of each (its own document or
+ * shadow root's, its host's in the root above, the `<iframe>` element's in the document above),
+ * or -1 when it is not. Undefined `roots` when a frame above it is cross-origin, so its
+ * `<iframe>` element cannot be read from inside. Sent to the page as source, so it uses nothing
+ * from outside itself.
+ */
+function activeChainPlace(elements: Element[]): ActiveChainPlace {
+  if (elements.length !== 1) return { count: elements.length };
+  let roots = 0;
+  for (let node: Element | null = elements[0]!; node;) {
+    const root = node.getRootNode();
+    if (!(root instanceof Document || root instanceof ShadowRoot) || root.activeElement !== node) {
+      return { count: 1, roots: -1 };
+    }
+    roots += 1;
+    if (root instanceof ShadowRoot) {
+      node = root.host;
+    } else {
+      const view = root.defaultView;
+      if (!view || view === view.top) return { count: 1, roots };
+      node = view.frameElement;
+    }
+  }
+  // A cross-origin parent hides its `<iframe>` element: `frameElement` is null.
+  return { count: 1 };
+}
+
+interface ActiveChainPlace {
+  count: number;
+  roots?: number;
+}
+
+/**
+ * Whether the element `selector` selects is the element with focus that `focus` records. The
+ * selector is resolved by Playwright, as the scenario's action resolved it, so it selects the same
+ * element. That element has focus when it is the active element of its document or shadow root,
+ * and of each one above it (`activeChainPlace`, in the page), and focus goes no deeper: the chain
+ * of active elements the capture followed, through closed shadow roots and every frame, ends with
+ * it, so has exactly as many links as it has roots up to the top page.
+ */
+export async function focusOnRequestedTarget(
+  page: SelectorPage,
+  selector: string,
+  focus: Pick<DomFocusState, "activeElementChain">
+): Promise<RequestedTargetFocus> {
+  const unresolved = (reason: string, matchCount?: number): RequestedTargetFocus => ({
+    selector,
+    status: "unresolved",
+    ...(matchCount === undefined ? {} : { matchCount }),
+    reason
+  });
+  let place: ActiveChainPlace;
+  try {
+    place = (await page.locator(selector).evaluateAll(activeChainPlace)) as ActiveChainPlace;
+  } catch (error) {
+    return unresolved(
+      `The page could not resolve the selector ${selector}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
+    );
+  }
+  if (place.count === 0) {
+    return unresolved(`The selector ${selector} selects no element in the page.`, 0);
+  }
+  if (place.count > 1) {
+    return unresolved(
+      `The selector ${selector} selects ${place.count} elements, so which one was requested cannot be told.`,
+      place.count
+    );
+  }
+  if (place.roots === undefined) {
+    return unresolved(
+      `The selector ${selector} selects an element inside a cross-origin frame, whose place in the page cannot be read from inside it.`,
+      1
+    );
+  }
+  const focused = place.roots === focus.activeElementChain.length;
+  return { selector, status: focused ? "focused" : "not-focused", matchCount: 1 };
+}
+
+/**
  * One tab stop of the page: one of its document's own tab stops, by its place among them, or a
  * frame that has none, which Chrome's Tab stops on itself.
  */
