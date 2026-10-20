@@ -480,6 +480,16 @@ async function sweepPage(
       page,
       await probe<LocatedControl[]>({ mode: "pressable", tabStops: stopSelectors })
     );
+    // Each press starts from the page as loaded. The page was just loaded, and only read since, so
+    // the first press starts from it as it is; every later one loads it afresh.
+    let freshlyLoaded = true;
+    const resetPage = async () => {
+      if (freshlyLoaded) {
+        freshlyLoaded = false;
+        return;
+      }
+      await loadPage();
+    };
     for (const control of controls) {
       activated.push(control.selector);
       findings.push(
@@ -487,7 +497,7 @@ async function sweepPage(
           onStep,
           () => `Press ${describeElement(control)} with ${control.key}, then click it`,
           () =>
-            pressControl(page, probe, settle, loadPage, control, allowedOrigins, failedNavigations)
+            pressControl(page, probe, settle, resetPage, control, allowedOrigins, failedNavigations)
         ))
       );
     }
@@ -1049,7 +1059,7 @@ async function pressControl(
   page: KeyboardPointerSweepPage,
   probe: <T>(request: ProbeRequest) => Promise<T>,
   settle: () => Promise<void>,
-  loadPage: () => Promise<void>,
+  resetPage: () => Promise<void>,
   control: PressableControl,
   allowedOrigins: string[] | undefined,
   failedNavigations: FailedNavigation[]
@@ -1090,7 +1100,7 @@ async function pressControl(
   // a message after a request, counts the same for keyboard and mouse.
   const comparison = await comparePointerAndKeyboardOutcomes<ActivationOutcome>({
     reset: async () => {
-      await loadPage();
+      await resetPage();
       leftTo = undefined;
       loadedDocument = await probe<number>({ mode: "document" });
     },
