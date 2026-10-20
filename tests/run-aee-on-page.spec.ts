@@ -9,6 +9,7 @@ import { PNG } from "pngjs";
 import {
   announcedWithoutName,
   captureElementMap,
+  createLaneCaptures,
   createPortableVirtualScreenReader,
   runInputComparison,
   runAeeOnPage,
@@ -967,7 +968,7 @@ test("portable virtual reader flags the unnamed items WAI-ARIA 1.2 requires a na
   expect([...read.values()].map(({ role }) => role)).not.toContain("region");
 });
 
-test("virtual-reader lane owns an isolated context and recaptures every command", async ({
+test("virtual-reader lane owns an isolated context and captures every command", async ({
   browser
 }, testInfo) => {
   const fixtureServer = await startHtmlServer((_request, response) => {
@@ -1053,6 +1054,10 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
       "Virtual reader: next-control"
     ]);
     expect(await readFile(lane.video!.captionsFile, "utf8")).toContain("WEBVTT");
+    // Only the lane's page is recorded: not the blank page axe opens in its context for each run.
+    expect(
+      (await readdir(path.dirname(lane.laneFile!))).filter((name) => name.endsWith(".webm"))
+    ).toEqual(["video.webm"]);
     const manifest = JSON.parse(await readFile(lane.manifestFile!, "utf8"));
     expect(manifest.status).toBe("completed");
     expect(manifest.summary.missing).toBe(0);
@@ -1062,6 +1067,171 @@ test("virtual-reader lane owns an isolated context and recaptures every command"
   } finally {
     await fixtureServer.close();
   }
+});
+
+interface AxeResultFile {
+  /** When axe ran: each run stamps its own time. */
+  timestamp: string;
+  violations: Array<{ id: string; nodes: Array<{ html: string }> }>;
+}
+
+/** Runs the virtual-reader lane over a page and reads back each step's axe result and screenshot. */
+async function readerLaneCaptures(
+  browser: Browser,
+  html: string,
+  outputDir: string
+): Promise<Array<{ axe: AxeResultFile; screenshot: Buffer }>> {
+  const server = await startHtmlServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.end(html);
+  });
+  try {
+    const lane = await runVirtualScreenReaderLane({
+      browser,
+      projectRoot: process.cwd(),
+      outputDir,
+      laneId: "reader-lane-captures",
+      targetUrl: `${server.origin}/`,
+      allowedOrigins: [server.origin],
+      commands: ["start", "next-item", "next-item", "next-item"]
+    });
+    expect(lane.steps).toHaveLength(4);
+    return await Promise.all(
+      lane.steps.map(async ({ artifactFiles }) => {
+        const file = (basename: string) =>
+          artifactFiles.find((filePath) => filePath.endsWith(basename))!;
+        return {
+          axe: JSON.parse(await readFile(file("axe-after.json"), "utf8")) as AxeResultFile,
+          screenshot: await readFile(file("visual-full-page-after.png"))
+        };
+      })
+    );
+  } finally {
+    await server.close();
+  }
+}
+
+test("virtual-reader lane runs axe and takes its screenshots once while the page stays as it was", async ({
+  browser
+}, testInfo) => {
+  const steps = await readerLaneCaptures(
+    browser,
+    `<!doctype html><html lang="en"><head><title>Invoices</title></head><body><main>
+      <h1>Invoices</h1><p>Two invoices are due.</p>
+      <button type="button">Pay invoices</button><p>Due on Friday.</p>
+    </main></body></html>`,
+    testInfo.outputPath("unchanged-page")
+  );
+  // A reader command never changes the page, so every step gives the first step's capture.
+  expect(new Set(steps.map(({ axe }) => axe.timestamp)).size).toBe(1);
+  expect(new Set(steps.map(({ screenshot }) => screenshot.toString("base64"))).size).toBe(1);
+});
+
+test("virtual-reader lane captures afresh at each step once its page changed in the DOM", async ({
+  browser
+}, testInfo) => {
+  // The page changes an attribute of an image with no text alternative every few milliseconds,
+  // which axe quotes in its result, so each step's result shows the page as it was at that step.
+  const steps = await readerLaneCaptures(
+    browser,
+    `<!doctype html><html lang="en"><head><title>Ticker</title></head><body><main>
+      <h1>Ticker</h1><img id="tick" data-tick="0" width="20" height="20"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+      <p>Ticks on its own.</p><p>And again.</p>
+    </main><script>
+      setInterval(() => { tick.dataset.tick = String(Number(tick.dataset.tick) + 1); }, 20);
+    </script></body></html>`,
+    testInfo.outputPath("ticking-attribute")
+  );
+  const quoted = steps.map(
+    ({ axe }) => axe.violations.find(({ id }) => id === "image-alt")?.nodes[0]?.html
+  );
+  expect(quoted.every((html) => html?.includes("data-tick="))).toBe(true);
+  expect(new Set(quoted).size).toBe(steps.length);
+  expect(new Set(steps.map(({ axe }) => axe.timestamp)).size).toBe(steps.length);
+});
+
+test("virtual-reader lane captures afresh at each step once its page changed outside the DOM", async ({
+  browser
+}, testInfo) => {
+  // A field's value changes with no change to the DOM's nodes or attributes, yet it shows.
+  const steps = await readerLaneCaptures(
+    browser,
+    `<!doctype html><html lang="en"><head><title>Counter</title></head><body><main>
+      <h1>Counter</h1><label>Count <input id="count" value="0"></label>
+      <p>Counts on its own.</p><p>And again.</p>
+    </main><script>
+      setInterval(() => { count.value = String(Number(count.value) + 1); }, 20);
+    </script></body></html>`,
+    testInfo.outputPath("ticking-value")
+  );
+  expect(new Set(steps.map(({ screenshot }) => screenshot.toString("base64"))).size).toBe(
+    steps.length
+  );
+  expect(new Set(steps.map(({ axe }) => axe.timestamp)).size).toBe(steps.length);
+});
+
+test("a lane's capture is given again only while the page has not changed since it was taken", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<!doctype html><html lang="en"><head><title>Invoices</title></head>
+    <body><main><h1>Invoices</h1>
+      <img id="logo" width="20" height="20"
+        src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
+      <label>Note <input id="note"></label>
+    </main></body></html>`);
+  const laneCaptures = createLaneCaptures();
+  let step = 0;
+  // One step of a lane: what it captured, with nothing done to the page by the step itself.
+  const capture = async () => {
+    step += 1;
+    const { artifactFiles } = await runAeeOnPage({
+      page,
+      projectRoot: testInfo.outputPath(),
+      outputDir: "steps",
+      runId: `step-${step}`,
+      observers: ["axe", "visual"],
+      judges: ["axe"],
+      laneCaptures
+    });
+    const file = (basename: string) =>
+      artifactFiles.find((filePath) => filePath.endsWith(basename))!;
+    return {
+      axe: JSON.parse(await readFile(file("axe-after.json"), "utf8")) as AxeResultFile,
+      screenshot: (await readFile(file("visual-full-page-after.png"))).toString("base64")
+    };
+  };
+  const logo = (result: { axe: AxeResultFile }) =>
+    result.axe.violations.find(({ id }) => id === "image-alt")?.nodes[0]?.html;
+
+  // Playwright's screenshot leaves an empty style attribute on the field, so the first capture
+  // changes the page; from the second on, nothing does.
+  await capture();
+  const settled = await capture();
+  expect((await capture()).axe.timestamp).toBe(settled.axe.timestamp);
+
+  // A change to the DOM: the next step captures afresh and shows it.
+  await page.locator("#logo").evaluate((image) => image.setAttribute("data-state", "changed"));
+  const afterAttribute = await capture();
+  expect(afterAttribute.axe.timestamp).not.toBe(settled.axe.timestamp);
+  expect(logo(afterAttribute)).toContain('data-state="changed"');
+  expect((await capture()).axe.timestamp).toBe(afterAttribute.axe.timestamp);
+
+  // A change no DOM node or attribute shows: a field's value, typed in or set by a script.
+  await page.locator("#note").evaluate((field) => {
+    (field as HTMLInputElement).value = "Paid in full";
+  });
+  const afterValue = await capture();
+  expect(afterValue.axe.timestamp).not.toBe(afterAttribute.axe.timestamp);
+  expect(afterValue.screenshot).not.toBe(afterAttribute.screenshot);
+
+  // A change undone before the next step still counts: the capture is not proven the same.
+  await page.locator("#logo").evaluate((image) => {
+    image.setAttribute("hidden", "");
+    image.removeAttribute("hidden");
+  });
+  expect((await capture()).axe.timestamp).not.toBe(afterValue.axe.timestamp);
+  await laneCaptures.stop();
 });
 
 test("virtual-reader lane blocks a redirect outside the approved origin and closes its context", async ({
@@ -1343,6 +1513,10 @@ test("input comparison runs declared pointer and keyboard actions in isolated co
       const videoSidecar = JSON.parse(await readFile(lane.video.sidecarFile, "utf8"));
       expect(videoSidecar.status).toBe("completed");
       expect(videoSidecar.actions).toHaveLength(1);
+      // Only the lane's page is recorded: not the blank page axe opens in its context.
+      expect(
+        (await readdir(path.dirname(lane.video.videoFile))).filter((name) => name.endsWith(".webm"))
+      ).toEqual([path.basename(lane.video.videoFile)]);
     }
     await access(comparison.traceFile);
     await access(comparison.manifestFile);

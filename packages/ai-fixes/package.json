@@ -15,15 +15,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/index.js",
-    "dist/index.js.map",
-    "dist/index.d.ts",
-    "dist/model-providers.js",
-    "dist/model-providers.js.map",
-    "dist/model-providers.d.ts",
-    "dist/specialists.js",
-    "dist/specialists.js.map",
-    "dist/specialists.d.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.*",
     "prompts/accessibility-engineer.md"
   ],
   "engines": {

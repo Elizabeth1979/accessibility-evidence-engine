@@ -182,17 +182,29 @@ interface FocusJudgmentReport {
   judgments: Array<{ judgeId: string; verdict: string; summary: string }>;
 }
 
+/** An interaction's target as a scenario gives it: a selector, or a role and name. */
+type InteractionTarget = { selector: string } | { role: "button" | "link"; name: string };
+
+/** The element `target` names, found as a scenario's action finds it. */
+const locate = (page: Page, target: InteractionTarget) =>
+  "selector" in target
+    ? page.locator(target.selector)
+    : page.getByRole(target.role, { name: target.name, exact: true });
+
 /**
- * Runs a focus action on `selector` as a scenario's focus step does (`focusExpectation: "target"`)
- * and returns the focus judge's judgment, with the element that has focus afterwards as the focus
- * observer wrote it.
+ * Runs an interaction on `target` and returns the focus judge's judgment, with the element that
+ * has focus afterwards as the focus observer wrote it. By default it is a focus action, as a
+ * scenario's focus step runs it (`focusExpectation: "target"`); a hover expects focus to stay
+ * where it was (`preserve`).
  */
 async function judgeFocusOn(
   page: Page,
   outputDir: string,
-  selector: string,
-  focus: () => Promise<void> = () => page.locator(selector).focus()
+  target: string | InteractionTarget,
+  interact?: () => Promise<void>,
+  expectation: "target" | "preserve" = "target"
 ) {
+  const requested = typeof target === "string" ? { selector: target } : target;
   const result = await runAeeOnPage({
     page,
     projectRoot: process.cwd(),
@@ -201,12 +213,12 @@ async function judgeFocusOn(
     judges: ["focus-management"],
     checkpointName: "focus-target",
     interaction: {
-      kind: "focus",
+      kind: expectation === "preserve" ? "hover" : "focus",
       actor: "test",
-      target: { selector },
-      meta: { focusExpectation: "target" }
+      target: requested,
+      meta: { focusExpectation: expectation }
     },
-    performInteraction: focus
+    performInteraction: interact ?? (() => locate(page, requested).focus())
   });
   const report = JSON.parse(
     await readFile(
@@ -223,21 +235,30 @@ async function judgeFocusOn(
   };
 }
 
-test("the focus judge fails focus on a different button whose path reads the same", async ({
-  page
-}, testInfo) => {
-  // Two identical Save buttons: the first in an embedded frame, the second in the page. Focusing
-  // the page's button moves focus to the frame's, as a misplaced focus handler would.
+/**
+ * Two identical Save buttons: the first in an embedded frame, the second in the page, above a
+ * Help link. Focusing the page's Save button, or hovering Help (`on`), moves focus to the frame's
+ * Save button, as a misplaced focus handler would.
+ */
+async function showTwoSaveButtons(page: Page, on: "focus" | "hover" = "focus") {
+  const [trigger, event] = on === "focus" ? ["main > button", "focus"] : ["a", "mouseenter"];
   await page.setContent(`
     <iframe title="Draft" srcdoc="<main><button type='button'>Save</button></main>"></iframe>
     <main><button type="button">Save</button></main>
+    <a href="#help">Help</a>
     <script>
-      document.querySelector("main > button").addEventListener("focus", () => {
+      document.querySelector("${trigger}").addEventListener("${event}", () => {
         document.querySelector("iframe").contentDocument.querySelector("button").focus();
       });
     </script>
   `);
   await page.frameLocator("iframe").locator("button").waitFor();
+}
+
+test("the focus judge fails focus on a different button whose path reads the same", async ({
+  page
+}, testInfo) => {
+  await showTwoSaveButtons(page);
   const selector = "button";
 
   const { judgment, focused } = await judgeFocusOn(page, testInfo.outputPath("other"), selector);
@@ -294,5 +315,94 @@ test("the focus judge leaves focus unknown when the selector selects several ele
   );
 
   expect(judgment.verdict).toBe("unknown");
-  expect(judgment.summary).toMatch(/selects 2 elements/);
+  expect(judgment.summary).toMatch(/selector button matches 2 elements/);
+});
+
+const SAVE = { role: "button", name: "Save" } as const;
+
+test("the focus judge fails focus on another button with the requested role and name", async ({
+  page
+}, testInfo) => {
+  await showTwoSaveButtons(page);
+
+  const { judgment, focused } = await judgeFocusOn(page, testInfo.outputPath("other-role"), SAVE);
+
+  // The frame's button is a button named "Save" too, so comparing role and name passed it.
+  // Playwright's getByRole, as the action used it, finds the page's button.
+  expect(focused.framePath).toHaveLength(1);
+  expect(judgment.verdict).toBe("fail");
+  expect(judgment.summary).toMatch(
+    /requested target \(button named "Save"\).*at iframe >>> button/
+  );
+});
+
+test("the focus judge passes focus on the one button with the requested role and name", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<form><button id="save" type="submit">Save</button></form>`);
+
+  const { judgment } = await judgeFocusOn(page, testInfo.outputPath("one-role"), SAVE);
+
+  expect(judgment.verdict).toBe("pass");
+});
+
+test("the focus judge leaves focus unknown when several elements have the requested role and name", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`<button type="button">Save</button><button type="button">Save</button>`);
+
+  const { judgment } = await judgeFocusOn(page, testInfo.outputPath("several-role"), SAVE, () =>
+    locate(page, SAVE).first().focus()
+  );
+
+  expect(judgment.verdict).toBe("unknown");
+  expect(judgment.summary).toMatch(/button named "Save" matches 2 elements/);
+});
+
+test("the focus judge fails a hover that moves focus to an identical button in a frame", async ({
+  page
+}, testInfo) => {
+  await showTwoSaveButtons(page, "hover");
+  await locate(page, SAVE).focus();
+  const help = { role: "link", name: "Help" } as const;
+
+  const { judgment, focused } = await judgeFocusOn(
+    page,
+    testInfo.outputPath("hover-moves"),
+    help,
+    () => locate(page, help).hover(),
+    "preserve"
+  );
+
+  // Before and after, focus is on a button named "Save" whose path in its own document reads the
+  // same, so comparing path, id, role and name said focus stayed.
+  expect(focused.framePath).toHaveLength(1);
+  expect(judgment.verdict).toBe("fail");
+});
+
+test("the focus judge passes a hover that leaves focus where it was, though its path changed", async ({
+  page
+}, testInfo) => {
+  await page.setContent(`
+    <main><button type="button">Save</button><button type="button">Help</button></main>
+    <script>
+      document.querySelector("main > button + button").addEventListener("mouseenter", () => {
+        document.querySelector("main").insertAdjacentHTML("afterbegin", '<p role="status" style="position: absolute">Opens the help pages.</p>');
+      });
+    </script>
+  `);
+  await locate(page, SAVE).focus();
+  const help = { role: "button", name: "Help" } as const;
+
+  const { judgment } = await judgeFocusOn(
+    page,
+    testInfo.outputPath("hover-stays"),
+    help,
+    () => locate(page, help).hover(),
+    "preserve"
+  );
+
+  // The tip put before Save changes Save's shortest path, so comparing paths said focus moved.
+  // Focus is on the same element.
+  expect(judgment.verdict).toBe("pass");
 });

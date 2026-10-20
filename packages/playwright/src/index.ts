@@ -8,6 +8,7 @@ import axe from "axe-core";
 import {
   executeRun,
   redactUrl,
+  requestedTargetOf,
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
@@ -17,6 +18,7 @@ import {
   type JudgmentVerdict,
   type ReporterInput,
   type ReporterArtifact,
+  type RequestedTarget,
   type RunSummary,
   type TargetDescriptor
 } from "@aee/core";
@@ -52,7 +54,7 @@ import {
   BlockedOriginError,
   normalizeAllowedOrigins
 } from "./allowed-origins";
-import { captureDomFocus, focusOnRequestedTarget, type SelectorPage } from "./dom-focus";
+import { captureDomFocus, focusOnRequestedTarget, type TargetElements } from "./dom-focus";
 import {
   frameMasks,
   framesNotChecked,
@@ -60,6 +62,12 @@ import {
   type LocatorScope
 } from "./frames-not-checked";
 import { captureElementMap } from "./element-map";
+import {
+  createLaneCaptures,
+  type CaptureReusePage,
+  type LaneCaptures,
+  type StepCaptures
+} from "./capture-reuse";
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
 import { describeElementContexts } from "./element-context";
@@ -92,6 +100,7 @@ import {
 } from "./interaction-video";
 export * from "./accessibility-tree";
 export * from "./axe-results";
+export * from "./capture-reuse";
 export * from "./contrast-measurement";
 export * from "./element-context";
 export * from "./element-locations";
@@ -164,6 +173,12 @@ export interface RunAeeOnPageOptions<TPage extends PlaywrightPageLike = Playwrig
    * it as not checked.
    */
   allowedOrigins?: string[];
+  /**
+   * The lane's captures, which a lane whose interactions only read the page passes to every step:
+   * a step gives the lane's last axe result, screenshots and element map again while the page has
+   * provably not changed since they were taken, and captures afresh otherwise.
+   */
+  laneCaptures?: LaneCaptures;
 }
 
 export interface RunAeeOnPageResult {
@@ -178,9 +193,17 @@ export interface VirtualScreenReaderLanePage extends PlaywrightPageLike, Virtual
   goto(url: string, options?: { waitUntil?: "domcontentloaded" }): Promise<unknown>;
 }
 
-export interface VirtualScreenReaderLaneContext<TPage extends VirtualScreenReaderLanePage> {
+export interface VirtualScreenReaderLaneContext<
+  TPage extends VirtualScreenReaderLanePage
+> extends PageOpeningContext<TPage> {
   newPage(): Promise<TPage>;
   close(): Promise<void>;
+}
+
+/** A browser context that says when a page opens in it, as Playwright's does. */
+export interface PageOpeningContext<TPage extends PlaywrightPageLike> {
+  on?(event: "page", listener: (page: TPage) => void): unknown;
+  off?(event: "page", listener: (page: TPage) => void): unknown;
 }
 
 export interface VirtualScreenReaderLaneBrowser<TPage extends VirtualScreenReaderLanePage> {
@@ -314,7 +337,9 @@ export interface InteractionComparisonPage extends PlaywrightPageLike {
   keyboard: { press(key: string): Promise<void> };
 }
 
-export interface InteractionComparisonContext<TPage extends InteractionComparisonPage> {
+export interface InteractionComparisonContext<
+  TPage extends InteractionComparisonPage
+> extends PageOpeningContext<TPage> {
   newPage(): Promise<TPage>;
   close(): Promise<void>;
 }
@@ -721,6 +746,8 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     }
   );
 
+  const reusablePage = captureReusePage(options.page);
+  const stepCaptures = reusablePage && options.laneCaptures?.forStep(reusablePage);
   const observerContext: RuntimeObserverContext = {
     runId,
     checkpointId: checkpoint.id,
@@ -730,7 +757,8 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
       options.page,
       options.virtualScreenReader,
       options.allowedOrigins,
-      interaction.target?.selector
+      requestedTargetOf(interaction.target),
+      stepCaptures
     ),
     artifactDir
   };
@@ -774,6 +802,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     policyName: resolvedPolicy.name,
     releasePolicy: resolvedPolicy.release
   });
+  await stepCaptures?.finish();
 
   const reportArtifacts = await renderReports({
     run: execution.run,
@@ -805,6 +834,28 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
 
 /** Every lane records at this size, so recordings of one run line up. */
 const LANE_VIDEO_SIZE = { width: 1280, height: 720 };
+
+/**
+ * Keeps a recorded context's recordings to the lane's own page. Playwright records every page that
+ * opens in the context, and a tool can open one of its own there, as @axe-core/playwright opens a
+ * blank page to finish each axe run; its recording shows nothing of the lane, so it is deleted.
+ * Call it once the lane's page is open; the function it returns waits for the deletions, which end
+ * once those pages close.
+ */
+function recordLanePageOnly<TPage extends PlaywrightPageLike>(
+  context: PageOpeningContext<TPage>,
+  lanePage: TPage
+): () => Promise<void> {
+  const deletions: Array<Promise<void> | undefined> = [];
+  const discard = (page: TPage) => {
+    if (page !== lanePage) deletions.push(page.video?.()?.delete?.());
+  };
+  context.on?.("page", discard);
+  return async () => {
+    context.off?.("page", discard);
+    await Promise.all(deletions);
+  };
+}
 
 const VIRTUAL_READER_LANE_OBSERVERS = [
   "focus",
@@ -1036,6 +1087,7 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
   const videoStartedAt = new Date().toISOString();
   let pageVideo: PlaywrightVideoLike | null | undefined;
   let laneResult: InputComparisonLane | undefined;
+  let otherRecordingsDeleted: (() => Promise<void>) | undefined;
   let laneError: unknown;
   manifestLane.status = "failed";
 
@@ -1043,6 +1095,7 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     const page = await context.newPage();
     pageVideo = page.video?.();
     if (!pageVideo) throw new Error(`Input comparison ${driver} lane did not start video capture.`);
+    otherRecordingsDeleted = recordLanePageOnly(context, page);
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
     assertAllowedOrigin(page.url(), allowedOrigins, `Input comparison ${driver} lane`);
     if (page.url() !== resolvedStartUrl) {
@@ -1148,6 +1201,7 @@ async function runInputLane<TPage extends InteractionComparisonPage>(
     laneError = error;
   } finally {
     await context.close();
+    await otherRecordingsDeleted?.();
   }
 
   if (pageVideo) {
@@ -1221,7 +1275,7 @@ async function performInputAction(
     return;
   }
 
-  const target = resolveInputTarget(page, action.target!);
+  const target = locateTarget(page, action.target!);
   if (action.kind === "hover") await target.hover();
   if (action.kind === "click") await target.click();
   if (action.kind === "focus") await target.focus();
@@ -1242,7 +1296,7 @@ async function captureInputObservation(
 ): Promise<InputComparisonObservation> {
   const observation: InputComparisonObservation = {};
   if (request.url) observation.url = page.url();
-  const target = request.target ? resolveInputTarget(page, request.target) : undefined;
+  const target = request.target ? locateTarget(page, request.target) : undefined;
   if (request.visible) observation.visible = await target!.isVisible();
   if (request.text) observation.text = normalizeObservedText(await target!.textContent());
   if (request.focused) {
@@ -1264,13 +1318,19 @@ function normalizeObservedText(value: string | null): string | null {
   return value === null ? null : value.replace(/\s+/g, " ").trim();
 }
 
-function resolveInputTarget(
-  page: InteractionComparisonPage,
+/**
+ * The elements `target` names, found as a scenario's action finds them: Playwright's
+ * `page.locator` for a selector, and `page.getByRole` for a role and name, matching the whole name
+ * unless `exact` is false. The focus observer finds a focus action's target the same way, so both
+ * mean the same element.
+ */
+function locateTarget<Locator>(
+  page: { locator(selector: string): Locator },
   target: InputComparisonTarget
-): InteractionLaneLocator {
+): Locator {
   if (target.selector) return page.locator(target.selector);
   const rolePage = page as unknown as {
-    getByRole(role: string, options: { name: string; exact: boolean }): InteractionLaneLocator;
+    getByRole(role: string, options: { name: string; exact: boolean }): Locator;
   };
   return rolePage.getByRole(target.role!, { name: target.name!, exact: target.exact ?? true });
 }
@@ -1356,6 +1416,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
   let browserContext: VirtualScreenReaderLaneContext<TPage> | undefined;
   let pageVideo: PlaywrightVideoLike | null | undefined;
   let transcript: VirtualScreenReaderTranscript | undefined;
+  let otherRecordingsDeleted: (() => Promise<void>) | undefined;
   let runError: unknown;
 
   try {
@@ -1368,12 +1429,16 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       page = await browserContext.newPage();
       pageVideo = page.video?.();
       if (!pageVideo) throw new Error("Virtual screen-reader lane did not start video capture.");
+      otherRecordingsDeleted = recordLanePageOnly(browserContext, page);
     } else {
       page = options.page;
     }
     await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
     assertAllowedOrigin(page.url(), allowedOrigins);
     const reader = createPortableVirtualScreenReader(page);
+    // A reader command never changes the page, so its steps reuse one capture while it stays as it
+    // was.
+    const laneCaptures = createLaneCaptures();
 
     for (const [index, command] of options.commands.entries()) {
       if (options.stopAtEnd && index > 0 && !(await reader.peek(command))) break;
@@ -1404,6 +1469,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
         checkpointName: `${laneId}:${sequence}:${command}`,
         // The portable reader never focuses, clicks, types or dispatches events.
         interactionReadsOnly: true,
+        laneCaptures,
         interaction: {
           kind: "screen-reader-command",
           input: command,
@@ -1449,6 +1515,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
       });
     }
 
+    await laneCaptures.stop();
     transcript = await reader.snapshot();
     assertValidSchema(
       "virtualScreenReaderTranscript",
@@ -1460,6 +1527,7 @@ export async function runVirtualScreenReaderLane<TPage extends VirtualScreenRead
     runError = error;
   } finally {
     await browserContext?.close();
+    await otherRecordingsDeleted?.();
   }
 
   const failureStatus: "blocked" | "failed" =
@@ -2307,6 +2375,14 @@ function framedCdpPage<TPage extends CdpEnabledPageLike>(
     : undefined;
 }
 
+/** The page, when a lane's captures can be reused on it, as on a Playwright page. */
+function captureReusePage(page: PlaywrightPageLike): CaptureReusePage | undefined {
+  const candidate = page as Partial<CaptureReusePage>;
+  return typeof candidate.evaluate === "function" && typeof candidate.context === "function"
+    ? (page as unknown as CaptureReusePage)
+    : undefined;
+}
+
 interface EvaluatablePageLike extends PlaywrightPageLike {
   evaluate?<TArgument>(
     pageFunction: (argument: TArgument) => unknown,
@@ -2342,14 +2418,16 @@ interface EventedPageLike extends PlaywrightPageLike {
 }
 
 /**
- * The page as the observers read it. `requestedSelector` is the interaction's target selector:
- * each focus capture records whether the element it selects is the one with focus.
+ * The page as the observers read it. `requestedTarget` is the interaction's target, by selector
+ * or by role and name: each focus capture records whether the element it names is the one with
+ * focus.
  */
 async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader,
   allowedOrigins?: string[],
-  requestedSelector?: string
+  requestedTarget?: RequestedTarget,
+  stepCaptures?: StepCaptures
 ): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   // Each read of the page's frames leaves out those outside the allowed origins.
@@ -2405,12 +2483,15 @@ async function createObserverPage(
               domFocus && {
                 ...domFocus,
                 accessibilityFocus: await accessibilityFocusOf(frames),
-                // Resolved by Playwright, as the scenario's action resolved it.
-                ...(requestedSelector
+                // Found by Playwright, as the scenario's action found it.
+                ...(requestedTarget
                   ? {
                       requestedTarget: await focusOnRequestedTarget(
-                        cdpPage as unknown as SelectorPage,
-                        requestedSelector,
+                        locateTarget(
+                          cdpPage as unknown as { locator(selector: string): TargetElements },
+                          requestedTarget
+                        ),
+                        requestedTarget,
                         domFocus
                       )
                     }
@@ -2540,21 +2621,32 @@ async function createObserverPage(
         }
       : undefined);
 
+  const snapshotElementMap = cdpPage
+    ? async () => {
+        const elementMap = await withSessions(cdpPage, captureElementMap);
+        assertValidSchema("elementMap", elementMap, "element map");
+        return elementMap;
+      }
+    : undefined;
+  // The captures a lane can reuse while the page has not changed, each by its name and options.
+  const reused = <Args extends unknown[], Value>(
+    name: string,
+    capture: ((...args: Args) => Promise<Value>) | undefined
+  ) =>
+    capture && stepCaptures
+      ? (...args: Args) =>
+          stepCaptures.take(`${name}:${JSON.stringify(args)}`, () => capture(...args))
+      : capture;
+
   return {
     async content() {
       return page.content();
     },
     snapshotAccessibilityTree,
-    snapshotElementMap: cdpPage
-      ? async () => {
-          const elementMap = await withSessions(cdpPage, captureElementMap);
-          assertValidSchema("elementMap", elementMap, "element map");
-          return elementMap;
-        }
-      : undefined,
+    snapshotElementMap: reused("element-map", snapshotElementMap),
     snapshotFocusTarget,
-    snapshotScreenshot,
-    runAxeAnalysis,
+    snapshotScreenshot: reused("screenshot", snapshotScreenshot),
+    runAxeAnalysis: reused("axe", runAxeAnalysis),
     snapshotVirtualScreenReaderTranscript,
     listenVirtualScreenReader,
     setupNetworkTracking,
