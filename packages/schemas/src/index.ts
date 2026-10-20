@@ -24,7 +24,8 @@ export const schemaCatalog = {
   interactionComparison: "json/interaction-comparison.schema.json",
   interactionComparisonRequest: "json/interaction-comparison-request.schema.json",
   interactionVideo: "json/interaction-video.schema.json",
-  evidenceManifest: "json/evidence-manifest.schema.json"
+  evidenceManifest: "json/evidence-manifest.schema.json",
+  axeResult: "json/axe-result.schema.json"
 } as const;
 
 export type SchemaName = keyof typeof schemaCatalog;

@@ -122,7 +122,7 @@
         "label": { "type": "string" },
         "text": { "type": "string", "minLength": 1 },
         "summary": { "type": "string", "minLength": 1 },
-        "targetBox": { "$ref": "#/$defs/targetBox" },
+        "targetBox": { "$ref": "./common.schema.json#/$defs/targetBox" },
         "screenshot": { "type": "string", "pattern": "^press-[0-9]+\\.png$" }
       }
     },
@@ -141,20 +141,7 @@
           "minLength": 1
         },
         "focusCrop": { "type": "string", "pattern": "^tab-stop-[0-9]+\\.png$" },
-        "targetBox": { "$ref": "#/$defs/targetBox" }
-      }
-    },
-    "targetBox": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["x", "y", "width", "height", "pageWidth", "pageHeight"],
-      "properties": {
-        "x": { "type": "number" },
-        "y": { "type": "number" },
-        "width": { "type": "number", "minimum": 0 },
-        "height": { "type": "number", "minimum": 0 },
-        "pageWidth": { "type": "number", "minimum": 0 },
-        "pageHeight": { "type": "number", "minimum": 0 }
+        "targetBox": { "$ref": "./common.schema.json#/$defs/targetBox" }
       }
     }
   }

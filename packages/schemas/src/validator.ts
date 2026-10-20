@@ -2,6 +2,7 @@ import { type AnySchemaObject, type ErrorObject, type ValidateFunction } from "a
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
+import axeResultSchema from "../json/axe-result.schema.json";
 import checkpointSchema from "../json/checkpoint.schema.json";
 import cliConfigSchema from "../json/cli-config.schema.json";
 import commonSchema from "../json/common.schema.json";
@@ -53,7 +54,8 @@ const schemaDocuments = {
   interactionComparison: interactionComparisonSchema,
   interactionComparisonRequest: interactionComparisonRequestSchema,
   interactionVideo: interactionVideoSchema,
-  evidenceManifest: evidenceManifestSchema
+  evidenceManifest: evidenceManifestSchema,
+  axeResult: axeResultSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
 
 const schemaTitles: Record<SchemaName, string> = {
@@ -80,7 +82,8 @@ const schemaTitles: Record<SchemaName, string> = {
   interactionComparison: "AEE pointer and keyboard interaction comparison",
   interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request",
   interactionVideo: "AEE interaction video sidecar",
-  evidenceManifest: "AEE evidence manifest"
+  evidenceManifest: "AEE evidence manifest",
+  axeResult: "AEE axe result"
 };
 
 /** The Ajv options AEE's schemas compile under: strict mode, with union types allowed. */

@@ -12,6 +12,8 @@ Schema JSON files are exposed through `@aee/schemas/json/*` in addition to the m
 
 `focus-state.schema.json` validates document and deepest active elements, shadow/iframe focus chains, focus-indicator metadata, `aria-activedescendant`, and accessibility-tree focus. Portable-reader items may also include document-relative rendered bounds used to correlate the semantic target with full-page visual evidence.
 
+`axe-result.schema.json` validates the axe-core 4.14 result AEE writes at a checkpoint: the axe fields AEE reads, with axe's own types and optionality, and AEE's additions to it (each violation's place on the screenshot and the page around it, its contrast measurement, and the frames left out). axe's other fields are kept as axe wrote them and not checked.
+
 `scenario-report.schema.json` validates the integrated report's separate verdict and evidence-completeness states, action summaries, raw evidence index, privacy boundary, and explicit AI-output label.
 
 See the [project README](https://github.com/Elizabeth1979/accessibility-evidence-engine#readme) for status, usage, and limitations.
