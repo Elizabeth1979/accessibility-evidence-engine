@@ -20,7 +20,7 @@ import {
   type ModelImage,
   type ModelProvider
 } from "@aee/ai-fixes";
-import { focusPlace, readerFocusOf } from "@aee/core";
+import { focusPlace } from "@aee/core";
 import { isAdvisoryAxeRule } from "@aee/observers";
 import {
   aggregateEvidenceManifests,
@@ -41,7 +41,9 @@ import {
   type ElementContext,
   type ElementMap,
   type EvidenceManifest,
+  type InputComparisonLane,
   type InputComparisonResult,
+  type InputComparisonTrace,
   type InteractionComparisonBrowser,
   type KeyboardPointerSweepLaneBrowser,
   type KeyboardPointerSweepLaneDocument,
@@ -52,10 +54,18 @@ import {
   type StartPageLaneBrowser,
   type SweepFindingKind,
   type VirtualScreenReaderCommand,
+  type VirtualScreenReaderEntry,
   type VirtualScreenReaderLaneBrowser,
-  type VirtualScreenReaderLaneResult
+  type VirtualScreenReaderLaneResult,
+  type VirtualScreenReaderTranscript
 } from "@aee/playwright";
-import { markdownCode, markdownTableCode, markdownText, withoutReferences } from "@aee/reporter";
+import {
+  markdownCode,
+  markdownTableCode,
+  markdownText,
+  withoutReferences,
+  type AeeReportPayload
+} from "@aee/reporter";
 import {
   assertValidSchema,
   conceptForAxeRule,
@@ -64,7 +74,8 @@ import {
   patternLink,
   remediationEntry,
   remediationRegistry,
-  type PatternLink
+  type PatternLink,
+  type SchemaName
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { stringify as stringifyCsv } from "csv-stringify/sync";
@@ -203,13 +214,10 @@ export interface ExecuteScenarioResult {
   planFile: string;
 }
 
-interface ActionJudgmentView {
-  judgeId: string;
-  verdict: "pass" | "fail" | "unknown";
-  severity?: string;
-  summary: string;
-  suggestedFix?: string;
-}
+type ActionJudgmentView = Pick<
+  AeeReportPayload["judgments"][number],
+  "judgeId" | "verdict" | "severity" | "summary" | "suggestedFix"
+>;
 
 interface ActionReportView {
   action: ScenarioActionReport;
@@ -271,22 +279,30 @@ interface AxeReportView {
   readError?: string;
 }
 
+interface ComparisonLaneView {
+  actionIds: string[];
+  url?: string;
+  visible?: boolean;
+  text?: string;
+}
+
 interface InputComparisonView {
   path: string;
   comparisonId: string;
   name: string;
-  status: string;
-  isolation: string;
+  /** What the trace says happened; unreadable when it could not be read. */
+  status: InputComparisonTrace["status"] | "unreadable";
+  isolation: InputComparisonTrace["isolation"] | "unknown";
   equivalence: { verdict: "pass" | "fail" | "unknown"; summary: string };
   expectation: { verdict: "pass" | "fail" | "unknown"; summary: string };
-  pointer: { actionIds: string[]; url?: string; visible?: boolean; text?: string };
-  keyboard: { actionIds: string[]; url?: string; visible?: boolean; text?: string };
+  pointer: ComparisonLaneView;
+  keyboard: ComparisonLaneView;
   readError?: string;
 }
 
 interface ReaderEntryView {
   sequence: number;
-  command: string;
+  command: VirtualScreenReaderCommand;
   announcement: string;
   role?: string;
   name?: string;
@@ -302,8 +318,9 @@ interface ReaderTranscriptView {
   path: string;
   textPath?: string;
   pageUrl: string;
-  mode: string;
-  fidelity: string;
+  /** What the transcript says it is; unknown when it could not be read. */
+  mode: VirtualScreenReaderTranscript["mode"] | "unknown";
+  fidelity: VirtualScreenReaderTranscript["fidelity"] | "unknown";
   entries: ReaderEntryView[];
   readError?: string;
 }
@@ -1078,6 +1095,8 @@ async function collectAction(
 ): Promise<void> {
   const jsonReport = step.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
   if (!jsonReport) throw new Error(`Action ${actionId} did not create a JSON report.`);
+  const reportPath = relativePath(rootDir, jsonReport);
+  const report = await readEvidenceJson<AeeReportPayload>(rootDir, reportPath, "report");
   actions.push({
     journeyId,
     laneId,
@@ -1088,17 +1107,11 @@ async function collectAction(
     pageUrl: step.pageUrl,
     results: step.results,
     releaseVerdict: step.releaseVerdict,
-    reportPath: relativePath(rootDir, jsonReport),
+    reportPath,
     artifactPaths: step.artifactFiles.map((filePath) => relativePath(rootDir, filePath))
   });
-  const report = JSON.parse(await readFile(jsonReport, "utf8")) as { findings?: unknown[] };
-  for (const finding of report.findings ?? []) {
-    if (typeof finding === "object" && finding !== null) {
-      findings.push({
-        ...(finding as Record<string, unknown>),
-        source: { journeyId, laneId, actionId, runId: step.runId }
-      });
-    }
+  for (const finding of report.findings) {
+    findings.push({ ...finding, source: { journeyId, laneId, actionId, runId: step.runId } });
   }
 }
 
@@ -1341,7 +1354,11 @@ export async function verifyAppliedFixes(
   fixes: AppliedFix[]
 ): Promise<FixVerification[]> {
   const rootDir = path.dirname(reportFile);
-  const report = JSON.parse(await readFile(reportFile, "utf8")) as ScenarioIntegratedReport;
+  const report = await readEvidenceJson<ScenarioIntegratedReport>(
+    rootDir,
+    path.basename(reportFile),
+    "scenarioReport"
+  );
   const [transcripts, actionReports, axeReports] = await Promise.all([
     loadReaderTranscriptViews(report, rootDir),
     loadActionReportViews(report, rootDir),
@@ -1349,6 +1366,7 @@ export async function verifyAppliedFixes(
   ]);
   const axeRan = axeReports.filter(({ readError }) => !readError);
   const entries = transcripts.flatMap((transcript) => transcript.entries);
+  const unreadTranscripts = transcriptReadErrors(transcripts);
   return fixes.map(({ ruleId, selector, name }) => {
     const check = (id: FixCheck["id"], verdict: FixCheck["verdict"], detail: string) => ({
       id,
@@ -1365,22 +1383,40 @@ export async function verifyAppliedFixes(
         : check("axe", "pass", `axe no longer reports ${ruleId} on ${selector}.`);
     const reached = entries.filter(({ nodePath }) => nodePath === selector);
     const entry = reached.find((candidate) => candidate.name === name) ?? reached[0];
+    // A transcript that could not be read may hold the element, so it was not shown unreached.
     const reader = !entry
       ? check(
           "reader",
           "unknown",
-          `The virtual reader never reached ${selector}: add reader commands that do.`
+          unreadTranscripts ||
+            `The virtual reader never reached ${selector}: add reader commands that do.`
         )
       : entry.name === name
         ? check("reader", "pass", `Announced “${entry.announcement}”.`)
         : check("reader", "fail", `Announced “${entry.announcement}”, not the name “${name}”.`);
+    const actionReport = entry && readerActionReport(actionReports, entry);
     const judgment = entry && readerJudgment(actionReports, entry);
-    const crossEvidence = judgment
-      ? check("cross-evidence", judgment.verdict, judgment.summary)
-      : check("cross-evidence", "unknown", `No cross-evidence judgment covers ${selector}.`);
+    const crossEvidence = actionReport?.readError
+      ? check("cross-evidence", "unknown", actionReport.readError)
+      : judgment
+        ? check("cross-evidence", judgment.verdict, judgment.summary)
+        : check("cross-evidence", "unknown", `No cross-evidence judgment covers ${selector}.`);
     const checks = [axe, reader, crossEvidence];
     return { selector, verdict: overallVerdict(checks), checks };
   });
+}
+
+/** Why the transcripts that could not be read were not, one after another; empty when all were. */
+function transcriptReadErrors(transcripts: ReaderTranscriptView[]): string {
+  return transcripts.flatMap(({ readError }) => (readError ? [readError] : [])).join(" ");
+}
+
+/** The report of the reader command that produced a transcript entry. */
+function readerActionReport(
+  actionReports: ActionReportView[],
+  entry: ReaderEntryView
+): ActionReportView | undefined {
+  return actionReports.find(({ action }) => action.actionId === readerActionId(entry));
 }
 
 /** The cross-evidence judgment of the reader command that produced a transcript entry. */
@@ -1388,9 +1424,9 @@ function readerJudgment(
   actionReports: ActionReportView[],
   entry: ReaderEntryView
 ): ActionJudgmentView | undefined {
-  return actionReports
-    .find(({ action }) => action.actionId === readerActionId(entry))
-    ?.judgments.find(({ judgeId }) => judgeId === "screen-reader");
+  return readerActionReport(actionReports, entry)?.judgments.find(
+    ({ judgeId }) => judgeId === "screen-reader"
+  );
 }
 
 function readerActionId(entry: ReaderEntryView): string {
@@ -1410,32 +1446,33 @@ async function loadReaderTranscriptViews(
   return Promise.all(
     artifacts.map(async (artifact) => {
       const artifactPath = String(artifact.path);
+      const textPath = report.artifacts.find(
+        (candidate) =>
+          candidate.kind === "screen-reader-transcript" &&
+          candidate.phase === "lane" &&
+          path.posix.dirname(String(candidate.path)) === path.posix.dirname(artifactPath) &&
+          /(^|\/)transcript\.txt$/.test(String(candidate.path))
+      );
+      const view = { path: artifactPath, textPath: textPath ? String(textPath.path) : undefined };
       try {
-        const document = await readReportJson(rootDir, artifactPath);
-        const entries = Array.isArray(document.entries)
-          ? document.entries.filter(isRecord).map(readerEntryView)
-          : [];
-        const textPath = report.artifacts.find(
-          (candidate) =>
-            candidate.kind === "screen-reader-transcript" &&
-            candidate.phase === "lane" &&
-            path.posix.dirname(String(candidate.path)) === path.posix.dirname(artifactPath) &&
-            /(^|\/)transcript\.txt$/.test(String(candidate.path))
+        const transcript = await readEvidenceJson<VirtualScreenReaderTranscript>(
+          rootDir,
+          artifactPath,
+          "virtualScreenReaderTranscript"
         );
         return {
-          path: artifactPath,
-          textPath: textPath ? String(textPath.path) : undefined,
-          pageUrl: stringField(document, "pageUrl", report.target),
-          mode: stringField(document, "mode", "guide"),
-          fidelity: stringField(document, "fidelity", "semantic-simulation"),
-          entries
+          ...view,
+          pageUrl: transcript.pageUrl,
+          mode: transcript.mode,
+          fidelity: transcript.fidelity,
+          entries: transcript.entries.map(readerEntryView)
         };
       } catch (error) {
         return {
-          path: artifactPath,
+          ...view,
           pageUrl: report.target,
-          mode: "unknown",
-          fidelity: "unknown",
+          mode: "unknown" as const,
+          fidelity: "unknown" as const,
           entries: [],
           readError: error instanceof Error ? error.message : String(error)
         };
@@ -1444,29 +1481,19 @@ async function loadReaderTranscriptViews(
   );
 }
 
-function readerEntryView(entry: Record<string, unknown>): ReaderEntryView {
-  const item = isRecord(entry.item) ? entry.item : {};
-  const bounds = isRecord(item.visualBounds) ? item.visualBounds : undefined;
+function readerEntryView({ item, ...entry }: VirtualScreenReaderEntry): ReaderEntryView {
   return {
-    sequence: numberField(entry, "sequence"),
-    command: stringField(entry, "command", "unknown-command"),
-    announcement: stringField(entry, "announcement", "No announcement was emitted."),
-    role: optionalStringField(item, "role"),
-    name: optionalStringField(item, "name"),
-    level: optionalNumberField(item, "level"),
-    nodePath: optionalStringField(item, "nodePath"),
-    focusBefore: focusPlace(readerFocusOf(entry.domFocusBefore)),
-    focusAfter: focusPlace(readerFocusOf(entry.domFocusAfter)),
-    focusMoved: entry.focusMoved === true,
-    visualBounds:
-      bounds && ["x", "y", "width", "height"].every((key) => typeof bounds[key] === "number")
-        ? {
-            x: Number(bounds.x),
-            y: Number(bounds.y),
-            width: Number(bounds.width),
-            height: Number(bounds.height)
-          }
-        : undefined
+    sequence: entry.sequence,
+    command: entry.command,
+    announcement: entry.announcement,
+    role: item?.role,
+    name: item?.name,
+    level: item?.level,
+    nodePath: item?.nodePath,
+    focusBefore: focusPlace(entry.domFocusBefore),
+    focusAfter: focusPlace(entry.domFocusAfter),
+    focusMoved: entry.focusMoved,
+    visualBounds: item?.visualBounds
   };
 }
 
@@ -1476,21 +1503,44 @@ async function loadInputComparisonViews(
 ): Promise<InputComparisonView[]> {
   const artifacts = report.artifacts.filter((artifact) => artifact.kind === "interaction-trace");
   return Promise.all(
-    artifacts.map(async (artifact) => {
+    artifacts.map(async (artifact): Promise<InputComparisonView> => {
       const artifactPath = String(artifact.path);
       try {
-        const document = await readReportJson(rootDir, artifactPath);
-        const lanes = isRecord(document.lanes) ? document.lanes : {};
-        return {
+        const trace = await readEvidenceJson<InputComparisonTrace>(
+          rootDir,
+          artifactPath,
+          "interactionComparison"
+        );
+        const view = {
           path: artifactPath,
-          comparisonId: stringField(document, "comparisonId", "comparison"),
-          name: stringField(document, "name", "Pointer and keyboard comparison"),
-          status: stringField(document, "status", "unknown"),
-          isolation: stringField(document, "isolation", "unknown"),
-          equivalence: comparisonResultView(document.equivalence),
-          expectation: comparisonResultView(document.expectation),
-          pointer: comparisonLaneView(lanes.pointer),
-          keyboard: comparisonLaneView(lanes.keyboard)
+          comparisonId: trace.comparisonId,
+          name: trace.name,
+          status: trace.status,
+          isolation: trace.isolation
+        };
+        if (trace.status !== "completed") {
+          // A comparison that stopped has no outcome to compare, only the reason it stopped.
+          const stopped = {
+            verdict: "unknown" as const,
+            summary: `The comparison ${trace.status}: ${trace.diagnostics.join(" ")}`
+          };
+          return {
+            ...view,
+            equivalence: stopped,
+            expectation: stopped,
+            pointer: { actionIds: [] },
+            keyboard: { actionIds: [] }
+          };
+        }
+        return {
+          ...view,
+          equivalence: trace.equivalence,
+          expectation: trace.expectation ?? {
+            verdict: "unknown",
+            summary: "No expected outcome was declared, so none was checked."
+          },
+          pointer: comparisonLaneView(trace.lanes.pointer),
+          keyboard: comparisonLaneView(trace.lanes.keyboard)
         };
       } catch (error) {
         return {
@@ -1510,26 +1560,12 @@ async function loadInputComparisonViews(
   );
 }
 
-function comparisonResultView(value: unknown): InputComparisonView["equivalence"] {
-  const result = isRecord(value) ? value : {};
+function comparisonLaneView({ steps, observation }: InputComparisonLane): ComparisonLaneView {
   return {
-    verdict: verdictField(result.verdict),
-    summary: stringField(result, "summary", "No comparison summary was emitted.")
-  };
-}
-
-function comparisonLaneView(value: unknown): InputComparisonView["keyboard"] {
-  const lane = isRecord(value) ? value : {};
-  const observation = isRecord(lane.observation) ? lane.observation : {};
-  const steps = Array.isArray(lane.steps) ? lane.steps.filter(isRecord) : [];
-  return {
-    actionIds: steps.map((step) => {
-      const action = isRecord(step.action) ? step.action : {};
-      return stringField(action, "id", "unknown-action");
-    }),
-    url: optionalStringField(observation, "url"),
-    visible: typeof observation.visible === "boolean" ? observation.visible : undefined,
-    text: optionalStringField(observation, "text")
+    actionIds: steps.map(({ action }) => action.id),
+    url: observation.url,
+    visible: observation.visible,
+    text: observation.text ?? undefined
   };
 }
 
@@ -1591,9 +1627,8 @@ async function loadElementMapViews(
         screenshotPath: screenshot ? String(screenshot.path) : undefined
       };
       try {
-        const document = await readReportJson(rootDir, artifactPath);
-        assertValidSchema("elementMap", document, artifactPath);
-        return { ...view, map: document as unknown as ElementMap };
+        const map = await readEvidenceJson<ElementMap>(rootDir, artifactPath, "elementMap");
+        return { ...view, map };
       } catch (error) {
         return { ...view, readError: error instanceof Error ? error.message : String(error) };
       }
@@ -1612,17 +1647,19 @@ async function loadSweepViews(
     artifacts.map(async (artifact) => {
       const artifactPath = String(artifact.path);
       try {
-        const document = await readReportJson(rootDir, artifactPath);
-        assertValidSchema("keyboardPointerSweepLane", document, artifactPath);
-        const laneId = String(document.laneId);
+        const document = await readEvidenceJson<KeyboardPointerSweepLaneDocument>(
+          rootDir,
+          artifactPath,
+          "keyboardPointerSweepLane"
+        );
         const screenshot = report.artifacts.find((candidate) => {
           const provenance = isRecord(candidate.provenance) ? candidate.provenance : {};
-          return candidate.kind === "full-page-screenshot" && provenance.laneId === laneId;
+          return candidate.kind === "full-page-screenshot" && provenance.laneId === document.laneId;
         });
         return {
           path: artifactPath,
           screenshotPath: screenshot ? String(screenshot.path) : undefined,
-          document: document as unknown as KeyboardPointerSweepLaneDocument
+          document
         };
       } catch (error) {
         return {
@@ -1641,22 +1678,12 @@ async function loadActionReportViews(
   return Promise.all(
     report.actions.map(async (action) => {
       try {
-        const document = await readReportJson(rootDir, action.reportPath);
-        const judgments = Array.isArray(document.judgments)
-          ? document.judgments.filter(isRecord).map((judgment) => ({
-              judgeId: stringField(judgment, "judgeId", "unknown judge"),
-              verdict: verdictField(judgment.verdict),
-              severity: optionalStringField(judgment, "severity"),
-              summary: stringField(judgment, "summary", "No summary was emitted."),
-              suggestedFix: optionalStringField(judgment, "suggestedFix")
-            }))
-          : [];
-        const observerSummaries = Array.isArray(document.records)
-          ? document.records
-              .filter(isRecord)
-              .map((record) => optionalStringField(record, "summary"))
-              .filter((summary): summary is string => Boolean(summary))
-          : [];
+        const { judgments, records } = await readEvidenceJson<AeeReportPayload>(
+          rootDir,
+          action.reportPath,
+          "report"
+        );
+        const observerSummaries = records.flatMap(({ summary }) => (summary ? [summary] : []));
         return { action, judgments, observerSummaries };
       } catch (error) {
         return {
@@ -2030,33 +2057,40 @@ function buildStatusAreas(
       }
     }
   }
+  const unreadTranscripts = transcriptReadErrors(views.transcripts);
   const readerRow = unnamed.size
     ? fixRequired(
         "reader",
         "Virtual reader",
         `Announced without a name: ${[...unnamed.values()].join(", ")}.`
       )
-    : !plannedChecks.reader
-      ? notPlanned(
+    : unreadTranscripts
+      ? needsReview(
           "reader",
           "Virtual reader",
-          "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
+          `A reader transcript could not be read, so its announcements were not checked. ${unreadTranscripts}`
         )
-      : reader.commands > 0 && reader.failed === 0
-        ? noIssue(
+      : !plannedChecks.reader
+        ? notPlanned(
             "reader",
             "Virtual reader",
-            reader.passed === reader.commands
-              ? `All ${reader.commands} commands passed: each announcement matched the accessibility tree, visuals and focus state.`
-              : `${reader.passed} of ${reader.commands} commands passed and none failed; ${reader.commands - reader.passed} could not be decided.`
+            "No virtual screen-reader commands were chosen; a journey's virtualScreenReaderCommands add them."
           )
-        : needsReview(
-            "reader",
-            "Virtual reader",
-            reader.commands
-              ? `${reader.commands - reader.passed} of ${reader.commands} commands did not pass the cross-evidence check.`
-              : "No virtual screen-reader commands were run."
-          );
+        : reader.commands > 0 && reader.failed === 0
+          ? noIssue(
+              "reader",
+              "Virtual reader",
+              reader.passed === reader.commands
+                ? `All ${reader.commands} commands passed: each announcement matched the accessibility tree, visuals and focus state.`
+                : `${reader.passed} of ${reader.commands} commands passed and none failed; ${reader.commands - reader.passed} could not be decided.`
+            )
+          : needsReview(
+              "reader",
+              "Virtual reader",
+              reader.commands
+                ? `${reader.commands - reader.passed} of ${reader.commands} commands did not pass the cross-evidence check.`
+                : "No virtual screen-reader commands were run."
+            );
 
   const semanticFindings = blockingIn("semantics");
   const semantics = semanticFindings.length
@@ -2874,11 +2908,27 @@ async function readReportJson(
   rootDir: string,
   reportPath: string
 ): Promise<Record<string, unknown>> {
-  const parsed: unknown = JSON.parse(
-    await readFile(resolveReportPath(rootDir, reportPath), "utf8")
-  );
+  const parsed = await parseReportJson(rootDir, reportPath);
   if (!isRecord(parsed)) throw new Error(`Expected ${reportPath} to contain a JSON object.`);
   return parsed;
+}
+
+/**
+ * An evidence file AEE wrote, checked against its schema before anything reads it. A field that
+ * is missing or of the wrong type is an error naming the file and the field, never a default.
+ */
+async function readEvidenceJson<T>(
+  rootDir: string,
+  reportPath: string,
+  schemaName: SchemaName
+): Promise<T> {
+  const document = await parseReportJson(rootDir, reportPath);
+  assertValidSchema(schemaName, document, reportPath);
+  return document as T;
+}
+
+async function parseReportJson(rootDir: string, reportPath: string): Promise<unknown> {
+  return JSON.parse(await readFile(resolveReportPath(rootDir, reportPath), "utf8"));
 }
 
 function resolveReportPath(rootDir: string, reportPath: string): string {
@@ -5046,7 +5096,11 @@ function renderReaderOverview(
             : "";
         })
         .join("");
-      return `<article class="finding-dossier"><header><div><h3>Guide-mode navigation</h3><p>${escapeHtml(transcript.pageUrl)} · ${escapeHtml(transcript.fidelity.replaceAll("-", " "))}</p></div><span class="badge ${report.synthesis.reader.failed ? "fail" : report.synthesis.reader.unknown ? "unknown" : "pass"}">${report.synthesis.reader.passed}/${report.synthesis.reader.commands} passed</span></header>${transcript.readError ? `<p>${escapeHtml(transcript.readError)}</p>` : `<div class="table-wrap" tabindex="0"><table><caption>Announcements correlated with semantic, visual, and focus evidence</caption><thead><tr><th scope="col">Command</th><th scope="col">Virtual announcement and bounds</th><th scope="col">DOM focus</th><th scope="col">Cross-evidence result</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div><h4>Rendered checkpoints</h4><div class="media-grid">${visuals}</div>`}<p class="evidence-links"><a href="${encodeURI(transcript.path)}">Open transcript JSON</a>${transcript.textPath ? ` <a href="${encodeURI(transcript.textPath)}">Open readable transcript</a>` : ""}</p></article>`;
+      const { reader } = report.synthesis;
+      const result = transcript.readError
+        ? '<span class="badge unknown">not read</span>'
+        : `<span class="badge ${reader.failed ? "fail" : reader.unknown ? "unknown" : "pass"}">${reader.passed}/${reader.commands} passed</span>`;
+      return `<article class="finding-dossier"><header><div><h3>Guide-mode navigation</h3><p>${escapeHtml(transcript.pageUrl)} · ${escapeHtml(transcript.readError ? "transcript not read" : transcript.fidelity.replaceAll("-", " "))}</p></div>${result}</header>${transcript.readError ? `<p>${escapeHtml(transcript.readError)}</p>` : `<div class="table-wrap" tabindex="0"><table><caption>Announcements correlated with semantic, visual, and focus evidence</caption><thead><tr><th scope="col">Command</th><th scope="col">Virtual announcement and bounds</th><th scope="col">DOM focus</th><th scope="col">Cross-evidence result</th><th scope="col">Evidence</th></tr></thead><tbody>${rows}</tbody></table></div><h4>Rendered checkpoints</h4><div class="media-grid">${visuals}</div>`}<p class="evidence-links"><a href="${encodeURI(transcript.path)}">Open transcript JSON</a>${transcript.textPath ? ` <a href="${encodeURI(transcript.textPath)}">Open readable transcript</a>` : ""}</p></article>`;
     })
     .join("");
 }
@@ -5273,18 +5327,6 @@ function optionalStringField(value: Record<string, unknown>, field: string): str
 
 function stringField(value: Record<string, unknown>, field: string, fallback: string): string {
   return optionalStringField(value, field) ?? fallback;
-}
-
-function numberField(value: Record<string, unknown>, field: string, fallback = 0): number {
-  return typeof value[field] === "number" ? value[field] : fallback;
-}
-
-function optionalNumberField(value: Record<string, unknown>, field: string): number | undefined {
-  return typeof value[field] === "number" ? value[field] : undefined;
-}
-
-function verdictField(value: unknown): "pass" | "fail" | "unknown" {
-  return value === "pass" || value === "fail" || value === "unknown" ? value : "unknown";
 }
 
 function safeHttpUrl(value: string | undefined): string | undefined {

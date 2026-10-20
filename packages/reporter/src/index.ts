@@ -73,6 +73,9 @@ export function createMarkdownReporter(): ReporterPlugin {
   };
 }
 
+/** An action's aee-report.json, as the JSON reporter writes it and report.schema.json checks it. */
+export type AeeReportPayload = ReturnType<typeof buildReportPayload>;
+
 function buildReportPayload(input: ReporterInput) {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
