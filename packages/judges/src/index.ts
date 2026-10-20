@@ -1,7 +1,10 @@
 import {
   DEFAULT_POLICY,
+  describeRequestedTarget,
   focusPlace,
   readerFocusOf,
+  requestedTargetOf,
+  sameRequestedTarget,
   spokenRoleOf,
   TEXT_ROLE,
   type AccessibilityChange,
@@ -14,6 +17,7 @@ import {
   type Judgment,
   type LiveRegionAnnouncement,
   type LiveRegionRef,
+  type RequestedTarget,
   type TargetDescriptor
 } from "@aee/core";
 
@@ -377,7 +381,24 @@ function judgePreservedFocus(
 ): Judgment[] {
   const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
   const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
-  const preserved = focusIdentity(beforeTarget) === focusIdentity(afterTarget);
+  const preserved = sameFocusedElement(beforeTarget, afterTarget);
+  if (typeof preserved === "string") {
+    return [
+      {
+        id: `focus-management:${bundle.interaction.id}`,
+        judgeId: "focus-management",
+        judgeVersion: "0.4.0",
+        scope: "interaction",
+        verdict: "unknown",
+        summary: `Whether focus stayed on ${describeFocusTarget(beforeTarget)} cannot be told. ${preserved}`,
+        severity: "medium",
+        confidence: 0.8,
+        evidenceRecordIds,
+        artifactIds,
+        tags: ["focus-management", "interaction-state"]
+      }
+    ];
+  }
   const suggestedFix = preserved
     ? undefined
     : "Do not move DOM focus for an interaction that only reveals or announces supplemental information.";
@@ -399,12 +420,12 @@ function judgePreservedFocus(
     {
       id: `focus-management:${bundle.interaction.id}`,
       judgeId: "focus-management",
-      judgeVersion: "0.2.0",
+      judgeVersion: "0.4.0",
       scope: "interaction",
       verdict: preserved ? "pass" : "fail",
       summary: preserved
         ? `Focus remained on ${describeFocusTarget(beforeTarget)} as required.`
-        : `Focus unexpectedly moved from ${describeFocusTarget(beforeTarget)} to ${describeFocusTarget(afterTarget)}.`,
+        : `Focus unexpectedly moved from ${describeFocusAt(beforeTarget)} to ${describeFocusAt(afterTarget)}.`,
       severity: preserved ? "info" : "high",
       confidence: 0.98,
       evidenceRecordIds,
@@ -426,6 +447,7 @@ function judgeFocusedTarget(
   const evidenceRecordIds = [beforeRecord.id, afterRecord.id];
   const artifactIds = collectArtifactIds([beforeRecord, afterRecord]);
   const expectedTarget = bundle.interaction.target;
+  const requested = requestedTargetOf(expectedTarget);
   const matched = focusMatchesTarget(afterTarget, expectedTarget);
 
   if (typeof matched === "string") {
@@ -433,7 +455,7 @@ function judgeFocusedTarget(
       {
         id: `focus-management:${bundle.interaction.id}`,
         judgeId: "focus-management",
-        judgeVersion: "0.3.0",
+        judgeVersion: "0.4.0",
         scope: "interaction",
         verdict: "unknown",
         summary: `The captured focus target cannot be deterministically matched to the requested target. ${matched}`,
@@ -446,7 +468,6 @@ function judgeFocusedTarget(
     ];
   }
 
-  const focusedAt = readerFocusOf(getDeepFocusTarget(afterTarget));
   const suggestedFix = matched
     ? undefined
     : "After the focus action, ensure document.activeElement resolves to the requested control.";
@@ -467,12 +488,12 @@ function judgeFocusedTarget(
     {
       id: `focus-management:${bundle.interaction.id}`,
       judgeId: "focus-management",
-      judgeVersion: "0.3.0",
+      judgeVersion: "0.4.0",
       scope: "interaction",
       verdict: matched ? "pass" : "fail",
       summary: matched
         ? `Focus resolved to the requested target ${describeFocusTarget(afterTarget)}.`
-        : `Focus did not resolve to the requested target${expectedTarget?.selector ? ` (selector ${expectedTarget.selector})` : ""}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusTarget(afterTarget)}${focusedAt ? ` at ${focusPlace(focusedAt)}` : ""}.`,
+        : `Focus did not resolve to the requested target${requested ? ` (${describeRequestedTarget(requested)})` : ""}. Before: ${describeFocusTarget(beforeTarget)}. After: ${describeFocusAt(afterTarget)}.`,
       severity: matched ? "info" : "high",
       confidence: 0.98,
       evidenceRecordIds,
@@ -484,23 +505,37 @@ function judgeFocusedTarget(
   ];
 }
 
-function focusIdentity(focusTarget: unknown): string {
-  const target = getDeepFocusTarget(focusTarget);
-  if (!isRecord(target)) return "none";
-  return JSON.stringify({
-    nodePath: getStringField(target, "nodePath"),
-    id: getStringField(target, "id"),
-    role: getStringField(target, "role"),
-    name: getStringField(target, "name")
+/**
+ * Whether focus is on the same element after the interaction as before: true or false, or why
+ * that cannot be told. The browser's own numbers tell it: the frame that holds the element and
+ * the element's `backendDOMNodeId` there, which stays the element's while it is in the page and
+ * is never given to another in that frame. A path, id, role and name are not compared: two
+ * elements can share them (one in a frame, one in the page), and one element's can change, as a
+ * tip put before it changes its path.
+ */
+function sameFocusedElement(before: unknown, after: unknown): boolean | string {
+  const [first, second] = [getDeepFocusTarget(before), getDeepFocusTarget(after)];
+  if (!isRecord(first) || !isRecord(second)) return !isRecord(first) && !isRecord(second);
+  const node = (target: Record<string, unknown>) => ({
+    frameId: getStringField(target, "frameId"),
+    nodeId: getNumericField(target, "backendDOMNodeId")
   });
+  const [was, is] = [node(first), node(second)];
+  if (!was.frameId || !is.frameId || was.nodeId === undefined || is.nodeId === undefined) {
+    return "The focus records do not number the focused element as the browser does, and a path, role and name that read the same can belong to another element.";
+  }
+  return was.frameId === is.frameId && was.nodeId === is.nodeId;
 }
 
 /**
- * Whether focus is on the requested target: true or false, or why that cannot be told. Role and
- * name are compared with the accessibility tree's. A selector is not compared as text with the
- * focused element's path, since two elements can have the same path in their own documents and one
- * element can be selected in many ways: the focus observer resolves it in the page and records
- * whether the element it selects is the one with focus (`requestedTarget`).
+ * Whether focus is on the requested target: true or false, or why that cannot be told. The
+ * target's text is not compared with the focused element's: two elements can have the same path
+ * in their own documents, or the same role and name, and one element can be selected in many
+ * ways. The focus observer finds the target in the page, by its selector or by its role and name
+ * as the action found it, and records whether the element it matches is the one with focus
+ * (`requestedTarget`). The accessibility tree's role and name are still compared for a target
+ * given by both a selector and a role or name, and for a role or a name alone, which the page is
+ * not asked to find; a role or name that differs means another element.
  */
 function focusMatchesTarget(
   focusTarget: unknown,
@@ -509,6 +544,9 @@ function focusMatchesTarget(
   const target = getDeepFocusTarget(focusTarget);
   if (!isRecord(target)) return "No element was recorded with focus.";
   if (!expectedTarget) return "The interaction names no requested target.";
+  const requested = requestedTargetOf(expectedTarget);
+  const answer = requested && recordedFocusOn(focusTarget, requested);
+  if (requested && !("selector" in requested) && answer !== undefined) return answer;
   // Role and name come from the accessibility tree; without it, whether they match is unknown.
   const role = getStringField(target, "role");
   const name = getStringField(target, "name");
@@ -517,21 +555,36 @@ function focusMatchesTarget(
   }
   if (expectedTarget.role && role !== expectedTarget.role) return false;
   if (expectedTarget.name && name !== expectedTarget.name) return false;
-  if (expectedTarget.selector) {
-    const requested = isRecord(focusTarget) ? focusTarget.requestedTarget : undefined;
-    if (!isRecord(requested) || requested.selector !== expectedTarget.selector) {
-      return `The focus record does not say whether the element ${expectedTarget.selector} selects is the one with focus, and the selector's text cannot be compared with the focused element's path.`;
-    }
-    if (requested.status === "focused") return true;
-    if (requested.status === "not-focused") return false;
-    return (
-      getStringField(requested, "reason") ??
-      `Whether the element ${expectedTarget.selector} selects has focus could not be told.`
-    );
+  if (!requested) {
+    return expectedTarget.role || expectedTarget.name
+      ? true
+      : "The requested target has no role, name or selector.";
   }
-  return expectedTarget.role || expectedTarget.name
-    ? true
-    : "The requested target has no role, name or selector.";
+  return (
+    answer ??
+    `The focus record does not say whether the element the ${describeRequestedTarget(requested)} matches is the one with focus, ${"selector" in requested ? "and the selector's text cannot be compared with the focused element's path" : "and another element can have the same role and name"}.`
+  );
+}
+
+/**
+ * What the focus record says of `requested`: whether the element it matches has focus, or why
+ * that could not be told; undefined when it records nothing about that target.
+ */
+function recordedFocusOn(
+  focusTarget: unknown,
+  requested: RequestedTarget
+): boolean | string | undefined {
+  const record = isRecord(focusTarget) ? focusTarget.requestedTarget : undefined;
+  const recorded = isRecord(record) ? requestedTargetOf(record) : undefined;
+  if (!isRecord(record) || !recorded || !sameRequestedTarget(recorded, requested)) {
+    return undefined;
+  }
+  if (record.status === "focused") return true;
+  if (record.status === "not-focused") return false;
+  return (
+    getStringField(record, "reason") ??
+    `Whether the element the ${describeRequestedTarget(requested)} matches has focus could not be told.`
+  );
 }
 
 function getDeepFocusTarget(focusTarget: unknown): unknown {
@@ -2881,6 +2934,15 @@ function serializeFocusTarget(target: unknown): string {
   };
 
   return JSON.stringify(normalized);
+}
+
+/**
+ * The element a focus record has focus on, and where it is in the page, as in
+ * `button role=button "Save" at iframe >>> button`.
+ */
+function describeFocusAt(focusTarget: unknown): string {
+  const place = readerFocusOf(getDeepFocusTarget(focusTarget));
+  return `${describeFocusTarget(focusTarget)}${place ? ` at ${focusPlace(place)}` : ""}`;
 }
 
 function describeFocusTarget(target: unknown): string {

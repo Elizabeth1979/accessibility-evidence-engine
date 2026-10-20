@@ -1,3 +1,4 @@
+import { describeRequestedTarget, type RequestedTarget } from "@aee/core";
 import type * as Tabbable from "tabbable";
 
 import {
@@ -327,35 +328,35 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
 }
 
 /**
- * Whether the element an interaction's target selector selects is the element with focus. The
- * focus judge reads this rather than comparing the selector's text with `nodePath`: two elements
- * can have the same path in their own documents, and one element can be selected in many ways.
+ * Whether the element an interaction's target names, by its selector or by its role and name, is
+ * the element with focus. The focus judge reads this rather than comparing the target's text with
+ * the focused element's: two elements can have the same path in their own documents, or the same
+ * role and name, and one element can be selected in many ways.
  */
-export interface RequestedTargetFocus {
-  /** The selector, as the interaction's target gives it. */
-  selector: string;
+export type RequestedTargetFocus = RequestedTarget & {
   /**
-   * - `focused`: the selector selects one element, and it is the element with focus;
-   * - `not-focused`: it selects one element, and focus is on another, or deeper inside it (in its
+   * - `focused`: the target matches one element, and it is the element with focus;
+   * - `not-focused`: it matches one element, and focus is on another, or deeper inside it (in its
    *   shadow root or its frame);
    * - `unresolved`: which element it means, or whether that one has focus, cannot be told
    *   (`reason`).
    */
   status: "focused" | "not-focused" | "unresolved";
-  /** How many elements the selector selects in the page, when it could be resolved. */
+  /** How many elements the target matches in the page, when Playwright could look. */
   matchCount?: number;
   reason?: string;
-}
+};
 
-/** A page that resolves a selector as a scenario's action does: Playwright's `page.locator`. */
-export interface SelectorPage {
-  locator(selector: string): {
-    evaluateAll(pageFunction: (elements: Element[]) => ActiveChainPlace): Promise<unknown>;
-  };
+/**
+ * The elements an interaction's target matches, found by Playwright as the scenario's action
+ * found them (`page.locator` for a selector, `page.getByRole` for a role and name).
+ */
+export interface TargetElements {
+  evaluateAll(pageFunction: (elements: Element[]) => ActiveChainPlace): Promise<unknown>;
 }
 
 /**
- * Where the elements a selector selects stand on the way to focus, run in the page by Playwright
+ * Where the elements a target matches stand on the way to focus, run in the page by Playwright
  * on all of them: how many they are, and, for one, how many documents and shadow roots there are
  * from it up to the top page (`roots`) when it is the active element of each (its own document or
  * shadow root's, its host's in the root above, the `<iframe>` element's in the document above),
@@ -390,49 +391,50 @@ interface ActiveChainPlace {
 }
 
 /**
- * Whether the element `selector` selects is the element with focus that `focus` records. The
- * selector is resolved by Playwright, as the scenario's action resolved it, so it selects the same
- * element. That element has focus when it is the active element of its document or shadow root,
- * and of each one above it (`activeChainPlace`, in the page), and focus goes no deeper: the chain
- * of active elements the capture followed, through closed shadow roots and every frame, ends with
+ * Whether the element `target` names is the element with focus that `focus` records. `elements`
+ * are the ones Playwright finds for it, as the scenario's action found them, so they are the same.
+ * That element has focus when it is the active element of its document or shadow root, and of
+ * each one above it (`activeChainPlace`, in the page), and focus goes no deeper: the chain of
+ * active elements the capture followed, through closed shadow roots and every frame, ends with
  * it, so has exactly as many links as it has roots up to the top page.
  */
 export async function focusOnRequestedTarget(
-  page: SelectorPage,
-  selector: string,
+  elements: TargetElements,
+  target: RequestedTarget,
   focus: Pick<DomFocusState, "activeElementChain">
 ): Promise<RequestedTargetFocus> {
+  const described = describeRequestedTarget(target);
   const unresolved = (reason: string, matchCount?: number): RequestedTargetFocus => ({
-    selector,
+    ...target,
     status: "unresolved",
     ...(matchCount === undefined ? {} : { matchCount }),
     reason
   });
   let place: ActiveChainPlace;
   try {
-    place = (await page.locator(selector).evaluateAll(activeChainPlace)) as ActiveChainPlace;
+    place = (await elements.evaluateAll(activeChainPlace)) as ActiveChainPlace;
   } catch (error) {
     return unresolved(
-      `The page could not resolve the selector ${selector}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
+      `The page could not find the ${described}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`
     );
   }
   if (place.count === 0) {
-    return unresolved(`The selector ${selector} selects no element in the page.`, 0);
+    return unresolved(`The ${described} matches no element in the page.`, 0);
   }
   if (place.count > 1) {
     return unresolved(
-      `The selector ${selector} selects ${place.count} elements, so which one was requested cannot be told.`,
+      `The ${described} matches ${place.count} elements, so which one was requested cannot be told.`,
       place.count
     );
   }
   if (place.roots === undefined) {
     return unresolved(
-      `The selector ${selector} selects an element inside a cross-origin frame, whose place in the page cannot be read from inside it.`,
+      `The ${described} matches an element inside a cross-origin frame, whose place in the page cannot be read from inside it.`,
       1
     );
   }
   const focused = place.roots === focus.activeElementChain.length;
-  return { selector, status: focused ? "focused" : "not-focused", matchCount: 1 };
+  return { ...target, status: focused ? "focused" : "not-focused", matchCount: 1 };
 }
 
 /**

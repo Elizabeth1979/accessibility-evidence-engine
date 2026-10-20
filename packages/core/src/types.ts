@@ -32,6 +32,11 @@ export interface ArtifactRef {
 export interface TargetDescriptor {
   role?: string;
   name?: string;
+  /**
+   * Whether `name` is the whole accessible name (true, the default) or a part of it, matched
+   * without regard to case, as Playwright's `getByRole` takes it.
+   */
+  exact?: boolean;
   selector?: string;
   locator?: string;
   nodePath?: string;

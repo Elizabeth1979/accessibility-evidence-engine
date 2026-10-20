@@ -73,6 +73,10 @@
         "name": {
           "type": "string"
         },
+        "exact": {
+          "type": "boolean",
+          "description": "Whether name is the whole accessible name (true, the default) or a part of it, matched without regard to case, as Playwright's getByRole takes it."
+        },
         "selector": {
           "type": "string"
         },

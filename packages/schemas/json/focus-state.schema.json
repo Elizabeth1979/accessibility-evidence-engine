@@ -42,14 +42,29 @@
     "activeDescendant": { "$ref": "#/$defs/element" },
     "requestedTarget": {
       "type": "object",
-      "description": "Whether the element the interaction's target selector selects, resolved in the page by Playwright as the action resolved it, is the element with focus. focused: it selects one element and that element has focus; not-focused: it selects one element and focus is on another, or deeper inside it; unresolved: which element it means, or whether that one has focus, cannot be told (reason). Recorded only when the interaction's target has a selector.",
-      "required": ["selector", "status"],
+      "description": "Whether the element the interaction's target names, found in the page by Playwright as the action found it (page.locator for a selector, page.getByRole for a role and name), is the element with focus. focused: the target matches one element and that element has focus; not-focused: it matches one element and focus is on another, or deeper inside it; unresolved: which element it means, or whether that one has focus, cannot be told (reason). Recorded when the interaction's target has a selector, or a role and a name.",
+      "required": ["status"],
       "properties": {
         "selector": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "exact": {
+          "type": "boolean",
+          "description": "Whether name is the whole accessible name (true, the default) or a part of it, as getByRole takes it."
+        },
         "status": { "enum": ["focused", "not-focused", "unresolved"] },
         "matchCount": { "type": "integer", "minimum": 0 },
         "reason": { "type": "string", "minLength": 1 }
       },
+      "oneOf": [
+        {
+          "required": ["selector"],
+          "not": {
+            "anyOf": [{ "required": ["role"] }, { "required": ["name"] }, { "required": ["exact"] }]
+          }
+        },
+        { "required": ["role", "name"], "not": { "required": ["selector"] } }
+      ],
       "if": { "properties": { "status": { "const": "unresolved" } } },
       "then": { "required": ["reason"] },
       "additionalProperties": false
