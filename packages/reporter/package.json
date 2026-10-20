@@ -17,7 +17,10 @@
   "files": [
     "dist/index.js",
     "dist/index.js.map",
-    "dist/index.d.ts"
+    "dist/index.d.ts",
+    "dist/markdown.js",
+    "dist/markdown.js.map",
+    "dist/markdown.d.ts"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.11.0"
