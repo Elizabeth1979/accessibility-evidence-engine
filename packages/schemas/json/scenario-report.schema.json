@@ -169,7 +169,11 @@
         }
       }
     },
-    "artifacts": { "type": "array", "items": { "type": "object" } },
+    "artifacts": {
+      "description": "The evidence file list: each file the lanes' manifests index, as they index it, with its path from the report's folder.",
+      "type": "array",
+      "items": { "$ref": "./evidence-manifest.schema.json#/$defs/artifact" }
+    },
     "diagnostics": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "files": {
       "type": "object",

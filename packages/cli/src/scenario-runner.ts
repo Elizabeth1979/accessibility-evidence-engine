@@ -44,6 +44,7 @@ import {
   type ElementLocation,
   type ElementMap,
   type EvidenceManifest,
+  type EvidenceManifestArtifact,
   type InputComparisonLane,
   type InputComparisonResult,
   type InputComparisonTrace,
@@ -175,7 +176,7 @@ export interface ScenarioIntegratedReport {
   actions: ScenarioActionReport[];
   findings: Array<Record<string, unknown>>;
   synthesis: ScenarioSynthesis;
-  artifacts: Array<Record<string, unknown>>;
+  artifacts: EvidenceManifestArtifact[];
   diagnostics: string[];
   files: {
     html: string;
@@ -267,9 +268,13 @@ export type AxeTargetBox = ElementLocation;
 
 interface AxeReportView {
   path: string;
-  actionId: string;
-  laneId: string;
-  runId: string;
+  /**
+   * The page state the result was taken at, as the evidence file list names it. A result the list
+   * names no action, lane or run for is not read, since its rules cannot be tied to a page state.
+   */
+  actionId?: string;
+  laneId?: string;
+  runId?: string;
   violations: AxeRuleView[];
   incomplete: AxeRuleView[];
   passes: number;
@@ -1111,13 +1116,16 @@ async function collectAction(
 }
 
 async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
-  const artifacts: Array<Record<string, unknown>> = [];
+  const artifacts: EvidenceManifestArtifact[] = [];
   let completedLanes = 0;
   let missingArtifacts = 0;
   let failedArtifacts = 0;
   for (const manifestFile of manifestFiles) {
-    const manifest = JSON.parse(await readFile(manifestFile, "utf8")) as EvidenceManifest;
-    assertValidSchema("evidenceManifest", manifest, `child evidence manifest ${manifestFile}`);
+    const manifest = await readEvidenceJson<EvidenceManifest>(
+      rootDir,
+      relativePath(rootDir, manifestFile),
+      "evidenceManifest"
+    );
     completedLanes += manifest.lanes.filter(({ status }) => status === "completed").length;
     missingArtifacts += manifest.summary.missing;
     failedArtifacts += manifest.summary.failed;
@@ -1128,7 +1136,7 @@ async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
       });
     }
   }
-  artifacts.sort((left, right) => String(left.path).localeCompare(String(right.path)));
+  artifacts.sort((left, right) => left.path.localeCompare(right.path));
   return { artifacts, completedLanes, missingArtifacts, failedArtifacts };
 }
 
@@ -1160,7 +1168,7 @@ function createIntegratedReport(input: {
   plannedLanes: number;
   actions: ScenarioActionReport[];
   findings: Array<Record<string, unknown>>;
-  artifacts: Array<Record<string, unknown>>;
+  artifacts: EvidenceManifestArtifact[];
   completedLanes: number;
   missingArtifacts: number;
   failedArtifacts: number;
@@ -1700,12 +1708,26 @@ async function loadAxeReportViews(
     (artifact) => artifact.kind === "axe-result" && artifact.phase === "after"
   );
   return Promise.all(
-    artifacts.map(async (artifact) => {
-      const artifactPath = String(artifact.path);
-      const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
-      const actionId = stringField(provenance, "actionId", "Unknown action");
-      const laneId = stringField(provenance, "laneId", "unknown-lane");
-      const runId = stringField(provenance, "runId", "unknown-run");
+    artifacts.map(async ({ path: artifactPath, provenance: { actionId, laneId, runId } }) => {
+      const unread = (readError: string): AxeReportView => ({
+        path: artifactPath,
+        actionId,
+        laneId,
+        runId,
+        violations: [],
+        incomplete: [],
+        passes: 0,
+        inapplicable: 0,
+        readError
+      });
+      const unnamed = Object.entries({ action: actionId, lane: laneId, run: runId }).flatMap(
+        ([label, id]) => (id ? [] : [label])
+      );
+      if (unnamed.length) {
+        return unread(
+          `${artifactPath} is not tied to a page state: the evidence file list names no ${new Intl.ListFormat("en", { type: "disjunction" }).format(unnamed)} for it.`
+        );
+      }
       try {
         const document = await readEvidenceJson<AxeResultFile>(rootDir, artifactPath, "axeResult");
         return {
@@ -1719,17 +1741,7 @@ async function loadAxeReportViews(
           inapplicable: document.inapplicable.length
         };
       } catch (error) {
-        return {
-          path: artifactPath,
-          actionId,
-          laneId,
-          runId,
-          violations: [],
-          incomplete: [],
-          passes: 0,
-          inapplicable: 0,
-          readError: error instanceof Error ? error.message : String(error)
-        };
+        return unread(error instanceof Error ? error.message : String(error));
       }
     })
   );
@@ -2221,34 +2233,32 @@ function buildFindingSynthesis(
 ): FindingSynthesis {
   const ruleId = String(finding.ruleId ?? finding.id ?? "unknown-finding");
   if (isSweepFindingKind(ruleId)) return buildSweepFindingSynthesis(views, ruleId, finding);
-  const matchingReports = views.axeReports
-    .map((axeReport) => ({
-      axeReport,
-      rule: axeReport.violations.find(({ id }) => id === ruleId)
-    }))
-    .filter((entry): entry is { axeReport: AxeReportView; rule: AxeRuleView } =>
-      Boolean(entry.rule)
-    );
+  // Only a result tied to its action, lane and run is read, so only such a result has violations.
+  const matchingReports = views.axeReports.flatMap((axeReport) => {
+    const { actionId, laneId, runId } = axeReport;
+    const rule = axeReport.violations.find(({ id }) => id === ruleId);
+    return rule && actionId && laneId && runId
+      ? [{ axeReport, rule, checkpoint: { actionId, laneId, runId } }]
+      : [];
+  });
   const allRules = matchingReports.map(({ rule }) => rule);
   const representative = allRules.reduce<AxeRuleView | undefined>(
     (largest, rule) => (!largest || rule.nodeCount > largest.nodeCount ? rule : largest),
     undefined
   );
-  const checkpoints = matchingReports.map(({ axeReport, rule }) => {
+  const checkpoints = matchingReports.map(({ axeReport, rule, checkpoint }) => {
     const action = report.actions.find(
-      (candidate) => candidate.runId === axeReport.runId && candidate.laneId === axeReport.laneId
+      (candidate) => candidate.runId === checkpoint.runId && candidate.laneId === checkpoint.laneId
     );
     const actionView = views.actionReports.find(
-      (candidate) => candidate.action.runId === axeReport.runId
+      (candidate) => candidate.action.runId === checkpoint.runId
     );
     const behavior = actionView?.judgments.find(
       ({ judgeId }) => judgeId !== "axe" && judgeId !== "release"
     );
     return {
-      actionId: axeReport.actionId,
-      laneId: axeReport.laneId,
-      runId: axeReport.runId,
-      driver: action?.driver ?? driverFromLaneId(axeReport.laneId),
+      ...checkpoint,
+      driver: action?.driver ?? driverFromLaneId(checkpoint.laneId),
       behaviorVerdict: behavior?.verdict ?? "unknown",
       behaviorSummary: behavior?.summary ?? "No independent behavior judgment was available.",
       nodeCount: rule.nodeCount,
@@ -3997,14 +4007,12 @@ function renderLaneCoverage(report: ScenarioIntegratedReport): string {
 
 function renderStatusAreas(report: ScenarioIntegratedReport): string {
   const laneArtifact = (laneSuffix: string, kind: string) =>
-    report.artifacts.find((artifact) => {
-      const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
-      return (
+    report.artifacts.find(
+      (artifact) =>
         artifact.kind === kind &&
         (kind !== "viewport-screenshot" || artifact.phase === "after") &&
-        stringField(provenance, "laneId", "").endsWith(laneSuffix)
-      );
-    });
+        artifact.provenance.laneId?.endsWith(laneSuffix)
+    );
   // The authored keyboard lane when there is one; otherwise the sweep, which tabs every stop.
   const authored = Boolean(laneArtifact("-keyboard", "interaction-video"));
   const laneSuffix = authored ? "-keyboard" : "-keyboard-pointer-sweep";
@@ -5133,7 +5141,7 @@ function renderAxeReportViews(views: AxeReportView[]): string {
         rules.length
           ? `<section><h4>${escapeHtml(label)}</h4>${rules.map(renderAxeRule).join("")}</section>`
           : `<p class="empty">No ${escapeHtml(label.toLowerCase())}.</p>`;
-      return `<details class="result-card"><summary><span>${escapeHtml(humanActionName(view.actionId))}</span> ${view.readError ? '<span class="badge unknown">not read</span>' : `<span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span>`}</summary><div class="technical-id">${escapeHtml(view.actionId)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
+      return `<details class="result-card"><summary><span>${escapeHtml(view.actionId ? humanActionName(view.actionId) : "Page state not recorded")}</span> ${view.readError ? '<span class="badge unknown">not read</span>' : `<span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span>`}</summary><div class="technical-id">${escapeHtml(view.actionId ?? view.path)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
     })
     .join("");
   return `<section class="panel"><h3>Unique rules across checkpoints</h3><p>Repeated page-level results are consolidated here. “Reports” shows how many after-action Axe runs contained the rule; “Nodes” is the largest affected-node count in one run.</p><div class="table-wrap" tabindex="0"><table><caption>Consolidated Axe rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Result</th><th scope="col">Reports</th><th scope="col">Nodes</th><th scope="col">Guidance</th></tr></thead><tbody>${consolidatedRows}</tbody></table></div></section><section aria-labelledby="individual-axe-heading"><h3 id="individual-axe-heading">Individual Axe reports</h3><p>Expand a checkpoint to review its full rule summary.</p>${individualReports}</section>`;
@@ -5146,32 +5154,30 @@ function renderAxeRule(rule: AxeRuleView): string {
   return `<article class="rule ${escapeAttribute(rule.impact)}"><div class="card-heading"><h5>${escapeHtml(rule.id)}</h5><span class="badge ${rule.impact === "critical" || rule.impact === "serious" ? "fail" : "unknown"}">${escapeHtml(rule.impact === "unknown" ? "impact unknown: axe gave none" : rule.impact)}</span></div><p><strong>${escapeHtml(rule.help)}</strong></p><p>${escapeHtml(rule.description)}</p><p><strong>Affected nodes:</strong> ${rule.nodeCount}</p>${rule.failureSummary ? `<p><strong>How to resolve:</strong> ${escapeHtml(rule.failureSummary.replace(/^Fix any of the following:\s*/i, ""))}</p>` : ""}${visibleTargets.length ? `<details><summary>Show ${visibleTargets.length}${remaining ? ` of ${rule.targets.length}` : ""} affected selectors</summary><ul>${visibleTargets.map((target) => `<li><code>${escapeHtml(target)}</code></li>`).join("")}</ul>${remaining ? `<p>${remaining} more selectors are preserved in the raw Axe report.</p>` : ""}</details>` : ""}${helpUrl ? `<p><a href="${escapeAttribute(helpUrl)}">Open rule guidance</a></p>` : ""}</article>`;
 }
 
-function renderEvidenceGroups(artifacts: Array<Record<string, unknown>>): string {
-  const groups = new Map<string, Array<Record<string, unknown>>>();
+function renderEvidenceGroups(artifacts: EvidenceManifestArtifact[]): string {
+  const groups = new Map<string, EvidenceManifestArtifact[]>();
   for (const artifact of artifacts) {
-    const kind = stringField(artifact, "kind", "other");
-    const group = groups.get(kind) ?? [];
+    const group = groups.get(artifact.kind) ?? [];
     group.push(artifact);
-    groups.set(kind, group);
+    groups.set(artifact.kind, group);
   }
   return [...groups.entries()]
     .sort(([left], [right]) => artifactKindLabel(left).localeCompare(artifactKindLabel(right)))
     .map(
       ([kind, entries]) =>
         `<section class="panel"><h3>${escapeHtml(artifactKindLabel(kind))} <span class="badge">${entries.length}</span></h3><p>${escapeHtml(artifactKindDescription(kind))}</p><details><summary>Show ${entries.length} file${entries.length === 1 ? "" : "s"}</summary><ul class="file-list">${entries
-          .map((artifact) => {
-            const artifactPath = stringField(artifact, "path", "");
-            const phase = optionalStringField(artifact, "phase");
-            return `<li><a href="${encodeURI(artifactPath)}">${escapeHtml(humanFileName(artifactPath))}</a>${phase ? ` — ${escapeHtml(phase)}` : ""} <span class="badge ${artifact.status === "available" ? "pass" : "unknown"}">${escapeHtml(String(artifact.status ?? "indexed"))}</span></li>`;
-          })
+          .map(
+            ({ path: artifactPath, phase, status }) =>
+              `<li><a href="${encodeURI(artifactPath)}">${escapeHtml(humanFileName(artifactPath))}</a> — ${escapeHtml(phase)} <span class="badge ${status === "available" ? "pass" : "unknown"}">${escapeHtml(status)}</span></li>`
+          )
           .join("")}</ul></details></section>`
     )
     .join("");
 }
 
-function artifactLabel(artifact: Record<string, unknown>, fallback: string): string {
-  const provenance = isRecord(artifact.provenance) ? artifact.provenance : {};
-  return stringField(provenance, "actionId", stringField(provenance, "laneId", fallback));
+/** The action a file shows, or its lane for a lane's own file; `unnamed` for a file of neither. */
+function artifactLabel({ provenance }: EvidenceManifestArtifact, unnamed: string): string {
+  return provenance.actionId ?? provenance.laneId ?? unnamed;
 }
 
 function humanFileName(filePath: string): string {
@@ -5309,14 +5315,6 @@ function markdownEvidenceLink(value: string | undefined): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function optionalStringField(value: Record<string, unknown>, field: string): string | undefined {
-  return typeof value[field] === "string" ? value[field] : undefined;
-}
-
-function stringField(value: Record<string, unknown>, field: string, fallback: string): string {
-  return optionalStringField(value, field) ?? fallback;
 }
 
 function safeHttpUrl(value: string | undefined): string | undefined {

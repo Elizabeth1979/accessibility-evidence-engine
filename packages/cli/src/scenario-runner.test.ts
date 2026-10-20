@@ -7,7 +7,7 @@ import test from "node:test";
 import { parse as parseCsv } from "csv-parse/sync";
 
 import type { ReporterInput } from "@aee/core";
-import { writeEvidenceManifest } from "@aee/playwright";
+import { writeEvidenceManifest, type EvidenceManifestArtifact } from "@aee/playwright";
 import { createMarkdownReporter } from "@aee/reporter";
 import { marked } from "marked";
 
@@ -48,6 +48,27 @@ function action(
   };
 }
 
+/** A file in the evidence file list, as a lane's manifest indexes a checkpoint's evidence. */
+function indexedFile(
+  kind: EvidenceManifestArtifact["kind"],
+  filePath: string,
+  runId: string
+): EvidenceManifestArtifact {
+  return {
+    id: filePath,
+    path: filePath,
+    kind,
+    mediaType: "application/octet-stream",
+    phase: "after",
+    status: "available",
+    byteLength: 1,
+    integrity: `sha256:${"c".repeat(64)}`,
+    provenance: { runId },
+    lifecycle: "persisted",
+    privacy: { classification: "sensitive", redactionStatus: "not-reviewed", shareable: false }
+  };
+}
+
 /** Three lanes on one page with two axe violations: the shared input for synthesis tests. */
 function exampleSynthesisInputs() {
   const actions = [
@@ -56,25 +77,19 @@ function exampleSynthesisInputs() {
     action("keyboard", "keyboard-focus", "keyboard-run")
   ];
   const artifacts = actions.flatMap((item) =>
-    [
-      ["dom-snapshot", "dom.html"],
-      ["accessibility-tree", "aom.json"],
-      ["focus-state", "focus.json"],
-      ["full-page-screenshot", "full.png"],
-      ["viewport-screenshot", "viewport.png"]
-    ].map(([kind, name]) => ({
-      kind,
-      phase: "after",
-      path: `${item.runId}/${name}`,
-      provenance: { runId: item.runId }
-    }))
+    (
+      [
+        ["dom-snapshot", "dom.html"],
+        ["accessibility-tree", "aom.json"],
+        ["focus-state", "focus.json"],
+        ["full-page-screenshot", "full.png"],
+        ["viewport-screenshot", "viewport.png"]
+      ] as const
+    ).map(([kind, name]) => indexedFile(kind, `${item.runId}/${name}`, item.runId))
   );
-  artifacts.push({
-    kind: "screen-reader-transcript",
-    phase: "after",
-    path: "reader-run/transcript-json-after.json",
-    provenance: { runId: "reader-run" }
-  });
+  artifacts.push(
+    indexedFile("screen-reader-transcript", "reader-run/transcript-json-after.json", "reader-run")
+  );
   const report = {
     assessmentId: "assessment",
     scenarioId: "example-page",
@@ -990,10 +1005,18 @@ async function finishWithOnlyASweep(input: {
   plannedLanes: number;
   diagnostics: string[];
   laneFiles?: Record<string, unknown>;
+  /** Index the lane files as the files of the lane's one action, as AEE indexes a checkpoint's. */
+  laneFilesTiedToAction?: boolean;
 }) {
   const assessmentDir = await mkdtemp(path.join(tmpdir(), `aee-${input.scenarioId}-`));
   const laneManifestFiles = input.laneFiles
-    ? [await writeLaneFiles(path.join(assessmentDir, "read-reader"), input.laneFiles)]
+    ? [
+        await writeLaneFiles(
+          path.join(assessmentDir, "read-reader"),
+          input.laneFiles,
+          input.laneFilesTiedToAction ?? false
+        )
+      ]
     : [];
   const { manifestFile } = await writeEvidenceManifest({
     assessmentId: "read-keyboard-pointer-sweep",
@@ -1165,8 +1188,15 @@ test("the fixes CSV opens in a spreadsheet with page text in its own cell, as te
   }
 });
 
-/** Writes JSON files into a completed reader lane's folder and indexes them in its manifest. */
-async function writeLaneFiles(laneDir: string, files: Record<string, unknown>): Promise<string> {
+/**
+ * Writes JSON files into a completed reader lane's folder and indexes them in its manifest: as the
+ * files of the lane's one action, as AEE writes a checkpoint's evidence, or with no action at all.
+ */
+async function writeLaneFiles(
+  laneDir: string,
+  files: Record<string, unknown>,
+  tiedToAction: boolean
+): Promise<string> {
   await mkdir(laneDir, { recursive: true });
   const paths = await Promise.all(
     Object.entries(files).map(async ([name, content]) => {
@@ -1183,10 +1213,21 @@ async function writeLaneFiles(laneDir: string, files: Record<string, unknown>): 
         id: "read-reader",
         driver: "portable-virtual-screen-reader",
         status: "completed",
-        actions: []
+        actions: tiedToAction
+          ? [
+              {
+                id: "read-page",
+                sequence: 1,
+                runId: "read-page-run",
+                status: "completed",
+                reporterFiles: [],
+                artifactFiles: paths
+              }
+            ]
+          : []
       }
     ],
-    supplementalFiles: paths.map((filePath) => ({ path: filePath }))
+    supplementalFiles: tiedToAction ? [] : paths.map((filePath) => ({ path: filePath }))
   });
   return manifestFile;
 }
@@ -1408,7 +1449,8 @@ test("an axe result with a missing or wrong-typed field is not read, named by fi
     scenarioId: "malformed-axe",
     plannedLanes: 2,
     diagnostics: [],
-    laneFiles: { "axe-after.json": file }
+    laneFiles: { "axe-after.json": file },
+    laneFilesTiedToAction: true
   });
   const html = await readFile(result.reportFiles.html, "utf8");
   const reason =
@@ -1441,6 +1483,65 @@ test("an axe result with a missing or wrong-typed field is not read, named by fi
   }
 });
 
+test("an axe result the file list ties to no action, lane or run says so, never an unknown action", async () => {
+  // A valid axe result, indexed in a lane's evidence file list with no action, lane or run for it.
+  const { file } = axeResultFile();
+  const result = await finishWithOnlyASweep({
+    scenarioId: "untied-axe",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "axe-after.json": file }
+  });
+  const html = await readFile(result.reportFiles.html, "utf8");
+  const reason =
+    "read-reader/axe-after.json is not tied to a page state: the evidence file list names no action, lane, or run for it.";
+
+  assert.doesNotMatch(html, /Unknown action|unknown-lane|unknown-run/);
+  assert.ok(
+    html.includes(
+      `<summary><span>Page state not recorded</span> <span class="badge unknown">not read</span></summary><div class="technical-id">read-reader/axe-after.json</div><p><strong>Axe JSON could not be summarized:</strong> ${reason}</p>`
+    ),
+    "the Axe tab names the file and says which labels the file list left out"
+  );
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    synthesis: { status: Array<{ id: string; verdict: string; detail: string }> };
+  };
+  for (const id of ["semantics", "contrast"]) {
+    const row = report.synthesis.status.find((status) => status.id === id);
+    assert.deepEqual(
+      { verdict: row?.verdict, detail: row?.detail },
+      {
+        verdict: "unknown",
+        detail: `An axe result could not be read, so its rules were not checked. ${reason}`
+      },
+      id
+    );
+  }
+});
+
+test("aee fix reading back a report whose file list has a malformed entry names the entry and field", async () => {
+  const result = await finishWithOnlyASweep({
+    scenarioId: "malformed-file-list",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "axe-after.json": axeResultFile().file },
+    laneFilesTiedToAction: true
+  });
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    artifacts: Array<{ path: string; provenance: Record<string, unknown> }>;
+  };
+  const index = report.artifacts.findIndex(({ path }) => path === "read-reader/axe-after.json");
+  report.artifacts[index]!.provenance.actionId = 7;
+  await writeFile(result.reportFiles.json, JSON.stringify(report), "utf8");
+
+  await assert.rejects(
+    verifyAppliedFixes(result.reportFiles.json, [
+      { ruleId: "image-alt", selector: "img", name: "Logo" }
+    ]),
+    { message: `Invalid aee-report.json: /artifacts/${index}/provenance/actionId must be string` }
+  );
+});
+
 test("an axe rule with no impact, which axe allows, is read with its impact unknown, never review", async () => {
   const { file, rule } = axeResultFile();
   delete rule.impact;
@@ -1448,7 +1549,8 @@ test("an axe rule with no impact, which axe allows, is read with its impact unkn
     scenarioId: "axe-no-impact",
     plannedLanes: 2,
     diagnostics: [],
-    laneFiles: { "axe-after.json": file }
+    laneFiles: { "axe-after.json": file },
+    laneFilesTiedToAction: true
   });
   const html = await readFile(result.reportFiles.html, "utf8");
   const card = html.match(/<article class="rule [^"]*">[\s\S]*?<\/article>/)?.[0] ?? "";
