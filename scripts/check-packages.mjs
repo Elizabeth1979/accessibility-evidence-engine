@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -106,6 +106,25 @@ try {
       `${entry.name} contains unpackaged source files.`
     );
   }
+
+  // publint checks each manifest against the files its tarball ships, such as an export whose
+  // file was left out of `files`; attw checks that TypeScript finds the types of every entry
+  // point in each way a project resolves modules (node10, node16 from CommonJS and from ESM,
+  // bundler). Every package is linted before any failure is reported, so one run lists them all.
+  const lintFailures = packages.flatMap((entry) => {
+    const tarball = path.join(packDirectory, entry.filename);
+    return [
+      ["publint", "run", tarball, "--strict"],
+      ["attw", tarball, "--format", "ascii"]
+    ]
+      .filter(
+        (command) =>
+          spawnSync("npx", ["--no-install", ...command], { cwd: workspaceRoot, stdio: "inherit" })
+            .status !== 0
+      )
+      .map(([tool]) => `${tool} ${entry.name}`);
+  });
+  assert.deepEqual(lintFailures, [], "publint or attw found problems in the packages above.");
 
   writeFileSync(
     path.join(installDirectory, "package.json"),
@@ -234,7 +253,7 @@ try {
   );
 
   process.stdout.write(
-    `Verified and installed ${packages.length} package tarballs, and ran the fixture and aee run on Playwright ${oldestPlaywright}.\n`
+    `Verified, linted with publint and attw, and installed ${packages.length} package tarballs, and ran the fixture and aee run on Playwright ${oldestPlaywright}.\n`
   );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });
