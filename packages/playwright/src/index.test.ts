@@ -16,6 +16,7 @@ import {
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
   persistInteractionVideo,
+  prepareAggregateManifest,
   runAeeOnPage,
   runInputComparison,
   runKeyboardPointerSweepLane,
@@ -608,6 +609,49 @@ test("aggregateEvidenceManifests re-hashes child evidence into one scenario mani
       aggregate.manifest.artifacts.some(({ kind }) => kind === "evidence-manifest"),
       "Expected the child manifest itself to be indexed."
     );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("prepareAggregateManifest states its counts before the reports are written, then reads them", async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "aee-prepared-manifest-"));
+  const childRoot = path.join(tempRoot, "keyboard-lane");
+  const artifactFile = path.join(childRoot, "evidence.json");
+  const reportFile = path.join(tempRoot, "report.json");
+  await mkdir(childRoot, { recursive: true });
+  await writeFile(artifactFile, '{"state":"after"}', "utf8");
+
+  try {
+    const child = await writeEvidenceManifest({
+      assessmentId: "child-assessment",
+      rootDir: childRoot,
+      lanes: [{ id: "keyboard", driver: "keyboard", status: "completed", actions: [] }],
+      supplementalFiles: [{ path: artifactFile, kind: "custom", phase: "lane" }]
+    });
+    const prepared = await prepareAggregateManifest({
+      assessmentId: "scenario-assessment",
+      rootDir: tempRoot,
+      childManifestFiles: [child.manifestFile],
+      scenarioId: "scenario-assessment",
+      scenarioDigest: `sha256:${"a".repeat(64)}`,
+      profile: "core",
+      supplementalFiles: [{ path: reportFile, kind: "json-report", phase: "assessment" }],
+      filesToWrite: [reportFile]
+    });
+
+    // The report is counted before it exists, as the report itself has to state the counts.
+    assert.equal(prepared.status, "completed");
+    assert.deepEqual(prepared.summary, { total: 3, available: 3, missing: 0, failed: 0 });
+    await assert.rejects(prepared.write(), /cannot be read back: report\.json/);
+
+    await writeFile(reportFile, JSON.stringify(prepared.summary), "utf8");
+    const { manifest } = await prepared.write();
+    assert.equal(manifest.status, prepared.status);
+    assert.deepEqual(manifest.summary, prepared.summary);
+    const report = manifest.artifacts.find(({ path: filePath }) => filePath === "report.json");
+    assert.equal(report?.status, "available");
+    assert.match(report?.integrity ?? "", /^sha256:/);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
