@@ -1510,9 +1510,10 @@ export interface ScenarioReportDocument {
       reason: string;
     }[];
   };
-  artifacts: {
-    [k: string]: unknown;
-  }[];
+  /**
+   * The evidence file list: each file the lanes' manifests index, as they index it, with its path from the report's folder.
+   */
+  artifacts: EvidenceManifestArtifact[];
   diagnostics: string[];
   files: {
     html: string;
