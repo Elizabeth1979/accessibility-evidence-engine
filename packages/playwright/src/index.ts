@@ -52,7 +52,7 @@ import {
   BlockedOriginError,
   normalizeAllowedOrigins
 } from "./allowed-origins";
-import { captureDomFocus } from "./dom-focus";
+import { captureDomFocus, focusOnRequestedTarget, type SelectorPage } from "./dom-focus";
 import {
   frameMasks,
   framesNotChecked,
@@ -729,7 +729,8 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
     page: await createObserverPage(
       options.page,
       options.virtualScreenReader,
-      options.allowedOrigins
+      options.allowedOrigins,
+      interaction.target?.selector
     ),
     artifactDir
   };
@@ -2340,10 +2341,15 @@ interface EventedPageLike extends PlaywrightPageLike {
   removeListener?(event: "response", listener: (response: ResponseLike) => void): unknown;
 }
 
+/**
+ * The page as the observers read it. `requestedSelector` is the interaction's target selector:
+ * each focus capture records whether the element it selects is the one with focus.
+ */
 async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader,
-  allowedOrigins?: string[]
+  allowedOrigins?: string[],
+  requestedSelector?: string
 ): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   // Each read of the page's frames leaves out those outside the allowed origins.
@@ -2396,7 +2402,20 @@ async function createObserverPage(
           const focusState = await withSessions(cdpPage, async (frames) => {
             const domFocus = await captureDomFocus(frames);
             return (
-              domFocus && { ...domFocus, accessibilityFocus: await accessibilityFocusOf(frames) }
+              domFocus && {
+                ...domFocus,
+                accessibilityFocus: await accessibilityFocusOf(frames),
+                // Resolved by Playwright, as the scenario's action resolved it.
+                ...(requestedSelector
+                  ? {
+                      requestedTarget: await focusOnRequestedTarget(
+                        cdpPage as unknown as SelectorPage,
+                        requestedSelector,
+                        domFocus
+                      )
+                    }
+                  : {})
+              }
             );
           });
           if (focusState) assertValidSchema("focusState", focusState, "deep focus state");
