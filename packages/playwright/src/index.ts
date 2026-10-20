@@ -8,6 +8,7 @@ import axe from "axe-core";
 import {
   executeRun,
   redactUrl,
+  requestedTargetOf,
   resolvePolicyConfig,
   type AeePolicyOverrides,
   type ArtifactRef,
@@ -17,6 +18,7 @@ import {
   type JudgmentVerdict,
   type ReporterInput,
   type ReporterArtifact,
+  type RequestedTarget,
   type RunSummary,
   type TargetDescriptor
 } from "@aee/core";
@@ -52,7 +54,7 @@ import {
   BlockedOriginError,
   normalizeAllowedOrigins
 } from "./allowed-origins";
-import { captureDomFocus, focusOnRequestedTarget, type SelectorPage } from "./dom-focus";
+import { captureDomFocus, focusOnRequestedTarget, type TargetElements } from "./dom-focus";
 import {
   frameMasks,
   framesNotChecked,
@@ -730,7 +732,7 @@ export async function runAeeOnPage<TPage extends PlaywrightPageLike>(
       options.page,
       options.virtualScreenReader,
       options.allowedOrigins,
-      interaction.target?.selector
+      requestedTargetOf(interaction.target)
     ),
     artifactDir
   };
@@ -1221,7 +1223,7 @@ async function performInputAction(
     return;
   }
 
-  const target = resolveInputTarget(page, action.target!);
+  const target = locateTarget(page, action.target!);
   if (action.kind === "hover") await target.hover();
   if (action.kind === "click") await target.click();
   if (action.kind === "focus") await target.focus();
@@ -1242,7 +1244,7 @@ async function captureInputObservation(
 ): Promise<InputComparisonObservation> {
   const observation: InputComparisonObservation = {};
   if (request.url) observation.url = page.url();
-  const target = request.target ? resolveInputTarget(page, request.target) : undefined;
+  const target = request.target ? locateTarget(page, request.target) : undefined;
   if (request.visible) observation.visible = await target!.isVisible();
   if (request.text) observation.text = normalizeObservedText(await target!.textContent());
   if (request.focused) {
@@ -1264,13 +1266,19 @@ function normalizeObservedText(value: string | null): string | null {
   return value === null ? null : value.replace(/\s+/g, " ").trim();
 }
 
-function resolveInputTarget(
-  page: InteractionComparisonPage,
+/**
+ * The elements `target` names, found as a scenario's action finds them: Playwright's
+ * `page.locator` for a selector, and `page.getByRole` for a role and name, matching the whole name
+ * unless `exact` is false. The focus observer finds a focus action's target the same way, so both
+ * mean the same element.
+ */
+function locateTarget<Locator>(
+  page: { locator(selector: string): Locator },
   target: InputComparisonTarget
-): InteractionLaneLocator {
+): Locator {
   if (target.selector) return page.locator(target.selector);
   const rolePage = page as unknown as {
-    getByRole(role: string, options: { name: string; exact: boolean }): InteractionLaneLocator;
+    getByRole(role: string, options: { name: string; exact: boolean }): Locator;
   };
   return rolePage.getByRole(target.role!, { name: target.name!, exact: target.exact ?? true });
 }
@@ -2342,14 +2350,15 @@ interface EventedPageLike extends PlaywrightPageLike {
 }
 
 /**
- * The page as the observers read it. `requestedSelector` is the interaction's target selector:
- * each focus capture records whether the element it selects is the one with focus.
+ * The page as the observers read it. `requestedTarget` is the interaction's target, by selector
+ * or by role and name: each focus capture records whether the element it names is the one with
+ * focus.
  */
 async function createObserverPage(
   page: PlaywrightPageLike,
   virtualScreenReader?: PortableVirtualScreenReader,
   allowedOrigins?: string[],
-  requestedSelector?: string
+  requestedTarget?: RequestedTarget
 ): Promise<RuntimeObserverContext["page"]> {
   const cdpPage = framedCdpPage(page as CdpEnabledPageLike);
   // Each read of the page's frames leaves out those outside the allowed origins.
@@ -2405,12 +2414,15 @@ async function createObserverPage(
               domFocus && {
                 ...domFocus,
                 accessibilityFocus: await accessibilityFocusOf(frames),
-                // Resolved by Playwright, as the scenario's action resolved it.
-                ...(requestedSelector
+                // Found by Playwright, as the scenario's action found it.
+                ...(requestedTarget
                   ? {
                       requestedTarget: await focusOnRequestedTarget(
-                        cdpPage as unknown as SelectorPage,
-                        requestedSelector,
+                        locateTarget(
+                          cdpPage as unknown as { locator(selector: string): TargetElements },
+                          requestedTarget
+                        ),
+                        requestedTarget,
                         domFocus
                       )
                     }
