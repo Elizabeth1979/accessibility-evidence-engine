@@ -12,6 +12,10 @@ import type {
 } from "@aee/core";
 import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
 
+import { markdownCode, markdownText } from "./markdown";
+
+export { markdownCode, markdownTableCode, markdownText, withoutReferences } from "./markdown";
+
 interface ObserverCoverageSummary {
   observerId: string;
   records: number;
@@ -177,7 +181,7 @@ function renderMarkdownReport(input: ReporterInput): string {
     lines.push("### Suggested Fixes", "", "No explicit suggested fixes were emitted.", "");
   } else {
     lines.push("### Suggested Fixes", "");
-    lines.push(...triageSummary.recommendedFixes.map((fix) => `- ${fix}`), "");
+    lines.push(...triageSummary.recommendedFixes.map((fix) => `- ${markdownText(fix)}`), "");
   }
 
   lines.push("## Observer Coverage", "");
@@ -531,12 +535,9 @@ function collectRecordArtifacts(record: EvidenceRecord): ArtifactRef[] {
 
 function describeInteraction(bundle: EvidenceBundle): string {
   const target = describeTarget(bundle.interaction.target);
+  const kind = markdownCode(bundle.interaction.kind);
 
-  if (target === "n/a") {
-    return `\`${bundle.interaction.kind}\``;
-  }
-
-  return `\`${bundle.interaction.kind}\` on ${target}`;
+  return target === "n/a" ? kind : `${kind} on ${markdownText(target)}`;
 }
 
 function describeTarget(target?: TargetDescriptor): string {
@@ -557,16 +558,12 @@ function describeTarget(target?: TargetDescriptor): string {
 
 function renderTable(headers: string[], rows: string[][]): string[] {
   return [
-    `| ${headers.map((header) => escapeMarkdownCell(header)).join(" | ")} |`,
+    `| ${headers.map((header) => markdownText(header)).join(" | ")} |`,
     `| ${headers.map(() => "---").join(" | ")} |`,
     ...rows.map(
-      (row) => `| ${headers.map((_, index) => escapeMarkdownCell(row[index] ?? "")).join(" | ")} |`
+      (row) => `| ${headers.map((_, index) => markdownText(row[index] ?? "")).join(" | ")} |`
     )
   ];
-}
-
-function escapeMarkdownCell(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
 function formatConfidence(value?: number): string {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { ReporterInput } from "@aee/core";
+import { marked, type Token, type Tokens } from "marked";
 
 import { createMarkdownReporter } from "./index";
 
@@ -136,6 +137,53 @@ const sampleJudgments = [
   }
 ];
 
+/**
+ * The report as GitHub-flavoured Markdown shows it, read from marked's tokens, one block per line:
+ * a heading is wrapped in its tag, a table row is its cells joined by " | ", a list item starts
+ * with "- ", code is in backticks, and any other markup is left out.
+ */
+function shownText(markdown: string): string {
+  return marked.lexer(markdown, { gfm: true }).flatMap(shownLines).join("\n");
+}
+
+/** One block of the report as shownText writes it, from marked's tokens. */
+function shownLines(token: Token): string[] {
+  switch (token.type) {
+    case "heading": {
+      const { depth, tokens } = token as Tokens.Heading;
+      return [`<h${depth}>${inlineText(tokens)}</h${depth}>`];
+    }
+    case "table": {
+      const { header, rows } = token as Tokens.Table;
+      return [header, ...rows].map((cells) =>
+        cells.map(({ tokens }) => inlineText(tokens)).join(" | ")
+      );
+    }
+    case "list":
+      return (token as Tokens.List).items.map(({ tokens }) => `- ${inlineText(tokens)}`);
+    case "space":
+      return [];
+    default:
+      return [inlineText([token])];
+  }
+}
+
+/**
+ * The words a reader sees in some tokens, with code in backticks. Only tokens without children
+ * add text, since walkTokens visits a token's children too.
+ */
+function inlineText(tokens: Token[]): string {
+  const text: string[] = [];
+  marked.walkTokens(tokens, (token) => {
+    if (token.type === "codespan") text.push(`\`${(token as Tokens.Codespan).text}\``);
+    else if (token.type === "br") text.push(" ");
+    else if (!("tokens" in token && token.tokens?.length)) {
+      text.push("text" in token && typeof token.text === "string" ? token.text : token.raw);
+    }
+  });
+  return text.join("");
+}
+
 const sampleInput: ReporterInput = {
   run: {
     id: "run-1",
@@ -198,33 +246,31 @@ test("createMarkdownReporter renders bundle evidence, observer coverage, and art
   const [artifact] = await reporter.render(sampleInput);
 
   assert.equal(artifact.label, "aee-report.md");
-  assert.match(artifact.content, /## Run Summary/);
-  assert.match(artifact.content, /\| Verdicts \| pass 0, fail 2, unknown 1 \|/);
-  assert.match(artifact.content, /## Triage/);
-  assert.match(artifact.content, /### Blocking Judgments/);
+  const shown = shownText(artifact.content);
+  assert.match(shown, /^<h2>Run Summary<\/h2>$/m);
+  assert.match(shown, /^Verdicts \| pass 0, fail 2, unknown 1$/m);
+  assert.match(shown, /^<h2>Triage<\/h2>$/m);
+  assert.match(shown, /^<h3>Blocking Judgments<\/h3>$/m);
   assert.match(
-    artifact.content,
+    shown,
     /Release gate failed because one blocking judgment met the current policy threshold\./
   );
-  assert.match(artifact.content, /### Unresolved Signals/);
-  assert.match(artifact.content, /Screen reader evidence is unavailable in this environment\./);
-  assert.match(artifact.content, /Guidepup is not available in this environment\./);
-  assert.match(artifact.content, /### Suggested Fixes/);
-  assert.match(artifact.content, /Resolve blocking accessibility judgments before release\./);
-  assert.match(artifact.content, /## Observer Coverage/);
-  assert.match(artifact.content, /\| focus \| 2 \| 2 \| 0 \| 0 \| 0 \| 0 \| 3 \|/);
-  assert.match(artifact.content, /\| guidepup-screen-reader \| 1 \| 0 \| 1 \| 0 \| 0 \| 0 \| 0 \|/);
-  assert.match(artifact.content, /## Artifact Summary/);
-  assert.match(artifact.content, /\| dom-snapshot \| 2 \|/);
-  assert.match(artifact.content, /\| screenshot \| 1 \|/);
-  assert.match(artifact.content, /## Bundle 1: `tab` on button "Continue"/);
-  assert.match(artifact.content, /\| Participating observers \| focus, visual \|/);
-  assert.match(artifact.content, /Keyboard interaction stalled on the same element\./);
-  assert.match(
-    artifact.content,
-    /Ensure focus moves to the next interactive control when Tab is pressed\./
-  );
-  assert.match(artifact.content, /\/tmp\/after\.png/);
+  assert.match(shown, /^<h3>Unresolved Signals<\/h3>$/m);
+  assert.match(shown, /Screen reader evidence is unavailable in this environment\./);
+  assert.match(shown, /Guidepup is not available in this environment\./);
+  assert.match(shown, /^<h3>Suggested Fixes<\/h3>$/m);
+  assert.match(shown, /^- Resolve blocking accessibility judgments before release\.$/m);
+  assert.match(shown, /^<h2>Observer Coverage<\/h2>$/m);
+  assert.match(shown, /^focus \| 2 \| 2 \| 0 \| 0 \| 0 \| 0 \| 3$/m);
+  assert.match(shown, /^guidepup-screen-reader \| 1 \| 0 \| 1 \| 0 \| 0 \| 0 \| 0$/m);
+  assert.match(shown, /^<h2>Artifact Summary<\/h2>$/m);
+  assert.match(shown, /^dom-snapshot \| 2$/m);
+  assert.match(shown, /^screenshot \| 1$/m);
+  assert.match(shown, /^<h2>Bundle 1: `tab` on button "Continue"<\/h2>$/m);
+  assert.match(shown, /^Participating observers \| focus, visual$/m);
+  assert.match(shown, /Keyboard interaction stalled on the same element\./);
+  assert.match(shown, /Ensure focus moves to the next interactive control when Tab is pressed\./);
+  assert.match(shown, /\/tmp\/after\.png/);
 });
 
 test("createMarkdownReporter safely escapes table control characters", async () => {
@@ -237,5 +283,5 @@ test("createMarkdownReporter safely escapes table control characters", async () 
 
   const [artifact] = await reporter.render(input);
 
-  assert.ok(artifact.content.includes("| Policy | strict\\\\mode\\|review next |"));
+  assert.match(shownText(artifact.content), /^Policy \| strict\\mode\|review next$/m);
 });

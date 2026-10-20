@@ -55,6 +55,7 @@ import {
   type VirtualScreenReaderLaneBrowser,
   type VirtualScreenReaderLaneResult
 } from "@aee/playwright";
+import { markdownCode, markdownTableCode, markdownText, withoutReferences } from "@aee/reporter";
 import {
   assertValidSchema,
   conceptForAxeRule,
@@ -2889,19 +2890,20 @@ function resolveReportPath(rootDir: string, reportPath: string): string {
   return resolved;
 }
 
-function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
+/** The report as Markdown, the aee-report.md a run writes. */
+export function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   const lines = [
-    `# Accessibility evidence report: ${reportName(report)}`,
+    `# Accessibility evidence report: ${markdownText(reportName(report))}`,
     "",
     `**Overall verdict:** ${report.verdict.toUpperCase()}`,
     `**Evidence completeness:** ${report.completeness.status.toUpperCase()}`,
-    `**Target:** ${report.target}`,
-    `**Standard:** ${report.standard}`,
-    `**AI output:** ${report.ai.label}`,
+    `**Target:** ${markdownCode(report.target)}`,
+    `**Standard:** ${markdownText(report.standard)}`,
+    `**AI output:** ${markdownText(report.ai.label)}`,
     "",
     "## Summary",
     "",
-    report.synthesis.conclusion,
+    markdownText(report.synthesis.conclusion),
     "",
     `- ${report.summary.actions} user-authored actions evaluated across ${report.synthesis.lanes.length} active lanes`,
     `- ${report.synthesis.directJudgments.passed} direct judgments passed, ${report.synthesis.directJudgments.failed} failed, ${report.synthesis.directJudgments.unknown} unresolved`,
@@ -2916,7 +2918,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     "| --- | --- | --- |",
     ...report.synthesis.status.map(
       ({ label, result, detail }) =>
-        `| ${escapeMarkdown(label)} | ${escapeMarkdown(result)} | ${escapeMarkdown(detail)} |`
+        `| ${markdownText(label)} | ${markdownText(result)} | ${markdownText(detail)} |`
     ),
     "",
     "## Coverage by lane",
@@ -2925,7 +2927,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
     "| --- | ---: | ---: | ---: | ---: |",
     ...report.synthesis.lanes.map(
       (lane) =>
-        `| ${escapeMarkdown(humanDriverName(lane.driver))} | ${lane.actions} | ${lane.passed} | ${lane.failed} | ${lane.unknown} |`
+        `| ${markdownText(humanDriverName(lane.driver))} | ${lane.actions} | ${lane.passed} | ${lane.failed} | ${lane.unknown} |`
     ),
     "",
     "## Consolidated findings",
@@ -2934,15 +2936,15 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
   if (report.findings.length === 0) lines.push("No findings were emitted.");
   for (const finding of report.synthesis.findings) {
     lines.push(
-      `### ${escapeMarkdown(finding.ruleId)} — ${escapeMarkdown(finding.title)}${finding.advisory ? " (advisory)" : ""}`,
+      `### ${markdownText(finding.ruleId)} — ${markdownText(finding.title)}${finding.advisory ? " (advisory)" : ""}`,
       "",
-      finding.conclusion,
+      markdownText(finding.conclusion),
       "",
-      `**WCAG:** ${finding.wcagCriteria.length ? finding.wcagCriteria.join(", ") : "Mapping not emitted"}`,
+      `**WCAG:** ${finding.wcagCriteria.length ? markdownText(finding.wcagCriteria.join(", ")) : "Mapping not emitted"}`,
       "",
-      `**Pattern:** ${finding.pattern ? `[${finding.pattern.id}](${finding.pattern.url}) (a11y-skills)` : "No pattern is mapped for this rule yet."}`,
+      `**Pattern:** ${finding.pattern ? `[${markdownText(finding.pattern.id)}](${encodeURI(finding.pattern.url)}) (a11y-skills)` : "No pattern is mapped for this rule yet."}`,
       "",
-      `**Deterministic remediation:** ${finding.remediation.deterministic}`,
+      `**Deterministic remediation:** ${markdownText(finding.remediation.deterministic)}`,
       "",
       `**AI:** ${aiMarkdown(finding.remediation.ai)}`,
       "",
@@ -2954,7 +2956,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
             "| --- | --- | --- |",
             ...finding.instances.map(
               (instance) =>
-                `| ${escapeMarkdown(instance.component)} | ${escapeMarkdown(instance.label)} | \`${escapeMarkdown(instance.selector)}\` |`
+                `| ${markdownText(instance.component)} | ${markdownText(instance.label)} | ${markdownTableCode(instance.selector)} |`
             ),
             ""
           ]
@@ -2963,7 +2965,7 @@ function renderIntegratedMarkdown(report: ScenarioIntegratedReport): string {
       "| --- | --- | --- | ---: | --- | --- | --- | --- | --- |",
       ...finding.checkpoints.map(
         (checkpoint) =>
-          `| ${escapeMarkdown(humanDriverName(checkpoint.driver))} | ${escapeMarkdown(humanActionName(checkpoint.actionId))} | ${checkpoint.behaviorVerdict} | ${checkpoint.nodeCount} | ${markdownEvidenceLink(checkpoint.domPath)} | ${markdownEvidenceLink(checkpoint.accessibilityTreePath)} | ${markdownEvidenceLink(checkpoint.screenshotPath)} | ${markdownEvidenceLink(checkpoint.focusPath)} | ${markdownEvidenceLink(checkpoint.axePath)} |`
+          `| ${markdownText(humanDriverName(checkpoint.driver))} | ${markdownText(humanActionName(checkpoint.actionId))} | ${checkpoint.behaviorVerdict} | ${checkpoint.nodeCount} | ${markdownEvidenceLink(checkpoint.domPath)} | ${markdownEvidenceLink(checkpoint.accessibilityTreePath)} | ${markdownEvidenceLink(checkpoint.screenshotPath)} | ${markdownEvidenceLink(checkpoint.focusPath)} | ${markdownEvidenceLink(checkpoint.axePath)} |`
       ),
       ""
     );
@@ -3113,7 +3115,7 @@ function renderSuiteSummary(
     ),
     ...(incompleteRules.length
       ? [
-          `${incompleteRules.length} axe ${incompleteRules.length === 1 ? "check" : "checks"} could not decide and ${incompleteRules.length === 1 ? "needs" : "need"} a person: ${incompleteRules.map(commentCode).join(", ")}.`,
+          `${incompleteRules.length} axe ${incompleteRules.length === 1 ? "check" : "checks"} could not decide and ${incompleteRules.length === 1 ? "needs" : "need"} a person: ${incompleteRules.map(markdownCode).join(", ")}.`,
           ""
         ]
       : []),
@@ -3125,7 +3127,7 @@ function renderSuiteSummary(
             .slice(0, COMMENT_ELEMENTS_PER_FINDING)
             .map(
               ({ selector, reason, tests }) =>
-                `- ${commentCode(selector)}: ${commentText(reason)} (${plural(tests)})`
+                `- ${markdownCode(selector)}: ${markdownText(reason)} (${plural(tests)})`
             ),
           ...(undecided.length > COMMENT_ELEMENTS_PER_FINDING
             ? [`- and ${undecided.length - COMMENT_ELEMENTS_PER_FINDING} more in the full reports`]
@@ -3200,7 +3202,7 @@ function commentNames(group: Array<{ goal: string }>): string {
   const hidden = group.length - COMMENT_NAMES_PER_GROUP;
   return `${group
     .slice(0, COMMENT_NAMES_PER_GROUP)
-    .map(({ goal }) => commentText(goal))
+    .map(({ goal }) => markdownText(goal))
     .join("; ")}${hidden > 0 ? `; and ${hidden} more in the full reports` : ""}`;
 }
 
@@ -3222,7 +3224,7 @@ function suiteStatusRows(reports: ScenarioIntegratedReport[]): string[] {
           STATUS_ORDER[left.verdict] - STATUS_ORDER[right.verdict] || right.count - left.count
       )
       .map(([result, { count }]) => (results.size === 1 ? result : `${result} (${count})`));
-    return `| ${commentText(label)} | ${commentText(cells.join(" · "))} |`;
+    return `| ${markdownText(label)} | ${markdownText(cells.join(" · "))} |`;
   });
 }
 
@@ -3326,11 +3328,11 @@ function commentBody(
   const blocking = findings.filter(({ advisory }) => !advisory);
   const advisory = findings.filter(({ advisory }) => advisory);
   const lines = [
-    `Tested ${commentCode(report.target)} against ${commentText(report.standard)}. Evidence: ${report.completeness.status}.`,
+    `Tested ${markdownCode(report.target)} against ${markdownText(report.standard)}. Evidence: ${report.completeness.status}.`,
     "",
     "| Area | Result |",
     "| --- | --- |",
-    ...status.map(({ label, result }) => `| ${commentText(label)} | ${commentText(result)} |`),
+    ...status.map(({ label, result }) => `| ${markdownText(label)} | ${markdownText(result)} |`),
     ""
   ];
   const section = (title: string, group: FindingSynthesis[]) =>
@@ -3348,7 +3350,7 @@ function commentBody(
   );
   if (uniqueIncompleteRules.length) {
     lines.push(
-      `${uniqueIncompleteRules.length} axe ${uniqueIncompleteRules.length === 1 ? "check" : "checks"} could not decide and ${uniqueIncompleteRules.length === 1 ? "needs" : "need"} a person: ${uniqueIncompleteRules.map(commentCode).join(", ")}.`,
+      `${uniqueIncompleteRules.length} axe ${uniqueIncompleteRules.length === 1 ? "check" : "checks"} could not decide and ${uniqueIncompleteRules.length === 1 ? "needs" : "need"} a person: ${uniqueIncompleteRules.map(markdownCode).join(", ")}.`,
       ""
     );
   }
@@ -3359,7 +3361,7 @@ function commentBody(
       "",
       ...undecidedContrast
         .slice(0, COMMENT_ELEMENTS_PER_FINDING)
-        .map(({ selector, reason }) => `- ${commentCode(selector)}: ${commentText(reason)}`),
+        .map(({ selector, reason }) => `- ${markdownCode(selector)}: ${markdownText(reason)}`),
       ...(hidden > 0 ? [`- and ${hidden} more in the full report`] : []),
       ""
     );
@@ -3387,18 +3389,18 @@ function commentFinding(
     `<summary><strong>${commentHtml(finding.title)}</strong> · ${commentHtml(facts.join(" · "))}</summary>`,
     "",
     ...(image ? [`<img src="${encodeURI(image.url)}" alt="${commentHtml(image.alt)}">`, ""] : []),
-    `**Problem:** ${commentText(findingImpact(finding))}`,
+    `**Problem:** ${markdownText(findingImpact(finding))}`,
     "",
     "**Elements:**",
     "",
     ...finding.instances
       .slice(0, COMMENT_ELEMENTS_PER_FINDING)
-      .map(({ label, selector }) => `- ${commentCode(label)} at ${commentCode(selector)}`),
+      .map(({ label, selector }) => `- ${markdownCode(label)} at ${markdownCode(selector)}`),
     ...(hidden > 0 ? [`- and ${hidden} more in the full report`] : []),
     "",
-    `**Fix:** ${commentText(finding.remediation.deterministic)}`,
+    `**Fix:** ${markdownText(finding.remediation.deterministic)}`,
     "",
-    `**Pattern:** ${finding.pattern ? `[${commentText(finding.pattern.id)}](${encodeURI(finding.pattern.url)}) (a11y-skills)` : "none mapped for this rule yet"}`,
+    `**Pattern:** ${finding.pattern ? `[${markdownText(finding.pattern.id)}](${encodeURI(finding.pattern.url)}) (a11y-skills)` : "none mapped for this rule yet"}`,
     "",
     ...(seenIn
       ? [`**Seen in:** ${commentNames(seenIn.names.map((name) => ({ goal: name })))}`, ""]
@@ -3415,7 +3417,7 @@ function commentAiSuggestions(findings: FindingSynthesis[], heading: string): st
   );
   if (suggested.length === 0) {
     const off = findings.find(({ remediation }) => remediation.ai.status === "not-configured");
-    return off ? [`**AI suggestions:** ${commentText(off.remediation.ai.reason)}`, ""] : [];
+    return off ? [`**AI suggestions:** ${markdownText(off.remediation.ai.reason)}`, ""] : [];
   }
   return [
     `${heading} AI suggestions (${suggested.length}): review before use`,
@@ -3424,46 +3426,18 @@ function commentAiSuggestions(findings: FindingSynthesis[], heading: string): st
     "",
     ...suggested.map(({ finding, suggestion }) => {
       const text = suggestion.text
-        ? `${suggestion.label ? `${commentText(suggestion.label)}: ` : ""}${commentCode(suggestion.text)}`
+        ? `${suggestion.label ? `${markdownText(suggestion.label)}: ` : ""}${markdownCode(suggestion.text)}`
         : "an empty alternative (decorative)";
       const role = suggestion.classification ? `, image role ${suggestion.classification}` : "";
-      return `- **AI suggestion** for ${commentCode(suggestion.selector)} (${commentText(finding.title)}): ${text}${role}. Based on ${commentText(citedEvidence(suggestion.citedEvidenceIds))}; confidence ${suggestion.confidence.toFixed(2)}; suggested by ${commentCode(finding.remediation.ai.providerId ?? "a model")}.`;
+      return `- **AI suggestion** for ${markdownCode(suggestion.selector)} (${markdownText(finding.title)}): ${text}${role}. Based on ${markdownText(citedEvidence(suggestion.citedEvidenceIds))}; confidence ${suggestion.confidence.toFixed(2)}; suggested by ${markdownCode(finding.remediation.ai.providerId ?? "a model")}.`;
     }),
     ""
   ];
 }
 
-/**
- * Text shown literally: in a code span GitHub renders no Markdown or HTML and makes no mentions
- * or issue links. The fence is longer than any run of backticks in the text.
- */
-function commentCode(value: string): string {
-  const text = value.replace(/\s+/g, " ").trim();
-  if (!text) return "(no text)";
-  const fence = "`".repeat(
-    Math.max(0, ...(text.match(/`+/g) ?? []).map(({ length }) => length)) + 1
-  );
-  const pad = text.startsWith("`") || text.endsWith("`") ? " " : "";
-  return `${fence}${pad}${text}${pad}${fence}`;
-}
-
 /** Text inside HTML, such as a summary: entities for markup, and no mentions or issue links. */
 function commentHtml(value: string): string {
   return escapeHtml(withoutReferences(value.replace(/\s+/g, " ").trim()));
-}
-
-/** Text inside Markdown: commentHtml's escaping, and Markdown punctuation shown as itself. */
-function commentText(value: string): string {
-  return commentHtml(value).replace(/[\\`*_[\]()!|~]/g, "\\$&");
-}
-
-/**
- * A zero-width space stops GitHub turning page text into a mention (@name, not inside a word, as
- * in an email address) or an issue link (#123, also owner/repo#123); a colour such as #3f4c48 is
- * left alone, since GitHub links only digits.
- */
-function withoutReferences(value: string): string {
-  return value.replace(/(?<!\w)@(?=[a-z\d])/gi, "@\u200b").replace(/#(?=\d+\b)/g, "#\u200b");
 }
 
 interface FindingEffort {
@@ -4400,12 +4374,14 @@ function renderAiSuggestion(suggestion: AiSuggestion): string {
 
 function aiMarkdown(ai: FindingAi): string {
   if (!ai.suggestions?.length) {
-    return [`${AI_STATUS_LABELS[ai.status]} — ${ai.reason}`, ...(ai.notes ?? [])].join(" ");
+    return markdownText(
+      [`${AI_STATUS_LABELS[ai.status]} — ${ai.reason}`, ...(ai.notes ?? [])].join(" ")
+    );
   }
-  return `AI suggestion from ${ai.providerId ?? "a model"}, review before use: ${ai.suggestions
+  return `AI suggestion from ${markdownCode(ai.providerId ?? "a model")}, review before use: ${ai.suggestions
     .map(
       (suggestion) =>
-        `${suggestion.text ? `${suggestion.label ? `${suggestion.label}: ` : ""}“${suggestion.text}”` : "an empty alternative"} for \`${suggestion.selector}\` (based on ${citedEvidence(suggestion.citedEvidenceIds)}; confidence ${suggestion.confidence.toFixed(2)})`
+        `${suggestion.text ? `${suggestion.label ? `${markdownText(suggestion.label)}: ` : ""}${markdownCode(suggestion.text)}` : "an empty alternative"} for ${markdownCode(suggestion.selector)} (based on ${markdownText(citedEvidence(suggestion.citedEvidenceIds))}; confidence ${suggestion.confidence.toFixed(2)})`
     )
     .join("; ")}.`;
 }
@@ -5281,10 +5257,6 @@ function escapeHtml(value: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value);
-}
-
-function escapeMarkdown(value: string): string {
-  return value.replaceAll("|", "\\|").replaceAll("\n", " ");
 }
 
 function markdownEvidenceLink(value: string | undefined): string {

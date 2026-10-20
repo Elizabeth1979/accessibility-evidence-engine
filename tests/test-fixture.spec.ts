@@ -165,7 +165,7 @@ test("an existing spec with only its import swapped produces findings", async ()
   ]);
   const comment = await readFile((await assessmentComments(suiteDir, "gradients"))[0]!, "utf8");
   expect(comment).toContain("**Contrast left for a person (2):**");
-  expect(comment).toContain("- `#shadow`: text over a gradient; not measured");
+  expect(comment).toContain("- `#shadow`: text over a gradient\\; not measured");
 });
 
 test("the presses a test makes are watched for what they show and do not say", async () => {
