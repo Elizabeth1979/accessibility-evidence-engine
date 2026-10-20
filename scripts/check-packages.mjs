@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -28,6 +28,13 @@ const expectedPackages = [
   "@aee/reporter",
   "@aee/schemas"
 ];
+// What a package's folder holds for development only: its TypeScript source and settings, its
+// compiled tests, declaration maps (which point at source that does not ship) and installs.
+const developmentOnly = (file) =>
+  /^(src|node_modules)\//.test(file) ||
+  /^tsconfig\./.test(file) ||
+  file.includes(".test.") ||
+  file.endsWith(".d.ts.map");
 const workspaceRoot = path.resolve(import.meta.dirname, "..");
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), "aee-package-check-"));
 const packDirectory = path.join(temporaryRoot, "packs");
@@ -90,22 +97,51 @@ try {
     assert.ok(files.includes("package.json"), `${entry.name} is missing package.json.`);
     assert.ok(files.includes("dist/index.js"), `${entry.name} is missing its runtime entry point.`);
     assert.ok(files.includes("dist/index.d.ts"), `${entry.name} is missing its type entry point.`);
-    assert.equal(
-      files.some((file) => file.includes(".test.")),
-      false,
-      `${entry.name} contains compiled tests.`
-    );
-    assert.equal(
-      files.some((file) => file.endsWith(".d.ts.map")),
-      false,
-      `${entry.name} contains a declaration map without its source file.`
-    );
-    assert.equal(
-      files.some((file) => file.startsWith("src/")),
-      false,
-      `${entry.name} contains unpackaged source files.`
-    );
   }
+
+  // Each tarball holds exactly its package's folder after a build, less what only development
+  // uses. So a module, page script, licence or asset that `files` leaves out is named here, as is
+  // anything shipped that only development uses; publint and attw see only the entry points.
+  // Every package is compared before any failure is reported, so one run lists them all.
+  const contentMismatches = packages.flatMap((entry) => {
+    const files = entry.files.map((file) => file.path);
+    const packageDirectory = path.join(workspaceRoot, entry.name.replace("@aee/", "packages/"));
+    const shipped = readdirSync(packageDirectory, { recursive: true, withFileTypes: true })
+      .filter((file) => file.isFile())
+      .map((file) =>
+        path
+          .relative(packageDirectory, path.join(file.parentPath, file.name))
+          .split(path.sep)
+          .join("/")
+      )
+      .filter((file) => !developmentOnly(file));
+    return [
+      ...shipped.filter((file) => !files.includes(file)).map((file) => `leaves out ${file}`),
+      ...files
+        .filter((file) => !shipped.includes(file))
+        .map((file) => `ships development-only ${file}`)
+    ].map((problem) => `${entry.name}: ${problem}`);
+  });
+  assert.deepEqual(contentMismatches, [], "A tarball does not match its built package.");
+
+  // publint checks each manifest against the files its tarball ships, such as an export whose
+  // file was left out of `files`; attw checks that TypeScript finds the types of every entry
+  // point in each way a project resolves modules (node10, node16 from CommonJS and from ESM,
+  // bundler). Every package is linted before any failure is reported, so one run lists them all.
+  const lintFailures = packages.flatMap((entry) => {
+    const tarball = path.join(packDirectory, entry.filename);
+    return [
+      ["publint", "run", tarball, "--strict"],
+      ["attw", tarball, "--format", "ascii"]
+    ]
+      .filter(
+        (command) =>
+          spawnSync("npx", ["--no-install", ...command], { cwd: workspaceRoot, stdio: "inherit" })
+            .status !== 0
+      )
+      .map(([tool]) => `${tool} ${entry.name}`);
+  });
+  assert.deepEqual(lintFailures, [], "publint or attw found problems in the packages above.");
 
   writeFileSync(
     path.join(installDirectory, "package.json"),
@@ -234,7 +270,7 @@ try {
   );
 
   process.stdout.write(
-    `Verified and installed ${packages.length} package tarballs, and ran the fixture and aee run on Playwright ${oldestPlaywright}.\n`
+    `Verified, linted with publint and attw, and installed ${packages.length} package tarballs, and ran the fixture and aee run on Playwright ${oldestPlaywright}.\n`
   );
 } finally {
   rmSync(temporaryRoot, { recursive: true, force: true });

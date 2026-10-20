@@ -19,37 +19,21 @@
     },
     "./package.json": "./package.json"
   },
+  "typesVersions": {
+    "*": {
+      "test": [
+        "dist/test-fixture.d.ts"
+      ]
+    }
+  },
   "bin": {
     "aee": "dist/index.js"
   },
   "files": [
-    "dist/comment-images.js",
-    "dist/comment-images.js.map",
-    "dist/comment-images.d.ts",
-    "dist/command-line.js",
-    "dist/command-line.js.map",
-    "dist/command-line.d.ts",
-    "dist/fix.js",
-    "dist/fix.js.map",
-    "dist/fix.d.ts",
-    "dist/fix-command.js",
-    "dist/fix-command.js.map",
-    "dist/fix-command.d.ts",
-    "dist/index.js",
-    "dist/index.js.map",
-    "dist/index.d.ts",
-    "dist/pr-comment.js",
-    "dist/pr-comment.js.map",
-    "dist/pr-comment.d.ts",
-    "dist/scenario.js",
-    "dist/scenario.js.map",
-    "dist/scenario.d.ts",
-    "dist/scenario-runner.js",
-    "dist/scenario-runner.js.map",
-    "dist/scenario-runner.d.ts",
-    "dist/test-fixture.js",
-    "dist/test-fixture.js.map",
-    "dist/test-fixture.d.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.*",
     "assets/aee-display.woff2",
     "assets/Fraunces-OFL.txt"
   ],

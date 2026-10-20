@@ -386,6 +386,27 @@ export interface InputComparisonResult {
   manifestFile: string;
 }
 
+/** The trace of a comparison that did not complete: why, and no lanes or outcome. */
+export interface InputComparisonFailure extends Pick<
+  InputComparisonResult,
+  | "schemaVersion"
+  | "comparisonId"
+  | "name"
+  | "isolation"
+  | "targetUrl"
+  | "allowedOrigins"
+  | "startedAt"
+  | "finishedAt"
+  | "traceFile"
+  | "manifestFile"
+> {
+  status: "blocked" | "failed";
+  diagnostics: string[];
+}
+
+/** An interaction-trace.json, as interaction-comparison.schema.json checks it. */
+export type InputComparisonTrace = InputComparisonResult | InputComparisonFailure;
+
 export interface KeyboardPointerSweepLaneRoute {
   request(): { url(): string; isNavigationRequest(): boolean };
   fallback(): Promise<void>;
@@ -968,7 +989,7 @@ export async function runInputComparison<TPage extends InteractionComparisonPage
     manifestLanes.forEach((lane) => {
       if (lane.status !== "completed") lane.status = failureStatus;
     });
-    const failure = {
+    const failure: InputComparisonFailure = {
       schemaVersion: "0.1.0",
       comparisonId,
       name: options.name,

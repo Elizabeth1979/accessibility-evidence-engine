@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,11 +16,13 @@ import {
   aeeRunModelProvider,
   axeRuleViewsForTest,
   buildScenarioSynthesisForTest,
+  collectPageCheckpointActions,
   finishAssessment,
   renderFixesCsvForTest,
   renderIntegratedHtmlForTest,
   renderIntegratedMarkdown,
   renderPullRequestComment,
+  verifyAppliedFixes,
   type PageChecksSkipped,
   type ScenarioActionReport,
   type ScenarioIntegratedReport
@@ -978,14 +980,19 @@ test("a test whose page the fixture did not check says why, and only a page chec
 
 /**
  * Finishes a one-journey assessment whose only evidence is a completed keyboard and pointer sweep
- * with no actions, so no lane ran the axe rules.
+ * with no actions, so no lane ran the axe rules. `laneFiles` adds a completed reader lane holding
+ * those JSON files, by name, as its own lane evidence.
  */
 async function finishWithOnlyASweep(input: {
   scenarioId: string;
   plannedLanes: number;
   diagnostics: string[];
+  laneFiles?: Record<string, unknown>;
 }) {
   const assessmentDir = await mkdtemp(path.join(tmpdir(), `aee-${input.scenarioId}-`));
+  const laneManifestFiles = input.laneFiles
+    ? [await writeLaneFiles(path.join(assessmentDir, "read-reader"), input.laneFiles)]
+    : [];
   const { manifestFile } = await writeEvidenceManifest({
     assessmentId: "read-keyboard-pointer-sweep",
     rootDir: path.join(assessmentDir, "read-keyboard-pointer-sweep"),
@@ -1019,7 +1026,7 @@ async function finishWithOnlyASweep(input: {
     plannedLanes: input.plannedLanes,
     actions: [],
     findings: [],
-    childManifestFiles: [manifestFile],
+    childManifestFiles: [manifestFile, ...laneManifestFiles],
     diagnostics: input.diagnostics,
     aiProvider: aeeRunModelProvider({})
   });
@@ -1154,4 +1161,198 @@ test("the fixes CSV opens in a spreadsheet with page text in its own cell, as te
     assert.equal(column("Elements")?.split("; ")[0], `[aria-label="${text}"]`, label);
     for (const cell of rows.flat()) assert.doesNotMatch(cell, formula, label);
   }
+});
+
+/** Writes JSON files into a completed reader lane's folder and indexes them in its manifest. */
+async function writeLaneFiles(laneDir: string, files: Record<string, unknown>): Promise<string> {
+  await mkdir(laneDir, { recursive: true });
+  const paths = await Promise.all(
+    Object.entries(files).map(async ([name, content]) => {
+      const filePath = path.join(laneDir, name);
+      await writeFile(filePath, JSON.stringify(content), "utf8");
+      return filePath;
+    })
+  );
+  const { manifestFile } = await writeEvidenceManifest({
+    assessmentId: "read-reader",
+    rootDir: laneDir,
+    lanes: [
+      {
+        id: "read-reader",
+        driver: "portable-virtual-screen-reader",
+        status: "completed",
+        actions: []
+      }
+    ],
+    supplementalFiles: paths.map((filePath) => ({ path: filePath }))
+  });
+  return manifestFile;
+}
+
+/** A transcript as the virtual reader writes it: one command that lands on a Save button. */
+function readerTranscript() {
+  const entry: Record<string, unknown> = {
+    sequence: 1,
+    timestamp: "2026-01-01T00:00:00.000Z",
+    command: "next-control",
+    announcement: "Save, button",
+    item: {
+      key: "save",
+      nodePath: "#save",
+      tagName: "button",
+      role: "button",
+      name: "Save",
+      states: []
+    },
+    focusMoved: false
+  };
+  const transcript: Record<string, unknown> = {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.3.0",
+    speechEngine: "virtual",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.com/",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    entries: [entry]
+  };
+  return { transcript, entry, item: entry.item as Record<string, unknown> };
+}
+
+test("a reader transcript with a missing or wrong-typed field is unknown, named by file and field, never a guess", async () => {
+  // The transcript says nothing about its fidelity, and its announcement is a number, not speech.
+  const { transcript, entry } = readerTranscript();
+  delete transcript.fidelity;
+  entry.announcement = 7;
+  const result = await finishWithOnlyASweep({
+    scenarioId: "malformed-transcript",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "transcript.json": transcript }
+  });
+  const html = await readFile(result.reportFiles.html, "utf8");
+  const reason =
+    'Invalid read-reader/transcript.json: (root) is missing required property "fidelity"; /entries/0/announcement must be string';
+
+  // Never read as the semantic simulation it did not claim, nor as a reader that said nothing.
+  assert.doesNotMatch(html, /· semantic simulation<\/p>/);
+  assert.doesNotMatch(html, /No announcement was emitted\./);
+  assert.ok(
+    html.includes(
+      `<p>https://example.com/ · transcript not read</p></div><span class="badge unknown">not read</span></header><p>${reason.replaceAll('"', "&quot;")}</p>`
+    ),
+    "the Reader tab says the transcript was not read, and names the file and fields"
+  );
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    synthesis: { status: Array<{ id: string; verdict: string; detail: string }> };
+  };
+  const reader = report.synthesis.status.find(({ id }) => id === "reader");
+  assert.deepEqual(
+    { verdict: reader?.verdict, detail: reader?.detail },
+    {
+      verdict: "unknown",
+      detail: `A reader transcript could not be read, so its announcements were not checked. ${reason}`
+    }
+  );
+});
+
+test("a fix check on a malformed transcript is unknown with the reason, never a fail", async () => {
+  // The element's name is a number: not the string a reader announces, so not a wrong name either.
+  const { transcript, item } = readerTranscript();
+  item.name = 42;
+  const result = await finishWithOnlyASweep({
+    scenarioId: "malformed-fix-transcript",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "transcript.json": transcript }
+  });
+  const [verification] = await verifyAppliedFixes(result.reportFiles.json, [
+    { ruleId: "button-name", selector: "#save", name: "Save" }
+  ]);
+
+  assert.deepEqual(verification?.checks[1], {
+    id: "reader",
+    verdict: "unknown",
+    detail: "Invalid read-reader/transcript.json: /entries/0/item/name must be string"
+  });
+  assert.equal(verification?.verdict, "unknown");
+});
+
+test("a pointer and keyboard comparison with a missing field is unknown, named by file and field", async () => {
+  // A completed comparison whose equivalence has a verdict but no summary of what was compared.
+  const result = await finishWithOnlyASweep({
+    scenarioId: "malformed-comparison",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: {
+      "interaction-trace.json": {
+        schemaVersion: "0.1.0",
+        comparisonId: "open-menu",
+        name: "Open the menu",
+        isolation: "separate-dedicated-browser-contexts",
+        status: "completed",
+        targetUrl: "https://example.com/",
+        allowedOrigins: ["https://example.com/"],
+        startedAt: "2026-01-01T00:00:00.000Z",
+        finishedAt: "2026-01-01T00:00:01.000Z",
+        equivalence: { verdict: "pass" },
+        traceFile: "interaction-trace.json"
+      }
+    }
+  });
+  const html = await readFile(result.reportFiles.html, "utf8");
+
+  assert.doesNotMatch(html, /No comparison summary was emitted\./);
+  assert.match(
+    html,
+    /<p>Invalid read-reader\/interaction-trace\.json: [^<]*\/equivalence is missing required property &quot;summary&quot;/
+  );
+});
+
+test("an action report with no findings list is an error naming the file, never zero findings", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "aee-malformed-action-"));
+  const reportFile = path.join(rootDir, "page-load", "aee-report.json");
+  await mkdir(path.dirname(reportFile), { recursive: true });
+  const run = {
+    id: "run",
+    version: "0.1.0",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    status: "completed"
+  };
+  await writeFile(
+    reportFile,
+    JSON.stringify({
+      schemaVersion: "0.1.0",
+      run,
+      bundles: [],
+      records: [],
+      judgments: [],
+      artifacts: []
+    }),
+    "utf8"
+  );
+  const step = {
+    actionId: "checkpoint-1-loaded",
+    name: "loaded",
+    sequence: 1,
+    runId: "run",
+    pageUrl: "https://example.com/",
+    results: { pass: 0, fail: 0, unknown: 0 },
+    releaseVerdict: "unknown" as const,
+    reporterFiles: [reportFile],
+    artifactFiles: []
+  };
+
+  await assert.rejects(
+    collectPageCheckpointActions(
+      rootDir,
+      "journey",
+      { laneId: "page-load", driver: "page-load", steps: [step] },
+      [],
+      []
+    ),
+    { message: 'Invalid page-load/aee-report.json: (root) is missing required property "findings"' }
+  );
 });
