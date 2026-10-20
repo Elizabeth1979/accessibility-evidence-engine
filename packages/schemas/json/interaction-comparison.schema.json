@@ -133,17 +133,8 @@
         "action": { "$ref": "#/$defs/action" },
         "runId": { "$ref": "./common.schema.json#/$defs/uid" },
         "pageUrl": { "type": "string", "format": "uri" },
-        "results": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["pass", "fail", "unknown"],
-          "properties": {
-            "pass": { "type": "integer", "minimum": 0 },
-            "fail": { "type": "integer", "minimum": 0 },
-            "unknown": { "type": "integer", "minimum": 0 }
-          }
-        },
-        "releaseVerdict": { "enum": ["pass", "fail", "unknown"] },
+        "results": { "$ref": "./common.schema.json#/$defs/runSummary" },
+        "releaseVerdict": { "$ref": "./common.schema.json#/$defs/verdict" },
         "reporterFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "artifactFiles": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       }
@@ -156,17 +147,7 @@
         "driver": { "enum": ["pointer", "keyboard"] },
         "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
         "observation": { "$ref": "#/$defs/observation" },
-        "video": { "$ref": "#/$defs/videoEvidence" }
-      }
-    },
-    "videoEvidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["videoFile", "sidecarFile", "captionsFile"],
-      "properties": {
-        "videoFile": { "type": "string", "minLength": 1 },
-        "sidecarFile": { "type": "string", "minLength": 1 },
-        "captionsFile": { "type": "string", "minLength": 1 }
+        "video": { "$ref": "./common.schema.json#/$defs/videoEvidence" }
       }
     }
   },

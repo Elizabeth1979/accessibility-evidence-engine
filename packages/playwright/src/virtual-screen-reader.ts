@@ -11,6 +11,14 @@ import {
   TEXT_ROLE,
   type LiveRegionAnnouncement
 } from "@aee/core";
+import type {
+  VirtualScreenReaderCommand,
+  VirtualScreenReaderEntry,
+  VirtualScreenReaderFocus,
+  VirtualScreenReaderFrame,
+  VirtualScreenReaderItem,
+  VirtualScreenReaderTranscript
+} from "@aee/schemas";
 
 import {
   capturePageDom,
@@ -18,7 +26,6 @@ import {
   mainFrameOf,
   withPageSessions,
   type AccessibilityNode,
-  type AccessibilityProperty,
   type AccessibilityValue,
   type CapturedDom,
   type CapturedElement,
@@ -30,6 +37,15 @@ import {
 } from "./accessibility-tree";
 import { focusPath, frameHeldAt } from "./dom-focus";
 import { placeOf } from "./element-selectors";
+export type {
+  VirtualScreenReaderCommand,
+  VirtualScreenReaderEntry,
+  VirtualScreenReaderFocus,
+  VirtualScreenReaderFrame,
+  VirtualScreenReaderItem,
+  VirtualScreenReaderTranscript
+} from "@aee/schemas";
+
 import {
   GUIDEPUP_SCRIPT,
   callOn,
@@ -38,130 +54,6 @@ import {
   nodeOf,
   type FrameDocuments
 } from "./frame-documents";
-
-export type VirtualScreenReaderCommand =
-  | "start"
-  | "next-item"
-  | "previous-item"
-  | "next-heading"
-  | "previous-heading"
-  | "next-landmark"
-  | "next-control"
-  | "read-current";
-
-export interface VirtualScreenReaderItem {
-  key: string;
-  nodePath: string;
-  tagName: string;
-  /** The role in the browser's accessibility tree, or "text" for a piece of text. */
-  role: string;
-  /** The accessible name the browser computed. */
-  name?: string;
-  /** The accessible description the browser computed, such as from `aria-describedby`. */
-  description?: string;
-  /** The value the browser exposes, such as a text field's text or a slider's position. */
-  value?: string | number;
-  /** The words of a piece of text the reader stopped on. */
-  text?: string;
-  level?: number;
-  /** The states a screen reader says aloud, in words. */
-  states: string[];
-  /**
-   * Every state and property the browser's accessibility tree gives the element, exactly as
-   * Chrome reports them (CDP `AXProperty`): `focusable`, `invalid`, `hasPopup`, `describedby`…
-   */
-  properties?: AccessibilityProperty[];
-  /**
-   * The DOM node the reader is on, as this browser session numbers it. It joins the item to the
-   * accessibility tree and DOM snapshot taken in the same session, node for node.
-   */
-  backendDOMNodeId?: number;
-  /**
-   * The frame whose document holds the node. With `backendDOMNodeId` it names the node across
-   * every frame, since node ids repeat in frames rendered in other processes.
-   */
-  frameId?: string;
-  /**
-   * The `<iframe>` elements the node is inside, outermost first, each as a path in the document
-   * that holds it, as the element map and axe-core's `target` list them. Absent in the top
-   * document.
-   */
-  framePath?: string[];
-  /** Page coordinates; absent when the element has no rendered box. */
-  visualBounds?: {
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  };
-}
-
-/**
- * The element that has DOM focus, named as an item names the element it is on. When focus is
- * inside a frame it is the focused element in that frame's own document, not the `<iframe>`.
- */
-export interface VirtualScreenReaderFocus {
-  /** Its path in the document that holds it. */
-  nodePath: string;
-  /** The DOM node, as this browser session numbers it in its frame's process. */
-  backendDOMNodeId: number;
-  /** The frame whose document holds it. */
-  frameId: string;
-  /** The `<iframe>` elements it is inside, outermost first. Absent in the top document. */
-  framePath?: string[];
-}
-
-/** A frame the reader went into or came out of. */
-export interface VirtualScreenReaderFrame {
-  /** The frame's id: the `frameId` of every item read inside it. */
-  frameId: string;
-  /**
-   * The `<iframe>` elements that hold the frame's document, outermost first and ending with its
-   * own: the `framePath` of every item read inside it.
-   */
-  framePath: string[];
-  /** The frame element's accessible name, as the browser computes it (usually its `title`). */
-  name?: string;
-}
-
-export interface VirtualScreenReaderEntry {
-  sequence: number;
-  timestamp: string;
-  command: VirtualScreenReaderCommand;
-  /** What the reader said, as Guidepup's virtual screen reader says it. */
-  announcement: string;
-  /**
-   * The frames this command came out of, innermost first. Guidepup says nothing as it leaves a
-   * frame, where NVDA says "out of frame"; the transcript notes it in AEE's own words.
-   */
-  framesLeft?: VirtualScreenReaderFrame[];
-  /** The frames this command went into, outermost first. */
-  framesEntered?: VirtualScreenReaderFrame[];
-  item?: VirtualScreenReaderItem;
-  /** The element that had DOM focus before the command, in whichever frame holds it. */
-  domFocusBefore?: VirtualScreenReaderFocus;
-  /** The element that had DOM focus after the command, in whichever frame holds it. */
-  domFocusAfter?: VirtualScreenReaderFocus;
-  /** Whether DOM focus is on another element after the command, in any frame. */
-  focusMoved: boolean;
-}
-
-export interface VirtualScreenReaderTranscript {
-  schemaVersion: "0.1.0";
-  engine: "aee-portable-virtual-screen-reader";
-  engineVersion: "0.3.0";
-  /** What decides what is spoken: Guidepup's virtual screen reader, and its version. */
-  speechEngine: string;
-  mode: "guide";
-  fidelity: "semantic-simulation";
-  physicalAssistiveTechnology: false;
-  pageUrl: string;
-  generatedAt: string;
-  currentItem?: VirtualScreenReaderItem;
-  entries: VirtualScreenReaderEntry[];
-  /** Live-region updates the reader announced while it listened, oldest first. */
-  liveRegionAnnouncements: LiveRegionAnnouncement[];
-}
 
 export function renderPortableVirtualScreenReaderTranscript(
   transcript: VirtualScreenReaderTranscript
@@ -188,9 +80,10 @@ export function renderPortableVirtualScreenReaderTranscript(
     }
   }
 
-  if (transcript.liveRegionAnnouncements.length > 0) {
+  const announcements = transcript.liveRegionAnnouncements ?? [];
+  if (announcements.length > 0) {
     lines.push("", "Live-region announcements:");
-    for (const announcement of transcript.liveRegionAnnouncements) {
+    for (const announcement of announcements) {
       lines.push(`${announcement.sequence}. ${announcement.politeness}: ${announcement.text}`);
     }
   }

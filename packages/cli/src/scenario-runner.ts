@@ -34,7 +34,6 @@ import {
   writeObservedPressesLane,
   runVirtualScreenReaderLane,
   SWEEP_FINDING_CONCEPTS,
-  type AxeResultFile,
   type AxeResultNode,
   type AxeResultRule,
   type AxeTarget,
@@ -43,7 +42,6 @@ import {
   type ElementContext,
   type ElementLocation,
   type ElementMap,
-  type EvidenceManifest,
   type InputComparisonLane,
   type InputComparisonResult,
   type InputComparisonTrace,
@@ -78,6 +76,8 @@ import {
   remediationEntry,
   remediationRegistry,
   type PatternLink,
+  type ScenarioReportDocument,
+  type SchemaDocuments,
   type SchemaName
 } from "@aee/schemas";
 import { chromium, type Browser, type Page } from "@playwright/test";
@@ -113,7 +113,11 @@ export interface ExecuteScenarioOptions {
   aiProvider?: ModelProvider;
 }
 
-export interface ScenarioActionReport {
+/**
+ * One action of a journey in the report. A type rather than an interface: the report schema leaves
+ * its items unchecked (any object), and only a type's members are known to fit that.
+ */
+export type ScenarioActionReport = {
   journeyId: string;
   laneId: string;
   driver:
@@ -126,7 +130,7 @@ export interface ScenarioActionReport {
   releaseVerdict: "pass" | "fail" | "unknown";
   reportPath: string;
   artifactPaths: string[];
-}
+};
 
 /**
  * Why the test fixture did not check a test's page by keyboard and with the reader. Only the first
@@ -136,62 +140,20 @@ export interface ScenarioActionReport {
 export type PageChecksSkipped =
   "checked-in-another-test" | "test-did-not-pass" | "no-web-page" | "turned-off";
 
-export interface ScenarioIntegratedReport {
-  schemaVersion: "0.1.0";
-  assessmentId: string;
-  scenarioId: string;
-  name?: string;
-  scenarioDigest: string;
-  planDigest: string;
+/**
+ * An aee-report.json, as scenario-report.schema.json checks it, with the parts the schema leaves
+ * unchecked (actions, findings, the synthesis) given the types AEE writes them with.
+ */
+export interface ScenarioIntegratedReport extends ScenarioReportDocument {
   profile: ScenarioProfile;
-  target: string;
-  goal: string;
-  standard: string;
-  status: "completed" | "partial";
-  verdict: "pass" | "fail" | "unknown";
-  startedAt: string;
-  finishedAt: string;
-  completeness: {
-    status: "complete" | "incomplete";
-    plannedLanes: number;
-    completedLanes: number;
-    missingArtifacts: number;
-    failedArtifacts: number;
-    /** Whether the plan runs the keyboard and mouse sweep and the virtual screen reader at all. */
+  completeness: ScenarioReportDocument["completeness"] & {
     plannedChecks: { keyboard: boolean; reader: boolean; skipped?: PageChecksSkipped };
-  };
-  summary: {
-    actions: number;
-    passed: number;
-    failed: number;
-    unknown: number;
-    /** Findings that block release. */
-    findings: number;
-    /** Advisory findings: reported, never blocking. */
-    advisories: number;
-    artifacts: number;
   };
   journeys: Array<{ id: string; name: string; goal: string; startUrl: string }>;
   actions: ScenarioActionReport[];
   findings: Array<Record<string, unknown>>;
   synthesis: ScenarioSynthesis;
   artifacts: Array<Record<string, unknown>>;
-  diagnostics: string[];
-  files: {
-    html: string;
-    json: string;
-    markdown: string;
-    prComment: string;
-    csv: string;
-    manifest: string;
-    plan: string;
-  };
-  privacy: {
-    classification: "sensitive";
-    reviewedForSharing: false;
-    remoteUploadAuthorized: false;
-  };
-  ai: { present: boolean; label: string };
 }
 
 /** The files every run writes its report to. */
@@ -284,7 +246,7 @@ interface ComparisonLaneView {
   text?: string;
 }
 
-interface InputComparisonView {
+type InputComparisonView = {
   path: string;
   comparisonId: string;
   name: string;
@@ -296,7 +258,7 @@ interface InputComparisonView {
   pointer: ComparisonLaneView;
   keyboard: ComparisonLaneView;
   readError?: string;
-}
+};
 
 interface ReaderEntryView {
   sequence: number;
@@ -353,7 +315,7 @@ interface FindingCheckpointSynthesis {
   sweepPath?: string;
 }
 
-export interface FindingSynthesis {
+export type FindingSynthesis = {
   ruleId: string;
   title: string;
   severity: string;
@@ -377,7 +339,7 @@ export interface FindingSynthesis {
     ai: FindingAi;
     verification: string[];
   };
-}
+};
 
 /** What AI contributed to a finding. It never changes the finding's verdict. */
 interface FindingAi {
@@ -1091,7 +1053,7 @@ async function collectAction(
   const jsonReport = step.reporterFiles.find((filePath) => filePath.endsWith("aee-report.json"));
   if (!jsonReport) throw new Error(`Action ${actionId} did not create a JSON report.`);
   const reportPath = relativePath(rootDir, jsonReport);
-  const report = await readEvidenceJson<AeeReportPayload>(rootDir, reportPath, "report");
+  const report = await readEvidenceJson(rootDir, reportPath, "report");
   actions.push({
     journeyId,
     laneId,
@@ -1116,7 +1078,7 @@ async function loadChildEvidence(rootDir: string, manifestFiles: string[]) {
   let missingArtifacts = 0;
   let failedArtifacts = 0;
   for (const manifestFile of manifestFiles) {
-    const manifest = JSON.parse(await readFile(manifestFile, "utf8")) as EvidenceManifest;
+    const manifest: unknown = JSON.parse(await readFile(manifestFile, "utf8"));
     assertValidSchema("evidenceManifest", manifest, `child evidence manifest ${manifestFile}`);
     completedLanes += manifest.lanes.filter(({ status }) => status === "completed").length;
     missingArtifacts += manifest.summary.missing;
@@ -1349,7 +1311,7 @@ export async function verifyAppliedFixes(
   fixes: AppliedFix[]
 ): Promise<FixVerification[]> {
   const rootDir = path.dirname(reportFile);
-  const report = await readEvidenceJson<ScenarioIntegratedReport>(
+  const report = await readEvidenceJson<"scenarioReport", ScenarioIntegratedReport>(
     rootDir,
     path.basename(reportFile),
     "scenarioReport"
@@ -1450,7 +1412,7 @@ async function loadReaderTranscriptViews(
       );
       const view = { path: artifactPath, textPath: textPath ? String(textPath.path) : undefined };
       try {
-        const transcript = await readEvidenceJson<VirtualScreenReaderTranscript>(
+        const transcript = await readEvidenceJson(
           rootDir,
           artifactPath,
           "virtualScreenReaderTranscript"
@@ -1501,7 +1463,7 @@ async function loadInputComparisonViews(
     artifacts.map(async (artifact): Promise<InputComparisonView> => {
       const artifactPath = String(artifact.path);
       try {
-        const trace = await readEvidenceJson<InputComparisonTrace>(
+        const trace = await readEvidenceJson<"interactionComparison", InputComparisonTrace>(
           rootDir,
           artifactPath,
           "interactionComparison"
@@ -1622,7 +1584,7 @@ async function loadElementMapViews(
         screenshotPath: screenshot ? String(screenshot.path) : undefined
       };
       try {
-        const map = await readEvidenceJson<ElementMap>(rootDir, artifactPath, "elementMap");
+        const map = await readEvidenceJson(rootDir, artifactPath, "elementMap");
         return { ...view, map };
       } catch (error) {
         return { ...view, readError: error instanceof Error ? error.message : String(error) };
@@ -1642,11 +1604,7 @@ async function loadSweepViews(
     artifacts.map(async (artifact) => {
       const artifactPath = String(artifact.path);
       try {
-        const document = await readEvidenceJson<KeyboardPointerSweepLaneDocument>(
-          rootDir,
-          artifactPath,
-          "keyboardPointerSweepLane"
-        );
+        const document = await readEvidenceJson(rootDir, artifactPath, "keyboardPointerSweepLane");
         const screenshot = report.artifacts.find((candidate) => {
           const provenance = isRecord(candidate.provenance) ? candidate.provenance : {};
           return candidate.kind === "full-page-screenshot" && provenance.laneId === document.laneId;
@@ -1673,11 +1631,7 @@ async function loadActionReportViews(
   return Promise.all(
     report.actions.map(async (action) => {
       try {
-        const { judgments, records } = await readEvidenceJson<AeeReportPayload>(
-          rootDir,
-          action.reportPath,
-          "report"
-        );
+        const { judgments, records } = await readEvidenceJson(rootDir, action.reportPath, "report");
         const observerSummaries = records.flatMap(({ summary }) => (summary ? [summary] : []));
         return { action, judgments, observerSummaries };
       } catch (error) {
@@ -1707,7 +1661,7 @@ async function loadAxeReportViews(
       const laneId = stringField(provenance, "laneId", "unknown-lane");
       const runId = stringField(provenance, "runId", "unknown-run");
       try {
-        const document = await readEvidenceJson<AxeResultFile>(rootDir, artifactPath, "axeResult");
+        const document = await readEvidenceJson(rootDir, artifactPath, "axeResult");
         return {
           path: artifactPath,
           actionId,
@@ -2169,9 +2123,9 @@ export function buildScenarioSynthesisForTest(
  * It is checked against the axe result schema first, as a file is.
  */
 export function axeRuleViewsForTest(rules: unknown): unknown[] {
-  const file = { violations: rules, incomplete: [], passes: [], inapplicable: [] };
+  const file: unknown = { violations: rules, incomplete: [], passes: [], inapplicable: [] };
   assertValidSchema("axeResult", file, "axe result");
-  return axeRuleViews((file as AxeResultFile).violations);
+  return axeRuleViews(file.violations);
 }
 
 /** Pure HTML entry point used to verify the portable report without running a browser journey. */
@@ -2906,15 +2860,19 @@ function findingAi(
 /**
  * An evidence file AEE wrote, checked against its schema before anything reads it. A field that
  * is missing or of the wrong type is an error naming the file and the field, never a default.
+ *
+ * It has the type the schema gives (`SchemaDocuments`), or a narrower one the caller names: one
+ * that holds what the schema's conditions check, such as a completed trace's lanes, which
+ * TypeScript types cannot express. The narrower type must fit the schema's, so it cannot drift
+ * from it.
  */
-async function readEvidenceJson<T>(
-  rootDir: string,
-  reportPath: string,
-  schemaName: SchemaName
-): Promise<T> {
+async function readEvidenceJson<
+  Name extends SchemaName,
+  Document extends SchemaDocuments[Name] = SchemaDocuments[Name]
+>(rootDir: string, reportPath: string, schemaName: Name): Promise<Document> {
   const document = await parseReportJson(rootDir, reportPath);
   assertValidSchema(schemaName, document, reportPath);
-  return document as T;
+  return document as Document;
 }
 
 async function parseReportJson(rootDir: string, reportPath: string): Promise<unknown> {

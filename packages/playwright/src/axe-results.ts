@@ -1,54 +1,16 @@
-import type { CheckResult, NodeResult, Result, UnlabelledFrameSelector } from "axe-core";
+import type { AxeTarget, ContrastMeasurement, MeasuredContrast } from "@aee/schemas";
 
-import type { ContrastMeasurement, MeasuredContrast } from "./contrast-measurement";
-import type { ElementContext } from "./element-context";
-import type { ElementLocation } from "./element-locations";
-import type { FrameNotChecked } from "./frames-not-checked";
-
-/**
- * axe's path to an element, as its `target` gives it: one entry per document, outermost first,
- * so every entry but the last is an `<iframe>`. An entry that is itself a list steps into shadow
- * roots: its first selector finds the host, and each next one is matched inside the shadow root
- * of the element before it.
- */
-export type AxeTarget = UnlabelledFrameSelector;
+export type {
+  AxeImpact,
+  AxeResultCheck,
+  AxeResultFile,
+  AxeResultNode,
+  AxeResultRule,
+  AxeTarget
+} from "@aee/schemas";
 
 /** One document's part of an {@link AxeTarget}: a selector, or a path through shadow roots. */
 export type AxeTargetStep = AxeTarget[number];
-
-/**
- * An axe result file as AEE writes it at a checkpoint, as far as `axe-result.schema.json` checks
- * it: the axe-core 4.14 fields AEE reads, with axe's own types, and AEE's additions. axe's other
- * fields are in the file too, unchecked, so they are left out here.
- */
-export interface AxeResultFile {
-  violations: AxeResultRule[];
-  incomplete: AxeResultRule[];
-  /** Read only for how many there are. */
-  passes: unknown[];
-  inapplicable: unknown[];
-  /** Frames left out of the analysis; absent when every frame was checked. */
-  framesNotChecked?: FrameNotChecked[];
-}
-
-/** One rule's result: axe's `Result`, as far as AEE reads it. */
-export interface AxeResultRule extends Pick<
-  Result,
-  "id" | "impact" | "help" | "description" | "helpUrl" | "tags"
-> {
-  nodes: AxeResultNode[];
-}
-
-/** One element a rule found: axe's `NodeResult`, as far as AEE reads it, and AEE's additions. */
-export interface AxeResultNode extends Pick<NodeResult, "html" | "target" | "failureSummary"> {
-  any: Array<Pick<CheckResult, "id" | "message" | "data">>;
-  /** Where a violation's element sits on the full-page screenshot, when AEE found it there. */
-  aeeTarget?: ElementLocation;
-  /** The page around a violation's element an AI specialist may be asked about. */
-  aeeContext?: ElementContext;
-  /** AEE's measurement of the pixels behind a text whose contrast axe could not decide. */
-  aeeContrast?: ContrastMeasurement;
-}
 
 /**
  * A text's contrast as it was measured: by axe from the page's styles, or by AEE from the

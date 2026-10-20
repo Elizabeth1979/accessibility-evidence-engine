@@ -23,8 +23,12 @@
   "properties": {
     "schemaVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
     "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-    "scenarioDigest": { "$ref": "#/$defs/digest" },
-    "planDigest": { "$ref": "#/$defs/digest" },
+    "scenarioDigest": {
+      "$ref": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/common.schema.json#/$defs/digest"
+    },
+    "planDigest": {
+      "$ref": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/common.schema.json#/$defs/digest"
+    },
     "target": { "type": "string", "format": "uri" },
     "standard": { "type": "string", "minLength": 1 },
     "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
@@ -102,7 +106,6 @@
     }
   },
   "$defs": {
-    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "capability": {
       "type": "object",
       "additionalProperties": false,

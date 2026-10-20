@@ -1,38 +1,21 @@
 import registryJson from "../json/remediation-registry.json";
+import type { RemediationEntry, RemediationRegistry } from "./schema-types";
+import { assertValidSchema } from "./validator";
 
-export interface RemediationRequirement {
-  standard: string;
-  requirementId: string;
-  title: string;
-  level?: string;
-  relationship: string;
-  url: string;
-}
-
-export interface RemediationEntry {
-  id: string;
-  title: string;
-  patterns: string[];
-  requirements: RemediationRequirement[];
-  ai: { allowed: boolean; specialistId?: string; purpose: string };
-  verification: string[];
-}
-
-/** The part of the registry that pattern lookups read. */
-export interface RemediationRegistry {
-  patternSource: { repository: string; commit: string; path: string };
-  /** axe rule id → the a11y-skills pattern that explains its fix. */
-  axeRulePatterns: Record<string, string>;
-  entries: RemediationEntry[];
-}
+export type { RemediationEntry, RemediationRegistry, RemediationRequirement } from "./schema-types";
 
 export interface PatternLink {
   id: string;
   url: string;
 }
 
-/** The canonical concept → WCAG → axe → pattern map, validated against its schema in tests. */
-export const remediationRegistry = registryJson;
+/** The canonical concept → WCAG → axe → pattern map, checked against its schema as it loads. */
+export const remediationRegistry: RemediationRegistry = checkedRegistry(registryJson);
+
+function checkedRegistry(registry: unknown): RemediationRegistry {
+  assertValidSchema("remediationRegistry", registry);
+  return registry;
+}
 
 /** Links a pattern id to its a11y-skills file at the commit the registry pins. */
 export function patternLink(

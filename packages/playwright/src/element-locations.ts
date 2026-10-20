@@ -1,14 +1,8 @@
+import type { ElementLocation } from "@aee/schemas";
+
 import type { AxeTargetStep } from "./axe-results";
 
-/** Where an element sits on the whole page, so a report can point at it on a full-page screenshot. */
-export interface ElementLocation {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  pageWidth: number;
-  pageHeight: number;
-}
+export type { ElementLocation } from "@aee/schemas";
 
 export interface ElementLocationPage {
   evaluate<Arg>(pageFunction: (arg: Arg) => unknown, arg: Arg): Promise<unknown>;

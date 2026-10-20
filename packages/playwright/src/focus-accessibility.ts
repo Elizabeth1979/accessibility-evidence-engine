@@ -1,3 +1,5 @@
+import type { FocusedElement } from "@aee/schemas";
+
 import {
   accessibleElementOf,
   type AccessibilityNode,
@@ -16,35 +18,26 @@ const COMPOSITE_ITEM_ROLES: Record<string, string[]> = {
   grid: ["gridcell", "rowheader", "columnheader"]
 };
 
-const DIALOG_ROLES = ["dialog", "alertdialog"];
-
 /** The dialog an element sits in, as the accessibility tree has it. */
-export interface DialogContext {
-  tagName: string;
-  id?: string;
-  role: string;
-  /** Its accessible name, which ARIA takes from the author only: empty when it has none. */
-  name: string;
-  /** Whether the tree treats it as modal, from `aria-modal` or from `showModal()`. */
-  modal: boolean;
-}
+export type DialogContext = NonNullable<FocusedElement["dialogContext"]>;
+
+const DIALOG_ROLES: ReadonlyArray<DialogContext["role"]> = ["dialog", "alertdialog"];
 
 /**
  * A focused element as the accessibility tree has it: its role, name and states, and the dialog
  * and composite widget it sits in, found by walking up the tree.
  */
-export interface FocusAccessibility {
-  role: string;
-  name: string;
-  selected?: boolean;
-  checked?: boolean | "mixed";
-  dialogContext?: DialogContext;
-  compositeRole?: string;
-  compositeOrientation?: string;
-  /** Its place among the widget's items, counted from 0, in the order the tree has them. */
-  compositeItemIndex?: number;
-  compositeItemCount?: number;
-}
+export type FocusAccessibility = Required<Pick<FocusedElement, "role" | "name">> &
+  Pick<
+    FocusedElement,
+    | "selected"
+    | "checked"
+    | "dialogContext"
+    | "compositeRole"
+    | "compositeOrientation"
+    | "compositeItemIndex"
+    | "compositeItemCount"
+  >;
 
 /**
  * Describes one element, given as a protocol object in its frame's session, as the accessibility
@@ -72,18 +65,16 @@ export async function describeFocusElement(
   ) {
     ancestors.push(parent);
   }
-  const exposedWith = (roles: string[]) => (node: AccessibilityNode) =>
-    !node.ignored && roles.includes(String(node.role?.value));
   const element = accessibleElementOf(own);
-  const dialog = [own, ...ancestors].find(exposedWith(DIALOG_ROLES));
-  const composite = ancestors.find(exposedWith(Object.keys(COMPOSITE_ITEM_ROLES)));
+  const dialog = firstExposed([own, ...ancestors], DIALOG_ROLES);
+  const composite = firstExposed(ancestors, Object.keys(COMPOSITE_ITEM_ROLES));
 
   return {
     role: element.role,
     name: element.name,
     ...states(element.properties),
-    ...(dialog ? { dialogContext: await describeDialog(session, dialog) } : {}),
-    ...(composite ? await describeComposite(session, composite, own) : {})
+    ...(dialog ? { dialogContext: await describeDialog(session, dialog.node, dialog.role) } : {}),
+    ...(composite ? await describeComposite(session, composite.node, own) : {})
   };
 }
 
@@ -102,11 +93,24 @@ function states(
   };
 }
 
+/** The first of the nodes the tree exposes with one of the roles, and that role. */
+function firstExposed<Role extends string>(
+  nodes: AccessibilityNode[],
+  roles: readonly Role[]
+): { node: AccessibilityNode; role: Role } | undefined {
+  for (const node of nodes) {
+    const role = node.ignored ? undefined : roles.find((name) => name === String(node.role?.value));
+    if (role) return { node, role };
+  }
+  return undefined;
+}
+
 async function describeDialog(
   session: CdpSession,
-  dialog: AccessibilityNode
+  dialog: AccessibilityNode,
+  role: DialogContext["role"]
 ): Promise<DialogContext> {
-  const { role, name, properties } = accessibleElementOf(dialog);
+  const { name, properties } = accessibleElementOf(dialog);
   const { node } = (await session.send("DOM.describeNode", {
     backendNodeId: dialog.backendDOMNodeId
   })) as { node: { localName: string; attributes?: string[] } };
@@ -141,7 +145,9 @@ async function describeComposite(
   const { orientation } = accessibleElementOf(composite).properties;
   return {
     compositeRole,
-    ...(typeof orientation === "string" ? { compositeOrientation: orientation } : {}),
+    ...(orientation === "horizontal" || orientation === "vertical"
+      ? { compositeOrientation: orientation }
+      : {}),
     ...(index >= 0 ? { compositeItemIndex: index } : {}),
     ...(items.length > 0 ? { compositeItemCount: items.length } : {})
   };

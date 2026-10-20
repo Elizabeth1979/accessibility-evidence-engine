@@ -1,4 +1,5 @@
 import { redactUrl } from "@aee/core";
+import type { FrameNotChecked } from "@aee/schemas";
 
 import {
   accessibleElementOf,
@@ -9,24 +10,7 @@ import {
   type PageSessions
 } from "./accessibility-tree";
 
-/**
- * A frame left out of the page's checks (`framesInsideOrigins`), such as one whose page is outside
- * the allowed origins. Its element is the page's own and is checked there; nothing inside it is
- * read.
- */
-export interface FrameNotChecked {
-  /** Its page's address, with no credentials, query values or fragment. */
-  url: string;
-  /** Why it was left out, naming the site when its page is outside the allowed origins. */
-  reason: string;
-  /** Its element's accessible name, as Chrome's accessibility tree gives it. */
-  name: string;
-  /**
-   * Its element: a CSS selector in each document from the top one down, the way axe-core's
-   * `target` lists a node inside frames.
-   */
-  selector: [string, ...string[]];
-}
+export type { FrameNotChecked } from "@aee/schemas";
 
 /**
  * The frames `framesInsideOrigins` left out of frames it kept, each with its element's name and

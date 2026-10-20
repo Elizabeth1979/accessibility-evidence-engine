@@ -11,6 +11,11 @@
       "type": "string",
       "format": "date-time"
     },
+    "digest": {
+      "description": "A SHA-256 digest, as AEE fingerprints a scenario and its approved plan.",
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
     "liveRegionAnnouncement": {
       "description": "A live-region update Guidepup's virtual screen reader announced (WAI-ARIA 1.2 aria-live).",
       "type": "object",
@@ -19,9 +24,31 @@
         "sequence": { "type": "integer", "minimum": 1 },
         "timestamp": { "$ref": "#/$defs/isoTimestamp" },
         "politeness": { "enum": ["polite", "assertive"] },
-        "text": { "type": "string" }
+        "text": {
+          "description": "What the reader said, without its politeness prefix.",
+          "type": "string"
+        }
       },
       "additionalProperties": false
+    },
+    "interactionKind": {
+      "description": "What the interaction did: a key, a pointer action, typing, a screen-reader command, or custom.",
+      "type": "string",
+      "enum": [
+        "tab",
+        "shift-tab",
+        "click",
+        "hover",
+        "focus",
+        "enter",
+        "space",
+        "escape",
+        "arrow-key",
+        "type",
+        "submit",
+        "screen-reader-command",
+        "custom"
+      ]
     },
     "artifactKind": {
       "type": "string",
@@ -87,11 +114,22 @@
           "type": "string"
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "severity": {
       "type": "string",
       "enum": ["info", "low", "medium", "high", "critical"]
+    },
+    "runSummary": {
+      "description": "How many judgments passed, failed and could not decide.",
+      "type": "object",
+      "required": ["pass", "fail", "unknown"],
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "unknown": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
     },
     "verdict": {
       "type": "string",
@@ -109,6 +147,17 @@
         "height": { "type": "number", "minimum": 0 },
         "pageWidth": { "type": "number", "minimum": 0 },
         "pageHeight": { "type": "number", "minimum": 0 }
+      }
+    },
+    "videoEvidence": {
+      "description": "The recording of a lane, captioned step by step: the video, its sidecar and its captions.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["videoFile", "sidecarFile", "captionsFile"],
+      "properties": {
+        "videoFile": { "type": "string", "minLength": 1 },
+        "sidecarFile": { "type": "string", "minLength": 1 },
+        "captionsFile": { "type": "string", "minLength": 1 }
       }
     }
   }

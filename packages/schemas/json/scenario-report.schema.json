@@ -35,8 +35,8 @@
     "assessmentId": { "$ref": "./common.schema.json#/$defs/uid" },
     "scenarioId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
     "name": { "type": "string", "minLength": 1 },
-    "scenarioDigest": { "$ref": "#/$defs/digest" },
-    "planDigest": { "$ref": "#/$defs/digest" },
+    "scenarioDigest": { "$ref": "./common.schema.json#/$defs/digest" },
+    "planDigest": { "$ref": "./common.schema.json#/$defs/digest" },
     "profile": { "enum": ["core", "at-fidelity", "playwright-test"] },
     "target": { "type": "string", "format": "uri" },
     "goal": { "type": "string", "minLength": 1 },
@@ -87,8 +87,16 @@
         "passed": { "type": "integer", "minimum": 0 },
         "failed": { "type": "integer", "minimum": 0 },
         "unknown": { "type": "integer", "minimum": 0 },
-        "findings": { "type": "integer", "minimum": 0 },
-        "advisories": { "type": "integer", "minimum": 0 },
+        "findings": {
+          "description": "Findings that block release.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "advisories": {
+          "description": "Advisory findings: reported, never blocking.",
+          "type": "integer",
+          "minimum": 0
+        },
         "artifacts": { "type": "integer", "minimum": 0 }
       }
     },
@@ -206,7 +214,6 @@
     }
   },
   "$defs": {
-    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
     "resultCounts": {
       "type": "object",
       "additionalProperties": false,

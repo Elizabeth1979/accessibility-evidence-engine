@@ -19,7 +19,11 @@
     "schemaVersion": { "const": "0.1.0" },
     "engine": { "const": "aee-portable-virtual-screen-reader" },
     "engineVersion": { "const": "0.3.0" },
-    "speechEngine": { "type": "string", "minLength": 1 },
+    "speechEngine": {
+      "description": "What decides what is spoken: Guidepup's virtual screen reader, and its version.",
+      "type": "string",
+      "minLength": 1
+    },
     "mode": { "const": "guide" },
     "fidelity": { "const": "semantic-simulation" },
     "physicalAssistiveTechnology": { "const": false },
@@ -31,11 +35,25 @@
       "items": { "$ref": "#/$defs/entry" }
     },
     "liveRegionAnnouncements": {
+      "description": "Live-region updates the reader announced while it listened, oldest first.",
       "type": "array",
       "items": { "$ref": "./common.schema.json#/$defs/liveRegionAnnouncement" }
     }
   },
   "$defs": {
+    "command": {
+      "description": "A command the virtual screen reader is given, as a scenario names it.",
+      "enum": [
+        "start",
+        "next-item",
+        "previous-item",
+        "next-heading",
+        "previous-heading",
+        "next-landmark",
+        "next-control",
+        "read-current"
+      ]
+    },
     "item": {
       "type": "object",
       "required": ["key", "nodePath", "tagName", "role", "states"],
@@ -43,13 +61,36 @@
         "key": { "type": "string", "minLength": 1 },
         "nodePath": { "type": "string", "minLength": 1 },
         "tagName": { "type": "string", "minLength": 1 },
-        "role": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "value": { "type": ["string", "number"] },
-        "text": { "type": "string", "minLength": 1 },
+        "role": {
+          "description": "The role in the browser's accessibility tree, or \"text\" for a piece of text.",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "description": "The accessible name the browser computed.",
+          "type": "string"
+        },
+        "description": {
+          "description": "The accessible description the browser computed, such as from aria-describedby.",
+          "type": "string"
+        },
+        "value": {
+          "description": "The value the browser exposes, such as a text field's text or a slider's position.",
+          "type": ["string", "number"]
+        },
+        "text": {
+          "description": "The words of a piece of text the reader stopped on.",
+          "type": "string",
+          "minLength": 1
+        },
         "level": { "type": "integer", "minimum": 1 },
-        "states": { "type": "array", "items": { "type": "string" } },
+        "states": {
+          "description": "The states a screen reader says aloud, in words.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "properties": {
           "description": "Every state and property the browser's accessibility tree gives the element, as Chrome DevTools Protocol AXProperty objects.",
           "type": "array",
@@ -71,6 +112,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "visualBounds": {
+          "description": "Page coordinates; absent when the element has no rendered box.",
           "type": "object",
           "additionalProperties": false,
           "required": ["x", "y", "width", "height"],
@@ -135,6 +177,7 @@
       "additionalProperties": false
     },
     "accessibilityProperty": {
+      "description": "One state or property of a node (CDP Accessibility.AXProperty), such as expanded, invalid, hasPopup or describedby.",
       "type": "object",
       "required": ["name", "value"],
       "properties": {
@@ -168,19 +211,11 @@
       "properties": {
         "sequence": { "type": "integer", "minimum": 1 },
         "timestamp": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
-        "command": {
-          "enum": [
-            "start",
-            "next-item",
-            "previous-item",
-            "next-heading",
-            "previous-heading",
-            "next-landmark",
-            "next-control",
-            "read-current"
-          ]
+        "command": { "$ref": "#/$defs/command" },
+        "announcement": {
+          "description": "What the reader said, as Guidepup's virtual screen reader says it.",
+          "type": "string"
         },
-        "announcement": { "type": "string" },
         "framesLeft": {
           "description": "The frames this command came out of, innermost first.",
           "type": "array",

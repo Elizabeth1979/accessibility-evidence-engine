@@ -22,7 +22,7 @@
       "enum": ["test", "engine", "user-script"]
     },
     "kind": {
-      "type": "string"
+      "$ref": "./common.schema.json#/$defs/interactionKind"
     },
     "target": {
       "$ref": "./common.schema.json#/$defs/targetDescriptor"

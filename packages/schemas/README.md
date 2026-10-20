@@ -4,6 +4,8 @@ JSON Schemas and runtime validation for [Accessibility Evidence Engine](https://
 
 Schema JSON files are exposed through `@aee/schemas/json/*` in addition to the main runtime validation API.
 
+Every document a schema checks has a TypeScript type, generated from the schema itself with `json-schema-to-typescript` (`src/schema-types.ts`), so the types and the files cannot disagree. `assertValidSchema(name, value)` narrows `value` to its schema's type, and `SchemaDocuments` maps each schema's name to it. The types say what a document always has; a schema's conditions (`if`/`then`), exclusions, patterns and item counts are checked at run time only.
+
 `interaction-comparison-request.schema.json` validates user-authored pointer and keyboard paths. `interaction-comparison.schema.json` validates the resulting per-action trace and keeps lane equivalence separate from each action's accessibility release verdict.
 
 `evidence-manifest.schema.json` validates the checksummed inventory, including artifact availability, provenance, lifecycle, and privacy handling.

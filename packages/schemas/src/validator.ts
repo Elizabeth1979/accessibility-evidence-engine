@@ -29,6 +29,7 @@ import virtualScreenReaderLaneSchema from "../json/virtual-screen-reader-lane.sc
 import virtualScreenReaderTranscriptSchema from "../json/virtual-screen-reader-transcript.schema.json";
 
 import type { SchemaName } from "./index";
+import type { SchemaDocuments } from "./schema-types";
 
 const schemaDocuments = {
   common: commonSchema,
@@ -143,11 +144,15 @@ export function validateSchema(schemaName: SchemaName, value: unknown): SchemaVa
   };
 }
 
-export function assertValidSchema(
-  schemaName: SchemaName,
+/**
+ * Checks a value against a schema, and narrows it to the type the schema gives (generated from the
+ * schema itself, see `SchemaDocuments`); throws naming every field that does not match.
+ */
+export function assertValidSchema<Name extends SchemaName>(
+  schemaName: Name,
   value: unknown,
   label: string = schemaTitles[schemaName]
-): asserts value {
+): asserts value is SchemaDocuments[Name] {
   const result = validateSchema(schemaName, value);
 
   if (result.valid) {

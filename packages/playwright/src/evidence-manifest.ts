@@ -2,9 +2,16 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import {
+  assertValidSchema,
+  CURRENT_SCHEMA_VERSION,
+  type EvidenceManifest,
+  type EvidenceManifestArtifact
+} from "@aee/schemas";
 
-export type ManifestArtifactStatus = "available" | "missing" | "failed";
+export type { EvidenceManifest, EvidenceManifestArtifact } from "@aee/schemas";
+
+export type ManifestArtifactStatus = EvidenceManifestArtifact["status"];
 
 export interface EvidenceManifestActionSource {
   id: string;
@@ -18,7 +25,7 @@ export interface EvidenceManifestActionSource {
 }
 
 /** What an assessment runs: a scenario profile, or the checkpoints of a Playwright test. */
-export type AssessmentProfile = "core" | "at-fidelity" | "playwright-test";
+export type AssessmentProfile = NonNullable<EvidenceManifest["profile"]>;
 
 export interface EvidenceManifestLaneSource {
   id: string;
@@ -53,88 +60,6 @@ export interface WriteEvidenceManifestOptions {
   lanes: EvidenceManifestLaneSource[];
   supplementalFiles?: EvidenceManifestSupplementalFile[];
   manifestFile?: string;
-}
-
-export interface EvidenceManifestArtifact {
-  id: string;
-  path: string;
-  kind:
-    | "viewport-screenshot"
-    | "full-page-screenshot"
-    | "dom-snapshot"
-    | "accessibility-tree"
-    | "element-map"
-    | "focus-state"
-    | "axe-result"
-    | "screen-reader-transcript"
-    | "interaction-video"
-    | "video-sidecar"
-    | "video-captions"
-    | "json-report"
-    | "markdown-report"
-    | "run-metadata"
-    | "evidence-bundle"
-    | "interaction-trace"
-    | "keyboard-pointer-sweep"
-    | "focus-crop"
-    | "lane-metadata"
-    | "evidence-manifest"
-    | "html-report"
-    | "custom";
-  mediaType: string;
-  phase: "before" | "after" | "action" | "lane" | "assessment";
-  status: ManifestArtifactStatus;
-  byteLength?: number;
-  integrity?: string;
-  observerId?: string;
-  provenance: {
-    laneId?: string;
-    actionId?: string;
-    runId?: string;
-    sequence?: number;
-  };
-  lifecycle: "persisted";
-  privacy: {
-    classification: "sensitive";
-    redactionStatus: "not-reviewed";
-    shareable: false;
-  };
-  diagnostics?: string[];
-}
-
-export interface EvidenceManifest {
-  schemaVersion: string;
-  assessmentId: string;
-  scenarioId?: string;
-  scenarioDigest?: string;
-  profile?: AssessmentProfile;
-  status: "completed" | "partial";
-  createdAt: string;
-  root: ".";
-  lanes: Array<{
-    id: string;
-    driver: EvidenceManifestLaneSource["driver"];
-    status: EvidenceManifestLaneSource["status"];
-    actionIds: string[];
-    actions: Array<{
-      id: string;
-      sequence: number;
-      runId: string;
-      status: EvidenceManifestActionSource["status"];
-    }>;
-  }>;
-  artifacts: EvidenceManifestArtifact[];
-  summary: {
-    total: number;
-    available: number;
-    missing: number;
-    failed: number;
-  };
-  privacy: {
-    defaultClassification: "sensitive";
-    reviewedForSharing: false;
-    remoteUploadAuthorized: false;
-  };
 }
 
 type CandidateFile = EvidenceManifestSupplementalFile;
@@ -190,7 +115,7 @@ export async function prepareAggregateManifest(
       throw new Error(`Child evidence manifest cannot be a symbolic link: ${childManifestFile}`);
     }
     assertInsideRoot(canonicalRoot, await realpath(absoluteManifestFile));
-    const parsed = JSON.parse(await readFile(absoluteManifestFile, "utf8")) as EvidenceManifest;
+    const parsed: unknown = JSON.parse(await readFile(absoluteManifestFile, "utf8"));
     assertValidSchema("evidenceManifest", parsed, `child evidence manifest ${childManifestFile}`);
     lanes.push(
       ...parsed.lanes.map((lane) => ({

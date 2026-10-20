@@ -34,22 +34,7 @@
       }
     },
     "results": {
-      "type": "object",
-      "properties": {
-        "pass": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "fail": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "unknown": {
-          "type": "integer",
-          "minimum": 0
-        }
-      },
-      "additionalProperties": false
+      "$ref": "./common.schema.json#/$defs/runSummary"
     },
     "environment": {
       "type": "object"
