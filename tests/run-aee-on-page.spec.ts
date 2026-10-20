@@ -861,6 +861,50 @@ test("portable virtual reader keeps every state, the description and the value C
   );
 });
 
+test("portable virtual reader says aria-current as Chrome and NVDA read it, an unknown value as plain current", async ({
+  page
+}) => {
+  // WAI-ARIA 1.2: a value outside page, step, location, date, time, true and false is read as true;
+  // "false", "" and "undefined" are not current. Chrome matches the tokens in any case.
+  const values = [
+    "page",
+    "STEP",
+    "location",
+    "date",
+    "time",
+    "true",
+    "foo",
+    "false",
+    "",
+    "undefined"
+  ];
+  await page.setContent(`
+    <nav aria-label="Pages">
+      ${values.map((value) => `<a href="#${value || "empty"}" aria-current="${value}">Link ${value || "empty"}</a>`).join("\n")}
+    </nav>
+  `);
+  const reader = createPortableVirtualScreenReader(page);
+  const heard: Record<string, string[]> = {};
+  await reader.command("start");
+  for (let { item } = await reader.command("next-control"); item?.name;) {
+    heard[item.name] = item.states;
+    ({ item } = await reader.command("next-control"));
+  }
+  expect(heard).toEqual({
+    "Link page": ["current page"],
+    "Link STEP": ["current step"],
+    "Link location": ["current location"],
+    "Link date": ["current date"],
+    "Link time": ["current time"],
+    "Link true": ["current"],
+    // Before, this was "current foo": the invalid value was read out as if it were a word.
+    "Link foo": ["current"],
+    "Link false": [],
+    "Link empty": [],
+    "Link undefined": []
+  });
+});
+
 test("element map lists each image screen readers skip, with Chrome's exact reason", async ({
   page
 }) => {

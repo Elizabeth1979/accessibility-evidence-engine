@@ -865,11 +865,20 @@ function itemStates(node: AccessibilityNode, element: CapturedElement): string[]
   return states;
 }
 
-/** The tree has no aria-current property, so it is read from the element. */
+/** The aria-current tokens with their own words, as NVDA says them; "true" is plain "current". */
+const CURRENT_TOKENS = new Set(["page", "step", "location", "date", "time"]);
+
+/**
+ * Chrome's tree over CDP has no aria-current property, so the attribute is read the way Chrome
+ * reads it (`AXNodeObject::GetAriaCurrentState`): "", "undefined" and "false" are not current, the
+ * tokens match in any case, and any other value is "true", as WAI-ARIA 1.2 says.
+ */
 function currentState(element: CapturedElement): string[] {
   const current = element.attribute("aria-current");
-  if (!current || current === "false") return [];
-  return [current === "true" ? "current" : `current ${current}`];
+  if (!current || current === "undefined") return [];
+  const token = current.toLowerCase();
+  if (token === "false") return [];
+  return [CURRENT_TOKENS.has(token) ? `current ${token}` : "current"];
 }
 
 function propertyValue(node: AccessibilityNode, name: string): unknown {
