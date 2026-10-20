@@ -15,12 +15,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/index.js",
-    "dist/index.js.map",
-    "dist/index.d.ts",
-    "dist/accessibility-changes.js",
-    "dist/accessibility-changes.js.map",
-    "dist/accessibility-changes.d.ts"
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.*"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.11.0"

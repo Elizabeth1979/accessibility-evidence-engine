@@ -28,6 +28,13 @@ const expectedPackages = [
   "@aee/reporter",
   "@aee/schemas"
 ];
+// What a package's folder holds for development only: its TypeScript source and settings, its
+// compiled tests, declaration maps (which point at source that does not ship) and installs.
+const developmentOnly = (file) =>
+  /^(src|node_modules)\//.test(file) ||
+  /^tsconfig\./.test(file) ||
+  file.includes(".test.") ||
+  file.endsWith(".d.ts.map");
 const workspaceRoot = path.resolve(import.meta.dirname, "..");
 const temporaryRoot = mkdtempSync(path.join(tmpdir(), "aee-package-check-"));
 const packDirectory = path.join(temporaryRoot, "packs");
@@ -90,22 +97,32 @@ try {
     assert.ok(files.includes("package.json"), `${entry.name} is missing package.json.`);
     assert.ok(files.includes("dist/index.js"), `${entry.name} is missing its runtime entry point.`);
     assert.ok(files.includes("dist/index.d.ts"), `${entry.name} is missing its type entry point.`);
-    assert.equal(
-      files.some((file) => file.includes(".test.")),
-      false,
-      `${entry.name} contains compiled tests.`
-    );
-    assert.equal(
-      files.some((file) => file.endsWith(".d.ts.map")),
-      false,
-      `${entry.name} contains a declaration map without its source file.`
-    );
-    assert.equal(
-      files.some((file) => file.startsWith("src/")),
-      false,
-      `${entry.name} contains unpackaged source files.`
-    );
   }
+
+  // Each tarball holds exactly its package's folder after a build, less what only development
+  // uses. So a module, page script, licence or asset that `files` leaves out is named here, as is
+  // anything shipped that only development uses; publint and attw see only the entry points.
+  // Every package is compared before any failure is reported, so one run lists them all.
+  const contentMismatches = packages.flatMap((entry) => {
+    const files = entry.files.map((file) => file.path);
+    const packageDirectory = path.join(workspaceRoot, entry.name.replace("@aee/", "packages/"));
+    const shipped = readdirSync(packageDirectory, { recursive: true, withFileTypes: true })
+      .filter((file) => file.isFile())
+      .map((file) =>
+        path
+          .relative(packageDirectory, path.join(file.parentPath, file.name))
+          .split(path.sep)
+          .join("/")
+      )
+      .filter((file) => !developmentOnly(file));
+    return [
+      ...shipped.filter((file) => !files.includes(file)).map((file) => `leaves out ${file}`),
+      ...files
+        .filter((file) => !shipped.includes(file))
+        .map((file) => `ships development-only ${file}`)
+    ].map((problem) => `${entry.name}: ${problem}`);
+  });
+  assert.deepEqual(contentMismatches, [], "A tarball does not match its built package.");
 
   // publint checks each manifest against the files its tarball ships, such as an export whose
   // file was left out of `files`; attw checks that TypeScript finds the types of every entry

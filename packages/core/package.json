@@ -15,9 +15,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/*.js",
-    "dist/*.js.map",
-    "dist/*.d.ts"
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.*"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.11.0"
