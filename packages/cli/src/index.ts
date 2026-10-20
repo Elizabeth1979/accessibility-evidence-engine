@@ -6,8 +6,6 @@ import path from "node:path";
 import {
   executeRun,
   resolvePolicyConfig,
-  type AeePolicyOverrides,
-  type Interaction,
   type ReporterInput,
   type ReporterArtifact
 } from "@aee/core";
@@ -26,6 +24,8 @@ import {
   assertValidSchema,
   CURRENT_SCHEMA_VERSION,
   schemaCatalog,
+  type AeeCliConfig,
+  type SchemaDocuments,
   type SchemaName
 } from "@aee/schemas";
 
@@ -71,29 +71,7 @@ export {
   type ScenarioProfile
 } from "./scenario";
 
-export interface AeeCliConfig {
-  version?: string;
-  projectRoot: string;
-  outputDir?: string;
-  fixturePath?: string;
-  policy?: AeePolicyOverrides;
-  observers?: string[];
-  judges?: string[];
-  checkpointName?: string;
-  interaction?: {
-    kind?: Interaction["kind"];
-    actor?: "test" | "engine" | "user-script";
-    target?: {
-      role?: string;
-      name?: string;
-      selector?: string;
-      locator?: string;
-      nodePath?: string;
-    };
-    input?: string;
-    meta?: Record<string, unknown>;
-  };
-}
+export type { AeeCliConfig } from "@aee/schemas";
 
 export interface RunCommandResult {
   runId: string;
@@ -102,11 +80,11 @@ export interface RunCommandResult {
   artifactFiles: string[];
 }
 
-async function loadJsonFile<T>(
+async function loadJsonFile<Name extends SchemaName>(
   filePath: string,
-  schemaName: SchemaName,
+  schemaName: Name,
   label: string
-): Promise<T> {
+): Promise<SchemaDocuments[Name]> {
   const raw = await readFile(filePath, "utf8");
   let parsed: unknown;
 
@@ -118,19 +96,15 @@ async function loadJsonFile<T>(
   }
 
   assertValidSchema(schemaName, parsed, `${label} at ${filePath} (${schemaCatalog[schemaName]})`);
-  return parsed as T;
+  return parsed;
 }
 
 export async function loadConfig(configPath: string): Promise<AeeCliConfig> {
-  return loadJsonFile<AeeCliConfig>(configPath, "cliConfig", "AEE CLI config");
+  return loadJsonFile(configPath, "cliConfig", "AEE CLI config");
 }
 
 export async function loadFixture(fixturePath: string): Promise<VirtualPageFixture> {
-  return loadJsonFile<VirtualPageFixture>(
-    fixturePath,
-    "virtualPageFixture",
-    "AEE virtual page fixture"
-  );
+  return loadJsonFile(fixturePath, "virtualPageFixture", "AEE virtual page fixture");
 }
 
 export function createBootstrapPlan(config: AeeCliConfig) {
@@ -252,11 +226,6 @@ export async function runWithPage(
 
 export async function executeConfig(configPath: string): Promise<RunCommandResult> {
   const config = await loadConfig(configPath);
-
-  if (!config.fixturePath) {
-    throw new Error('This bootstrap runner currently requires "fixturePath" in the config.');
-  }
-
   const fixturePath = path.resolve(path.dirname(configPath), config.fixturePath);
   const fixture = await loadFixture(fixturePath);
   const page = createVirtualPage(fixture);

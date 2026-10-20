@@ -138,27 +138,44 @@
   "additionalProperties": false,
   "$defs": {
     "accessibilityNodeRef": {
+      "description": "A node of the browser's accessibility tree, as an accessibility-tree record names it.",
       "type": "object",
       "required": ["nodeId", "role"],
       "properties": {
-        "nodeId": { "type": "integer" },
+        "nodeId": {
+          "description": "The DOM node's backend id, the same in both snapshots for as long as the node lives.",
+          "type": "integer"
+        },
         "role": { "type": "string" },
         "name": { "type": "string" }
       },
       "additionalProperties": false
     },
     "accessibilityChange": {
+      "description": "One change between the accessibility tree before an interaction and after it.",
       "type": "object",
       "required": ["nodeId", "role", "kind"],
       "properties": {
-        "nodeId": { "type": "integer" },
+        "nodeId": {
+          "description": "The DOM node's backend id, the same in both snapshots for as long as the node lives.",
+          "type": "integer"
+        },
         "role": { "type": "string" },
         "name": { "type": "string" },
-        "kind": { "enum": ["state", "shown", "hidden", "name"] },
+        "kind": {
+          "description": "state: a tracked state changed. shown/hidden: the node entered or left the tree. name: its accessible name changed.",
+          "enum": ["state", "shown", "hidden", "name"]
+        },
         "state": { "enum": ["checked", "expanded", "pressed", "selected", "value"] },
         "before": { "type": ["string", "number", "boolean", "null"] },
         "after": { "type": ["string", "number", "boolean", "null"] },
-        "controlledBy": { "type": "array", "items": { "$ref": "#/$defs/accessibilityNodeRef" } }
+        "controlledBy": {
+          "description": "The nodes whose aria-controls names this node, in either snapshot.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/accessibilityNodeRef"
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -167,11 +184,26 @@
       "type": "object",
       "required": ["changes", "truncated"],
       "properties": {
-        "focusedBefore": { "$ref": "#/$defs/accessibilityNodeRef" },
-        "focusedAfter": { "$ref": "#/$defs/accessibilityNodeRef" },
+        "focusedBefore": {
+          "description": "The node that had focus before the interaction: what a key press acts on.",
+          "$ref": "#/$defs/accessibilityNodeRef"
+        },
+        "focusedAfter": {
+          "description": "The node that has focus after it.",
+          "$ref": "#/$defs/accessibilityNodeRef"
+        },
         "changes": { "type": "array", "items": { "$ref": "#/$defs/accessibilityChange" } },
-        "truncated": { "type": "boolean" },
-        "liveRegions": { "type": "array", "items": { "$ref": "#/$defs/liveRegion" } }
+        "truncated": {
+          "description": "True when more nodes changed than are listed.",
+          "type": "boolean"
+        },
+        "liveRegions": {
+          "description": "The live regions that hold a listed change: which region a screen reader would hear from.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/liveRegion"
+          }
+        }
       },
       "additionalProperties": false
     },
@@ -180,11 +212,17 @@
       "type": "object",
       "required": ["nodeId", "role", "politeness", "text"],
       "properties": {
-        "nodeId": { "type": "integer" },
+        "nodeId": {
+          "description": "The DOM node's backend id, the same in both snapshots for as long as the node lives.",
+          "type": "integer"
+        },
         "role": { "type": "string" },
         "name": { "type": "string" },
         "politeness": { "enum": ["polite", "assertive"] },
-        "text": { "type": "string" }
+        "text": {
+          "description": "The region's text in the later snapshot (the earlier one if it left the page), in tree order.",
+          "type": "string"
+        }
       },
       "additionalProperties": false
     }

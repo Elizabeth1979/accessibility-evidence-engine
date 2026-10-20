@@ -1,4 +1,5 @@
 {
+  "description": "The evidence file a sweep lane writes; it carries no local file paths.",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/keyboard-pointer-sweep-lane.schema.json",
   "title": "AEE Keyboard and Pointer Sweep Lane",
@@ -31,10 +32,14 @@
       "items": { "type": "string", "format": "uri" }
     },
     "activateControls": { "type": "boolean" },
-    "pressedBy": { "enum": ["sweep", "test"] },
+    "pressedBy": {
+      "description": "Who pressed the controls in activated: the sweep (the default), or the test itself, whose presses AEE only watched (see observePresses); such a record has no Tab stops.",
+      "enum": ["sweep", "test"]
+    },
     "startedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
     "finishedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
     "blockedNavigations": {
+      "description": "Navigations outside the allowed origins: stopped before they left the page, or, when a redirect took one there (the browser follows a redirect before the guard is asked), not read.",
       "type": "array",
       "items": { "type": "string", "minLength": 1 }
     },
@@ -44,16 +49,7 @@
     "failedNavigations": {
       "description": "Pages on the site a press set out for that did not load: Chrome showed its own error page, so the sweep read nothing there and compared the click with the key press by where each set out for.",
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["selector", "url", "reason"],
-        "properties": {
-          "selector": { "type": "string", "minLength": 1 },
-          "url": { "type": "string", "minLength": 1 },
-          "reason": { "type": "string", "minLength": 1 }
-        }
-      }
+      "items": { "$ref": "#/$defs/failedNavigation" }
     },
     "framesNotRead": {
       "description": "Frames whose content the sweep did not check, and why: one showing a page outside the allowed origins or Chrome's error page, one inside such a frame, or one no session could read. The frame element on the page is still swept.",
@@ -82,6 +78,25 @@
     }
   ],
   "$defs": {
+    "failedNavigation": {
+      "description": "A page a press set out for that did not load: Chrome showed its own error page instead.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["selector", "url", "reason"],
+      "properties": {
+        "selector": { "description": "The control pressed.", "type": "string", "minLength": 1 },
+        "url": {
+          "description": "Where it set out for, with no credentials, query values or fragment.",
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "description": "Chrome's reason, such as net::ERR_EMPTY_RESPONSE.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "finding": {
       "type": "object",
       "additionalProperties": false,
@@ -120,10 +135,21 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "label": { "type": "string" },
-        "text": { "type": "string", "minLength": 1 },
+        "text": {
+          "description": "The text it shows, when the accessibility tree gives it no name: what a sighted person sees.",
+          "type": "string",
+          "minLength": 1
+        },
         "summary": { "type": "string", "minLength": 1 },
-        "targetBox": { "$ref": "./common.schema.json#/$defs/targetBox" },
-        "screenshot": { "type": "string", "pattern": "^press-[0-9]+\\.png$" }
+        "targetBox": {
+          "description": "Where the element is on the lane's full-page screenshot, or on screenshot when it has one.",
+          "$ref": "./common.schema.json#/$defs/targetBox"
+        },
+        "screenshot": {
+          "description": "The full-page screenshot, beside the record, of the page as a press the test made left it, for a finding of that press; the lane has no screenshot of its own.",
+          "type": "string",
+          "pattern": "^press-[0-9]+\\.png$"
+        }
       }
     },
     "tabStop": {
@@ -132,16 +158,32 @@
       "required": ["selector", "label"],
       "properties": {
         "selector": { "type": "string", "minLength": 1 },
-        "label": { "type": "string" },
-        "role": { "type": "string" },
-        "focusVisible": { "type": "boolean" },
+        "label": {
+          "description": "Its accessible name, which a screen reader announces when Tab reaches it.",
+          "type": "string"
+        },
+        "role": {
+          "description": "Its role in the accessibility tree.",
+          "type": "string"
+        },
+        "focusVisible": {
+          "description": "Whether the stop and its surroundings look different with keyboard focus than without it, compared pixel for pixel. Absent when it could not be measured, or was not checked.",
+          "type": "boolean"
+        },
         "notChecked": {
           "description": "Why its focus was not checked: it is a frame whose page the sweep does not read, so its pictures cover it. Names the site when its page is outside the allowed origins.",
           "type": "string",
           "minLength": 1
         },
-        "focusCrop": { "type": "string", "pattern": "^tab-stop-[0-9]+\\.png$" },
-        "targetBox": { "$ref": "./common.schema.json#/$defs/targetBox" }
+        "focusCrop": {
+          "description": "The file, beside this record, showing the stop with keyboard focus.",
+          "type": "string",
+          "pattern": "^tab-stop-[0-9]+\\.png$"
+        },
+        "targetBox": {
+          "description": "Where the stop is on the lane's full-page screenshot.",
+          "$ref": "./common.schema.json#/$defs/targetBox"
+        }
       }
     }
   }

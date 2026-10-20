@@ -18,16 +18,33 @@
       "required": ["kind", "role", "name", "selector", "box"],
       "properties": {
         "kind": { "enum": ["heading", "image"] },
-        "role": { "type": "string" },
-        "name": { "type": "string" },
-        "level": { "type": "integer", "minimum": 1 },
-        "alt": { "enum": ["text", "ignored", "missing"] },
+        "role": {
+          "description": "The role in the accessibility tree.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The accessible name a screen reader announces.",
+          "type": "string"
+        },
+        "level": {
+          "description": "Headings only: the level a screen reader announces.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "alt": {
+          "description": "Images only.",
+          "enum": ["text", "ignored", "missing"]
+        },
         "ignoredReasons": {
           "description": "Images the accessibility tree leaves out: Chrome's own reasons, such as emptyAlt, presentationalRole or ariaHiddenElement.",
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
-        "selector": { "type": "string", "minLength": 1 },
+        "selector": {
+          "description": "Where it is in the document that holds it.",
+          "type": "string",
+          "minLength": 1
+        },
         "framePath": {
           "description": "Inside a frame: the iframe elements it is inside, outermost first, each as a path in the document that holds it (as axe-core's target lists a node inside frames).",
           "type": "array",
@@ -35,6 +52,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "box": {
+          "description": "Where it is on the page, in the full-page screenshot's coordinates.",
           "type": "object",
           "additionalProperties": false,
           "required": ["x", "y", "width", "height"],

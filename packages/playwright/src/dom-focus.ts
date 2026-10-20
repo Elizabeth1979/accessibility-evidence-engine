@@ -1,4 +1,5 @@
 import { describeRequestedTarget, type RequestedTarget } from "@aee/core";
+import type { DomFocusState, FocusedElement } from "@aee/schemas";
 import type * as Tabbable from "tabbable";
 
 import {
@@ -11,6 +12,8 @@ import {
 import { describeAxeTarget } from "./axe-results";
 import { elementSelectors } from "./element-selectors";
 import { describeFocusElement, type FocusAccessibility } from "./focus-accessibility";
+
+export type { DomFocusState, FocusedElement, FocusState } from "@aee/schemas";
 import {
   callOn,
   frameDocuments,
@@ -77,82 +80,13 @@ export async function focusPath(
   return path;
 }
 
-/**
- * How an element with focus, or on the way to it, looks and where it sits; its role, name, states,
- * dialog and composite widget are the accessibility tree's, which is what NVDA and JAWS receive
- * from Chrome. They are absent when the tree does not have the element.
- */
-export interface FocusedElement extends Partial<FocusAccessibility> {
-  tagName: string;
-  id?: string;
-  type?: string;
-  tabIndex?: number;
-  disabled?: boolean;
-  /**
-   * Its path in the document that holds it, as axe-core writes it in a result's `target`: the
-   * shortest selector that selects it alone, with each step into a shadow root after ">>>".
-   */
-  nodePath: string;
-  focusVisible: boolean;
-  focusIndicator: {
-    visible: boolean;
-    outlineColor: string;
-    outlineStyle: string;
-    outlineWidth: string;
-    boxShadow: string;
-  };
-  /**
-   * Its place in the page's tab order, counted from 0 across the top document and every frame,
-   * each frame's tab stops at its `<iframe>` element's place. Absent when it is not a tab stop, or
-   * when a frame's place or tab stops could not be read, since then no place is certain.
-   */
-  focusOrderIndex?: number;
-  /**
-   * How many tab stops the page has, in every frame: recorded whenever the page's tab order was
-   * counted, so an element with a count and no `focusOrderIndex` is known not to be a tab stop.
-   */
-  focusableCount?: number;
-  /** The frame whose document holds it. */
-  frameId: string;
-  /** The `<iframe>` elements it is inside, outermost first, as their `nodePath`s. */
-  framePath?: string[];
-  /** The DOM node, as this browser session numbers it in its frame's process. */
-  backendDOMNodeId?: number;
-}
-
 /** Where one element of the chain to focus is: its document, or a shadow root inside it. */
-export type FocusContext = "document" | "shadow-root" | "iframe-document";
-
-/** Where DOM focus is, followed through shadow roots and frames, as the focus observer records it. */
-export interface DomFocusState extends FocusedElement {
-  schemaVersion: "0.1.0";
-  captureType: "deep-focus-state";
-  /**
-   * The top document's `hasFocus()`: whether focus is in the page at all. When no element of a
-   * document has focus its `<body>` is its active element, both when focus is lost inside the page
-   * (true) and when Tab has moved focus out of it, to the browser's own controls (false).
-   */
-  documentHasFocus: boolean;
-  /** The top document's `activeElement`. */
-  documentActiveElement: FocusedElement;
-  /** The element that has focus, in whichever shadow root or frame holds it. */
-  deepActiveElement: FocusedElement;
-  /** Each active element from the top document's down to the one with focus. */
-  activeElementChain: Array<FocusedElement & { context: FocusContext }>;
-  activeDescendantId?: string;
-  activeDescendant?: FocusedElement;
-}
+export type FocusContext = DomFocusState["activeElementChain"][number]["context"];
 
 /** What the page itself shows of an element; the rest of a `FocusedElement` is placed after. */
-type PageDescription = Omit<
+type PageDescription = Pick<
   FocusedElement,
-  | keyof FocusAccessibility
-  | "nodePath"
-  | "frameId"
-  | "framePath"
-  | "backendDOMNodeId"
-  | "focusOrderIndex"
-  | "focusableCount"
+  "tagName" | "id" | "type" | "tabIndex" | "disabled" | "focusVisible" | "focusIndicator"
 > & {
   /** Its place among its own document's tab stops, as tabbable orders them. */
   tabStop?: number;
@@ -281,7 +215,8 @@ export async function captureDomFocus(page: PageSessions): Promise<DomFocusState
   const chain: Array<{ context: FocusContext; element: FocusedElement }> = [];
   const framePath: string[] = [];
   let last:
-    { focus: DocumentFocus; place: Pick<FocusedElement, "frameId" | "framePath"> } | undefined;
+    | { focus: DocumentFocus; place: { frameId: string } & Pick<FocusedElement, "framePath"> }
+    | undefined;
   for (const [index, { frameId, backendNodeId }] of path.entries()) {
     const frame = page.frames.find((candidate) => candidate.frameId === frameId)!;
     const { object } = (await frame.session.send("DOM.resolveNode", { backendNodeId })) as {

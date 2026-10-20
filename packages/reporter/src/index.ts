@@ -10,7 +10,7 @@ import type {
   RunSummary,
   TargetDescriptor
 } from "@aee/core";
-import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import { assertValidSchema, CURRENT_SCHEMA_VERSION, type AeeReport } from "@aee/schemas";
 
 import { markdownCode, markdownText } from "./markdown";
 
@@ -74,9 +74,9 @@ export function createMarkdownReporter(): ReporterPlugin {
 }
 
 /** An action's aee-report.json, as the JSON reporter writes it and report.schema.json checks it. */
-export type AeeReportPayload = ReturnType<typeof buildReportPayload>;
+export type AeeReportPayload = AeeReport;
 
-function buildReportPayload(input: ReporterInput) {
+function buildReportPayload(input: ReporterInput): AeeReportPayload {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     run: input.run,

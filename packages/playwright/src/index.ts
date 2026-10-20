@@ -29,7 +29,24 @@ import {
   type RuntimeObserverContext
 } from "@aee/observers";
 import { createJsonReporter, createMarkdownReporter } from "@aee/reporter";
-import { assertValidSchema, conceptForAxeRule } from "@aee/schemas";
+import {
+  assertValidSchema,
+  conceptForAxeRule,
+  type InputComparisonAction,
+  type InputComparisonDocument,
+  type InputComparisonExpectation,
+  type InputComparisonLane,
+  type InputComparisonObservation,
+  type InputComparisonObservationRequest,
+  type InputComparisonStep,
+  type InputComparisonTarget,
+  type KeyboardPointerSweepLaneDocument,
+  type KeyboardPointerSweepLaneFinding,
+  type KeyboardPointerSweepLaneTabStop,
+  type VirtualPageFixture,
+  type VirtualScreenReaderLaneDocument,
+  type VirtualScreenReaderLaneStep
+} from "@aee/schemas";
 
 import {
   createPortableVirtualScreenReader,
@@ -71,11 +88,7 @@ import {
 import { settleContrastByPixels, type ContrastMeasuringPage } from "./contrast-measurement";
 import { reportsRequests, trackOpenRequests, waitForQuietPage } from "./quiet-page";
 import { describeElementContexts } from "./element-context";
-import {
-  locateElements,
-  type ElementLocation,
-  type ElementLocationPage
-} from "./element-locations";
+import { locateElements, type ElementLocationPage } from "./element-locations";
 import {
   sweepKeyboardAndPointer,
   type FailedNavigation,
@@ -83,8 +96,7 @@ import {
   type KeyboardPointerSweepRequest,
   type ObservedPresses,
   type SweepFinding,
-  type SweepStep,
-  type SweepTabStop
+  type SweepStep
 } from "./keyboard-pointer-sweep";
 import {
   writeEvidenceManifest,
@@ -112,6 +124,22 @@ export * from "./interaction-video";
 export * from "./keyboard-pointer-sweep";
 export * from "./pointer-keyboard-comparison";
 export * from "./virtual-screen-reader";
+export type {
+  InputComparisonAction,
+  InputComparisonDocument,
+  InputComparisonExpectation,
+  InputComparisonLane,
+  InputComparisonObservation,
+  InputComparisonObservationRequest,
+  InputComparisonStep,
+  InputComparisonTarget,
+  KeyboardPointerSweepLaneDocument,
+  KeyboardPointerSweepLaneFinding,
+  KeyboardPointerSweepLaneTabStop,
+  VirtualPageFixture,
+  VirtualScreenReaderLaneDocument,
+  VirtualScreenReaderLaneStep
+} from "@aee/schemas";
 
 export interface PlaywrightPageLike {
   url(): string;
@@ -127,16 +155,6 @@ export interface PlaywrightPageLike {
   teardownNetworkTracking?(options?: unknown): Promise<void>;
   snapshotVirtualScreenReaderTranscript?(): Promise<unknown>;
   video?(): PlaywrightVideoLike | null;
-}
-
-export interface VirtualPageFixture {
-  url: string;
-  html: string;
-  title?: string;
-  accessibilityTree?: unknown;
-  focusTarget?: unknown;
-  screenshotPngBase64?: string;
-  networkEvents?: unknown[];
 }
 
 export interface PlaywrightInteractionContext<
@@ -222,7 +240,7 @@ export interface LaneBrowserContextOptions {
  * Where a lane runs: in browser contexts of its own, recorded and closed when it ends, or on the
  * page a test already drives, which keeps the test's session, routes and storage and records nothing.
  */
-export type LaneIsolation = "dedicated-browser-context" | "test-page";
+export type LaneIsolation = VirtualScreenReaderLaneDocument["isolation"];
 
 /** A lane's own browser, or the page a test drives; never both. */
 export type LaneTarget<TBrowser, TPage> =
@@ -246,80 +264,11 @@ export type RunVirtualScreenReaderLaneOptions<TPage extends VirtualScreenReaderL
     additionalJudges?: string[];
   };
 
-export interface VirtualScreenReaderLaneStep {
-  sequence: number;
-  command: VirtualScreenReaderCommand;
-  runId: string;
-  pageUrl: string;
-  entry: VirtualScreenReaderEntry;
-  results: RunSummary;
-  releaseVerdict: JudgmentVerdict;
-  reporterFiles: string[];
-  artifactFiles: string[];
-}
-
-export interface VirtualScreenReaderLaneResult {
-  schemaVersion: "0.1.0";
-  laneId: string;
-  driver: "portable-virtual-screen-reader";
-  isolation: LaneIsolation;
+/** A lane that completed, as `runVirtualScreenReaderLane` returns it: its transcript is there. */
+export interface VirtualScreenReaderLaneResult extends VirtualScreenReaderLaneDocument {
   status: "completed";
-  targetUrl: string;
-  allowedOrigins: string[];
-  startedAt: string;
-  finishedAt: string;
-  steps: VirtualScreenReaderLaneStep[];
   transcript: VirtualScreenReaderTranscript;
-  laneFile?: string;
-  transcriptJsonFile?: string;
-  transcriptTextFile?: string;
-  manifestFile?: string;
-  video?: InteractionVideoEvidence;
 }
-
-export interface InputComparisonTarget {
-  selector?: string;
-  role?: string;
-  name?: string;
-  exact?: boolean;
-}
-
-export interface InputComparisonAction {
-  id: string;
-  kind: "hover" | "click" | "focus" | "press";
-  target?: InputComparisonTarget;
-  key?:
-    | "Tab"
-    | "Shift+Tab"
-    | "Enter"
-    | "Space"
-    | "Escape"
-    | "ArrowUp"
-    | "ArrowDown"
-    | "ArrowLeft"
-    | "ArrowRight"
-    | "Home"
-    | "End";
-}
-
-export interface InputComparisonObservationRequest {
-  target?: InputComparisonTarget;
-  url?: boolean;
-  visible?: boolean;
-  text?: boolean;
-  focused?: boolean;
-  attributes?: string[];
-}
-
-export interface InputComparisonExpectation {
-  url?: string;
-  visible?: boolean;
-  text?: string | null;
-  focused?: boolean;
-  attributes?: Record<string, string | null>;
-}
-
-export type InputComparisonObservation = InputComparisonExpectation;
 
 export interface InteractionLaneLocator {
   hover(): Promise<void>;
@@ -365,53 +314,18 @@ export interface RunInputComparisonOptions<TPage extends InteractionComparisonPa
   additionalJudges?: string[];
 }
 
-export interface InputComparisonStep {
-  sequence: number;
-  action: InputComparisonAction;
-  runId: string;
-  pageUrl: string;
-  results: RunSummary;
-  releaseVerdict: JudgmentVerdict;
-  reporterFiles: string[];
-  artifactFiles: string[];
-}
-
-export interface InputComparisonLane {
-  driver: "pointer" | "keyboard";
-  steps: InputComparisonStep[];
-  observation: InputComparisonObservation;
-  video: InteractionVideoEvidence;
-}
-
-export interface InputComparisonResult {
-  schemaVersion: "0.1.0";
-  comparisonId: string;
-  name: string;
-  isolation: "separate-dedicated-browser-contexts";
+/** A comparison that completed: both lanes, their outcome, and the files written for them. */
+export interface InputComparisonResult extends InputComparisonDocument {
   status: "completed";
-  targetUrl: string;
-  allowedOrigins: string[];
-  startedAt: string;
-  finishedAt: string;
-  initialState: {
-    strategy: "shared-playwright-storage-state";
-    resolvedUrl: string;
-    contentHash: string;
-  };
-  lanes: { pointer: InputComparisonLane; keyboard: InputComparisonLane };
-  equivalence: { verdict: "pass" | "fail"; summary: string };
-  expectation?: {
-    verdict: "pass" | "fail";
-    expected: InputComparisonExpectation;
-    summary: string;
-  };
-  traceFile: string;
+  initialState: NonNullable<InputComparisonDocument["initialState"]>;
+  lanes: NonNullable<InputComparisonDocument["lanes"]>;
+  equivalence: NonNullable<InputComparisonDocument["equivalence"]>;
   manifestFile: string;
 }
 
 /** The trace of a comparison that did not complete: why, and no lanes or outcome. */
 export interface InputComparisonFailure extends Pick<
-  InputComparisonResult,
+  InputComparisonDocument,
   | "schemaVersion"
   | "comparisonId"
   | "name"
@@ -474,55 +388,6 @@ export type RunKeyboardPointerSweepLaneOptions<TPage extends KeyboardPointerSwee
     outputDir?: string;
     laneId?: string;
   };
-
-export interface KeyboardPointerSweepLaneFinding extends SweepFinding {
-  /** Where the element is on the lane's full-page screenshot, or on `screenshot` when it has one. */
-  targetBox?: ElementLocation;
-  /**
-   * The full-page screenshot, beside the record, of the page as a press the test made left it,
-   * for a finding of that press; the lane has no screenshot of its own.
-   */
-  screenshot?: string;
-}
-
-export interface KeyboardPointerSweepLaneTabStop extends Omit<SweepTabStop, "focusedCrop"> {
-  /** Where the stop is on the lane's full-page screenshot. */
-  targetBox?: ElementLocation;
-  /** The file, beside this record, showing the stop with keyboard focus. */
-  focusCrop?: string;
-}
-
-/** The evidence file a sweep lane writes; it carries no local file paths. */
-export interface KeyboardPointerSweepLaneDocument {
-  schemaVersion: "0.2.0";
-  laneId: string;
-  driver: "keyboard-pointer-sweep";
-  isolation: LaneIsolation;
-  status: "completed" | "blocked" | "failed";
-  targetUrl: string;
-  allowedOrigins: string[];
-  activateControls: boolean;
-  /**
-   * Who pressed the controls in `activated`: the sweep (the default), or the test itself, whose
-   * presses AEE only watched (see observePresses); such a record has no Tab stops.
-   */
-  pressedBy?: "sweep" | "test";
-  startedAt: string;
-  finishedAt: string;
-  /**
-   * Navigations outside the allowed origins: stopped before they left the page, or, when a
-   * redirect took one there (the browser follows a redirect before the guard is asked), not read.
-   */
-  blockedNavigations: string[];
-  tabStops?: KeyboardPointerSweepLaneTabStop[];
-  activated?: string[];
-  findings?: KeyboardPointerSweepLaneFinding[];
-  /** Pages on the site a press set out for that did not load, so the sweep read nothing there. */
-  failedNavigations?: FailedNavigation[];
-  /** Frames whose content the sweep did not check, and why, such as one showing another site. */
-  framesNotRead?: UnreadFrame[];
-  diagnostics?: string[];
-}
 
 export interface KeyboardPointerSweepLaneResult extends KeyboardPointerSweepLaneDocument {
   status: "completed";

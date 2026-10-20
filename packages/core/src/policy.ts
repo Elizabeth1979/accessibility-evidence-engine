@@ -1,41 +1,23 @@
-import type { FindingSeverity } from "./types";
+import type { AeePolicyOverrides } from "@aee/schemas";
 
-export interface ReleasePolicy {
-  failOnSeverities: FindingSeverity[];
-  unknownBehavior: "ignore" | "warn" | "fail";
-  minimumConfidence?: number;
-}
+/** A policy as a CLI config or a test overrides it, every part optional. */
+export type { AeePolicyOverrides } from "@aee/schemas";
 
-export interface CapturePolicy {
-  includeScreenshots: boolean;
-  includeAccessibilityTree: boolean;
-  includeDomSnapshot: boolean;
-  stabilizeAfterInteractionMs: number;
-  /**
-   * How long observers watch the page untouched before a press, while the virtual reader listens,
-   * so a live region that announces on its own (a ticking clock) is not taken for the press's
-   * response. A region that updates less often than this can still go unnoticed.
-   */
-  watchWithoutInputMs: number;
-}
+type Overrides<Part extends keyof AeePolicyOverrides> = NonNullable<AeePolicyOverrides[Part]>;
 
-export interface ObserverPolicy {
-  perObserverTimeoutMs: number;
-  continueOnObserverError: boolean;
-}
+export type ReleasePolicy = Required<Omit<Overrides<"release">, "minimumConfidence">> &
+  Pick<Overrides<"release">, "minimumConfidence">;
 
+export type CapturePolicy = Required<Overrides<"capture">>;
+
+export type ObserverPolicy = Required<Overrides<"observers">>;
+
+/** A policy with every default filled in, as a run uses it. */
 export interface AeePolicyConfig {
   name: string;
   release: ReleasePolicy;
   capture: CapturePolicy;
   observers: ObserverPolicy;
-}
-
-export interface AeePolicyOverrides {
-  name?: string;
-  release?: Partial<ReleasePolicy>;
-  capture?: Partial<CapturePolicy>;
-  observers?: Partial<ObserverPolicy>;
 }
 
 export const DEFAULT_POLICY: AeePolicyConfig = {

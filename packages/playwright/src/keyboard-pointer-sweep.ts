@@ -1,6 +1,11 @@
 import { PNG } from "pngjs";
 
 import { redactUrl } from "@aee/core";
+import type {
+  FailedNavigation,
+  KeyboardPointerSweepLaneFinding,
+  KeyboardPointerSweepLaneTabStop
+} from "@aee/schemas";
 
 import {
   describeFocusedElement,
@@ -57,17 +62,7 @@ import { trackOpenRequests, waitForQuietPage, type OpenRequests } from "./quiet-
  * - text-in-image: an image shaped like a line of text, named in words and drawn in two flat
  *   colours, as words drawn as pixels are.
  */
-export type SweepFindingKind =
-  | "pointer-only"
-  | "hover-only"
-  | "activation-differs"
-  | "focus-lost"
-  | "looks-like-heading"
-  | "status-not-announced"
-  | "failure-not-announced"
-  | "form-not-announced"
-  | "colour-only"
-  | "text-in-image";
+export type SweepFindingKind = KeyboardPointerSweepLaneFinding["kind"];
 
 /** The remediation-registry concept each kind of finding belongs to. */
 export const SWEEP_FINDING_CONCEPTS = {
@@ -81,19 +76,10 @@ export const SWEEP_FINDING_CONCEPTS = {
   "form-not-announced": "focus-management",
   "colour-only": "use-of-color",
   "text-in-image": "images-of-text"
-} as const satisfies Record<SweepFindingKind, string>;
+} as const satisfies Record<SweepFindingKind, KeyboardPointerSweepLaneFinding["concept"]>;
 
-export interface SweepFinding {
-  kind: SweepFindingKind;
-  concept: (typeof SWEEP_FINDING_CONCEPTS)[SweepFindingKind];
-  selector: string;
-  /** Inside a frame: the `<iframe>` elements it is inside, outermost first. */
-  framePath?: string[];
-  label: string;
-  /** The text it shows, when the accessibility tree gives it no name: what a sighted person sees. */
-  text?: string;
-  summary: string;
-}
+/** A finding of the sweep, as its lane records it before placing it on the page. */
+export type SweepFinding = Omit<KeyboardPointerSweepLaneFinding, "targetBox" | "screenshot">;
 
 /** One timed step of the sweep: a Tab, the hover checks, or pressing one control. */
 export interface SweepStep {
@@ -103,25 +89,11 @@ export interface SweepStep {
 }
 
 /** A Tab stop, in the order Tab reached it. */
-export interface SweepTabStop {
-  selector: string;
-  /** Its accessible name, which a screen reader announces when Tab reaches it. */
-  label: string;
-  /** Its role in the accessibility tree. */
-  role?: string;
-  /**
-   * Whether the stop and its surroundings look different with keyboard focus than without it,
-   * compared pixel for pixel. Absent when it could not be measured, or was not checked.
-   */
-  focusVisible?: boolean;
-  /**
-   * Why its focus was not checked: it is a frame whose page the sweep does not read, so its
-   * pictures cover it. Names the site when its page is outside the allowed origins.
-   */
-  notChecked?: string;
+/** A Tab stop, in the order Tab reached it, with the picture of it the lane writes to a file. */
+export type SweepTabStop = Omit<KeyboardPointerSweepLaneTabStop, "targetBox" | "focusCrop"> & {
   /** A PNG of the stop and its surroundings with keyboard focus, as a keyboard user saw it. */
   focusedCrop?: Uint8Array;
-}
+};
 
 export interface KeyboardPointerSweepResult {
   url: string;
@@ -135,15 +107,7 @@ export interface KeyboardPointerSweepResult {
   framesNotRead: UnreadFrame[];
 }
 
-/** A page a press set out for that did not load: Chrome showed its own error page instead. */
-export interface FailedNavigation {
-  /** The control pressed. */
-  selector: string;
-  /** Where it set out for, with no credentials, query values or fragment. */
-  url: string;
-  /** Chrome's reason, such as `net::ERR_EMPTY_RESPONSE`. */
-  reason: string;
-}
+export type { FailedNavigation } from "@aee/schemas";
 
 /** Clicks and presses go through the locator, so Playwright waits for any page load they start. */
 export interface KeyboardPointerSweepLocator {

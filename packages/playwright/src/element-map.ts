@@ -8,48 +8,15 @@ import {
   type PageSessions
 } from "./accessibility-tree";
 import { placeOf } from "./element-selectors";
+import type { ElementMap, ElementMapEntry } from "@aee/schemas";
+
+export type { ElementMap, ElementMapEntry } from "@aee/schemas";
 
 /**
  * How an image is exposed: with a text alternative, left out of the accessibility tree (screen
  * readers skip it), or announced with no text alternative.
  */
-export type ElementMapAlt = "text" | "ignored" | "missing";
-
-export interface ElementMapEntry {
-  kind: "heading" | "image";
-  /** The role in the accessibility tree. */
-  role: string;
-  /** The accessible name a screen reader announces. */
-  name: string;
-  /** Headings only: the level a screen reader announces. */
-  level?: number;
-  /** Images only. */
-  alt?: ElementMapAlt;
-  /**
-   * Images the tree leaves out: Chrome's own reasons, such as `emptyAlt`, `presentationalRole`
-   * or `ariaHiddenElement`, exactly as it reports them.
-   */
-  ignoredReasons?: string[];
-  /** Where it is in the document that holds it. */
-  selector: string;
-  /**
-   * Inside a frame: the `<iframe>` elements it is inside, outermost first, each as a path in the
-   * document that holds it.
-   */
-  framePath?: string[];
-  /** Where it is on the page, in the full-page screenshot's coordinates. */
-  box: { x: number; y: number; width: number; height: number };
-}
-
-/**
- * The headings and images on the page at one checkpoint, in reading order, with the roles, names
- * and levels the accessibility tree gives them and where each is on the page.
- */
-export interface ElementMap {
-  schemaVersion: "0.1.0";
-  captureType: "element-map";
-  elements: ElementMapEntry[];
-}
+export type ElementMapAlt = NonNullable<ElementMapEntry["alt"]>;
 
 /**
  * Reads every frame's accessibility tree and DOM snapshot, joined by node, so each heading and

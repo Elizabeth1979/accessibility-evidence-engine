@@ -20,6 +20,49 @@
       "type": "string",
       "minLength": 1
     },
+    "policy": { "$ref": "#/$defs/policy" },
+    "observers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "judges": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "checkpointName": {
+      "type": "string"
+    },
+    "interaction": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "./common.schema.json#/$defs/interactionKind"
+        },
+        "actor": {
+          "type": "string",
+          "enum": ["test", "engine", "user-script"]
+        },
+        "target": {
+          "$ref": "./common.schema.json#/$defs/targetDescriptor"
+        },
+        "input": {
+          "type": "string"
+        },
+        "meta": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
     "policy": {
       "type": "object",
       "properties": {
@@ -88,61 +131,6 @@
         }
       },
       "additionalProperties": false
-    },
-    "observers": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "judges": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "checkpointName": {
-      "type": "string"
-    },
-    "interaction": {
-      "type": "object",
-      "properties": {
-        "kind": {
-          "type": "string",
-          "enum": [
-            "tab",
-            "shift-tab",
-            "click",
-            "hover",
-            "focus",
-            "enter",
-            "space",
-            "escape",
-            "arrow-key",
-            "type",
-            "submit",
-            "screen-reader-command",
-            "custom"
-          ]
-        },
-        "actor": {
-          "type": "string",
-          "enum": ["test", "engine", "user-script"]
-        },
-        "target": {
-          "$ref": "./common.schema.json#/$defs/targetDescriptor"
-        },
-        "input": {
-          "type": "string"
-        },
-        "meta": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
     }
-  },
-  "additionalProperties": false
+  }
 }
