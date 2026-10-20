@@ -23,7 +23,7 @@ import {
 import { focusPlace } from "@aee/core";
 import { isAdvisoryAxeRule } from "@aee/observers";
 import {
-  aggregateEvidenceManifests,
+  prepareAggregateManifest,
   announcedWithoutName,
   contrastReading,
   describeAxeTarget,
@@ -875,8 +875,11 @@ export async function finishAssessment(input: {
     manifestFile,
     planFile
   });
-  await writeIntegratedReport(report, reportFiles, assessmentDir, aiSuggester);
-  let aggregate = await aggregateEvidenceManifests({
+  // The aggregate manifest lists the reports, and the reports state its counts: every other file
+  // is read first, the reports are written once from what the manifest will say, and the
+  // manifest after them.
+  const supplementalFiles = reportSupplementalFiles(reportFiles, planFile);
+  const aggregate = await prepareAggregateManifest({
     assessmentId,
     rootDir: assessmentDir,
     childManifestFiles,
@@ -884,15 +887,18 @@ export async function finishAssessment(input: {
     scenarioDigest: plan.scenarioDigest,
     profile: scenario.profile,
     manifestFile,
-    supplementalFiles: reportSupplementalFiles(reportFiles, planFile)
+    supplementalFiles,
+    filesToWrite: supplementalFiles
+      .map(({ path: filePath }) => filePath)
+      .filter((filePath) => filePath !== planFile)
   });
-  report.summary.artifacts = aggregate.manifest.summary.total;
-  report.completeness.missingArtifacts = aggregate.manifest.summary.missing;
-  report.completeness.failedArtifacts = aggregate.manifest.summary.failed;
+  report.summary.artifacts = aggregate.summary.total;
+  report.completeness.missingArtifacts = aggregate.summary.missing;
+  report.completeness.failedArtifacts = aggregate.summary.failed;
   // The aggregate only sees the manifests lanes wrote, so it can add gaps but never clear one: a
   // lane that failed before writing its manifest is missing from it, not complete.
   report.completeness.status =
-    aggregate.manifest.status === "completed" &&
+    aggregate.status === "completed" &&
     evidenceIsComplete({ ...report.completeness, diagnostics: report.diagnostics })
       ? "complete"
       : "incomplete";
@@ -901,16 +907,7 @@ export async function finishAssessment(input: {
     report.verdict = "unknown";
   }
   await writeIntegratedReport(report, reportFiles, assessmentDir, aiSuggester);
-  aggregate = await aggregateEvidenceManifests({
-    assessmentId,
-    rootDir: assessmentDir,
-    childManifestFiles,
-    scenarioId: scenario.id,
-    scenarioDigest: plan.scenarioDigest,
-    profile: scenario.profile,
-    manifestFile,
-    supplementalFiles: reportSupplementalFiles(reportFiles, planFile)
-  });
+  const written = await aggregate.write();
 
   return {
     assessmentId,
@@ -919,7 +916,7 @@ export async function finishAssessment(input: {
     completeness: report.completeness.status,
     headline: verdictHeadline(report),
     reportFiles,
-    manifestFile: aggregate.manifestFile,
+    manifestFile: written.manifestFile,
     planFile
   };
 }

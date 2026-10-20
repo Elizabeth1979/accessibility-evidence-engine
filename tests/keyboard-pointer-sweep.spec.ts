@@ -1467,3 +1467,49 @@ test("the sweep reports an image that may be words drawn as pixels", async ({ pa
       .map(({ selector, label }) => ({ selector, label }))
   ).toEqual([{ selector: "#banner", label: "Spring sale: 40% off" }]);
 });
+
+test("the sweep presses each control from a fresh page, and loads the page only for that", async ({
+  browser
+}, testInfo) => {
+  let pageLoads = 0;
+  const site = await startHtmlServer((request, response) => {
+    if (request.url === "/") pageLoads += 1;
+    response.writeHead(200, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store"
+    });
+    response.end(`<!doctype html>
+<html lang="en">
+  <head><title>Two toggles</title></head>
+  <body>
+    <main>
+      <h1>Two toggles</h1>
+      <button id="first" type="button" onclick="this.textContent = 'Shown'">Show</button>
+      <button id="second" type="button" onclick="this.textContent = 'Hidden'">Hide</button>
+    </main>
+  </body>
+</html>`);
+  });
+  const sweep = (activateControls: boolean) =>
+    runKeyboardPointerSweepLane({
+      browser,
+      projectRoot: testInfo.outputPath(),
+      laneId: activateControls ? "pressing" : "not-pressing",
+      targetUrl: `${site.origin}/`,
+      allowedOrigins: [site.origin],
+      activateControls
+    });
+  try {
+    await sweep(false);
+    const loadsWithoutPressing = pageLoads;
+    pageLoads = 0;
+    const lane = await sweep(true);
+
+    expect(lane.activated).toEqual(["#first", "#second"]);
+    // A click and a key press for each control, each from a fresh page. The page loaded to find
+    // the controls is still fresh for the first click, so it is not loaded again for it.
+    expect(pageLoads - loadsWithoutPressing).toBe(2 * lane.activated.length);
+  } finally {
+    await site.close();
+  }
+});

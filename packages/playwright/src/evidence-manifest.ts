@@ -154,6 +154,28 @@ export interface AggregateEvidenceManifestsOptions {
 export async function aggregateEvidenceManifests(
   options: AggregateEvidenceManifestsOptions
 ): Promise<{ manifest: EvidenceManifest; manifestFile: string }> {
+  return (await prepareAggregateManifest(options)).write();
+}
+
+/**
+ * An aggregate manifest with every file read but those still to be written, such as the reports
+ * that state its counts: they are written once, from what it will say, and the manifest after them.
+ */
+export interface PreparedAggregateManifest {
+  /** The manifest's status and counts, with every file still to be written there. */
+  status: EvidenceManifest["status"];
+  summary: EvidenceManifest["summary"];
+  /** Reads the files that were still to be written, which must be there now, and writes it. */
+  write(): Promise<{ manifest: EvidenceManifest; manifestFile: string }>;
+}
+
+/**
+ * Reads the child lane manifests and every file they and `supplementalFiles` list, except the
+ * paths in `filesToWrite`, which `write` reads.
+ */
+export async function prepareAggregateManifest(
+  options: AggregateEvidenceManifestsOptions & { filesToWrite?: string[] }
+): Promise<PreparedAggregateManifest> {
   const rootDir = path.resolve(options.rootDir);
   const canonicalRoot = await realpath(rootDir);
   const lanes: EvidenceManifestLaneSource[] = [];
@@ -198,7 +220,7 @@ export async function aggregateEvidenceManifests(
     }
   }
 
-  return writeEvidenceManifest({
+  const manifestOptions: WriteEvidenceManifestOptions = {
     assessmentId: options.assessmentId,
     rootDir,
     scenarioId: options.scenarioId,
@@ -207,45 +229,112 @@ export async function aggregateEvidenceManifests(
     lanes,
     supplementalFiles,
     manifestFile: options.manifestFile
-  });
+  };
+  const { manifestFile } = await prepareManifestTarget(manifestOptions);
+  const toWrite = new Set((options.filesToWrite ?? []).map((filePath) => path.resolve(filePath)));
+  const candidates = collectCandidates(manifestOptions);
+  const read = await inspectCandidates(
+    rootDir,
+    canonicalRoot,
+    candidates.filter((candidate) => !toWrite.has(candidate.path))
+  );
+  const pending = candidates.filter((candidate) => toWrite.has(candidate.path));
+  // Each file still to be written counts as there; `write` checks that it is.
+  const { status, summary } = describeManifest(lanes, [
+    ...read,
+    ...pending.map(() => ({ status: "available" as const }))
+  ]);
+
+  return {
+    status,
+    summary,
+    async write() {
+      const written = await inspectCandidates(rootDir, canonicalRoot, pending);
+      const unreadable = written.filter((artifact) => artifact.status !== "available");
+      if (unreadable.length > 0) {
+        throw new Error(
+          `Evidence written for the manifest cannot be read back: ${unreadable.map((artifact) => artifact.path).join(", ")}`
+        );
+      }
+      return saveManifest(manifestOptions, manifestFile, [...read, ...written]);
+    }
+  };
 }
 
 /** Writes a deterministic, privacy-conservative index of required and available evidence files. */
 export async function writeEvidenceManifest(
   options: WriteEvidenceManifestOptions
 ): Promise<{ manifest: EvidenceManifest; manifestFile: string }> {
+  const { manifestFile, canonicalRoot } = await prepareManifestTarget(options);
+  const artifacts = await inspectCandidates(
+    path.resolve(options.rootDir),
+    canonicalRoot,
+    collectCandidates(options)
+  );
+  return saveManifest(options, manifestFile, artifacts);
+}
+
+/** The manifest's file, checked to be a safe place inside the root, and the root's real path. */
+async function prepareManifestTarget(
+  options: WriteEvidenceManifestOptions
+): Promise<{ manifestFile: string; canonicalRoot: string }> {
   const rootDir = path.resolve(options.rootDir);
   const manifestFile = path.resolve(options.manifestFile ?? path.join(rootDir, "manifest.json"));
   assertInsideRoot(rootDir, manifestFile);
   await mkdir(rootDir, { recursive: true });
   const canonicalRoot = await realpath(rootDir);
   await assertSafeManifestTarget(canonicalRoot, manifestFile);
-  const candidates = collectCandidates(options);
-  const artifacts: EvidenceManifestArtifact[] = [];
+  return { manifestFile, canonicalRoot };
+}
 
+async function inspectCandidates(
+  rootDir: string,
+  canonicalRoot: string,
+  candidates: CandidateFile[]
+): Promise<EvidenceManifestArtifact[]> {
+  const artifacts: EvidenceManifestArtifact[] = [];
   for (const candidate of candidates) {
     artifacts.push(await inspectCandidate(rootDir, canonicalRoot, candidate));
   }
+  return artifacts;
+}
 
-  artifacts.sort((left, right) => left.path.localeCompare(right.path));
+/** The manifest's counts, and its status: complete with every file there and every lane done. */
+function describeManifest(
+  lanes: EvidenceManifestLaneSource[],
+  artifacts: Array<Pick<EvidenceManifestArtifact, "status">>
+): Pick<EvidenceManifest, "status" | "summary"> {
   const summary = {
     total: artifacts.length,
     available: artifacts.filter(({ status }) => status === "available").length,
     missing: artifacts.filter(({ status }) => status === "missing").length,
     failed: artifacts.filter(({ status }) => status === "failed").length
   };
+  return {
+    status:
+      summary.missing === 0 &&
+      summary.failed === 0 &&
+      lanes.every(({ status }) => status === "completed")
+        ? "completed"
+        : "partial",
+    summary
+  };
+}
+
+async function saveManifest(
+  options: WriteEvidenceManifestOptions,
+  manifestFile: string,
+  artifacts: EvidenceManifestArtifact[]
+): Promise<{ manifest: EvidenceManifest; manifestFile: string }> {
+  artifacts.sort((left, right) => left.path.localeCompare(right.path));
+  const { status, summary } = describeManifest(options.lanes, artifacts);
   const manifest: EvidenceManifest = {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     assessmentId: options.assessmentId,
     ...(options.scenarioId ? { scenarioId: options.scenarioId } : {}),
     ...(options.scenarioDigest ? { scenarioDigest: options.scenarioDigest } : {}),
     ...(options.profile ? { profile: options.profile } : {}),
-    status:
-      summary.missing === 0 &&
-      summary.failed === 0 &&
-      options.lanes.every(({ status }) => status === "completed")
-        ? "completed"
-        : "partial",
+    status,
     createdAt: new Date().toISOString(),
     root: ".",
     lanes: options.lanes.map((lane) => ({
