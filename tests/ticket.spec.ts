@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { parse as parseCsv } from "csv-parse/sync";
 import { marked } from "marked";
 
 import { contract, labFixtureModel, readerWalk, runOnLabPage } from "./test-lab-helpers";
@@ -22,34 +23,12 @@ test.beforeAll(async ({ browser }, testInfo) => {
   fixes = run.report.synthesis.findings.length;
 });
 
-/** RFC 4180: rows end with CRLF outside quotes, and "" is a quote inside a quoted cell. */
-function parseCsv(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index]!;
-    if (quoted && char === '"' && text[index + 1] === '"') {
-      cell += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (!quoted && char === ",") {
-      row.push(cell);
-      cell = "";
-    } else if (!quoted && char === "\r" && text[index + 1] === "\n") {
-      rows.push([...row, cell]);
-      row = [];
-      cell = "";
-      index += 1;
-    } else cell += char;
-  }
-  return rows;
-}
-
 test("the CSV of all fixes opens with one row per fix and every field", () => {
-  const [header, ...rows] = parseCsv(csv);
+  // As a spreadsheet reads it: a line break outside quotes ends a row, whichever kind it is.
+  const [header, ...rows] = parseCsv(csv, {
+    record_delimiter: ["\r\n", "\n", "\r"],
+    relax_column_count: true
+  }) as string[][];
   expect(rows).toHaveLength(fixes);
   expect(header).toEqual([
     "Title",
