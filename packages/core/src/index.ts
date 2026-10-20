@@ -4,5 +4,6 @@ export * from "./policy";
 export * from "./engine";
 export * from "./run";
 export * from "./reader-notes";
+export * from "./requested-target";
 export * from "./roles";
 export * from "./privacy";

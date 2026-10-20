@@ -788,7 +788,14 @@ test("focus-management judge fails when a reveal-only interaction moves focus", 
         phase: "before",
         status: "ok",
         timestamp: "2026-06-21T10:00:01.000Z",
-        meta: { focusTarget: { nodePath: "button#trigger", id: "trigger" } }
+        meta: {
+          focusTarget: {
+            nodePath: "button#trigger",
+            id: "trigger",
+            frameId: "top",
+            backendDOMNodeId: 5
+          }
+        }
       },
       {
         id: "record-focus-after",
@@ -797,7 +804,14 @@ test("focus-management judge fails when a reveal-only interaction moves focus", 
         phase: "after",
         status: "ok",
         timestamp: "2026-06-21T10:00:01.100Z",
-        meta: { focusTarget: { nodePath: "a#unexpected", id: "unexpected" } }
+        meta: {
+          focusTarget: {
+            nodePath: "a#unexpected",
+            id: "unexpected",
+            frameId: "top",
+            backendDOMNodeId: 6
+          }
+        }
       }
     ],
     {
@@ -836,6 +850,7 @@ test("focus-management judge matches the deepest focused target", async () => {
         meta: {
           focusTarget: {
             id: "host",
+            requestedTarget: { role: "button", name: "Save", status: "focused", matchCount: 1 },
             deepActiveElement: {
               nodePath: "button#save",
               id: "save",
@@ -903,17 +918,13 @@ test("focus-management judge leaves a target unknown when the capture has no acc
 });
 
 /**
- * A focus action on `selector`, whose after capture has focus on a button in a frame whose path in
- * its own document is "button", and records `requestedTarget` when given.
+ * A focus action on `target`, whose after capture has focus on a "Save" button in a frame whose
+ * path in its own document is "button", and records `requestedTarget` when given.
  */
-function selectorFocusBundle(selector: string, requestedTarget?: Record<string, unknown>) {
-  const button = {
-    nodePath: "button",
-    framePath: ["iframe"],
-    tagName: "button",
-    role: "button",
-    name: "Save"
-  };
+function focusActionBundle(
+  target: EvidenceBundle["interaction"]["target"],
+  requestedTarget?: Record<string, unknown>
+) {
   return createBundle(
     [
       {
@@ -934,21 +945,32 @@ function selectorFocusBundle(selector: string, requestedTarget?: Record<string, 
         timestamp: "2026-10-19T10:00:01.100Z",
         meta: {
           focusTarget: {
-            ...button,
-            deepActiveElement: button,
+            ...FRAME_SAVE,
+            deepActiveElement: FRAME_SAVE,
             ...(requestedTarget ? { requestedTarget } : {})
           }
         }
       }
     ],
-    { kind: "focus", meta: { focusExpectation: "target" }, target: { selector } }
+    { kind: "focus", meta: { focusExpectation: "target" }, target }
   );
 }
+
+/** A "Save" button in a frame, whose path in its own document is "button". */
+const FRAME_SAVE = {
+  nodePath: "button",
+  framePath: ["iframe"],
+  frameId: "draft",
+  backendDOMNodeId: 4,
+  tagName: "button",
+  role: "button",
+  name: "Save"
+};
 
 test("focus-management judge reads whether the selected element has focus, not the selector's text", async () => {
   const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
   const judgeFocus = (selector: string, requestedTarget?: Record<string, unknown>) =>
-    judge.judge(selectorFocusBundle(selector, requestedTarget), { runId: "run-1" });
+    judge.judge(focusActionBundle({ selector }, requestedTarget), { runId: "run-1" });
 
   // The page's own button is requested; focus is on the frame's, whose path reads the same.
   const [other] = await judgeFocus("button", {
@@ -970,16 +992,98 @@ test("focus-management judge reads whether the selected element has focus, not t
   // Without the page's answer the selector's text is not compared, even when it reads the same.
   const [unrecorded] = await judgeFocus("button");
   assert.equal(unrecorded?.verdict, "unknown");
-  assert.match(unrecorded?.summary ?? "", /does not say whether the element button selects/);
+  assert.match(
+    unrecorded?.summary ?? "",
+    /does not say whether the element the selector button matches/
+  );
 
   const [several] = await judgeFocus("button", {
     selector: "button",
     status: "unresolved",
     matchCount: 2,
-    reason: "The selector button selects 2 elements, so which one was requested cannot be told."
+    reason: "The selector button matches 2 elements, so which one was requested cannot be told."
   });
   assert.equal(several?.verdict, "unknown");
-  assert.match(several?.summary ?? "", /selects 2 elements/);
+  assert.match(several?.summary ?? "", /matches 2 elements/);
+});
+
+test("focus-management judge reads whether the element with the requested role and name has focus", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
+  const save = { role: "button", name: "Save" };
+  const judgeFocus = (
+    target: EvidenceBundle["interaction"]["target"],
+    requestedTarget?: Record<string, unknown>
+  ) => judge.judge(focusActionBundle(target, requestedTarget), { runId: "run-1" });
+
+  // The page's own Save button is requested; focus is on the frame's, a button named "Save" too.
+  const [other] = await judgeFocus(save, { ...save, status: "not-focused", matchCount: 1 });
+  assert.equal(other?.verdict, "fail");
+  assert.match(
+    other?.summary ?? "",
+    /requested target \(button named "Save"\).*at iframe >>> button/
+  );
+
+  const [same] = await judgeFocus(save, { ...save, status: "focused", matchCount: 1 });
+  assert.equal(same?.verdict, "pass");
+
+  const [several] = await judgeFocus(save, {
+    ...save,
+    status: "unresolved",
+    matchCount: 2,
+    reason: 'The button named "Save" matches 2 elements, so which one was requested cannot be told.'
+  });
+  assert.equal(several?.verdict, "unknown");
+  assert.match(several?.summary ?? "", /button named "Save" matches 2 elements/);
+
+  // Without the page's answer, the same role and name do not tell which element has focus.
+  const [unrecorded] = await judgeFocus(save);
+  assert.equal(unrecorded?.verdict, "unknown");
+  assert.match(unrecorded?.summary ?? "", /another element can have the same role and name/);
+
+  // A record of another target is not read for this one.
+  const [otherRecord] = await judgeFocus(save, {
+    role: "button",
+    name: "Save",
+    exact: false,
+    status: "focused",
+    matchCount: 1
+  });
+  assert.equal(otherRecord?.verdict, "unknown");
+
+  // A different role or name is a different element, recorded or not.
+  const [link] = await judgeFocus({ role: "link", name: "Save" });
+  assert.equal(link?.verdict, "fail");
+});
+
+/** A hover expected to leave focus where it was, with focus on `before` and then on `after`. */
+function hoverBundle(before: unknown, after: unknown) {
+  return createBundle(focusRecords(before, after), {
+    kind: "hover",
+    meta: { focusExpectation: "preserve" },
+    target: { role: "link", name: "Help" }
+  });
+}
+
+test("focus-management judge checks that a hover leaves focus on the same element", async () => {
+  const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
+  const pageSave = { ...FRAME_SAVE, framePath: undefined, frameId: "top", backendDOMNodeId: 9 };
+
+  // Focus moved to the frame's Save button, whose path, role and name read the same.
+  const [moved] = await judge.judge(hoverBundle(pageSave, FRAME_SAVE), { runId: "run-1" });
+  assert.equal(moved?.verdict, "fail");
+  assert.match(moved?.summary ?? "", /at button to button role=button "Save" at iframe >>> button/);
+
+  // The same element, though a tip put before it changed its path.
+  const [stayed] = await judge.judge(
+    hoverBundle(pageSave, { ...pageSave, nodePath: "button:nth-child(2)" }),
+    { runId: "run-1" }
+  );
+  assert.equal(stayed?.verdict, "pass");
+
+  // Without the browser's node ids, paths and names that read the same do not tell.
+  const unnumbered = { nodePath: "button", tagName: "button", role: "button", name: "Save" };
+  const [unrecorded] = await judge.judge(hoverBundle(unnumbered, unnumbered), { runId: "run-1" });
+  assert.equal(unrecorded?.verdict, "unknown");
 });
 
 test("release judge fails when a prior judgment crosses the default policy threshold", async () => {
@@ -2132,9 +2236,16 @@ test("change-response judge does not count focus lost to <body> as a response", 
 
 test("focus-management judge says focus was lost when it falls to <body>", async () => {
   const judge = createDefaultJudgePlugins(["focus-management"])[0]!;
-  const more = { tagName: "button", role: "button", name: "More", nodePath: "button#more" };
+  const more = {
+    tagName: "button",
+    role: "button",
+    name: "More",
+    nodePath: "button#more",
+    frameId: "top",
+    backendDOMNodeId: 5
+  };
   const [judgment] = await judge.judge(
-    createBundle(focusRecords(more, focusOnBody(true)), {
+    createBundle(focusRecords(more, focusOnBody(true, { frameId: "top", backendDOMNodeId: 1 })), {
       kind: "hover",
       meta: { focusExpectation: "preserve" },
       target: { role: "button", name: "More" }
