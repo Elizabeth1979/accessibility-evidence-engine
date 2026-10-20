@@ -538,7 +538,7 @@ These gaps give "unknown" rather than wrong verdicts.
 
 - AEE's landmark list leaves out `figure`, which Guidepup's includes.
 - AEE's "next control" stops at links and form fields. That matches neither NVDA's F key nor JAWS's F key (form fields, no links).
-- `aria-current="foo"`, which is invalid, becomes "current foo".
+- `aria-current="foo"`, which is invalid, becomes "current foo". **Fixed**, see below.
 
 **Our code.** [`virtual-screen-reader.ts` 110–138 and 283–350](https://github.com/Elizabeth1979/accessibility-evidence-engine/blob/1e48ed6cd9b95846edf9eaaa1812d0fc7d0956d9/packages/playwright/src/virtual-screen-reader.ts#L110-L138), and 496–501.
 
@@ -547,6 +547,8 @@ These gaps give "unknown" rather than wrong verdicts.
 **Verdict: question for the owner.** Guidepup's commands agree with what it speaks. AEE's use Chrome's roles, which are closer to NVDA and JAWS in Chrome, and they allow an exact "undo" for peeking ahead. Which one wins? And what should "next control" model?
 
 **Effort:** S–M.
+
+**The `aria-current` bug is fixed; the jump-command question is still open.** The reader's item states now read `aria-current` the way Chrome does (`AXNodeObject::GetAriaCurrentState` in Blink): `""`, `"undefined"` and `"false"` say nothing, `page`, `step`, `location`, `date` and `time` match in any case, and any other value is `true`, which WAI-ARIA 1.2 asks for ("Any value not included in the list of allowed values SHOULD be treated by assistive technologies as if the value `true` had been provided"). The words are NVDA's (`controlTypes/isCurrent.py`), which AEE already used: "current page", "current step", "current location", "current date", "current time", and plain "current" for `true` and for an unknown value. Chrome 141's tree over CDP has no `aria-current` property for any of these values (checked), so it is still read from the attribute. Proof: the test "portable virtual reader says aria-current as Chrome and NVDA read it" in `tests/run-aee-on-page.spec.ts` failed on main with "current foo", "current STEP" and "current undefined", and passes now. Not changed: the spoken line in the transcript comes from Guidepup, which looks the value up case-sensitively and says nothing for an unknown one, and says "current item" and "not current item" where NVDA says "current" and nothing; that is upstream's, to report there.
 
 The Guidepup pin is still justified: 0.33.0 is out (September 2026), but guidepup/virtual-screen-reader#250 is still open.
 
