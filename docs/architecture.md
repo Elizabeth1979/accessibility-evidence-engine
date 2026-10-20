@@ -27,7 +27,7 @@ The current engine produces one evidence bundle per execution. A longer user jou
 
 ### `@aee/core`
 
-Owns the normalized domain model, policy types, orchestration, evidence correlation, and plugin contracts. It remains independent of Playwright and concrete observer implementations.
+Owns the normalized domain model, policy types, orchestration, evidence correlation, and plugin contracts. It remains independent of Playwright and concrete observer implementations. Its evidence types (runs, interactions, records, judgments, findings and their parts) are the ones `@aee/schemas` generates from the schemas, re-exported under the same names.
 
 ### `@aee/ai-fixes`
 
@@ -35,7 +35,7 @@ Owns review-only contextual repair helpers, the model-provider seam and the AI s
 
 ### `@aee/schemas`
 
-Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas.
+Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas. It also owns the TypeScript type of every document a schema checks: `scripts/generate-schema-types.mjs` writes them to `src/schema-types.ts` with `json-schema-to-typescript`, `npm run build` regenerates the file and `npm run check` fails when the committed one differs, and `assertValidSchema` narrows a checked value to its schema's type. The types say what a document always has; a schema's conditions (`if`/`then`), exclusions (`not`), patterns and item counts are checked at run time only.
 
 ### `@aee/playwright`
 
@@ -75,6 +75,7 @@ graph TD
   cli["@aee/cli"]
   mcp["@aee/mcp"]
 
+  core --> schemas
   observers --> core
   aiFixes --> core
   judges --> core

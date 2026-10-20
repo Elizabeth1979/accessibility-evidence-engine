@@ -1,10 +1,16 @@
 import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import {
+  assertValidSchema,
+  CURRENT_SCHEMA_VERSION,
+  type InteractionVideoEvidence,
+  type InteractionVideoSidecar
+} from "@aee/schemas";
 
-export type InteractionVideoDriver =
-  "pointer" | "keyboard" | "keyboard-pointer-sweep" | "portable-virtual-screen-reader";
+export type { InteractionVideoEvidence, InteractionVideoSidecar } from "@aee/schemas";
+
+export type InteractionVideoDriver = InteractionVideoSidecar["driver"];
 
 export interface PlaywrightVideoLike {
   saveAs(filePath: string): Promise<void>;
@@ -17,41 +23,6 @@ export interface InteractionVideoActionInput {
   label: string;
   startedAt: string;
   finishedAt: string;
-}
-
-export interface InteractionVideoEvidence {
-  videoFile: string;
-  sidecarFile: string;
-  captionsFile: string;
-}
-
-export interface InteractionVideoSidecar {
-  schemaVersion: string;
-  laneId: string;
-  driver: InteractionVideoDriver;
-  status: "completed" | "blocked" | "failed";
-  startedAt: string;
-  finishedAt: string;
-  video: {
-    path: string;
-    mediaType: "video/webm";
-    captionsPath: string;
-  };
-  actions: Array<{
-    id: string;
-    sequence: number;
-    label: string;
-    startedAt: string;
-    finishedAt: string;
-    offsetMs: number;
-    durationMs: number;
-  }>;
-  privacy: {
-    classification: "sensitive";
-    reviewedForSharing: false;
-    shareable: false;
-  };
-  diagnostics?: string[];
 }
 
 export interface PersistInteractionVideoOptions {

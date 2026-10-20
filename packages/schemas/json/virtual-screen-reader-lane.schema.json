@@ -41,7 +41,7 @@
     "transcriptJsonFile": { "type": "string", "minLength": 1 },
     "transcriptTextFile": { "type": "string", "minLength": 1 },
     "manifestFile": { "type": "string", "minLength": 1 },
-    "video": { "$ref": "#/$defs/videoEvidence" },
+    "video": { "$ref": "./common.schema.json#/$defs/videoEvidence" },
     "diagnostics": {
       "type": "array",
       "minItems": 1,
@@ -49,16 +49,6 @@
     }
   },
   "$defs": {
-    "videoEvidence": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["videoFile", "sidecarFile", "captionsFile"],
-      "properties": {
-        "videoFile": { "type": "string", "minLength": 1 },
-        "sidecarFile": { "type": "string", "minLength": 1 },
-        "captionsFile": { "type": "string", "minLength": 1 }
-      }
-    },
     "step": {
       "type": "object",
       "required": [
@@ -74,34 +64,14 @@
       ],
       "properties": {
         "sequence": { "type": "integer", "minimum": 1 },
-        "command": {
-          "enum": [
-            "start",
-            "next-item",
-            "previous-item",
-            "next-heading",
-            "previous-heading",
-            "next-landmark",
-            "next-control",
-            "read-current"
-          ]
-        },
+        "command": { "$ref": "./virtual-screen-reader-transcript.schema.json#/$defs/command" },
         "runId": { "$ref": "./common.schema.json#/$defs/uid" },
         "pageUrl": { "type": "string", "format": "uri" },
         "entry": {
           "$ref": "./virtual-screen-reader-transcript.schema.json#/$defs/entry"
         },
-        "results": {
-          "type": "object",
-          "required": ["pass", "fail", "unknown"],
-          "properties": {
-            "pass": { "type": "integer", "minimum": 0 },
-            "fail": { "type": "integer", "minimum": 0 },
-            "unknown": { "type": "integer", "minimum": 0 }
-          },
-          "additionalProperties": false
-        },
-        "releaseVerdict": { "enum": ["pass", "fail", "unknown"] },
+        "results": { "$ref": "./common.schema.json#/$defs/runSummary" },
+        "releaseVerdict": { "$ref": "./common.schema.json#/$defs/verdict" },
         "reporterFiles": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }

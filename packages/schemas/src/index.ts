@@ -30,5 +30,6 @@ export const schemaCatalog = {
 
 export type SchemaName = keyof typeof schemaCatalog;
 
+export type * from "./schema-types";
 export * from "./validator";
 export * from "./remediation-registry";

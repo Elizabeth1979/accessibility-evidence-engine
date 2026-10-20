@@ -1,121 +1,38 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
-import { assertValidSchema, CURRENT_SCHEMA_VERSION } from "@aee/schemas";
+import {
+  assertValidSchema,
+  CURRENT_SCHEMA_VERSION,
+  type AeeScenario,
+  type InputComparisonRequest,
+  type ScenarioCapability,
+  type ScenarioJourney,
+  type ScenarioPlan,
+  type ScenarioPrivacy
+} from "@aee/schemas";
 import { actionRunId, inputComparisonLaneId, MAX_RUN_ID_LENGTH } from "@aee/playwright";
-import type { VirtualScreenReaderCommand } from "@aee/playwright";
-import type {
-  AssessmentProfile,
-  InputComparisonAction,
-  InputComparisonExpectation,
-  InputComparisonObservationRequest
-} from "@aee/playwright";
+import type { AssessmentProfile } from "@aee/playwright";
 import canonicalize from "canonicalize";
 import { parseDocument } from "yaml";
 
 export type ScenarioProfile = AssessmentProfile;
 
+export type {
+  AeeScenario,
+  ScenarioCapability,
+  ScenarioJourney,
+  ScenarioPlan,
+  ScenarioPlannedJourney,
+  ScenarioPrivacy
+} from "@aee/schemas";
+
 /** The one permission that makes the engine act on its own: the sweep presses on-page controls. */
 export const ACTIVATE_PAGE_CONTROLS = "activate-page-controls";
-export type ImplementationStatus = "available" | "partial" | "planned";
+export type ImplementationStatus = ScenarioCapability["implementationStatus"];
 
-export interface AeeScenario {
-  $schema?: string;
-  schemaVersion: string;
-  id: string;
-  /** What the report is called; without one, it is called after the id. */
-  name?: string;
-  target: {
-    url: string;
-    allowedOrigins?: string[];
-  };
-  standard: {
-    name: "WCAG";
-    version: "2.0" | "2.1" | "2.2";
-    levels: Array<"A" | "AA" | "AAA">;
-  };
-  profile: ScenarioProfile;
-  goal: string;
-  journeys: ScenarioJourney[];
-  privacy?: ScenarioPrivacy;
-  approval: {
-    required: true;
-    approvedPlanDigest?: string;
-  };
-}
-
-export interface ScenarioJourney {
-  id: string;
-  name: string;
-  goal: string;
-  startPath?: string;
-  allowedActions: string[];
-  forbiddenActions: string[];
-  virtualScreenReaderCommands?: VirtualScreenReaderCommand[];
-  interactionComparisons?: ScenarioInteractionComparison[];
-}
-
-export interface ScenarioInteractionComparison {
-  id: string;
-  name: string;
-  pointerActions: InputComparisonAction[];
-  keyboardActions: InputComparisonAction[];
-  observe: InputComparisonObservationRequest;
-  expected?: InputComparisonExpectation;
-}
-
-export interface ScenarioPrivacy {
-  storage: "local" | "custom";
-  remoteUpload: "forbidden" | "explicit-only";
-  sharingReviewRequired: true;
-}
-
-export interface ScenarioCapability {
-  id: string;
-  label: string;
-  kind: "active-lane" | "passive-observer" | "reporter";
-  requirement: "required" | "optional";
-  implementationStatus: ImplementationStatus;
-}
-
-export interface ScenarioPlan {
-  schemaVersion: string;
-  scenarioId: string;
-  scenarioDigest: string;
-  planDigest: string;
-  target: string;
-  standard: string;
-  profile: ScenarioProfile;
-  goal: string;
-  approval: {
-    required: true;
-    status: "pending" | "approved" | "digest-mismatch";
-  };
-  readiness: {
-    status: "ready" | "blocked";
-    summary: string;
-    blockingCapabilityIds: string[];
-  };
-  requiredCapabilities: ScenarioCapability[];
-  journeys: Array<{
-    id: string;
-    name: string;
-    goal: string;
-    startUrl: string;
-    steps: Array<{
-      id: string;
-      label: string;
-      source: "profile" | "user-permission" | "user-command";
-    }>;
-  }>;
-  safety: {
-    allowedOrigins: string[];
-    allowedActions: string[];
-    forbiddenActions: string[];
-    conflicts: [];
-  };
-  privacy: ScenarioPrivacy;
-}
+/** A comparison of pointer and keyboard a journey asks for. */
+export type ScenarioInteractionComparison = InputComparisonRequest;
 
 const CORE_CAPABILITIES: ScenarioCapability[] = [
   capability("keyboard-lane", "Keyboard input lane", "active-lane", "available"),
@@ -283,8 +200,8 @@ export async function loadScenario(scenarioPath: string): Promise<AeeScenario> {
 
   const parsed = document.toJS({ maxAliasCount: 0 }) as unknown;
   assertValidSchema("scenario", parsed, `AEE scenario at ${scenarioPath}`);
-  validateScenarioSemantics(parsed as AeeScenario);
-  return parsed as AeeScenario;
+  validateScenarioSemantics(parsed);
+  return parsed;
 }
 
 export function compileScenarioPlan(scenario: AeeScenario): ScenarioPlan {

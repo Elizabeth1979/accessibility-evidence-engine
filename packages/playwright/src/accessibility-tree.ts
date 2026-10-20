@@ -1,8 +1,11 @@
 import { redactUrl } from "@aee/core";
+import type { AccessibilityProperty } from "@aee/schemas";
 
 import type { AxeTargetStep } from "./axe-results";
 import { elementSelectors, type ElementPath } from "./element-selectors";
 import { PageObject } from "./frame-documents";
+
+export type { AccessibilityProperty } from "@aee/schemas";
 
 /** A Chrome DevTools Protocol session, as Playwright's `CDPSession` provides it. */
 export interface CdpSession {
@@ -30,21 +33,7 @@ export interface FramedPage {
 }
 
 /** A value in the browser's accessibility tree (CDP `Accessibility.AXValue`). */
-export interface AccessibilityValue {
-  type: string;
-  value?: unknown;
-  /** The elements a relation such as `labelledby` or `controls` points to, with their text. */
-  relatedNodes?: Array<{ backendDOMNodeId: number; idref?: string; text?: string }>;
-}
-
-/**
- * One state or property of a node (CDP `Accessibility.AXProperty`), such as `expanded`,
- * `invalid`, `hasPopup` or `describedby`.
- */
-export interface AccessibilityProperty {
-  name: string;
-  value: AccessibilityValue;
-}
+export type AccessibilityValue = AccessibilityProperty["value"];
 
 /** One node of the browser's accessibility tree (CDP `Accessibility.AXNode`). */
 export interface AccessibilityNode {

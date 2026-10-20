@@ -1,7 +1,10 @@
+import type { ContrastExtreme, ContrastMeasurement, MeasuredContrast } from "@aee/schemas";
 import { PNG } from "pngjs";
 
 import { axeContrastData } from "./axe-results";
 import type { ElementLocationPage } from "./element-locations";
+
+export type { ContrastExtreme, ContrastMeasurement, MeasuredContrast } from "@aee/schemas";
 
 /**
  * Why axe could not decide a text's contrast, for the reasons the pixels behind the text can
@@ -12,28 +15,6 @@ const MEASURABLE_REASONS = new Set(["bgImage", "bgGradient", "imgNode"]);
 /** At most this many texts are measured at one checkpoint; the rest stay for a person. */
 const MAXIMUM_MEASURED = 40;
 const PROBE_ATTRIBUTE = "data-aee-contrast-probe";
-
-/** A color behind the text and the contrast the text has against it. */
-export interface ContrastExtreme {
-  ratio: number;
-  background: string;
-}
-
-/**
- * The text's contrast against every pixel behind it, taken from a screenshot with the text hidden.
- * It passes when every pixel gives the required ratio and fails when none does; when some do and
- * some do not, it stays undecided. A text the screenshot cannot answer for says why.
- */
-export type ContrastMeasurement =
-  MeasuredContrast | { verdict: "unmeasured"; requiredRatio: number; reason: string };
-
-export interface MeasuredContrast {
-  verdict: "pass" | "fail" | "undecided";
-  requiredRatio: number;
-  foreground: string;
-  lowest: ContrastExtreme;
-  highest: ContrastExtreme;
-}
 
 export interface ContrastMeasuringPage extends ElementLocationPage {
   screenshot(options: {

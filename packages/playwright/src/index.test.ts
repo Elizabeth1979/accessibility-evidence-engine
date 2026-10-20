@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import type { EvidenceRecord, Judgment } from "@aee/core";
+import { assertValidSchema } from "@aee/schemas";
 
 import {
   aggregateEvidenceManifests,
@@ -15,6 +16,7 @@ import {
   measureAgainstPixels,
   resolveObserverIdsForCapturePolicy,
   renderInteractionVideoCaptions,
+  renderPortableVirtualScreenReaderTranscript,
   persistInteractionVideo,
   prepareAggregateManifest,
   runAeeOnPage,
@@ -324,6 +326,36 @@ test("runInputComparison saves a deterministic trace for declared click and Ente
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("renderPortableVirtualScreenReaderTranscript reads a transcript with no live-region announcements", () => {
+  // Live-region announcements came after the first transcripts, so the schema keeps them optional.
+  const transcript: unknown = {
+    schemaVersion: "0.1.0",
+    engine: "aee-portable-virtual-screen-reader",
+    engineVersion: "0.3.0",
+    speechEngine: "@guidepup/virtual-screen-reader 0.33.0",
+    mode: "guide",
+    fidelity: "semantic-simulation",
+    physicalAssistiveTechnology: false,
+    pageUrl: "https://example.test/",
+    generatedAt: "2026-01-01T00:00:00.000Z",
+    entries: [
+      {
+        sequence: 1,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        command: "next-item",
+        announcement: "button, Save",
+        focusMoved: false
+      }
+    ]
+  };
+  assertValidSchema("virtualScreenReaderTranscript", transcript);
+
+  const text = renderPortableVirtualScreenReaderTranscript(transcript);
+
+  assert.match(text, /1\. next-item: button, Save/);
+  assert.doesNotMatch(text, /Live-region announcements/);
 });
 
 test("renderInteractionVideoCaptions produces an accessible action timeline", () => {

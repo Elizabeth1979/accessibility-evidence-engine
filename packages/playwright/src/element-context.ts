@@ -1,3 +1,5 @@
+import type { ElementContext } from "@aee/schemas";
+
 import {
   capturePageDom,
   describeSelectedElement,
@@ -11,45 +13,7 @@ import {
 } from "./accessibility-tree";
 import type { ElementLocationPage } from "./element-locations";
 
-/**
- * The page around an element, captured with the axe result so an AI specialist reads evidence,
- * never the live page. Text is trimmed and capped: it is only as much as a name needs. Its role,
- * name and whether a screen reader is given it at all come from the browser's accessibility
- * tree, the same one NVDA and JAWS read from Chrome.
- */
-export interface ElementContext {
-  tagName: string;
-  /** Its role as the accessibility tree has it, such as `link`, `image` or `generic`. */
-  role: string;
-  /** Its accessible name from the tree; empty when it has none. */
-  name: string;
-  /**
-   * Why the tree leaves it out, such as `emptyAlt`, `presentationalRole` or `ariaHiddenSubtree`:
-   * a screen reader is given nothing of it. Empty when it is exposed.
-   */
-  ignoredReasons: string[];
-  /** Visible text inside the element. */
-  text: string;
-  /** No text of its own, but an svg, img or icon element inside: the icon is all a sighted user sees. */
-  iconOnly: boolean;
-  /** What the markup says about the icon: an svg title, a sprite id, an img alt or file, icon classes, the id. */
-  iconHints: string[];
-  /** The name of the nearest heading before it, as the tree has headings. */
-  nearbyHeading?: string;
-  /** The visible text of its closest container that has text besides the element's own. */
-  nearbyText?: string;
-  /** Where a link goes. */
-  destination?: string;
-  image?: {
-    source?: string;
-    alt?: string;
-    title?: string;
-    caption?: string;
-    /** The text of the link or button it sits in, and whether the image is all of its content. */
-    linkOrButtonText?: string;
-    soleContentOfLinkOrButton: boolean;
-  };
-}
+export type { ElementContext } from "@aee/schemas";
 
 type PageFacts = Omit<
   ElementContext,

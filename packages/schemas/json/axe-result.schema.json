@@ -108,20 +108,54 @@
       }
     },
     "elementContext": {
+      "description": "The page around an element, captured with the axe result so an AI specialist reads evidence, never the live page. Text is trimmed and capped: it is only as much as a name needs. Its role, name and whether a screen reader is given it at all come from the browser's accessibility tree, the same one NVDA and JAWS read from Chrome.",
       "type": "object",
       "additionalProperties": false,
       "required": ["tagName", "role", "name", "ignoredReasons", "text", "iconOnly", "iconHints"],
       "properties": {
         "tagName": { "type": "string", "minLength": 1 },
-        "role": { "type": "string" },
-        "name": { "type": "string" },
-        "ignoredReasons": { "type": "array", "items": { "type": "string" } },
-        "text": { "type": "string" },
-        "iconOnly": { "type": "boolean" },
-        "iconHints": { "type": "array", "items": { "type": "string" } },
-        "nearbyHeading": { "type": "string" },
-        "nearbyText": { "type": "string" },
-        "destination": { "type": "string" },
+        "role": {
+          "description": "Its role as the accessibility tree has it, such as link, image or generic.",
+          "type": "string"
+        },
+        "name": {
+          "description": "Its accessible name from the tree; empty when it has none.",
+          "type": "string"
+        },
+        "ignoredReasons": {
+          "description": "Why the tree leaves it out, such as emptyAlt, presentationalRole or ariaHiddenSubtree: a screen reader is given nothing of it. Empty when it is exposed.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "text": {
+          "description": "Visible text inside the element.",
+          "type": "string"
+        },
+        "iconOnly": {
+          "description": "No text of its own, but an svg, img or icon element inside: the icon is all a sighted user sees.",
+          "type": "boolean"
+        },
+        "iconHints": {
+          "description": "What the markup says about the icon: an svg title, a sprite id, an img alt or file, icon classes, the id.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nearbyHeading": {
+          "description": "The name of the nearest heading before it, as the tree has headings.",
+          "type": "string"
+        },
+        "nearbyText": {
+          "description": "The visible text of its closest container that has text besides the element's own.",
+          "type": "string"
+        },
+        "destination": {
+          "description": "Where a link goes.",
+          "type": "string"
+        },
         "image": {
           "type": "object",
           "additionalProperties": false,
@@ -131,7 +165,10 @@
             "alt": { "type": "string" },
             "title": { "type": "string" },
             "caption": { "type": "string" },
-            "linkOrButtonText": { "type": "string" },
+            "linkOrButtonText": {
+              "description": "The text of the link or button it sits in, and whether the image is all of its content.",
+              "type": "string"
+            },
             "soleContentOfLinkOrButton": { "type": "boolean" }
           }
         }
@@ -139,18 +176,7 @@
     },
     "contrastMeasurement": {
       "oneOf": [
-        {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["verdict", "requiredRatio", "foreground", "lowest", "highest"],
-          "properties": {
-            "verdict": { "enum": ["pass", "fail", "undecided"] },
-            "requiredRatio": { "type": "number", "exclusiveMinimum": 0 },
-            "foreground": { "type": "string" },
-            "lowest": { "$ref": "#/$defs/contrastExtreme" },
-            "highest": { "$ref": "#/$defs/contrastExtreme" }
-          }
-        },
+        { "$ref": "#/$defs/measuredContrast" },
         {
           "type": "object",
           "additionalProperties": false,
@@ -163,7 +189,21 @@
         }
       ]
     },
+    "measuredContrast": {
+      "description": "A text's contrast against every pixel behind it: pass when every pixel gives the required ratio, fail when none does, undecided when some do and some do not.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "requiredRatio", "foreground", "lowest", "highest"],
+      "properties": {
+        "verdict": { "enum": ["pass", "fail", "undecided"] },
+        "requiredRatio": { "type": "number", "exclusiveMinimum": 0 },
+        "foreground": { "type": "string" },
+        "lowest": { "$ref": "#/$defs/contrastExtreme" },
+        "highest": { "$ref": "#/$defs/contrastExtreme" }
+      }
+    },
     "contrastExtreme": {
+      "description": "A color behind the text and the contrast the text has against it.",
       "type": "object",
       "additionalProperties": false,
       "required": ["ratio", "background"],
@@ -173,14 +213,32 @@
       }
     },
     "frameNotChecked": {
+      "description": "A frame left out of the page's checks (framesInsideOrigins), such as one whose page is outside the allowed origins. Its element is the page's own and is checked there; nothing inside it is read.",
       "type": "object",
       "additionalProperties": false,
       "required": ["url", "reason", "name", "selector"],
       "properties": {
-        "url": { "type": "string" },
-        "reason": { "type": "string", "minLength": 1 },
-        "name": { "type": "string" },
-        "selector": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+        "url": {
+          "description": "Its page's address, with no credentials, query values or fragment.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why it was left out, naming the site when its page is outside the allowed origins.",
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "description": "Its element's accessible name, as Chrome's accessibility tree gives it.",
+          "type": "string"
+        },
+        "selector": {
+          "description": "Its element: a CSS selector in each document from the top one down, the way axe-core's target lists a node inside frames.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        }
       }
     }
   }
