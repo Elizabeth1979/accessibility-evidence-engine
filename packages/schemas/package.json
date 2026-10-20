@@ -16,15 +16,10 @@
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/index.js",
-    "dist/index.js.map",
-    "dist/index.d.ts",
-    "dist/validator.js",
-    "dist/validator.js.map",
-    "dist/validator.d.ts",
-    "dist/remediation-registry.js",
-    "dist/remediation-registry.js.map",
-    "dist/remediation-registry.d.ts",
+    "dist/**/*.js",
+    "dist/**/*.js.map",
+    "dist/**/*.d.ts",
+    "!dist/**/*.test.*",
     "json"
   ],
   "engines": {
