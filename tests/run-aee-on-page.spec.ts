@@ -16,6 +16,7 @@ import {
   runVirtualScreenReaderLane,
   withPageSessions
 } from "@aee/playwright";
+import { validateSchema } from "@aee/schemas";
 
 import { runApprovedScenario, startHtmlServer } from "./scenario-helpers";
 
@@ -609,6 +610,8 @@ test("runAeeOnPage preserves axe 4.14 WCAG results and locates failing elements"
   );
 
   for (const rawResult of rawResults) {
+    // The report reads this file through its schema, so what axe and AEE wrote must match it.
+    expect(validateSchema("axeResult", rawResult)).toEqual({ valid: true, errors: [] });
     expect(rawResult.testEngine.version).toBe("4.14.0");
     expect(rawResult.violations).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: "button-name" })])
@@ -1216,6 +1219,7 @@ for (const { label, host } of [
       );
       // axe did not check the frame, so the start page is not reported as passing.
       const axe = JSON.parse(await readFile(path.join(artifacts, "axe-after.json"), "utf8"));
+      expect(validateSchema("axeResult", axe)).toEqual({ valid: true, errors: [] });
       expect(axe.framesNotChecked).toEqual([
         {
           url: outsideUrl,

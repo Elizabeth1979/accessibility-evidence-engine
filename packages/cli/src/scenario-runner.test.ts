@@ -361,6 +361,7 @@ function rawContrastRule(node: Record<string, unknown>) {
     tags: ["cat.color", "wcag2aa", "wcag143"],
     help: "Elements must meet minimum color contrast ratio thresholds",
     description: "color-contrast description",
+    helpUrl: "https://dequeuniversity.com/rules/axe/4.14/color-contrast",
     nodes: [{ impact: "serious", all: [], none: [], ...node }]
   };
 }
@@ -503,6 +504,7 @@ test("an element inside a shadow root or a frame keeps axe's whole path to it", 
       tags: ["cat.name-role-value", "wcag2a", "wcag412"],
       help: "Buttons must have discernible text",
       description: "button-name description",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.14/button-name",
       nodes: [
         nameless([["#app-shell", "button.icon"]]),
         nameless(["iframe#chat", ["chat-widget", "button.icon"]])
@@ -1355,4 +1357,104 @@ test("an action report with no findings list is an error naming the file, never 
     ),
     { message: 'Invalid page-load/aee-report.json: (root) is missing required property "findings"' }
   );
+});
+
+/** An axe result file as AEE writes it: one image-alt violation on an image with no alt text. */
+function axeResultFile() {
+  const node: Record<string, unknown> = {
+    html: '<img src="logo.png">',
+    impact: "critical",
+    target: ["img"],
+    any: [
+      {
+        id: "has-alt",
+        impact: "critical",
+        message: "Element does not have an alt attribute",
+        data: null,
+        relatedNodes: []
+      }
+    ],
+    all: [],
+    none: [],
+    failureSummary: "Fix any of the following:\n  Element does not have an alt attribute"
+  };
+  const rule: Record<string, unknown> = {
+    id: "image-alt",
+    impact: "critical",
+    tags: ["cat.text-alternatives", "wcag2a", "wcag111"],
+    description: "Ensure <img> elements have alternative text or a role of none or presentation",
+    help: "Images must have alternative text",
+    helpUrl: "https://dequeuniversity.com/rules/axe/4.14/image-alt",
+    nodes: [node]
+  };
+  const file = {
+    testEngine: { name: "axe-core", version: "4.14.0" },
+    url: "https://example.com/",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    violations: [rule],
+    incomplete: [],
+    passes: [],
+    inapplicable: []
+  };
+  return { file, rule, node };
+}
+
+test("an axe result with a missing or wrong-typed field is not read, named by file and field, never a made-up default", async () => {
+  // axe always gives a rule its help text and a node its target; this file has neither.
+  const { file, rule, node } = axeResultFile();
+  delete rule.help;
+  node.target = 7;
+  const result = await finishWithOnlyASweep({
+    scenarioId: "malformed-axe",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "axe-after.json": file }
+  });
+  const html = await readFile(result.reportFiles.html, "utf8");
+  const reason =
+    'Invalid read-reader/axe-after.json: /violations/0 is missing required property "help"; /violations/0/nodes/0/target must be array';
+
+  assert.doesNotMatch(html, /No help text was provided\./);
+  assert.ok(
+    html.includes(
+      `<p><strong>Axe JSON could not be summarized:</strong> ${reason.replaceAll('"', "&quot;")}</p>`
+    ),
+    "the Axe tab says the file was not read, and names the file and fields"
+  );
+  // Never a green "0 violations" for a file that was not read.
+  assert.match(html, /<span class="badge unknown">not read<\/span>/);
+  assert.doesNotMatch(html, /<span class="badge pass">0 violations<\/span>/);
+  // The rows that read axe's results say they could not, never that nothing failed.
+  const report = JSON.parse(await readFile(result.reportFiles.json, "utf8")) as {
+    synthesis: { status: Array<{ id: string; verdict: string; detail: string }> };
+  };
+  for (const id of ["semantics", "contrast"]) {
+    const row = report.synthesis.status.find((status) => status.id === id);
+    assert.deepEqual(
+      { verdict: row?.verdict, detail: row?.detail },
+      {
+        verdict: "unknown",
+        detail: `An axe result could not be read, so its rules were not checked. ${reason}`
+      },
+      id
+    );
+  }
+});
+
+test("an axe rule with no impact, which axe allows, is read with its impact unknown, never review", async () => {
+  const { file, rule } = axeResultFile();
+  delete rule.impact;
+  const result = await finishWithOnlyASweep({
+    scenarioId: "axe-no-impact",
+    plannedLanes: 2,
+    diagnostics: [],
+    laneFiles: { "axe-after.json": file }
+  });
+  const html = await readFile(result.reportFiles.html, "utf8");
+  const card = html.match(/<article class="rule [^"]*">[\s\S]*?<\/article>/)?.[0] ?? "";
+
+  assert.match(card, /<h5>image-alt<\/h5>/);
+  assert.doesNotMatch(card, />review</);
+  assert.match(card, /<span class="badge unknown">impact unknown: axe gave none<\/span>/);
+  assert.match(card, /<strong>Images must have alternative text<\/strong>/);
 });

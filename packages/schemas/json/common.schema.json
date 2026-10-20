@@ -92,6 +92,20 @@
     "verdict": {
       "type": "string",
       "enum": ["pass", "fail", "unknown"]
+    },
+    "targetBox": {
+      "description": "Where an element sits on the full-page screenshot, in CSS pixels, with the page's own size.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "width", "height", "pageWidth", "pageHeight"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "type": "number", "minimum": 0 },
+        "height": { "type": "number", "minimum": 0 },
+        "pageWidth": { "type": "number", "minimum": 0 },
+        "pageHeight": { "type": "number", "minimum": 0 }
+      }
     }
   }
 }

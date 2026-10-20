@@ -33,12 +33,15 @@ import {
   runStartPageLane,
   writeObservedPressesLane,
   runVirtualScreenReaderLane,
-  readAxeTarget,
   SWEEP_FINDING_CONCEPTS,
+  type AxeResultFile,
+  type AxeResultNode,
+  type AxeResultRule,
   type AxeTarget,
   type ContrastMeasurement,
   type ContrastReading,
   type ElementContext,
+  type ElementLocation,
   type ElementMap,
   type EvidenceManifest,
   type InputComparisonLane,
@@ -228,6 +231,7 @@ interface ActionReportView {
 
 interface AxeRuleView {
   id: string;
+  /** axe's impact for the rule; unknown when axe gave none, which it may. */
   impact: string;
   help: string;
   description: string;
@@ -250,22 +254,16 @@ interface AxeNodeView {
   targetBox?: AxeTargetBox;
   /** The page around the element, captured for the AI specialists that may be asked about it. */
   context?: ElementContext;
-  /** Why axe could not decide the element: its reason key and its own words. */
-  undecided?: { key: string; message: string };
+  /** Why axe could not decide the element: its own words, and its reason key when it gave one. */
+  undecided?: { key?: string; message: string };
   /** AEE's measurement of the pixels behind a text whose contrast axe could not decide. */
   contrast?: ContrastMeasurement;
   /** The text's contrast, from axe's check data or AEE's screenshot measurement. */
   reading?: ContrastReading;
 }
 
-export interface AxeTargetBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  pageWidth: number;
-  pageHeight: number;
-}
+/** Where an element axe found sits on the full-page screenshot, as AEE located it. */
+export type AxeTargetBox = ElementLocation;
 
 interface AxeReportView {
   path: string;
@@ -1366,7 +1364,7 @@ export async function verifyAppliedFixes(
   ]);
   const axeRan = axeReports.filter(({ readError }) => !readError);
   const entries = transcripts.flatMap((transcript) => transcript.entries);
-  const unreadTranscripts = transcriptReadErrors(transcripts);
+  const unreadTranscripts = readErrors(transcripts);
   return fixes.map(({ ruleId, selector, name }) => {
     const check = (id: FixCheck["id"], verdict: FixCheck["verdict"], detail: string) => ({
       id,
@@ -1406,9 +1404,9 @@ export async function verifyAppliedFixes(
   });
 }
 
-/** Why the transcripts that could not be read were not, one after another; empty when all were. */
-function transcriptReadErrors(transcripts: ReaderTranscriptView[]): string {
-  return transcripts.flatMap(({ readError }) => (readError ? [readError] : [])).join(" ");
+/** Why the evidence files that could not be read were not, one after another; empty when all were. */
+function readErrors(views: Array<{ readError?: string }>): string {
+  return views.flatMap(({ readError }) => (readError ? [readError] : [])).join(" ");
 }
 
 /** The report of the reader command that produced a transcript entry. */
@@ -1712,7 +1710,7 @@ async function loadAxeReportViews(
       const laneId = stringField(provenance, "laneId", "unknown-lane");
       const runId = stringField(provenance, "runId", "unknown-run");
       try {
-        const document = await readReportJson(rootDir, artifactPath);
+        const document = await readEvidenceJson<AxeResultFile>(rootDir, artifactPath, "axeResult");
         return {
           path: artifactPath,
           actionId,
@@ -1720,8 +1718,8 @@ async function loadAxeReportViews(
           runId,
           violations: axeRuleViews(document.violations),
           incomplete: axeRuleViews(document.incomplete),
-          passes: Array.isArray(document.passes) ? document.passes.length : 0,
-          inapplicable: Array.isArray(document.inapplicable) ? document.inapplicable.length : 0
+          passes: document.passes.length,
+          inapplicable: document.inapplicable.length
         };
       } catch (error) {
         return {
@@ -1740,26 +1738,21 @@ async function loadAxeReportViews(
   );
 }
 
-function axeRuleViews(value: unknown): AxeRuleView[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter(isRecord).map((rule) => {
-    const rawNodes = Array.isArray(rule.nodes) ? rule.nodes.filter(isRecord) : [];
-    const nodes = rawNodes.map((node) => {
-      const targetPath = readAxeTarget(node.target);
+/** The rules of an axe result file checked against its schema, as the report shows them. */
+function axeRuleViews(rules: AxeResultRule[]): AxeRuleView[] {
+  return rules.map((rule) => {
+    const nodes = rule.nodes.map((node): AxeNodeView => {
       const reading = contrastReading(node);
+      const undecided = undecidedReason(node);
       return {
-        target: targetPath ? describeAxeTarget(targetPath) : "",
-        ...(targetPath ? { targetPath } : {}),
-        html: optionalStringField(node, "html"),
-        failureSummary: optionalStringField(node, "failureSummary"),
-        targetBox: axeTargetBox(node.aeeTarget),
-        context: isRecord(node.aeeContext)
-          ? (node.aeeContext as unknown as ElementContext)
-          : undefined,
-        undecided: undecidedReason(node),
-        contrast: isRecord(node.aeeContrast)
-          ? (node.aeeContrast as unknown as ContrastMeasurement)
-          : undefined,
+        target: describeAxeTarget(node.target),
+        targetPath: node.target,
+        html: node.html,
+        failureSummary: node.failureSummary,
+        targetBox: node.aeeTarget,
+        context: node.aeeContext,
+        ...(undecided ? { undecided } : {}),
+        contrast: node.aeeContrast,
         ...(reading ? { reading } : {})
       };
     });
@@ -1775,15 +1768,16 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
       )
     ];
     return {
-      id: stringField(rule, "id", "unknown-rule"),
-      impact: optionalStringField(rule, "impact") ?? "review",
-      help: stringField(rule, "help", "No help text was provided."),
-      description: stringField(rule, "description", "No description was provided."),
-      helpUrl: optionalStringField(rule, "helpUrl"),
-      nodeCount: rawNodes.length,
+      id: rule.id,
+      // axe gives no impact for a rule with none of its own: unknown, not a guessed level.
+      impact: rule.impact ?? "unknown",
+      help: rule.help,
+      description: rule.description,
+      helpUrl: rule.helpUrl,
+      nodeCount: rule.nodes.length,
       targets,
       htmlSamples,
-      tags: Array.isArray(rule.tags) ? rule.tags.map(String) : [],
+      tags: rule.tags,
       failureSummary: nodes.length > 0 ? nodes[0]!.failureSummary : undefined,
       failureSummaries,
       nodes
@@ -1791,15 +1785,15 @@ function axeRuleViews(value: unknown): AxeRuleView[] {
   });
 }
 
-/** axe's reason for leaving a node undecided, from its first check. */
-function undecidedReason(node: Record<string, unknown>): AxeNodeView["undecided"] {
-  const check = Array.isArray(node.any) && isRecord(node.any[0]) ? node.any[0] : undefined;
+/**
+ * axe's reason for leaving a node undecided, from its first check: its own words, and its reason
+ * key when the check's data gives one (each check records its own data, so it may not).
+ */
+function undecidedReason(node: AxeResultNode): AxeNodeView["undecided"] {
+  const check = node.any[0];
   if (!check) return undefined;
-  const data = isRecord(check.data) ? check.data : {};
-  return {
-    key: typeof data.messageKey === "string" ? data.messageKey : "",
-    message: optionalStringField(check, "message") ?? ""
-  };
+  const key: unknown = isRecord(check.data) ? check.data.messageKey : undefined;
+  return { ...(typeof key === "string" ? { key } : {}), message: check.message };
 }
 
 /** What is behind a text axe could not measure, in plain words, by axe's reason key. */
@@ -2019,6 +2013,14 @@ function buildStatusAreas(
         );
   const titles = (list: FindingSynthesis[]) => `${list.map(({ title }) => title).join("; ")}.`;
   const rulesRan = views.axeReports.length > 0;
+  // A result that could not be read may hold failures or undecided texts, so none is ruled out.
+  const unreadAxe = readErrors(views.axeReports);
+  const axeUnread = (id: StatusArea["id"], label: string) =>
+    needsReview(
+      id,
+      label,
+      `An axe result could not be read, so its rules were not checked. ${unreadAxe}`
+    );
 
   const keyboardFindings = blockingIn("keyboard");
   const sweeps = views.sweeps.filter(sweptByAee);
@@ -2057,7 +2059,7 @@ function buildStatusAreas(
       }
     }
   }
-  const unreadTranscripts = transcriptReadErrors(views.transcripts);
+  const unreadTranscripts = readErrors(views.transcripts);
   const readerRow = unnamed.size
     ? fixRequired(
         "reader",
@@ -2095,13 +2097,15 @@ function buildStatusAreas(
   const semanticFindings = blockingIn("semantics");
   const semantics = semanticFindings.length
     ? fixRequired("semantics", "Semantics", titles(semanticFindings) + advisoryNote("semantics"))
-    : rulesRan
-      ? noIssue(
-          "semantics",
-          "Semantics",
-          `No semantic rule failure was confirmed in the tested scope.${advisoryNote("semantics")}`
-        )
-      : needsReview("semantics", "Semantics", "No rule checks ran in the tested scope.");
+    : unreadAxe
+      ? axeUnread("semantics", "Semantics")
+      : rulesRan
+        ? noIssue(
+            "semantics",
+            "Semantics",
+            `No semantic rule failure was confirmed in the tested scope.${advisoryNote("semantics")}`
+          )
+        : needsReview("semantics", "Semantics", "No rule checks ran in the tested scope.");
 
   const contrastFindings = blockingIn("contrast");
   const contrast = contrastFindings.length
@@ -2112,13 +2116,15 @@ function buildStatusAreas(
           "Visual contrast",
           `${undecided.length} ${undecided.length === 1 ? "text needs" : "texts need"} a person: axe could not measure what is behind ${undecided.length === 1 ? "it" : "them"}, and the pixels did not settle it. Each is listed with why.`
         )
-      : rulesRan
-        ? noIssue(
-            "contrast",
-            "Visual contrast",
-            "No contrast failure was confirmed in the tested scope."
-          )
-        : needsReview("contrast", "Visual contrast", "No rule checks ran in the tested scope.");
+      : unreadAxe
+        ? axeUnread("contrast", "Visual contrast")
+        : rulesRan
+          ? noIssue(
+              "contrast",
+              "Visual contrast",
+              "No contrast failure was confirmed in the tested scope."
+            )
+          : needsReview("contrast", "Visual contrast", "No rule checks ran in the tested scope.");
 
   return [keyboard, readerRow, semantics, contrast];
 }
@@ -2161,9 +2167,14 @@ export function buildScenarioSynthesisForTest(
   return buildScenarioSynthesis(report, views as IntegratedHtmlViews);
 }
 
-/** Pure entry point used to verify how a raw axe result list is read into the report's views. */
-export function axeRuleViewsForTest(value: unknown): unknown[] {
-  return axeRuleViews(value);
+/**
+ * Pure entry point used to verify how a raw axe violation list is read into the report's views.
+ * It is checked against the axe result schema first, as a file is.
+ */
+export function axeRuleViewsForTest(rules: unknown): unknown[] {
+  const file = { violations: rules, incomplete: [], passes: [], inapplicable: [] };
+  assertValidSchema("axeResult", file, "axe result");
+  return axeRuleViews((file as AxeResultFile).violations);
 }
 
 /** Pure HTML entry point used to verify the portable report without running a browser journey. */
@@ -2507,15 +2518,6 @@ function findingInstances(
       }
     ];
   });
-}
-
-function axeTargetBox(value: unknown): AxeTargetBox | undefined {
-  if (!isRecord(value)) return undefined;
-  const keys = ["x", "y", "width", "height", "pageWidth", "pageHeight"] as const;
-  if (keys.some((key) => typeof value[key] !== "number" || !Number.isFinite(value[key]))) {
-    return undefined;
-  }
-  return Object.fromEntries(keys.map((key) => [key, value[key]])) as unknown as AxeTargetBox;
 }
 
 /** A component name from the element's own place: inside a footer, or its id or first class. */
@@ -2902,15 +2904,6 @@ function findingAi(
     ...(suggestions.length > 0 ? { providerId, suggestions } : {}),
     ...(allNotes.length > 0 ? { notes: allNotes } : {})
   };
-}
-
-async function readReportJson(
-  rootDir: string,
-  reportPath: string
-): Promise<Record<string, unknown>> {
-  const parsed = await parseReportJson(rootDir, reportPath);
-  if (!isRecord(parsed)) throw new Error(`Expected ${reportPath} to contain a JSON object.`);
-  return parsed;
 }
 
 /**
@@ -5143,7 +5136,7 @@ function renderAxeReportViews(views: AxeReportView[]): string {
         rules.length
           ? `<section><h4>${escapeHtml(label)}</h4>${rules.map(renderAxeRule).join("")}</section>`
           : `<p class="empty">No ${escapeHtml(label.toLowerCase())}.</p>`;
-      return `<details class="result-card"><summary><span>${escapeHtml(humanActionName(view.actionId))}</span> <span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span></summary><div class="technical-id">${escapeHtml(view.actionId)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
+      return `<details class="result-card"><summary><span>${escapeHtml(humanActionName(view.actionId))}</span> ${view.readError ? '<span class="badge unknown">not read</span>' : `<span class="badge ${view.violations.length ? "fail" : view.incomplete.length ? "unknown" : "pass"}">${view.violations.length} violations</span>`}</summary><div class="technical-id">${escapeHtml(view.actionId)}</div>${view.readError ? `<p><strong>Axe JSON could not be summarized:</strong> ${escapeHtml(view.readError)}</p>` : `<p class="metrics"><span><strong>${view.violations.length}</strong> violations</span><span><strong>${view.incomplete.length}</strong> incomplete</span><span><strong>${view.passes}</strong> passed rules</span><span><strong>${view.inapplicable}</strong> not applicable</span></p>${renderRules(view.violations, "Violations")}${renderRules(view.incomplete, "Incomplete checks")}`}<p><a class="raw-link" href="${encodeURI(view.path)}">View raw Axe JSON</a></p></details>`;
     })
     .join("");
   return `<section class="panel"><h3>Unique rules across checkpoints</h3><p>Repeated page-level results are consolidated here. “Reports” shows how many after-action Axe runs contained the rule; “Nodes” is the largest affected-node count in one run.</p><div class="table-wrap" tabindex="0"><table><caption>Consolidated Axe rules</caption><thead><tr><th scope="col">Rule</th><th scope="col">Result</th><th scope="col">Reports</th><th scope="col">Nodes</th><th scope="col">Guidance</th></tr></thead><tbody>${consolidatedRows}</tbody></table></div></section><section aria-labelledby="individual-axe-heading"><h3 id="individual-axe-heading">Individual Axe reports</h3><p>Expand a checkpoint to review its full rule summary.</p>${individualReports}</section>`;
@@ -5153,7 +5146,7 @@ function renderAxeRule(rule: AxeRuleView): string {
   const visibleTargets = rule.targets.slice(0, 8);
   const remaining = Math.max(0, rule.targets.length - visibleTargets.length);
   const helpUrl = safeHttpUrl(rule.helpUrl);
-  return `<article class="rule ${escapeAttribute(rule.impact)}"><div class="card-heading"><h5>${escapeHtml(rule.id)}</h5><span class="badge ${rule.impact === "critical" || rule.impact === "serious" ? "fail" : "unknown"}">${escapeHtml(rule.impact)}</span></div><p><strong>${escapeHtml(rule.help)}</strong></p><p>${escapeHtml(rule.description)}</p><p><strong>Affected nodes:</strong> ${rule.nodeCount}</p>${rule.failureSummary ? `<p><strong>How to resolve:</strong> ${escapeHtml(rule.failureSummary.replace(/^Fix any of the following:\s*/i, ""))}</p>` : ""}${visibleTargets.length ? `<details><summary>Show ${visibleTargets.length}${remaining ? ` of ${rule.targets.length}` : ""} affected selectors</summary><ul>${visibleTargets.map((target) => `<li><code>${escapeHtml(target)}</code></li>`).join("")}</ul>${remaining ? `<p>${remaining} more selectors are preserved in the raw Axe report.</p>` : ""}</details>` : ""}${helpUrl ? `<p><a href="${escapeAttribute(helpUrl)}">Open rule guidance</a></p>` : ""}</article>`;
+  return `<article class="rule ${escapeAttribute(rule.impact)}"><div class="card-heading"><h5>${escapeHtml(rule.id)}</h5><span class="badge ${rule.impact === "critical" || rule.impact === "serious" ? "fail" : "unknown"}">${escapeHtml(rule.impact === "unknown" ? "impact unknown: axe gave none" : rule.impact)}</span></div><p><strong>${escapeHtml(rule.help)}</strong></p><p>${escapeHtml(rule.description)}</p><p><strong>Affected nodes:</strong> ${rule.nodeCount}</p>${rule.failureSummary ? `<p><strong>How to resolve:</strong> ${escapeHtml(rule.failureSummary.replace(/^Fix any of the following:\s*/i, ""))}</p>` : ""}${visibleTargets.length ? `<details><summary>Show ${visibleTargets.length}${remaining ? ` of ${rule.targets.length}` : ""} affected selectors</summary><ul>${visibleTargets.map((target) => `<li><code>${escapeHtml(target)}</code></li>`).join("")}</ul>${remaining ? `<p>${remaining} more selectors are preserved in the raw Axe report.</p>` : ""}</details>` : ""}${helpUrl ? `<p><a href="${escapeAttribute(helpUrl)}">Open rule guidance</a></p>` : ""}</article>`;
 }
 
 function renderEvidenceGroups(artifacts: Array<Record<string, unknown>>): string {
