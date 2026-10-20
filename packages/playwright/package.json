@@ -51,6 +51,9 @@
     "dist/element-map.js",
     "dist/element-map.js.map",
     "dist/element-map.d.ts",
+    "dist/element-selectors.js",
+    "dist/element-selectors.js.map",
+    "dist/element-selectors.d.ts",
     "dist/evidence-manifest.js",
     "dist/evidence-manifest.js.map",
     "dist/evidence-manifest.d.ts",
@@ -75,7 +78,9 @@
     "dist/guidepup-virtual-screen-reader.js",
     "dist/guidepup-virtual-screen-reader.LICENSE",
     "dist/tabbable.js",
-    "dist/tabbable.LICENSE"
+    "dist/tabbable.LICENSE",
+    "dist/axe.js",
+    "dist/axe.LICENSE"
   ],
   "engines": {
     "node": "^22.18.0 || >=24.11.0"
