@@ -41,7 +41,7 @@
     "@arethetypeswrong/cli": "0.18.5",
     "@axe-core/playwright": "4.14.0",
     "@eslint/js": "^10.0.1",
-    "@guidepup/guidepup": "^0.36.3",
+    "@guidepup/guidepup": "^0.36.4",
     "@guidepup/playwright": "^0.20.0",
     "@guidepup/record": "^0.3.0",
     "@guidepup/setup": "^0.29.3",
@@ -53,7 +53,7 @@
     "csv-parse": "7.0.3",
     "diff": "9.0.0",
     "esbuild": "^0.28.2",
-    "eslint": "^10.12.0",
+    "eslint": "^10.13.0",
     "globals": "^17.13.0",
     "json-schema-to-typescript": "16.0.0",
     "marked": "^18.1.1",
@@ -62,6 +62,6 @@
     "publint": "0.3.25",
     "sirv": "3.0.2",
     "typescript": "^5.9.0",
-    "typescript-eslint": "^8.71.2"
+    "typescript-eslint": "^8.72.0"
   }
 }
