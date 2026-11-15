@@ -1124,7 +1124,7 @@ test("aee run asks a model only when AEE_LLM_PROVIDER names one, never because a
   assert.equal(aeeRunModelProvider({ ANTHROPIC_API_KEY: "key" }).id, "stub");
   assert.equal(
     aeeRunModelProvider({ AEE_LLM_PROVIDER: "claude", ANTHROPIC_API_KEY: "key" }).id,
-    "claude:claude-opus-5"
+    "claude:newest Opus"
   );
   assert.equal(aeeRunModelProvider({ AEE_LLM_PROVIDER: "local" }).id, "local:gemma4:e4b");
 });

@@ -53,9 +53,10 @@ test("with nothing configured the stub is chosen, and it never invents an answer
 });
 
 test("the provider is chosen from configuration", () => {
+  assert.equal(createModelProvider({ env: { ANTHROPIC_API_KEY: "key" } }).id, "claude:newest Opus");
   assert.equal(
-    createModelProvider({ env: { ANTHROPIC_API_KEY: "key" } }).id,
-    "claude:claude-opus-5"
+    createModelProvider({ env: { ANTHROPIC_API_KEY: "key", AEE_LLM_MODEL: "claude-opus-x" } }).id,
+    "claude:claude-opus-x"
   );
   assert.equal(
     createModelProvider({ env: { AEE_LLM_PROVIDER: "local", AEE_LLM_MODEL: "tiny" } }).id,
@@ -78,33 +79,49 @@ test("the provider is chosen from configuration", () => {
   );
 });
 
+/** Anthropic's model list as the fake Claude serves it: two Opus models among other lines. */
+const modelList = [
+  { id: "claude-sonnet-9", line: "sonnet", created_at: "2026-11-01T00:00:00Z" },
+  { id: "claude-opus-older", line: "opus", created_at: "2026-05-01T00:00:00Z" },
+  { id: "claude-opus-newer", line: "opus", created_at: "2026-10-01T00:00:00Z" },
+  { id: "claude-fable-9", line: "fable", created_at: "2026-11-02T00:00:00Z" }
+].map((model) => ({ type: "model", display_name: model.id, ...model }));
+
 /** A Claude client whose requests land here instead of the network. */
 function fakeClaude(reply: Record<string, unknown>) {
   const requests: Array<{ headers: Headers; body: Record<string, unknown> }> = [];
+  const modelListUrls: URL[] = [];
+  const json = (body: unknown) =>
+    new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
   const client = new Anthropic({
     apiKey: "test-key",
     baseURL: "https://claude.test",
     maxRetries: 0,
-    async fetch(_url, init) {
+    async fetch(url, init) {
+      const address = new URL(String(url));
+      if (address.pathname === "/v1/models") {
+        modelListUrls.push(address);
+        return json({ data: modelList, has_more: false, first_id: null, last_id: null });
+      }
       requests.push({
         headers: new Headers(init?.headers),
         body: JSON.parse(String(init?.body)) as Record<string, unknown>
       });
-      return new Response(
-        JSON.stringify({
-          id: "msg_test",
-          type: "message",
-          role: "assistant",
-          model: "claude-opus-5",
-          stop_sequence: null,
-          usage: { input_tokens: 1, output_tokens: 1 },
-          ...reply
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+      return json({
+        id: "msg_test",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-newer",
+        stop_sequence: null,
+        usage: { input_tokens: 1, output_tokens: 1 },
+        ...reply
+      });
     }
   });
-  return { client, requests };
+  return { client, requests, modelListUrls };
 }
 
 test("Claude answers in the specialist's schema, with refusal fallbacks on", async () => {
@@ -121,7 +138,7 @@ test("Claude answers in the specialist's schema, with refusal fallbacks on", asy
 
   assert.deepEqual(reply, answer);
   const [request] = requests;
-  assert.equal(request?.body.model, "claude-opus-5");
+  assert.equal(request?.body.model, "claude-opus-newer");
   assert.equal(request?.body.fallbacks, "default");
   assert.match(String(request?.body.system), /^# Accessibility engineer: system prompt/);
   assert.ok(String(request?.body.system).endsWith(accessibleNameSpecialist.instructions));
@@ -134,6 +151,43 @@ test("Claude answers in the specialist's schema, with refusal fallbacks on", asy
     JSON.parse(String((request?.body.messages as [{ content: string }])[0].content)).selector,
     "#archive-project"
   );
+});
+
+test("Claude is the newest active Opus, looked up once and named in the provider's id", async () => {
+  const { client, requests, modelListUrls } = fakeClaude({
+    content: [{ type: "text", text: JSON.stringify(answer) }],
+    stop_reason: "end_turn"
+  });
+  const provider = createClaudeModelProvider({ client });
+
+  assert.equal(provider.id, "claude:newest Opus");
+  await Promise.all([
+    askSpecialist(accessibleNameSpecialist, context, provider),
+    askSpecialist(accessibleNameSpecialist, context, provider)
+  ]);
+
+  // Newer Sonnet and Fable models are other lines; only the newest Opus answers.
+  assert.deepEqual(
+    requests.map(({ body }) => body.model),
+    ["claude-opus-newer", "claude-opus-newer"]
+  );
+  assert.equal(provider.id, "claude:claude-opus-newer");
+  assert.equal(modelListUrls.length, 1);
+  assert.deepEqual(modelListUrls[0]?.searchParams.getAll("lifecycle[]"), ["active"]);
+});
+
+test("a named Claude model is asked as named, with no model lookup", async () => {
+  const { client, requests, modelListUrls } = fakeClaude({
+    content: [{ type: "text", text: JSON.stringify(answer) }],
+    stop_reason: "end_turn"
+  });
+  const provider = createClaudeModelProvider({ client, model: "claude-opus-older" });
+
+  await askSpecialist(accessibleNameSpecialist, context, provider);
+
+  assert.equal(requests[0]?.body.model, "claude-opus-older");
+  assert.equal(provider.id, "claude:claude-opus-older");
+  assert.equal(modelListUrls.length, 0);
 });
 
 test("a Claude refusal is an error, never an answer", async () => {
