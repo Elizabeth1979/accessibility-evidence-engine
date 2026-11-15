@@ -29,7 +29,8 @@ export interface ModelRequest {
 
 /** A model behind one seam. Its answer is parsed JSON, not yet checked: the specialist checks it. */
 export interface ModelProvider {
-  id: string;
+  /** Which model answers, as `provider:model`; a model looked up on first use is named after it. */
+  readonly id: string;
   ask(request: ModelRequest): Promise<unknown>;
 }
 
@@ -134,12 +135,27 @@ export function createStubModelProvider(): ModelProvider {
   };
 }
 
-export const DEFAULT_CLAUDE_MODEL = "claude-opus-5";
+/** The newest active Opus model the account can use, from Anthropic's model list. */
+export async function newestOpusModel(client: Anthropic): Promise<string> {
+  let newest: Anthropic.ModelInfo | undefined;
+  for await (const model of client.models.list({ lifecycle: ["active"] })) {
+    if (
+      model.line === "opus" &&
+      (!newest || Date.parse(model.created_at) > Date.parse(newest.created_at))
+    ) {
+      newest = model;
+    }
+  }
+  if (!newest) {
+    throw new Error("Anthropic's model list has no active Opus model for this account.");
+  }
+  return newest.id;
+}
 
 export interface ClaudeModelProviderOptions {
   /** Defaults to the SDK's own lookup: ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, a saved login. */
   apiKey?: string;
-  /** Defaults to DEFAULT_CLAUDE_MODEL. */
+  /** Defaults to the newest active Opus model, looked up once, on the first question. */
   model?: string;
   /** A preconfigured client (tests, a proxy); takes precedence over apiKey. */
   client?: Anthropic;
@@ -148,13 +164,27 @@ export interface ClaudeModelProviderOptions {
 /** Claude, through the Anthropic SDK, with the answer constrained to the request's schema. */
 export function createClaudeModelProvider(options: ClaudeModelProviderOptions = {}): ModelProvider {
   const client = options.client ?? new Anthropic(options.apiKey ? { apiKey: options.apiKey } : {});
-  const model = options.model ?? DEFAULT_CLAUDE_MODEL;
+  let model = options.model;
+  let lookup: Promise<string> | undefined;
+  // One lookup serves every question; a failed one is tried again on the next question.
+  const resolveModel = (): Promise<string> =>
+    model
+      ? Promise.resolve(model)
+      : (lookup ??= newestOpusModel(client).then(
+          (id) => (model = id),
+          (error: unknown) => {
+            lookup = undefined;
+            throw error;
+          }
+        ));
 
   return {
-    id: `claude:${model}`,
+    get id() {
+      return `claude:${model ?? "newest Opus"}`;
+    },
     async ask(request) {
       const response = await client.beta.messages.create({
-        model,
+        model: await resolveModel(),
         max_tokens: 16000,
         // A declined request is re-run on the model Anthropic recommends for that refusal category.
         betas: ["server-side-fallback-2026-07-01"],

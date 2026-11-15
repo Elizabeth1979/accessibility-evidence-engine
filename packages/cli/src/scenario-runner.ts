@@ -2620,7 +2620,8 @@ export function aeeRunModelProvider(
 type AiOutcome = { suggestion: AiSuggestion } | { note: string } | { notConfigured: true };
 
 interface AiSuggester {
-  providerId: string;
+  /** The provider's id, read after its answers, once it names the model a lookup chose. */
+  readonly providerId: string;
   /**
    * Asks the specialist about one affected element, once per run; undefined when the specialist
    * is not implemented, or the question needs evidence this finding lacks.
@@ -2748,7 +2749,9 @@ function aiSuggestion(
 function createAiSuggester(provider: ModelProvider): AiSuggester {
   const outcomes = new Map<string, Promise<AiOutcome>>();
   return {
-    providerId: provider.id,
+    get providerId() {
+      return provider.id;
+    },
     suggest(specialistId, question) {
       const { selector } = question.instance;
       const key = `${specialistId}\n${selector}`;
