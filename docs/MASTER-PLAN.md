@@ -252,6 +252,46 @@ Each check starts as deterministic evidence in a registry concept; an allowliste
 - [x] **10.8** Real screen readers (Milestone 4 in `docs/implementation-roadmap.md`): drive VoiceOver, NVDA or Orca through Guidepup's Playwright integration, and compare them with AEE's own virtual reader. Needs the owner's Mac. _Done when:_ a run on the demo page records what VoiceOver says, next to AEE's virtual reader's transcript.
 - [x] **10.9** Hear the test's own presses: where a Playwright test uses the `@aee/cli/test` fixture, which never presses a control itself, 10.1 and 10.2 come from the presses the test makes. _Done when:_ a fixture test that clicks the lab's Archive button gets `status-not-announced`, one whose Sync click fails silently gets `failure-not-announced`, AEE presses nothing, and the fixed lab page gets neither.
 
+### M11 — Measured checks
+
+**Outcome:** Every check family says how often it finds a known bug and how often it cries wolf, with the number of cases beside it.
+
+From the 2026-11-14 technical improvement plan, workstream one, built on the test lab instead of beside it: the lab contract already holds one known answer per issue, so it becomes the dataset. No new package or second fixture tree until a second consumer needs one. Families start with the checks AEE already has; form validation and SPA navigation have no judge yet (see Open questions).
+
+- [ ] **11.1** ADR 0006: results are per check family with their sample size, never one score; `unknown`, `unsupported` and "needs review" never count as a pass; no new judge or concept lands without its benchmark cases. _Done when:_ the ADR is on `main` and the decisions log links it.
+- [ ] **11.2** One case per bug: extend `site/test-lab-contract.json` (and its schema) with each issue's family, expected outcome (`failed`, `passed` or `inapplicable`) and expected element, and generate a single-defect page per issue by applying one named mutation to the fixed page, the way the lab page is already generated. _Done when:_ every lab issue has its own generated page, a case with a missing or unknown field fails validation by field, and changing a judge cannot change an expected outcome.
+- [ ] **11.3** `npm run eval`: runs every case three times and writes JSON and Markdown with a confusion matrix per family (true and false positives and negatives), precision, recall and false discovery with their 95% interval, element match and repeatability. A family under 20 cases says "insufficient data", not a percentage. _Done when:_ it runs locally with no model key, and unit tests cover empty families, `unknown` outcomes and a flaky case.
+- [ ] **11.4** Eval in CI: on PRs that touch judges, observers, schemas or the lab, compare each case with the committed baseline and fail naming the cases that changed. _Done when:_ a PR that breaks one judge fails CI naming that case and family, never with only a total.
+- [ ] **11.5** Grow by mutation, not by hand: mutation operators (drop a name, drop focus return, drop a live region, break arrow keys) generate at least 20 defects and 20 clean or inapplicable twins for focus management and dialogs, composite keyboard, status messages and accessible names. _Done when:_ each of the four families reports n ≥ 20 both ways.
+- [ ] **11.6** The AI score joins the same runner: each allowlisted specialist runs five times per case and the report keeps every attempt, its variance, abstentions, citation validity, cost and time, with provider, model and prompt version. It replaces `score:ai`'s three-name check and Milestone 5 of `docs/implementation-roadmap.md` builds on it. _Done when:_ two runs on the same stored inputs sit side by side without overwriting each other.
+- [ ] **11.7** A benchmark page per release on the site, linked from the README: families, sample sizes, intervals, misses and what is not covered. _Done when:_ the page is generated from the last eval run and passes axe, a keyboard pass and a virtual screen-reader pass on desktop and phone.
+
+### M12 — Real screen readers as assertions
+
+**Outcome:** NVDA checks what a user actually hears on chosen journeys, and a broken runner never looks like an accessibility bug.
+
+From the same plan, workstream three. It also answers the open question of what the virtual reader is judged against: the same semantic assertions run on both. Stays inside today's real-reader workflow; a separate package waits until something outside it needs one.
+
+- [ ] **12.1** Real-reader outcomes: `passed`, `failed`, `unknown`, `unsupported` and `infrastructureError`. A reader that fails to start is never an accessibility failure, and a required reader that did not run is never a pass. _Done when:_ policy tests cover optional unsupported, required unsupported, assertion failure and infrastructure failure, each on its own.
+- [ ] **12.2** Semantic assertions: turn each raw phrase into role, name, state and text, keeping the phrase, and assert containment, order and a time window, never the exact wording. _Done when:_ two NVDA wordings of the same dialog pass one assertion and a missing name or state fails it.
+- [ ] **12.3** Every real-reader result records the OS image, browser and version, reader and version, Guidepup version, locale, voice, verbosity, commands and retries. _Done when:_ the comparison page shows them beside every result.
+- [ ] **12.4** Judge the virtual reader: run 12.2's assertions on the M11 cases for dialogs and status messages with both NVDA and the virtual reader, and report agreement per case with its n. _Done when:_ the report shows each disagreement with both transcripts, and the open question is answered in the decisions log.
+- [ ] **12.5** An optional `assistiveTechnology` block in a scenario: readers, required or advisory, assertions, locale and timeout. A scenario without it runs exactly as today. _Done when:_ a lab dialog scenario runs on NVDA in CI with raw transcript, assertions, video and the same checkpoint's focus and tree evidence.
+
+### M13 — Ready for someone else
+
+**Outcome:** A developer new to AEE installs it, gets a report and knows what to fix next, without help.
+
+From the same plan, workstream two. 13.1 to 13.5 help the owner today and can start any time; 13.6 and 13.7 wait for the distribution decision (Later, was 5.3).
+
+- [ ] **13.1** One set of outcome words, `passed`, `failed`, `inapplicable`, `unknown`, "needs review" and `unsupported`, in the CLI, HTML, JSON, PR comment and MCP, with infrastructure errors apart from accessibility results. _Done when:_ one test runs a lab scenario and finds the same outcome for every result on every surface.
+- [ ] **13.2** `aee doctor`: checks Node, Playwright, the browser, output folder and the AI policy; a missing optional AI or real reader is information, not a failure. _Done when:_ each failing check prints the exact command or setting that fixes it.
+- [ ] **13.3** `aee init`: finds the Playwright config, previews the config file, the fixture import and the `.gitignore` lines it would add, and never overwrites a file. _Done when:_ on a fresh Playwright project, following only its output gives a first report.
+- [ ] **13.4** The quick start runs in CI: one README quick start, executed against a fresh project from the release tarballs. _Done when:_ CI fails when a README step stops working.
+- [ ] **13.5** Every finding states its next action, and an infrastructure error says it is not about the page. _Done when:_ a reader who did not write the rule can say why each lab finding exists and what to do, from the report alone.
+- [ ] **13.6** Publish to a registry with one install command and a support matrix (Node, Playwright, schema versions, migration notes). Waits for the distribution decision. _Done when:_ `npm install` in a fresh project resolves one version set and an upgrade from the previous release is tested in CI.
+- [ ] **13.7** Three developers who are not maintainers follow the quick start alone; every place they need help becomes an issue. _Done when:_ all three reach the report and explain one finding without live help.
+
 ## Later (parked)
 
 Parked until the tool works for its owner. Each item keeps its old step number so history still makes sense.
@@ -265,13 +305,17 @@ Parked until the tool works for its owner. Each item keeps its old step number s
 
 ## Open questions
 
-None right now. Add new ones here and move each answer to the Decisions log.
+Add new ones here and move each answer to the Decisions log.
 
-- What should AEE's virtual screen reader be judged against: NVDA on Windows, Chrome's accessibility tree (an aria snapshot), or W3C ARIA-AT assertions? `npm run readers:compare` now shows every difference from the real reader on the machine both ways, but does not say which side is right (audit B1).
+- What should AEE's virtual screen reader be judged against: NVDA on Windows, Chrome's accessibility tree (an aria snapshot), or W3C ARIA-AT assertions? `npm run readers:compare` now shows every difference from the real reader on the machine both ways, but does not say which side is right (audit B1). M12.4 proposes an answer: the same semantic assertions on both, per case.
+- Is "ready for someone else" (M13.6–13.7) now the focus, replacing "the tool works for its owner"? It needs the distribution decision (Later, was 5.3, including the employment contract check) first.
+- Form validation and SPA navigation, the other two families in the 2026-11-14 plan: AEE has no judge for either today. Build them as new concepts, benchmark-first, after M11, or leave them out?
 
 ## Decisions log
 
 Newest first. One line each: date, decision, why.
+
+- 2026-11-15 — The 2026-11-14 technical improvement plan becomes M11–M13, trimmed. Kept: per-family measures with sample sizes and no single score, single-defect cases, an oracle apart from the judges, repeated runs, semantic real-reader assertions, separate infrastructure errors, one outcome vocabulary, doctor, init, a tested quick start and unaided outside users. Changed: the dataset grows from `site/test-lab-contract.json`, not a new `evaluation/` tree and package; defects are generated by mutation, not hand-written; gates compare cases with a baseline rather than fixed 90% and 5% thresholds, which at 20 cases have intervals about 30 points wide; families start with checks AEE has. Not adopted now: new `@aee/evaluation` and `@aee/real-at` packages, five extra evaluation schemas, a company adapter API (no second adopter yet). Why: the same result with what exists, and publishing stays the owner's open decision.
 
 - 2026-10-20 — The report's evidence file list is checked with the evidence manifest's own artifact definition (`scenario-report.schema.json` refers to `evidence-manifest.schema.json#/$defs/artifact`), the follow-up to C2c of the home-grown code audit, and an axe result whose entry names no action, lane or run is shown as not read with the reason rather than read under made-up labels. Why: the list is the manifests' entries copied with their paths rebased, so one definition keeps them from drifting; and an axe result that cannot be tied to a page state cannot say which page state its rules failed on, so it is unknown, as an unreadable one is, never "Unknown action". The provenance fields stay optional in the schema, since a lane's own files belong to no action. Open for the owner: whether such a result's rules should still be listed in the Axe tab, unattributed, as well as being left out of the findings.
 - 2026-10-20 — AEE's evidence types are generated from its schemas with `json-schema-to-typescript` 16.0.0, item C8 of the home-grown code audit, committed in `packages/schemas/src/schema-types.ts`: `npm run build` writes it and `npm run check` fails when it is stale, as `site:check` does for generated pages, so a schema change and its types land in one PR and a reviewer sees both. The schemas are the source of truth; each drift found was fixed in the schema where the schema was wrong (an interaction's kind, a target's unknown fields, a run's result counts, the focus record's top-level element) and in the code where it was right (a transcript's optional live-region announcements, a dialog's role, a widget's orientation, a CLI config's fixture path). `@aee/core` now depends on `@aee/schemas` for its types. Code that needs a narrower type than a document extends the generated one. `json-schema-to-ts` was ruled out: it needs `as const` copies of the schemas and, given them, typed AEE's cross-file references as `never` or empty tuples. Why: the owner's rule of one source and no copy-paste; hand-written types had drifted from their schemas in nine places.
