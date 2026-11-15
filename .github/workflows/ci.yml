@@ -46,9 +46,7 @@ jobs:
 
   verify:
     name: Build, audit, and test
-    # The package check runs the fixture on the oldest supported Playwright (1.50), which has no
-    # browser build for Ubuntu 26.04, so this job stays on the newest Ubuntu that version supports.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:

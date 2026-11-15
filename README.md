@@ -144,7 +144,7 @@ npm install --save-dev \
   https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.8.0/aee-schemas-0.8.0.tgz
 ```
 
-AEE uses your project's Playwright, 1.50 or later, so installing it leaves your `@playwright/test` as it is.
+AEE uses your project's Playwright, 1.65.1 or later, so installing it leaves your `@playwright/test` as it is.
 
 For the coding-agent server below, add `https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.8.0/aee-mcp-0.8.0.tgz` to the same command.
 
