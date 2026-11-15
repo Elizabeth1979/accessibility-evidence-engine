@@ -484,7 +484,7 @@ marked `pressedBy: "test"`); a press inside an iframe is not read. A press with 
 captured as the test left it, a full-page screenshot taken before the test's next step, so the
 report draws the element on the page it was found on.
 
-The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.50 on, so
+The fixture reports; it never fails a test. `@playwright/test` is a peer dependency, from 1.65.1 on, so
 the fixture extends the runner the project already has and `aee run` launches the same Playwright:
 installing AEE leaves a project's Playwright as it was.
 
