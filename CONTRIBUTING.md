@@ -51,7 +51,7 @@ See [Architecture](docs/architecture.md) and [Observer lifecycle](docs/observer-
 5. Update documentation when behavior, configuration, or limitations change.
 6. Review generated evidence for sensitive information before attaching it anywhere.
 
-The repository uses strict TypeScript, ESLint, and Prettier. Follow the existing naming and import style, then run the automated checks below.
+The repository uses strict TypeScript, Oxlint and ESLint (`npm run lint` runs both), and Prettier. Follow the existing naming and import style, then run the automated checks below.
 
 ## Required checks
 

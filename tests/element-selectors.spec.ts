@@ -149,8 +149,8 @@ test("the focus observer names the focused control by axe's own path to it", asy
     const focused = (phase: string) =>
       (
         report.records.find((record) => record.observerId === "focus" && record.phase === phase)
-          ?.meta?.focusTarget as { deepActiveElement: { nodePath: string } }
-      ).deepActiveElement.nodePath;
+          ?.meta?.focusTarget as { deepActiveElement: { nodePath: string } } | undefined
+      )?.deepActiveElement.nodePath;
     const [, , , autumnSecond, inComponent] = await axeTargets(page, "button-name");
 
     // Before, the path was every tag up from the button with no positions, the same for all four

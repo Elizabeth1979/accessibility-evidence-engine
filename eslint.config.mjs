@@ -1,10 +1,18 @@
+// `npm run lint` runs Oxlint, then ESLint. Oxlint checks every file with the rules in
+// `.oxlintrc.json`: ESLint's recommended rules and typescript-eslint's, as `@oxlint/migrate` wrote
+// them. ESLint then checks the JavaScript files (`.js`, `.mjs`) with the recommended rules Oxlint
+// does not have, `no-undef` among them, which TypeScript covers in the `.ts` files.
+// `eslint-plugin-oxlint` turns off every rule Oxlint already runs, so no rule runs twice.
+// ESLint reads no TypeScript, so the `.ts` files are left to Oxlint and `tsc`: without that, the
+// plugin's copy of Oxlint's `.ts` override would have ESLint parse them as JavaScript.
 import eslint from "@eslint/js";
+import oxlint from "eslint-plugin-oxlint";
 import globals from "globals";
-import tseslint from "typescript-eslint";
 
-export default tseslint.config(
+export default [
   {
     ignores: [
+      "**/*.ts",
       "**/dist/**",
       "**/node_modules/**",
       "aee-output/**",
@@ -14,7 +22,6 @@ export default tseslint.config(
     ]
   },
   eslint.configs.recommended,
-  ...tseslint.configs.recommended,
   {
     files: ["**/*.mjs"],
     languageOptions: {
@@ -27,10 +34,5 @@ export default tseslint.config(
       globals: globals.browser
     }
   },
-  {
-    files: ["**/*.ts"],
-    rules: {
-      "no-undef": "off"
-    }
-  }
-);
+  ...(await oxlint.buildFromConfigFile(".oxlintrc.json"))
+];
