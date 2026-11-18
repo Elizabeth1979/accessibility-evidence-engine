@@ -189,9 +189,10 @@ test("findings gives the agent every finding in full, with a text summary beside
     // Declared up front, so a client can check it: the report part is AEE's own report schema.
     const { tools } = await client.listTools();
     const outputSchema = tools.find(({ name }) => name === "findings")?.outputSchema;
+    assert.ok(outputSchema?.properties, "The findings tool declares no output schema.");
     assert.equal(
       (
-        outputSchema?.properties?.assessments as {
+        outputSchema.properties.assessments as {
           items: { properties: { report: { title: string } } };
         }
       ).items.properties.report.title,

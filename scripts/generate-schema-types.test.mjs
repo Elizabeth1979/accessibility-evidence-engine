@@ -23,11 +23,15 @@ function schemasWith(file, change) {
   return directory;
 }
 
-/** The members of one generated interface, as written. */
+/** The members of one generated type, as written in `components`, and its export. */
 function membersOf(types, name) {
-  const start = types.indexOf(`export interface ${name} {`);
+  assert.match(
+    types,
+    new RegExp(`\\nexport type ${name} = components\\["schemas"\\]\\["${name}"\\];\\n`)
+  );
+  const start = types.indexOf(`\n    ${name}: {\n`);
   assert.notEqual(start, -1, `${name} is not declared`);
-  return types.slice(start, types.indexOf("\n}\n", start));
+  return types.slice(start, types.indexOf("\n    };\n", start));
 }
 
 test("the committed types are the ones the schemas give", async () => {
@@ -40,7 +44,17 @@ test("the committed types are the ones the schemas give", async () => {
 
 test("a transcript's live-region announcements are optional, as its schema says", async () => {
   const transcript = membersOf(await generateSchemaTypes(), "VirtualScreenReaderTranscript");
-  assert.match(transcript, /\n {2}liveRegionAnnouncements\?: LiveRegionAnnouncement\[\];/);
+  assert.match(
+    transcript,
+    /\n {6}liveRegionAnnouncements\?: components\["schemas"\]\["LiveRegionAnnouncement"\]\[\];/
+  );
+});
+
+test("an object is open to other members unless its schema closes it, as in JSON Schema", async () => {
+  const types = await generateSchemaTypes();
+  // axe-result.schema.json lets axe's other fields through; common.schema.json's targetBox does not.
+  assert.match(membersOf(types, "AxeResultFile"), /\n {6}\[key: string\]: unknown;/);
+  assert.doesNotMatch(membersOf(types, "ElementLocation"), /\[key: string\]/);
 });
 
 test("a schema change reaches the type it gives", async () => {
@@ -51,7 +65,10 @@ test("a schema change reaches the type it gives", async () => {
     await generateSchemaTypes(directory),
     "VirtualScreenReaderTranscript"
   );
-  assert.match(transcript, /\n {2}liveRegionAnnouncements: LiveRegionAnnouncement\[\];/);
+  assert.match(
+    transcript,
+    /\n {6}liveRegionAnnouncements: components\["schemas"\]\["LiveRegionAnnouncement"\]\[\];/
+  );
 });
 
 test("a definition the generator has no name for fails the run, naming it", async () => {

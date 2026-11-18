@@ -210,7 +210,7 @@ test("focus and the saved accessibility tree reach inside a cross-site frame", a
 
     // Before, only the top document was read, so focus in any frame was "not exposed".
     expect(
-      (after?.meta?.focusTarget as { accessibilityFocus?: unknown }).accessibilityFocus
+      (after?.meta?.focusTarget as { accessibilityFocus?: unknown } | undefined)?.accessibilityFocus
     ).toEqual(
       expect.objectContaining({
         status: "matched",
@@ -224,10 +224,11 @@ test("focus and the saved accessibility tree reach inside a cross-site frame", a
       ({ observerId, phase }) => observerId === "accessibility-tree" && phase === "after"
     );
     const buttons = (
-      tree?.meta?.semanticNodes as Array<{ role: string; name?: string; frameId?: string }>
-    ).filter(({ role }) => role === "button");
-    expect(buttons.map(({ name }) => name)).toEqual(["Pay now", "Pay now"]);
-    expect(new Set(buttons.map(({ frameId }) => frameId)).size).toBe(2);
+      tree?.meta?.semanticNodes as
+        Array<{ role: string; name?: string; frameId?: string }> | undefined
+    )?.filter(({ role }) => role === "button");
+    expect(buttons?.map(({ name }) => name)).toEqual(["Pay now", "Pay now"]);
+    expect(new Set(buttons?.map(({ frameId }) => frameId)).size).toBe(2);
   } finally {
     await server.close();
   }
