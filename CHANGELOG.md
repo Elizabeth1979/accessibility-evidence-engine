@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-18
+
 ### Fixed
 
 - The run report no longer labels an axe result "Unknown action" (the follow-up to audit C2c). The action, lane and run an axe result belongs to come from the report's evidence file list, the integrated report's `artifacts`, whose schema checked only that each entry was an object; when an entry named none, the report filled in "Unknown action", "unknown-lane" and "unknown-run" and read the result as a checkpoint of that made-up action. Now `scenario-report.schema.json` checks each entry with the evidence manifest's own artifact definition, so the report, its run and `aee fix` read typed entries, and the labels have no defaults. What a gap becomes:
@@ -318,6 +320,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.9.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.8.0
 [0.7.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.0
@@ -328,4 +331,4 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.9.0...HEAD
