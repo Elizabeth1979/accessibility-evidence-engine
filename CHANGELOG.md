@@ -4,6 +4,8 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-18
+
 ### Fixed
 
 - Ten test assertions no longer crash with a `TypeError` when the value they check is missing; they fail with what was missing. Each read a field through a type assertion on an optional chain, `(request?.body.output_config as T).format`, which throws if `request` is undefined. The node tests now check the value first with `assert.ok` ("Claude was not asked."), and the Playwright tests type it as possibly undefined, so `expect` reports it. Found by Oxlint's `no-unsafe-optional-chaining`, which sees through `as`; ESLint's did not (in `model-providers.test.ts`, `mcp.test.ts`, `frames.spec.ts` and `element-selectors.spec.ts`).
@@ -321,6 +323,7 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 - Caller-provided run identifiers are restricted so they cannot escape the configured output directory.
 - Nested CLI policy values are validated before execution.
 
+[0.9.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.9.0
 [0.8.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.8.0
 [0.7.1]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.7.0
@@ -331,4 +334,4 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 [0.3.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/tag/v0.1.0
-[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/Elizabeth1979/accessibility-evidence-engine/compare/v0.9.0...HEAD
