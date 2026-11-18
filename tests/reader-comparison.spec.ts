@@ -800,3 +800,19 @@ test("comparison.json is checked against its schema: a blank value or a missing 
     })
   ).rejects.toThrow("Invalid real screen reader comparison");
 });
+
+test("a backslash in a value is shown as it is, not read as a Markdown escape", () => {
+  const lines = sideBySide({
+    ...comparison,
+    real: {
+      ...comparison.real,
+      voice: { value: "C:\\voices\\_default", source: "a test" },
+      phrases: ["Workspace, heading level 1", "Help\\, link", "Fern"]
+    }
+  }).split("\n");
+  // In Markdown a backslash before punctuation vanishes; each one is doubled, so it shows as read.
+  expect(lines).toContain("| Voice | C:\\\\voices\\\\_default (from a test) |");
+  expect(lines).toContain(
+    "| 2 | link, Help \\| projects | Help\\\\, link | only AEE's virtual screen reader: **projects** |"
+  );
+});

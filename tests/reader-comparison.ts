@@ -131,9 +131,15 @@ export async function readWithRealReader(
   return { phrases: said(), stoppedBecause: "step-limit", repeatedAtEnd: [] };
 }
 
-/** Phrases in one table cell, a line each; a pipe or line break in a phrase stays inside it. */
+/**
+ * Phrases in one table cell, a line each; a pipe or line break in a phrase stays inside it, and a
+ * backslash is shown as it is (in Markdown, a backslash before punctuation would escape it and
+ * vanish, as in a Windows path).
+ */
 const cell = (phrases: string[] = []) =>
-  phrases.map((phrase) => phrase.replaceAll("|", "\\|").replaceAll("\n", " ")).join("<br>");
+  phrases
+    .map((phrase) => phrase.replaceAll("\\", "\\\\").replaceAll("|", "\\|").replaceAll("\n", " "))
+    .join("<br>");
 
 /**
  * The words of a phrase, lower-cased and without punctuation. Every word is kept: the role and
