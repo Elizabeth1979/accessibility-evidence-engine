@@ -17,7 +17,7 @@
     "demo:record": "npm run build && node scripts/record-public-demo.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "lint": "eslint . --max-warnings=0",
+    "lint": "oxlint --max-warnings=0 && eslint . --max-warnings=0",
     "run:fixture": "node packages/cli/dist/index.js examples/basic-run-config.json",
     "example:public-site": "npm run build && playwright test --config examples/public-site/playwright.config.ts",
     "plan:public-site": "npm run build && node packages/cli/dist/index.js plan examples/public-site/scenario.yml",
@@ -54,14 +54,15 @@
     "diff": "9.0.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.12.0",
+    "eslint-plugin-oxlint": "^1.94.0",
     "globals": "^17.13.0",
     "json-schema-to-typescript": "16.0.0",
     "marked": "^18.1.1",
+    "oxlint": "^1.94.0",
     "pngjs": "7.0.0",
     "prettier": "^3.9.10",
     "publint": "0.3.25",
     "sirv": "3.0.2",
-    "typescript": "^5.9.0",
-    "typescript-eslint": "^8.71.2"
+    "typescript": "^5.9.0"
   }
 }

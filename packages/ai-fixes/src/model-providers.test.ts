@@ -138,17 +138,18 @@ test("Claude answers in the specialist's schema, with refusal fallbacks on", asy
 
   assert.deepEqual(reply, answer);
   const [request] = requests;
-  assert.equal(request?.body.model, "claude-opus-newer");
-  assert.equal(request?.body.fallbacks, "default");
-  assert.match(String(request?.body.system), /^# Accessibility engineer: system prompt/);
-  assert.ok(String(request?.body.system).endsWith(accessibleNameSpecialist.instructions));
-  assert.match(request?.headers.get("anthropic-beta") ?? "", /server-side-fallback-2026-07-01/);
+  assert.ok(request, "Claude was not asked.");
+  assert.equal(request.body.model, "claude-opus-newer");
+  assert.equal(request.body.fallbacks, "default");
+  assert.match(String(request.body.system), /^# Accessibility engineer: system prompt/);
+  assert.ok(String(request.body.system).endsWith(accessibleNameSpecialist.instructions));
+  assert.match(request.headers.get("anthropic-beta") ?? "", /server-side-fallback-2026-07-01/);
   assert.deepEqual(
-    (request?.body.output_config as { format: { schema: unknown } }).format.schema,
+    (request.body.output_config as { format: { schema: unknown } }).format.schema,
     schema
   );
   assert.equal(
-    JSON.parse(String((request?.body.messages as [{ content: string }])[0].content)).selector,
+    JSON.parse(String((request.body.messages as [{ content: string }])[0].content)).selector,
     "#archive-project"
   );
 });
@@ -328,8 +329,9 @@ test("OpenAI's Responses API gets a strict, named schema and store: false", asyn
   });
 
   assert.deepEqual(await askSpecialist(accessibleNameSpecialist, context, provider), answer);
-  assert.equal(requestBody?.store, false);
-  assert.deepEqual((requestBody?.text as { format: unknown }).format, {
+  assert.ok(requestBody, "The Responses API was not asked.");
+  assert.equal(requestBody.store, false);
+  assert.deepEqual((requestBody.text as { format: unknown }).format, {
     type: "json_schema",
     name: "accessible_name_specialist",
     strict: true,
@@ -391,7 +393,8 @@ test("each provider sends the element's screenshot as an image beside the eviden
     createClaudeModelProvider({ client }),
     screenshot
   );
-  const [claudeContent] = requests[0]?.body.messages as [{ content: unknown[] }];
+  assert.ok(requests[0], "Claude was not asked.");
+  const [claudeContent] = requests[0].body.messages as [{ content: unknown[] }];
   assert.deepEqual(claudeContent.content[0], {
     type: "image",
     source: { type: "base64", media_type: "image/png", data: screenshot.base64 }
@@ -415,7 +418,8 @@ test("each provider sends the element's screenshot as an image beside the eviden
     }),
     screenshot
   );
-  const [, localUser] = bodies[0]?.messages as [unknown, { content: unknown[] }];
+  assert.ok(bodies[0], "The local model was not asked.");
+  const [, localUser] = bodies[0].messages as [unknown, { content: unknown[] }];
   assert.deepEqual(localUser.content[1], {
     type: "image_url",
     image_url: { url: `data:image/png;base64,${screenshot.base64}` }
@@ -431,7 +435,8 @@ test("each provider sends the element's screenshot as an image beside the eviden
     }),
     screenshot
   );
-  const [openAiUser] = bodies[1]?.input as [{ content: unknown[] }];
+  assert.ok(bodies[1], "The Responses API was not asked.");
+  const [openAiUser] = bodies[1].input as [{ content: unknown[] }];
   assert.deepEqual(openAiUser.content[1], {
     type: "input_image",
     image_url: `data:image/png;base64,${screenshot.base64}`,
