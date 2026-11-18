@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Elizabeth1979/accessibility-evidence-engine/main/packages/schemas/json/real-reader-comparison.schema.json",
+  "title": "AEE Real Screen Reader Comparison",
+  "description": "What AEE's virtual screen reader and one real screen reader (NVDA, VoiceOver or Orca, driven by Guidepup) said on the same page, written by `npm run readers:compare` as comparison.json, with how the real reader ran: the machine, the browser, the reader and its settings, the commands it was given and the retries it was allowed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["page", "recordedAt", "environment", "virtual", "real", "alignment"],
+  "properties": {
+    "page": {
+      "description": "The page both readers read: a file in the repository or a URL.",
+      "type": "string",
+      "minLength": 1
+    },
+    "recordedAt": { "$ref": "./common.schema.json#/$defs/isoTimestamp" },
+    "environment": {
+      "description": "The machine and browser both readers ran on.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "platform",
+        "release",
+        "guidepup",
+        "speechEngine",
+        "osImage",
+        "osImageVersion",
+        "browser",
+        "browserVersion",
+        "osLocale",
+        "browserLocale"
+      ],
+      "properties": {
+        "platform": {
+          "description": "Node's `process.platform`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "release": {
+          "description": "Node's `os.release()`: the operating system's own version.",
+          "type": "string",
+          "minLength": 1
+        },
+        "guidepup": {
+          "description": "The version of `@guidepup/guidepup` that drove the real reader.",
+          "type": "string",
+          "minLength": 1
+        },
+        "speechEngine": {
+          "description": "What decides what AEE's virtual reader says: Guidepup's virtual screen reader, and its version.",
+          "type": "string",
+          "minLength": 1
+        },
+        "osImage": {
+          "description": "The GitHub runner image, from its `ImageOS` variable (such as `win25`).",
+          "$ref": "#/$defs/runDetail"
+        },
+        "osImageVersion": {
+          "description": "The runner image's version, from its `ImageVersion` variable.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "browser": {
+          "description": "The browser Playwright ran, by Playwright's name for it.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "browserVersion": {
+          "description": "The version the browser reports (Playwright's `browser.version()`).",
+          "$ref": "#/$defs/runDetail"
+        },
+        "osLocale": {
+          "description": "The operating system's locale, as Node's `Intl` reads it.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "browserLocale": {
+          "description": "The browser's language (`navigator.language` on the page).",
+          "$ref": "#/$defs/runDetail"
+        }
+      }
+    },
+    "virtual": {
+      "description": "What AEE's virtual screen reader said, one announcement per step.",
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "real": {
+      "description": "What the real screen reader said, why its walk ended, and how it ran.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reader",
+        "readerVersion",
+        "readerBuild",
+        "language",
+        "voice",
+        "rate",
+        "verbosity",
+        "punctuation",
+        "commands",
+        "attempt",
+        "retriesAllowed",
+        "phrases",
+        "stoppedBecause",
+        "repeatedAtEnd",
+        "maxSteps"
+      ],
+      "properties": {
+        "reader": { "type": "string", "minLength": 1 },
+        "readerVersion": {
+          "description": "The version the reader itself reports: NVDA's `nvda.exe`, VoiceOver's app bundle.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "readerBuild": {
+          "description": "Guidepup's `screenReader.version`: the build of the reader, or of its settings, that Guidepup installed.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "language": {
+          "description": "The reader's own language setting.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "voice": { "description": "The voice the reader spoke with.", "$ref": "#/$defs/runDetail" },
+        "rate": { "description": "How fast the voice spoke.", "$ref": "#/$defs/runDetail" },
+        "verbosity": {
+          "description": "The reader's verbosity setting, where it has one.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "punctuation": {
+          "description": "How much punctuation and how many symbols the reader speaks.",
+          "$ref": "#/$defs/runDetail"
+        },
+        "commands": {
+          "description": "Every Guidepup command sent to the reader during the walk, with how many times, in the order each was first sent.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/command" }
+        },
+        "attempt": {
+          "description": "Which attempt this was: a reader that fails to start is tried again.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "retriesAllowed": {
+          "description": "How many retries the run allowed (Playwright's `--retries`).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "phrases": { "type": "array", "items": { "type": "string" } },
+        "stoppedBecause": { "$ref": "#/$defs/walkEnd" },
+        "repeatedAtEnd": {
+          "description": "What the reader said again at the end of the page, left out of `phrases`.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "maxSteps": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "alignment": {
+      "description": "The two transcripts lined up, one row per thing on the page.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/alignedRow" }
+    }
+  },
+  "$defs": {
+    "runDetail": {
+      "description": "A value read from where it is recorded, with where that is; or, when it could not be read, why. Never a guess.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["value", "source"],
+          "properties": {
+            "value": { "type": "string", "minLength": 1 },
+            "source": {
+              "description": "Where the value was read.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unknown"],
+          "properties": {
+            "unknown": {
+              "description": "Why the value could not be read.",
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "count"],
+      "properties": {
+        "command": {
+          "description": "The Guidepup command, by its name and options.",
+          "type": "string",
+          "minLength": 1
+        },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "walkEnd": {
+      "description": "Why the real reader's walk ended: it said nothing at the next step, it said the same thing three times in a row, or it reached `maxSteps`.",
+      "enum": ["silence", "repeated", "step-limit"]
+    },
+    "alignedRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["real", "virtual", "onlyReal", "onlyVirtual"],
+      "properties": {
+        "real": { "type": "array", "items": { "type": "string" } },
+        "virtual": { "type": "array", "items": { "type": "string" } },
+        "onlyReal": { "type": "array", "items": { "type": "string" } },
+        "onlyVirtual": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

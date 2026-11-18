@@ -134,6 +134,16 @@ export const TYPE_NAMES = {
       tabStop: "KeyboardPointerSweepLaneTabStop"
     }
   },
+  "real-reader-comparison.schema.json": {
+    schema: "realReaderComparison",
+    type: "RealReaderComparison",
+    defs: {
+      runDetail: "RealReaderRunDetail",
+      command: "RealReaderCommand",
+      walkEnd: "RealReaderWalkEnd",
+      alignedRow: "RealReaderAlignedRow"
+    }
+  },
   "remediation-registry.schema.json": {
     schema: "remediationRegistry",
     type: "RemediationRegistry",

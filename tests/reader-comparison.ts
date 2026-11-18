@@ -7,39 +7,28 @@ import type { Page } from "@playwright/test";
 import { diffArrays } from "diff";
 
 import { createPortableVirtualScreenReader } from "@aee/playwright";
+import {
+  assertValidSchema,
+  type RealReaderAlignedRow,
+  type RealReaderComparison,
+  type RealReaderRunDetail,
+  type RealReaderWalkEnd
+} from "@aee/schemas";
 
-export interface ReaderComparison {
-  page: string;
-  recordedAt: string;
-  environment: {
-    platform: string;
-    release: string;
-    guidepup: string;
-    /** What decides what AEE's virtual reader says: Guidepup's virtual screen reader, and its version. */
-    speechEngine: string;
-  };
-  /** What AEE's virtual screen reader said. */
-  virtual: string[];
-  /**
-   * What the real screen reader on this machine said, why its walk ended, and which attempt this
-   * was: a reader that fails to start is tried again, up to the retries the run allows.
-   */
-  real: {
-    reader: string;
-    phrases: string[];
-    stoppedBecause: WalkEnd;
-    /** What the reader said again at the end of the page, left out of `phrases` (`endRepeats`). */
-    repeatedAtEnd: string[];
-    maxSteps: number;
-    attempt?: number;
-  };
-}
+import { command, CommandLog } from "./reader-run-details";
+
+/**
+ * What `npm run readers:compare` records on one machine: what AEE's virtual screen reader and the
+ * real one said, why the real reader's walk ended, and how it ran. Its comparison.json adds the
+ * alignment; the schema (real-reader-comparison.schema.json) describes the whole file.
+ */
+export type ReaderComparison = Omit<RealReaderComparison, "alignment">;
 
 /**
  * Why the real reader's walk ended: it said nothing at the next step, it said the same thing three
  * times in a row (the end of the page, for readers that repeat there), or it reached `maxSteps`.
  */
-export type WalkEnd = "silence" | "repeated" | "step-limit";
+export type WalkEnd = RealReaderWalkEnd;
 
 export const GUIDEPUP_VERSION = (
   JSON.parse(readFileSync(require.resolve("@guidepup/guidepup/package.json"), "utf8")) as {
@@ -109,16 +98,23 @@ function endRepeats(phrases: string[]) {
  * the walk halfway down the page. The walk ends for one of the reasons in `WalkEnd`, and says
  * which. When it ends on repeats, those are the end of the page said again, not more of the page:
  * they are kept apart in `repeatedAtEnd`, so they do not show as phrases only the real reader said.
+ * Each command sent to the reader is counted in `log`.
  */
 export async function readWithRealReader(
   reader: Pick<ScreenReader, "next" | "lastSpokenPhrase">,
-  maxSteps: number
+  maxSteps: number,
+  log = new CommandLog()
 ): Promise<{ phrases: string[]; stoppedBecause: WalkEnd; repeatedAtEnd: string[] }> {
-  const phrases = [withoutReaderHints(await reader.lastSpokenPhrase())];
+  const lastSpokenPhrase = async () =>
+    withoutReaderHints(
+      await log.send(command("lastSpokenPhrase"), () => reader.lastSpokenPhrase())
+    );
+  const next = { capture: true } as const;
+  const phrases = [await lastSpokenPhrase()];
   const said = () => phrases.filter(Boolean);
   while (phrases.length < maxSteps) {
-    await reader.next({ capture: true });
-    const phrase = withoutReaderHints(await reader.lastSpokenPhrase());
+    await log.send(command("next", next), () => reader.next(next));
+    const phrase = await lastSpokenPhrase();
     if (!phrase) return { phrases: said(), stoppedBecause: "silence", repeatedAtEnd: [] };
     phrases.push(phrase);
     const [a, b, c] = phrases.slice(-3);
@@ -327,10 +323,7 @@ function wordGroups(real: string[], virtual: string[]): Segment[] {
 }
 
 /** One row of the alignment: the phrases each reader said about one thing, and the words only one said. */
-export interface AlignedRow extends Step {
-  onlyReal: string[];
-  onlyVirtual: string[];
-}
+export type AlignedRow = RealReaderAlignedRow;
 
 const said = (phrases: string[]) => phrases.join(" ");
 
@@ -399,7 +392,7 @@ function walkEnd({
   stoppedBecause,
   repeatedAtEnd,
   maxSteps,
-  attempt = 1
+  attempt
 }: ReaderComparison["real"]) {
   const read = `${reader} read ${phrases.length} steps`;
   const retried =
@@ -414,6 +407,64 @@ function walkEnd({
     case "step-limit":
       return `${read} and was stopped at the limit of ${maxSteps} steps, so it may not have reached the end of the page. What it would have said after that is not here: rows near the end that only ${VIRTUAL} said may be page ${reader} never reached.${retried}`;
   }
+}
+
+/** A run detail in a table cell: the value and where it was read, or unknown and why. */
+const detailCell = (detail: RealReaderRunDetail) =>
+  cell([
+    "value" in detail ? `${detail.value} (from ${detail.source})` : `**unknown**: ${detail.unknown}`
+  ]);
+
+const times = (count: number) => `${count} ${count === 1 ? "time" : "times"}`;
+
+/** Each line of the "How it ran" tables: what it is, and its cell for one comparison. */
+const HOW_IT_RAN: [string, (comparison: ReaderComparison) => string][] = [
+  ["Runner image", ({ environment }) => detailCell(environment.osImage)],
+  ["Runner image version", ({ environment }) => detailCell(environment.osImageVersion)],
+  [
+    "Operating system",
+    ({ environment }) =>
+      cell([
+        `${environment.platform} ${environment.release} (from Node's process.platform and os.release())`
+      ])
+  ],
+  ["Operating system locale", ({ environment }) => detailCell(environment.osLocale)],
+  ["Browser", ({ environment }) => detailCell(environment.browser)],
+  ["Browser version", ({ environment }) => detailCell(environment.browserVersion)],
+  ["Browser language", ({ environment }) => detailCell(environment.browserLocale)],
+  ["Reader version", ({ real }) => detailCell(real.readerVersion)],
+  ["Guidepup's build of the reader", ({ real }) => detailCell(real.readerBuild)],
+  [
+    "Guidepup",
+    ({ environment }) => cell([`${environment.guidepup} (from @guidepup/guidepup's package.json)`])
+  ],
+  ["Reader language", ({ real }) => detailCell(real.language)],
+  ["Voice", ({ real }) => detailCell(real.voice)],
+  ["Rate", ({ real }) => detailCell(real.rate)],
+  ["Verbosity", ({ real }) => detailCell(real.verbosity)],
+  ["Punctuation", ({ real }) => detailCell(real.punctuation)],
+  [
+    "Commands",
+    ({ real }) => cell(real.commands.map(({ command, count }) => `${command}, ${times(count)}`))
+  ],
+  [
+    "Retries",
+    ({ real: { attempt, retriesAllowed } }) =>
+      cell([
+        `${attempt - 1} of the ${retriesAllowed} allowed ${retriesAllowed === 1 ? "retry" : "retries"} needed: this is attempt ${attempt}`
+      ])
+  ]
+];
+
+/** How each real reader ran, as a table with a column per reader. */
+function howItRan(comparisons: ReaderComparison[]) {
+  return [
+    "Each value is read from where it is recorded, and says where that is. A value that could not be read says **unknown**, and why; none is guessed.",
+    "",
+    `| Detail | ${comparisons.map(({ real }) => real.reader).join(" | ")} |`,
+    `| --- | ${comparisons.map(() => "---").join(" | ")} |`,
+    ...HOW_IT_RAN.map(([label, value]) => `| ${label} | ${comparisons.map(value).join(" | ")} |`)
+  ];
 }
 
 /** What differs in a row, for its last cell. */
@@ -445,6 +496,10 @@ export function sideBySide(comparison: ReaderComparison) {
     `| ${real.reader} | ${real.phrases.length} |`,
     "",
     walkEnd(real),
+    "",
+    "## How it ran",
+    "",
+    ...howItRan([comparison]),
     "",
     "## How the two line up",
     "",
@@ -579,6 +634,10 @@ export function readersSideBySide(comparisons: ReaderComparison[]) {
     ),
     "",
     ...comparisons.flatMap(({ real }) => [walkEnd(real), ""]),
+    "## How each reader ran",
+    "",
+    ...howItRan(comparisons),
+    "",
     "## How they line up",
     "",
     `Each row is one thing on the page: what AEE's reader and each real reader said about it, or what only one reader said. ${HOW_ROWS_LINE_UP}`,
@@ -609,10 +668,8 @@ export function readersSideBySide(comparisons: ReaderComparison[]) {
 /** Writes the comparison to `dir` as comparison.json, with its alignment, and comparison.md. */
 export async function writeComparison(dir: string, comparison: ReaderComparison) {
   await mkdir(dir, { recursive: true });
-  const alignment = align(comparison.real.phrases, comparison.virtual);
-  await writeFile(
-    path.join(dir, "comparison.json"),
-    `${JSON.stringify({ ...comparison, alignment }, null, 2)}\n`
-  );
+  const file = { ...comparison, alignment: align(comparison.real.phrases, comparison.virtual) };
+  assertValidSchema("realReaderComparison", file, "real screen reader comparison");
+  await writeFile(path.join(dir, "comparison.json"), `${JSON.stringify(file, null, 2)}\n`);
   await writeFile(path.join(dir, "comparison.md"), sideBySide(comparison));
 }
