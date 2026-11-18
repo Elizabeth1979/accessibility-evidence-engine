@@ -9,6 +9,7 @@ import {
   accessibleNameSpecialist,
   AiNotConfiguredError,
   askSpecialist,
+  checkModelServer,
   createClaudeModelProvider,
   createLocalModelProvider,
   createModelProvider,
@@ -516,4 +517,111 @@ test("live: OpenAI names an icon-only button", async (t) => {
 
   const fix = await proposeAccessibleLabelFix(context, createModelProvider({ provider: "openai" }));
   assert.match(fix.patches?.[0] ?? "", /aria-label="[^"]+"/);
+});
+
+/** An OpenAI-compatible model list, as Ollama's `/v1/models` serves it, recording every URL asked. */
+function modelListFetch(ids: string[]) {
+  const urls: string[] = [];
+  const fetch: typeof globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    const data = ids.map((id) => ({ id, object: "model", created: 0, owned_by: "library" }));
+    return new Response(JSON.stringify({ object: "list", data }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+  return { fetch, urls };
+}
+
+test("checkModelServer asks a local runtime only for its model list, and finds the model AEE would ask", async () => {
+  const has = modelListFetch(["llama3.2:latest", "gemma4:e4b"]);
+  assert.deepEqual(await checkModelServer("local", { env: {}, fetch: has.fetch }), {
+    status: "ready",
+    model: "gemma4:e4b"
+  });
+  // Nothing but the model list is asked for: no evidence or prompt leaves the machine.
+  assert.deepEqual(has.urls, [`${DEFAULT_LOCAL_BASE_URL}/models`]);
+
+  const lacks = modelListFetch(["llama3.2:latest"]);
+  assert.deepEqual(await checkModelServer("local", { env: {}, fetch: lacks.fetch }), {
+    status: "model-missing",
+    model: "gemma4:e4b",
+    available: ["llama3.2:latest"]
+  });
+  const named = await checkModelServer("local", {
+    env: { AEE_LLM_MODEL: "llama3.2:latest", AEE_LLM_BASE_URL: "http://127.0.0.1:1234/v1" },
+    fetch: lacks.fetch
+  });
+  assert.deepEqual(named, { status: "ready", model: "llama3.2:latest" });
+  assert.equal(lacks.urls.at(-1), "http://127.0.0.1:1234/v1/models");
+});
+
+test("a model server that does not answer is unreachable, by the SDK's own connection error", async () => {
+  const refused: typeof globalThis.fetch = async () => {
+    throw new TypeError("fetch failed");
+  };
+  const check = await checkModelServer("local", { env: {}, fetch: refused });
+  assert.equal(check.status, "unreachable");
+});
+
+test("checkModelServer finds Claude's newest Opus, or the named model, or says which it lacks", async () => {
+  const { client, requests } = fakeClaude({});
+  assert.deepEqual(await checkModelServer("claude", { env: {}, claudeClient: client }), {
+    status: "ready",
+    model: "claude-opus-newer"
+  });
+  assert.deepEqual(
+    await checkModelServer("claude", {
+      env: { AEE_LLM_MODEL: "claude-opus-older" },
+      claudeClient: client
+    }),
+    { status: "ready", model: "claude-opus-older" }
+  );
+  assert.deepEqual(
+    await checkModelServer("claude", {
+      env: { AEE_LLM_MODEL: "claude-opus-typo" },
+      claudeClient: client
+    }),
+    { status: "model-missing", model: "claude-opus-typo", available: modelList.map(({ id }) => id) }
+  );
+  // Only the model list was asked for: no message was sent.
+  assert.deepEqual(requests, []);
+});
+
+test("a refused key is a failure with the SDK's reason, not a connection problem", async () => {
+  const client = new Anthropic({
+    apiKey: "wrong-key",
+    baseURL: "https://claude.test",
+    maxRetries: 0,
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          type: "error",
+          error: { type: "authentication_error", message: "invalid x-api-key" }
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      )
+  });
+  const check = await checkModelServer("claude", { env: {}, claudeClient: client });
+  assert.equal(check.status, "failed");
+  assert.match(check.status === "failed" ? check.message : "", /invalid x-api-key/);
+});
+
+test("checkModelServer needs an OpenAI key and model, and says which models the key can use", async () => {
+  assert.deepEqual(await checkModelServer("openai", { env: {} }), {
+    status: "failed",
+    message: "OPENAI_API_KEY is not set."
+  });
+  const models = modelListFetch(["gpt-a", "gpt-b"]);
+  assert.deepEqual(
+    await checkModelServer("openai", { env: { OPENAI_API_KEY: "a-key" }, fetch: models.fetch }),
+    { status: "model-missing", model: undefined, available: ["gpt-a", "gpt-b"] }
+  );
+  assert.deepEqual(
+    await checkModelServer("openai", {
+      env: { OPENAI_API_KEY: "a-key", AEE_LLM_MODEL: "gpt-b" },
+      fetch: models.fetch
+    }),
+    { status: "ready", model: "gpt-b" }
+  );
 });

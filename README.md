@@ -41,6 +41,14 @@ npm ci
 npm run build
 ```
 
+Check that this machine can run AEE:
+
+```bash
+node packages/cli/dist/index.js doctor
+```
+
+`aee doctor` checks Node.js against AEE's range, Playwright against the version AEE needs, that Chromium starts the way `aee run` starts it, that the output folder (`aee-output`, or the one `--output <dir>` names) can be written and is kept out of git, and what AI would do with page evidence. Every check that fails prints the command or setting that fixes it, such as `npx playwright install chromium`, and the command exits with 1 until none fails. AI and a real screen reader are optional, so having neither is a note, not a failure. With a model named in `AEE_LLM_PROVIDER`, it asks that model's server for its model list, which sends no page evidence, so a missing key or model shows up here rather than in a report. `--json` prints the same checks as JSON.
+
 Run the bundled fixture:
 
 ```bash
@@ -144,7 +152,7 @@ npm install --save-dev \
   https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.9.0/aee-schemas-0.9.0.tgz
 ```
 
-AEE uses your project's Playwright, 1.65.1 or later, so installing it leaves your `@playwright/test` as it is.
+AEE uses your project's Playwright, 1.65.1 or later, so installing it leaves your `@playwright/test` as it is. Then `npx aee doctor` checks the project is ready to run, and prints the fix for anything that is not, such as the browser Playwright has not downloaded yet.
 
 For the coding-agent server below, add `https://github.com/Elizabeth1979/accessibility-evidence-engine/releases/download/v0.9.0/aee-mcp-0.9.0.tgz` to the same command.
 
@@ -262,6 +270,7 @@ The homepage tells one story, from finding a problem to shipping the fix, in fou
 | Deep focus state        | Document/deep active element, shadow/iframe chain, focus-visible styles, AX focus                                                              | Preserves synchronized focus evidence and deterministically checks explicit preserve, target, and dialog-transfer expectations                                                                                                                                                                                                          |
 | AI review routing       | Headings, icon labels, image purpose                                                                                                           | Deterministic allowlist escalates only meaning-dependent cases; routine failures never call a model                                                                                                                                                                                                                                     |
 | AI fix proposals        | Contextual accessible names and image alternatives                                                                                             | Registry-allowlisted specialists answer from captured evidence; output is always review-only and requires a verified rerun                                                                                                                                                                                                              |
+| Setup check             | `aee doctor`: Node.js, Playwright, the browser, the output folder and git, the AI policy, a real screen reader                                 | Each failing check prints the command or setting that fixes it and exits with 1; optional AI and real readers are notes, never failures                                                                                                                                                                                                 |
 | Verified fixes          | `aee fix` on HTML, JavaScript, JSX and TSX                                                                                                     | Applies an accepted name on its own branch in a git worktree, reruns the approved scenario, and passes it only on axe, reader and cross-evidence agreement                                                                                                                                                                              |
 | Coding-agent server     | `@aee/mcp` over stdio: `explain`, `findings`, `run`                                                                                            | Explains a rule, finding or UI element with its pinned a11y-skills pattern through the registry; reads and runs approved assessments; never applies a fix                                                                                                                                                                               |
 | Palette contrast        | Existing-token selection                                                                                                                       | Selects the perceptually closest supplied palette color that clears a requested contrast ratio                                                                                                                                                                                                                                          |
