@@ -35,7 +35,7 @@ Owns review-only contextual repair helpers, the model-provider seam and the AI s
 
 ### `@aee/schemas`
 
-Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas. It also owns the TypeScript type of every document a schema checks: `scripts/generate-schema-types.mjs` writes them to `src/schema-types.ts` with `json-schema-to-typescript`, `npm run build` regenerates the file and `npm run check` fails when the committed one differs, and `assertValidSchema` narrows a checked value to its schema's type. The types say what a document always has; a schema's conditions (`if`/`then`), exclusions (`not`), patterns and item counts are checked at run time only.
+Owns the JSON Schema documents and runtime validation. The CLI and Playwright adapter validate their emitted run, bundle, and report payloads against these schemas. It also owns the TypeScript type of every document a schema checks: `scripts/generate-schema-types.mjs` writes them to `src/schema-types.ts` with `openapi-typescript`, from an OpenAPI 3.1 bundle of the schemas, `npm run build` regenerates the file and `npm run check` fails when the committed one differs, and `assertValidSchema` narrows a checked value to its schema's type. The types say what a document always has; a schema's conditions (`if`/`then`), exclusions (`not`), patterns and item counts are checked at run time only.
 
 ### `@aee/playwright`
 

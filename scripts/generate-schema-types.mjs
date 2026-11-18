@@ -1,22 +1,25 @@
-// Writes AEE's evidence types from its JSON schemas, with json-schema-to-typescript, to
+// Writes AEE's evidence types from its JSON schemas, with openapi-typescript, to
 // packages/schemas/src/schema-types.ts. The schemas are the source of truth: `npm run build` writes
 // the file and `npm run check` fails when the committed one differs from what the schemas give, so a
 // schema change and the types it makes land in the same PR.
 //
-// Every schema is bundled into one document first, each schema and each of its `$defs` under the
-// bundle's own `$defs` and every `$ref` pointed there, so json-schema-to-typescript reads no file
-// and fetches no URL, and declares each type once. Each type is named here, from the table below;
-// a type the tool would name itself fails the run, since its name could change with any schema.
-// TypeScript cannot express a condition (`if`/`then`/`else`) or an exclusion (`not`), which the
-// tool ignores (see its README); they are left out of the bundle, so the types say what a
-// document always has and the validator checks the rest at run time.
+// Every schema is bundled into one document first: an OpenAPI 3.1 document with no paths, whose
+// `components.schemas` hold each schema and each of its `$defs` under the name of its type, with
+// every `$ref` pointed there. OpenAPI 3.1's schemas are JSON Schema 2020-12, so the schemas go in as
+// they are. openapi-typescript then reads no file and fetches no URL, declares each type once under
+// `components`, and exports it under its own name (`rootTypes`). Each type is named here, from the
+// table below; a type the tool would name itself fails the run, since its name could change with
+// any schema. TypeScript cannot express a condition (`if`/`then`/`else`) or an exclusion (`not`);
+// they are left out of the bundle, so the types say what a document always has and the validator
+// checks the rest at run time.
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
-import { compile } from "json-schema-to-typescript";
+import openapiTS, { astToString } from "openapi-typescript";
 import prettier from "prettier";
+import ts from "typescript";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
 export const schemaDir = path.join(repoRoot, "packages", "schemas", "json");
@@ -184,7 +187,7 @@ export const TYPE_NAMES = {
 /** The type that maps each schema's catalog name to the type of the document it checks. */
 const DOCUMENTS_TYPE = "SchemaDocuments";
 
-/** Keywords TypeScript cannot express, which json-schema-to-typescript ignores. */
+/** Keywords TypeScript cannot express. */
 const VALIDATION_ONLY_KEYWORDS = new Set(["if", "then", "else", "not"]);
 
 const BANNER = [
@@ -208,15 +211,14 @@ export async function generateSchemaTypes(directory = schemaDir) {
     }))
   );
   const fileById = new Map(schemas.map(({ file, schema }) => [schema.$id, file]));
-  const bundle = {
-    title: DOCUMENTS_TYPE,
+  const documents = {
     description: "Each AEE schema, by its name in `schemaCatalog`, and the document it checks.",
     type: "object",
     additionalProperties: false,
     required: [],
-    properties: {},
-    $defs: {}
+    properties: {}
   };
+  const components = { [DOCUMENTS_TYPE]: documents };
 
   for (const { file, schema } of schemas) {
     const names = TYPE_NAMES[file];
@@ -229,36 +231,55 @@ export async function generateSchemaTypes(directory = schemaDir) {
           `Name the type of ${file}#/$defs/${def} in scripts/generate-schema-types.mjs.`
         );
       }
-      bundle.$defs[defKey(file, def)] = typeSchema({ ...definition, title: name }, point);
+      components[name] = typeSchema(definition, point);
     }
-    bundle.required.push(names.schema);
+    documents.required.push(names.schema);
     if (names.type) {
-      bundle.$defs[defKey(file)] = typeSchema({ ...root, title: names.type }, point);
-      bundle.properties[names.schema] = { $ref: `#/$defs/${defKey(file)}` };
+      components[names.type] = typeSchema(root, point);
+      documents.properties[names.schema] = { $ref: componentRef(names.type) };
     } else {
       // A schema of definitions alone accepts any document.
-      bundle.properties[names.schema] = { tsType: "unknown" };
+      documents.properties[names.schema] = {};
     }
   }
 
-  const declared = await compile(bundle, DOCUMENTS_TYPE, {
-    bannerComment: "",
-    format: false,
-    ignoreMinAndMaxItems: true,
-    unreachableDefinitions: true
-  });
-  const expectedNames = new Set([
-    DOCUMENTS_TYPE,
-    ...Object.values(TYPE_NAMES)
-      .flatMap(({ type, defs }) => [type, ...Object.values(defs)])
-      .filter(Boolean)
-  ]);
-  const declaredNames = new Set(
-    [...declared.matchAll(/^export (?:interface|type) (\w+)/gm)].map(([, name]) => name)
+  const nodes = await openapiTS(
+    {
+      openapi: "3.1.0",
+      info: { title: "AEE evidence documents", version: "1" },
+      components: { schemas: components }
+    },
+    {
+      // JSON Schema's meanings, where OpenAPI's defaults differ: a schema that says nothing is any
+      // value, and a property with a `default` may still be left out.
+      emptyObjectsUnknown: true,
+      defaultNonNullable: false,
+      rootTypes: true,
+      rootTypesNoSchemaPrefix: true,
+      rootTypesKeepCasing: true
+    }
   );
-  const surprises = [...declaredNames].filter((name) => !expectedNames.has(name));
+  // The document has no paths, webhooks or operations: their declarations are empty, and left out.
+  const declarations = nodes.filter(
+    (node) => !(ts.isTypeAliasDeclaration(node) && EMPTY_DECLARATIONS.has(node.name.text))
+  );
+  const declared = astToString(declarations);
+  const expectedNames = new Set(Object.keys(components));
+  const declaredNames = new Set(
+    [...declared.matchAll(/^export type (\w+) = components\['schemas'\]\['(\w+)'\];$/gm)].map(
+      ([, name, component]) => {
+        if (name !== component) {
+          throw new Error(`openapi-typescript exported ${component} as ${name}.`);
+        }
+        return name;
+      }
+    )
+  );
+  const surprises = [...declared.matchAll(/^export (?:interface|type) (\w+)/gm)]
+    .map(([, name]) => name)
+    .filter((name) => name !== "components" && !declaredNames.has(name));
   if (surprises.length > 0) {
-    throw new Error(`json-schema-to-typescript named types itself: ${surprises.join(", ")}.`);
+    throw new Error(`openapi-typescript declared types of its own: ${surprises.join(", ")}.`);
   }
   const stale = [...expectedNames].filter((name) => !declaredNames.has(name));
   if (stale.length > 0) {
@@ -270,36 +291,42 @@ export async function generateSchemaTypes(directory = schemaDir) {
   return prettier.format(`${BANNER}\n\n${declared}`, { ...prettierConfig, parser: "typescript" });
 }
 
-function defKey(file, def) {
-  const base = file.replace(/\.schema\.json$/, "");
-  return def ? `${base}--${def}` : base;
+/** The declarations openapi-typescript writes for an API's parts, which the bundle has none of. */
+const EMPTY_DECLARATIONS = new Set(["paths", "webhooks", "$defs", "operations"]);
+
+function componentRef(name) {
+  return `#/components/schemas/${name}`;
 }
 
-/** Where a schema's `$ref` points in the bundle. */
+/** Where a schema's `$ref` points in the bundle: the component of the type it names. */
 function bundleRef(ref, baseId, fileById) {
   const target = new URL(ref, baseId);
   const fragment = target.hash;
   target.hash = "";
   const file = fileById.get(target.href);
   if (!file) throw new Error(`No AEE schema has the $id ${target.href} (from ${ref}).`);
-  if (fragment === "") return `#/$defs/${defKey(file)}`;
+  const names = TYPE_NAMES[file];
+  if (fragment === "") {
+    if (!names.type) throw new Error(`${ref} points at ${file}, which has no type of its own.`);
+    return componentRef(names.type);
+  }
   const def = /^#\/\$defs\/([^/]+)$/.exec(fragment)?.[1];
-  if (!def) throw new Error(`Point ${ref} at a schema or one of its $defs.`);
-  return `#/$defs/${defKey(file, def)}`;
+  if (!def || !names.defs[def]) throw new Error(`Point ${ref} at a schema or one of its $defs.`);
+  return componentRef(names.defs[def]);
 }
 
 /**
  * A schema as the bundle holds it: its `$ref`s pointed into the bundle, and what TypeScript cannot
  * express left out.
  *
- * - `if`/`then`/`else` and `not` go, as json-schema-to-typescript ignores them.
+ * - `if`/`then`/`else` and `not` go.
  * - A subschema that says nothing of the value's type, such as `{ "required": ["selector"] }`, goes
  *   from an `allOf`, where it adds nothing to the type; in an `anyOf` or `oneOf` it allows any value
  *   of the type the rest of the schema gives, so the whole union goes.
- * - A `$ref` beside other keywords is written as `allOf: [{ $ref }]` beside them, which is what it
- *   means in JSON Schema 2020-12 (Core §10.2.1): the type is the referenced one, and a sibling
- *   `description` documents the property, where the tool would otherwise copy the type under a
- *   new name.
+ * - An object schema with no `additionalProperties` is given `additionalProperties: true`, which is
+ *   what it means in JSON Schema (Core §10.3.2.3): a document may hold other members.
+ *   openapi-typescript would type it as closed, and its own `additionalProperties` option opens
+ *   every object, the ones the schema closes too.
  */
 function typeSchema(node, point) {
   if (Array.isArray(node)) return node.map((item) => typeSchema(item, point));
@@ -316,43 +343,18 @@ function typeSchema(node, point) {
       const members = typeSchema(value, point);
       if (members.every(describesType)) copy[key] = members;
     } else if (key === "properties") {
-      // Property names are data, not keywords: a property may be called `$schema`. A property
-      // whose schema says nothing of its type, such as one with only a description, holds any
-      // value, where the tool would type it as an object.
+      // Property names are data, not keywords: a property may be called `$schema`.
       copy.properties = Object.fromEntries(
-        Object.entries(value).map(([name, property]) => {
-          const typed = typeSchema(property, point);
-          return [name, describesType(typed) ? typed : { ...typed, tsType: "unknown" }];
-        })
+        Object.entries(value).map(([name, property]) => [name, typeSchema(property, point)])
       );
     } else {
       copy[key] = typeSchema(value, point);
     }
   }
-  if (copy.$ref && Object.keys(copy).length > 1) {
-    const { $ref, allOf = [], ...siblings } = copy;
-    return withOwnMembers({ ...siblings, allOf: [{ $ref }, ...allOf] });
+  if (describesObject(copy) && !Object.hasOwn(copy, "additionalProperties")) {
+    copy.additionalProperties = true;
   }
-  return withOwnMembers(copy);
-}
-
-/** The keywords that describe an object's own members. */
-const OBJECT_KEYWORDS = ["type", "properties", "required", "additionalProperties"];
-
-/**
- * A schema whose `allOf` sits beside members of its own, with those members moved into the `allOf`
- * as one more subschema: the same type, which the tool declares once under the schema's name
- * rather than as two types, one of them named after the other.
- */
-function withOwnMembers(schema) {
-  if (!schema.allOf || !Object.hasOwn(schema, "properties")) return schema;
-  const own = Object.fromEntries(
-    OBJECT_KEYWORDS.filter((key) => key in schema).map((key) => [key, schema[key]])
-  );
-  const rest = Object.fromEntries(
-    Object.entries(schema).filter(([key]) => !OBJECT_KEYWORDS.includes(key))
-  );
-  return { ...rest, allOf: [...schema.allOf, own] };
+  return copy;
 }
 
 /** The keywords that say what type a value has, as opposed to which values of it are valid. */
@@ -366,12 +368,15 @@ const TYPE_KEYWORDS = [
   "items",
   "allOf",
   "anyOf",
-  "oneOf",
-  "tsType"
+  "oneOf"
 ];
 
 function describesType(schema) {
   return TYPE_KEYWORDS.some((keyword) => Object.hasOwn(schema, keyword));
+}
+
+function describesObject(schema) {
+  return schema.type === "object" || Object.hasOwn(schema, "properties");
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
