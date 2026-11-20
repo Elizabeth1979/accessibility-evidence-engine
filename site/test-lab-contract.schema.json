@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aee.dev/site/test-lab-contract.schema.json",
+  "title": "AEE test lab contract",
+  "description": "The test lab's known answers. Each issue is a benchmark case: its family, and what a correct check says on the issue's own page and on the fixed page. These answers are written here, never taken from a judge (ADR 0006).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "validation", "reset", "pages", "issuePage", "issues"],
+  "properties": {
+    "$schema": {
+      "const": "./test-lab-contract.schema.json"
+    },
+    "version": {
+      "const": 3
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "browser", "scope"],
+      "properties": {
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "browser": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "reset": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issues", "fixed"],
+      "properties": {
+        "issues": {
+          "$ref": "#/$defs/page"
+        },
+        "fixed": {
+          "$ref": "#/$defs/page"
+        }
+      }
+    },
+    "issuePage": {
+      "description": "Each issue's own page: the fixed page with only that issue's mutation applied.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "urlTemplate", "summary"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "urlTemplate": {
+          "description": "An RFC 6570 URI template; {id} is the issue's id, which is also its mutation's name in test-case.js.",
+          "const": "test-case.html?case={id}"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "issues": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/issue"
+      }
+    }
+  },
+  "$defs": {
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url", "summary", "headingOutline"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "headingOutline": {
+          "description": "Each heading as a screen reader lists it, in page order.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["level", "name"],
+            "properties": {
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 6
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "whoItHurts", "concept", "family", "check", "expected"],
+      "properties": {
+        "id": {
+          "description": "The issue's id, and the name of the one mutation in test-case.js that makes it.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "whoItHurts": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concept": {
+          "description": "The registry concept whose check looks for it. Must be an id in remediation-registry.json.",
+          "type": "string",
+          "minLength": 1
+        },
+        "family": {
+          "description": "The check family it is measured in (ADR 0006). Families start from the registry concepts, so it must be an id in remediation-registry.json.",
+          "type": "string",
+          "minLength": 1
+        },
+        "check": {
+          "type": "string",
+          "minLength": 1
+        },
+        "axeRule": {
+          "description": "Found today by this axe rule.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sweepFinding": {
+          "description": "Found today by this keyboard and pointer sweep finding.",
+          "type": "string",
+          "minLength": 1
+        },
+        "plannedStep": {
+          "description": "Not found today; the master-plan step that adds its check.",
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "description": "What a correct check says, written with the case and never taken from a judge.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["ownPage", "fixedPage"],
+          "properties": {
+            "ownPage": {
+              "description": "On the issue's own page the bug is there, so a correct check fails, at this element.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome", "element"],
+              "properties": {
+                "outcome": {
+                  "const": "failed"
+                },
+                "element": {
+                  "$ref": "#/$defs/element"
+                }
+              }
+            },
+            "fixedPage": {
+              "description": "On the fixed page the bug is gone: the check passes at this element, or is inapplicable because nothing on the page is of its kind, and then no element is given.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["outcome"],
+              "properties": {
+                "outcome": {
+                  "enum": ["passed", "inapplicable"]
+                },
+                "element": {
+                  "$ref": "#/$defs/element"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "outcome": {
+                        "const": "passed"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": ["element"]
+                  }
+                },
+                {
+                  "if": {
+                    "properties": {
+                      "outcome": {
+                        "const": "inapplicable"
+                      }
+                    }
+                  },
+                  "then": {
+                    "properties": {
+                      "element": false
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["axeRule"]
+        },
+        {
+          "required": ["sweepFinding"]
+        },
+        {
+          "required": ["plannedStep"]
+        }
+      ],
+      "description": "One known issue. It is found in exactly one way today: an axe rule, a sweep finding, or not yet, with the step that plans its check."
+    },
+    "element": {
+      "description": "The element a correct check points at, as a CSS selector that matches exactly one element.",
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

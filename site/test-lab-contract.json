@@ -1,5 +1,6 @@
 {
-  "version": 2,
+  "$schema": "./test-lab-contract.schema.json",
+  "version": 3,
   "validation": {
     "engine": "axe-core 4.14.0",
     "browser": "Playwright Chromium",
@@ -30,118 +31,193 @@
       ]
     }
   },
+  "issuePage": {
+    "title": "Each issue on its own page",
+    "urlTemplate": "test-case.html?case={id}",
+    "summary": "The fixed page with one issue put back. Open one from its name in the table below."
+  },
   "issues": [
     {
       "id": "unnamed-archive-button",
       "title": "The archive button has no name",
       "whoItHurts": "Screen reader users hear only “button”.",
       "concept": "accessible-name",
+      "family": "accessible-name",
       "check": "Automated rule (axe)",
-      "axeRule": "button-name"
+      "axeRule": "button-name",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#archive-project" },
+        "fixedPage": { "outcome": "passed", "element": "#archive-project" }
+      }
     },
     {
       "id": "unnamed-help-link",
       "title": "The help icon link has no name",
       "whoItHurts": "Screen reader users hear only “link”.",
       "concept": "accessible-name",
+      "family": "accessible-name",
       "check": "Automated rule (axe)",
-      "axeRule": "link-name"
+      "axeRule": "link-name",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#help-link" },
+        "fixedPage": { "outcome": "passed", "element": "#help-link" }
+      }
     },
     {
       "id": "unlabelled-search",
       "title": "The search label is not connected to its field",
       "whoItHurts": "Screen reader users reach an edit field without knowing what it is for.",
       "concept": "accessible-name",
+      "family": "accessible-name",
       "check": "Automated rule (axe)",
-      "axeRule": "label"
+      "axeRule": "label",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#project-search" },
+        "fixedPage": { "outcome": "passed", "element": "#project-search" }
+      }
     },
     {
       "id": "chart-without-alt",
       "title": "The usage chart has no text alternative",
       "whoItHurts": "Blind users miss the numbers the chart shows.",
       "concept": "image-purpose",
+      "family": "image-purpose",
       "check": "Automated rule (axe)",
-      "axeRule": "image-alt"
+      "axeRule": "image-alt",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#usage-chart" },
+        "fixedPage": { "outcome": "passed", "element": "#usage-chart" }
+      }
     },
     {
       "id": "faint-hint-text",
       "title": "The hint under the chart is too faint",
       "whoItHurts": "People with low vision cannot read it.",
       "concept": "color-contrast",
+      "family": "color-contrast",
       "check": "Automated rule (axe)",
-      "axeRule": "color-contrast"
+      "axeRule": "color-contrast",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#usage-hint" },
+        "fixedPage": { "outcome": "passed", "element": "#usage-hint" }
+      }
     },
     {
       "id": "empty-heading",
       "title": "The usage heading is empty",
       "whoItHurts": "Screen reader users jumping by heading land on nothing.",
       "concept": "heading-structure",
+      "family": "heading-structure",
       "check": "Automated rule (axe)",
-      "axeRule": "empty-heading"
+      "axeRule": "empty-heading",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#usage-heading" },
+        "fixedPage": { "outcome": "passed", "element": "#usage-heading" }
+      }
     },
     {
       "id": "wrong-heading-level",
       "title": "Workspace settings is a level 3 heading under Projects",
       "whoItHurts": "Screen reader users are told settings belong to Projects; they are a peer section.",
       "concept": "heading-structure",
+      "family": "heading-structure",
       "check": "Heading outline, judged in context",
-      "plannedStep": "M3"
+      "plannedStep": "M3",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#settings-heading" },
+        "fixedPage": { "outcome": "passed", "element": "#settings-heading" }
+      }
     },
     {
       "id": "click-only-export",
       "title": "Export report works with a mouse only",
       "whoItHurts": "Keyboard users cannot reach or press it.",
       "concept": "keyboard-operation",
+      "family": "keyboard-operation",
       "check": "Keyboard (Playwright): Tab through the page; it never gets focus",
-      "sweepFinding": "pointer-only"
+      "sweepFinding": "pointer-only",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#export-report" },
+        "fixedPage": { "outcome": "passed", "element": "#export-report" }
+      }
     },
     {
       "id": "hover-only-plan-details",
       "title": "Plan details appear on mouse hover only",
       "whoItHurts": "Keyboard and touch users cannot see them.",
       "concept": "hover-focus-equivalence",
+      "family": "hover-focus-equivalence",
       "check": "Mouse vs keyboard (Playwright): hover shows it, focus never does",
-      "sweepFinding": "hover-only"
+      "sweepFinding": "hover-only",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#plan-details" },
+        "fixedPage": { "outcome": "inapplicable" }
+      }
     },
     {
       "id": "focus-lost-after-archive",
       "title": "Focus is lost after archiving a project",
       "whoItHurts": "Keyboard and screen reader users are dropped at the top of the page.",
       "concept": "focus-management",
+      "family": "focus-management",
       "check": "Keyboard (Playwright): press Archive, check where focus lands",
-      "sweepFinding": "focus-lost"
+      "sweepFinding": "focus-lost",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#archive-project" },
+        "fixedPage": { "outcome": "passed", "element": "#archive-project" }
+      }
     },
     {
       "id": "silent-status-message",
       "title": "The message after archiving is never announced",
       "whoItHurts": "Screen reader users press Archive and hear nothing about what happened.",
       "concept": "status-messages",
+      "family": "status-messages",
       "check": "Keyboard (Playwright): press each control, check new text is announced",
-      "sweepFinding": "status-not-announced"
+      "sweepFinding": "status-not-announced",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#action-status" },
+        "fixedPage": { "outcome": "passed", "element": "#action-status" }
+      }
     },
     {
       "id": "silent-sync-failure",
       "title": "A failed sync says nothing",
       "whoItHurts": "Everyone believes the settings synced; screen reader users have no way to find out otherwise.",
       "concept": "status-messages",
+      "family": "status-messages",
       "check": "Keyboard (Playwright): press each control, check a failed request is announced",
-      "sweepFinding": "failure-not-announced"
+      "sweepFinding": "failure-not-announced",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#sync-settings" },
+        "fixedPage": { "outcome": "passed", "element": "#sync-settings" }
+      }
     },
     {
       "id": "colour-only-over-limit",
       "title": "Storage over its limit is shown by colour alone",
       "whoItHurts": "People who cannot tell red from the other text miss that storage is over the limit.",
       "concept": "use-of-color",
+      "family": "use-of-color",
       "check": "Visual (Playwright): compare each item with its like neighbours",
-      "sweepFinding": "colour-only"
+      "sweepFinding": "colour-only",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#storage-limit" },
+        "fixedPage": { "outcome": "passed", "element": "#storage-limit" }
+      }
     },
     {
       "id": "text-image-banner",
       "title": "The upgrade banner is an image of its words",
       "whoItHurts": "People who enlarge text, change its colours or translate the page cannot do it to these words.",
       "concept": "images-of-text",
+      "family": "images-of-text",
       "check": "Visual (Playwright): an image shaped like a line of text, drawn in two flat colours",
-      "sweepFinding": "text-in-image"
+      "sweepFinding": "text-in-image",
+      "expected": {
+        "ownPage": { "outcome": "failed", "element": "#upgrade-banner" },
+        "fixedPage": { "outcome": "inapplicable" }
+      }
     }
   ]
 }
