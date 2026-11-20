@@ -78,7 +78,7 @@ const refusedOnlyForApproval = /Cannot run scenario “public-site-homepage”/;
 test("aee with no command lists every command", async () => {
   const { code, stderr } = await aee([]);
   assert.equal(code, 1);
-  for (const command of ["plan", "run", "comment", "fix"]) {
+  for (const command of ["doctor", "plan", "run", "comment", "fix"]) {
     assert.match(stderr, new RegExp(`aee ${command} `));
   }
 });
@@ -269,7 +269,9 @@ test("an option the command does not know is an error that names it, never silen
     // A misspelt -p for --post was read as a folder, so the comment was never posted.
     [["comment", reports, "-p"], /aee comment: Unknown option '-p'/],
     // A second scenario was ignored, so only the first was planned.
-    [["plan", approvedScenario, "second.yml"], /aee plan: Unexpected argument "second\.yml"/]
+    [["plan", approvedScenario, "second.yml"], /aee plan: Unexpected argument "second\.yml"/],
+    [["doctor", "--jsno"], /aee doctor: Unknown option '--jsno'/],
+    [["doctor", "scenario.yml"], /aee doctor: Unexpected argument "scenario\.yml"/]
   ];
   for (const [args, expected] of cases) {
     const { code, stdout, stderr } = await aee(args);
@@ -366,7 +368,18 @@ test("every command line that worked before is read as before", () => {
   }
 });
 
+test("aee doctor reads --json and --output in any order", () => {
+  assert.deepEqual(parseCommandLine(["doctor"]), { command: "doctor", json: false });
+  assert.deepEqual(parseCommandLine(["doctor", "--output", "out", "--json"]), {
+    command: "doctor",
+    json: true,
+    outputDir: "out"
+  });
+  assert.throws(() => parseCommandLine(["doctor", "--output"]), /aee doctor: .*--output/);
+});
+
 test("the usage lines are written from the same options the commands read", () => {
+  assert.equal(usage(COMMANDS.doctor), "aee doctor [--json] [--output <dir>]");
   assert.equal(usage(COMMANDS.plan), "aee plan <scenario.yml> [--json]");
   assert.equal(usage(COMMANDS.run), "aee run <scenario.yml> [--open] [--ci] [--output <dir>]");
   assert.equal(usage(COMMANDS.runConfig), "aee run <config.json>");

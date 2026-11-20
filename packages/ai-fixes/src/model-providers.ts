@@ -269,16 +269,7 @@ export interface LocalModelProviderOptions {
  */
 export function createLocalModelProvider(options: LocalModelProviderOptions = {}): ModelProvider {
   const model = options.model ?? DEFAULT_LOCAL_MODEL;
-  const client = new OpenAI({
-    baseURL: options.baseUrl ?? DEFAULT_LOCAL_BASE_URL,
-    apiKey: options.apiKey || LOCAL_MODEL_PLACEHOLDER_KEY,
-    adminAPIKey: null,
-    organization: null,
-    project: null,
-    timeout: options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS,
-    maxRetries: 0,
-    fetch: options.fetch
-  });
+  const client = localModelClient(options);
 
   return {
     id: `local:${model}`,
@@ -325,6 +316,20 @@ export function createLocalModelProvider(options: LocalModelProviderOptions = {}
       }
     }
   };
+}
+
+/** The OpenAI SDK pointed at a local runtime, with every OpenAI credential set rather than read. */
+function localModelClient(options: LocalModelProviderOptions): OpenAI {
+  return new OpenAI({
+    baseURL: options.baseUrl ?? DEFAULT_LOCAL_BASE_URL,
+    apiKey: options.apiKey || LOCAL_MODEL_PLACEHOLDER_KEY,
+    adminAPIKey: null,
+    organization: null,
+    project: null,
+    timeout: options.timeoutMs ?? LOCAL_MODEL_TIMEOUT_MS,
+    maxRetries: 0,
+    fetch: options.fetch
+  });
 }
 
 export interface OpenAiResponsesModelProviderOptions {
@@ -400,4 +405,89 @@ export function createOpenAiResponsesModelProvider(
       return response.output_parsed;
     }
   };
+}
+
+/** A provider that answers from a server, which `checkModelServer` can ask for its models. */
+export type ModelServerProviderName = Exclude<ModelProviderName, "auto" | "stub">;
+
+/** What a provider's server said when asked which models it has. */
+export type ModelServerCheck =
+  | { status: "ready"; model: string }
+  /** The server did not answer: not running, a wrong address, or no network. */
+  | { status: "unreachable"; message: string }
+  /** The server answered, without the model AEE would ask; `model` is undefined when none is set. */
+  | { status: "model-missing"; model: string | undefined; available: string[] }
+  /** The server refused or failed, such as a missing or wrong key; the SDK's message says which. */
+  | { status: "failed"; message: string };
+
+/** How long `checkModelServer` waits for a model list: a check, not an answer. */
+export const MODEL_SERVER_CHECK_TIMEOUT_MS = 10_000;
+
+export interface CheckModelServerOptions {
+  /** Where configuration is read from; defaults to process.env. */
+  env?: Record<string, string | undefined>;
+  /** A preconfigured Claude client (tests, a proxy). */
+  claudeClient?: Anthropic;
+  /** The Fetch implementation the OpenAI SDK uses for the OpenAI and local providers (tests, a proxy). */
+  fetch?: typeof globalThis.fetch;
+  /** Defaults to MODEL_SERVER_CHECK_TIMEOUT_MS. */
+  timeoutMs?: number;
+}
+
+/**
+ * Asks a provider's server, configured as createModelProvider configures it, which models it has,
+ * and whether the model AEE would ask is one of them: AEE_LLM_MODEL, else the newest active Opus
+ * for Claude and DEFAULT_LOCAL_MODEL for a local runtime. Only the model list is requested, so no
+ * evidence, prompt or page content leaves the machine, and nothing is billed. A connection error
+ * is told apart by the SDKs' own `APIConnectionError` class (a timeout is one).
+ */
+export async function checkModelServer(
+  provider: ModelServerProviderName,
+  options: CheckModelServerOptions = {}
+): Promise<ModelServerCheck> {
+  const env = options.env ?? process.env;
+  const timeout = options.timeoutMs ?? MODEL_SERVER_CHECK_TIMEOUT_MS;
+  const model = env.AEE_LLM_MODEL || undefined;
+  const fromList = (wanted: string | undefined, available: string[]): ModelServerCheck =>
+    wanted && available.includes(wanted)
+      ? { status: "ready", model: wanted }
+      : { status: "model-missing", model: wanted, available };
+  try {
+    if (provider === "claude") {
+      const client = options.claudeClient ?? new Anthropic({ timeout, maxRetries: 0 });
+      if (!model) return { status: "ready", model: await newestOpusModel(client) };
+      const available: string[] = [];
+      for await (const { id } of client.models.list()) available.push(id);
+      return fromList(model, available);
+    }
+    if (provider === "openai" && !env.OPENAI_API_KEY?.trim()) {
+      return { status: "failed", message: "OPENAI_API_KEY is not set." };
+    }
+    const client =
+      provider === "local"
+        ? localModelClient({
+            baseUrl: env.AEE_LLM_BASE_URL,
+            apiKey: env.AEE_LLM_API_KEY,
+            timeoutMs: timeout,
+            fetch: options.fetch
+          })
+        : new OpenAI({
+            apiKey: env.OPENAI_API_KEY,
+            timeout,
+            maxRetries: 0,
+            fetch: options.fetch
+          });
+    const available: string[] = [];
+    for await (const { id } of client.models.list()) available.push(id);
+    return fromList(provider === "local" ? (model ?? DEFAULT_LOCAL_MODEL) : model, available);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      error instanceof Anthropic.APIConnectionError ||
+      error instanceof OpenAI.APIConnectionError
+    ) {
+      return { status: "unreachable", message };
+    }
+    return { status: "failed", message };
+  }
 }

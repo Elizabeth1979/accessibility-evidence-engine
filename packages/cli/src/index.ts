@@ -30,6 +30,13 @@ import {
 } from "@aee/schemas";
 
 import { parseCommandLine, type CommandLine } from "./command-line";
+import {
+  aeeRequirements,
+  installedGuidepupVersion,
+  installedPlaywrightVersion,
+  renderDoctorReport,
+  runDoctor
+} from "./doctor";
 import { runVerifiedFix, type VerifiedFixOptions } from "./fix-command";
 import {
   buildPullRequestComment,
@@ -39,7 +46,12 @@ import {
   uploadCommentImages
 } from "./pr-comment";
 import { compileScenarioPlan, loadScenario, renderScenarioPlan } from "./scenario";
-import { executeScenario, openScenarioReport } from "./scenario-runner";
+import {
+  DEFAULT_OUTPUT_DIR,
+  executeScenario,
+  launchChromium,
+  openScenarioReport
+} from "./scenario-runner";
 
 export {
   aeeRunModelProvider,
@@ -51,6 +63,8 @@ export {
 } from "./scenario-runner";
 
 export { buildPullRequestComment, type CommentResult } from "./pr-comment";
+
+export { runDoctor, type DoctorCheck, type DoctorReport } from "./doctor";
 
 export {
   runVerifiedFix,
@@ -137,7 +151,7 @@ export async function runWithPage(
     resolvedPolicy.capture
   );
   const runId = `run-${Date.now()}`;
-  const outputBaseDir = config.outputDir ?? "aee-output";
+  const outputBaseDir = config.outputDir ?? DEFAULT_OUTPUT_DIR;
   const outputDir = path.join(resolvedProjectRoot, outputBaseDir, runId);
   const artifactDir = path.join(outputDir, "artifacts");
   await mkdir(artifactDir, { recursive: true });
@@ -257,6 +271,8 @@ async function writeReporterArtifacts(
 export async function main(argv: string[]): Promise<void> {
   const commandLine = parseCommandLine(argv);
   switch (commandLine.command) {
+    case "doctor":
+      return runDoctorCommand(commandLine);
     case "plan": {
       const plan = compileScenarioPlan(await loadScenario(path.resolve(commandLine.scenarioPath)));
       process.stdout.write(
@@ -285,6 +301,31 @@ export async function main(argv: string[]): Promise<void> {
     case "fix":
       return runFixCommand(commandLine);
   }
+}
+
+/**
+ * `aee doctor`: checks this machine can run `aee run`, and prints the fix for each check that fails,
+ * or with `--json` the checks as JSON. The exit code is 1 when a check fails; information about
+ * what is optional, such as AI or a real screen reader, does not count.
+ */
+async function runDoctorCommand({
+  json,
+  outputDir
+}: Extract<CommandLine, { command: "doctor" }>): Promise<void> {
+  const playwrightVersion = installedPlaywrightVersion();
+  const report = await runDoctor({
+    outputDir: path.resolve(outputDir ?? DEFAULT_OUTPUT_DIR),
+    cwd: process.cwd(),
+    env: process.env,
+    platform: process.platform,
+    nodeVersion: process.versions.node,
+    launchBrowser: playwrightVersion ? launchChromium : undefined,
+    playwrightVersion,
+    guidepupVersion: installedGuidepupVersion(process.cwd()),
+    requirements: aeeRequirements()
+  });
+  process.stdout.write(json ? `${JSON.stringify(report, null, 2)}\n` : renderDoctorReport(report));
+  if (!report.ready) process.exitCode = 1;
 }
 
 /**

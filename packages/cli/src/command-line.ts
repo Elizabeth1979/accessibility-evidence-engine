@@ -34,6 +34,11 @@ function command<const Options extends Readonly<Record<string, OptionSpec>>>(
 }
 
 export const COMMANDS = {
+  doctor: command({
+    name: "doctor",
+    positionals: [],
+    options: { json: { type: "boolean" }, output: { type: "string", value: "<dir>" } }
+  }),
   plan: command({
     name: "plan",
     positionals: ["<scenario.yml>"],
@@ -164,6 +169,7 @@ export function parseCommand<const Options extends Readonly<Record<string, Optio
 
 /** What `aee` was asked to do, with every argument read and checked. */
 export type CommandLine =
+  | { command: "doctor"; json: boolean; outputDir?: string }
   | { command: "plan"; scenarioPath: string; json: boolean }
   | { command: "run"; scenarioPath: string; open: boolean; ci: boolean; outputDir?: string }
   | { command: "run-config"; configPath: string }
@@ -189,6 +195,15 @@ function acceptedFix(value: string): AcceptedFix {
 export function parseCommandLine(argv: readonly string[]): CommandLine {
   const [name, ...args] = argv;
   if (name === undefined || name.startsWith("-")) throw new Error(`Usage: ${ALL_USAGE}`);
+
+  if (name === "doctor") {
+    const { values } = parseCommand(COMMANDS.doctor, args);
+    return {
+      command: "doctor",
+      json: values.json,
+      ...(values.output === undefined ? {} : { outputDir: values.output })
+    };
+  }
 
   if (name === "plan") {
     const { positionals, values } = parseCommand(COMMANDS.plan, args);

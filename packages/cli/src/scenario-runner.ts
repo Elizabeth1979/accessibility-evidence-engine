@@ -81,7 +81,7 @@ import {
   type SchemaDocuments,
   type SchemaName
 } from "@aee/schemas";
-import { chromium, type Browser, type Page } from "@playwright/test";
+import type { Browser, Page } from "@playwright/test";
 import { stringify as stringifyCsv } from "csv-stringify/sync";
 
 import {
@@ -555,6 +555,18 @@ function isSweepFindingKind(ruleId: string): ruleId is SweepFindingKind {
   return Object.hasOwn(SWEEP_FINDING_TEXT, ruleId);
 }
 
+/** Where `aee run` writes its assessments when no `--output` is given, under the working folder. */
+export const DEFAULT_OUTPUT_DIR = "aee-output";
+
+/**
+ * Chromium as `aee run` starts it. Playwright is loaded here, on first use, rather than when the
+ * CLI starts, so `aee doctor` can still run, and say how to install it, when it is missing.
+ */
+export async function launchChromium(): Promise<Browser> {
+  const { chromium } = await import("@playwright/test");
+  return chromium.launch({ headless: true });
+}
+
 /** Executes only approved, user-authored scenario commands and integrates every resulting lane. */
 export async function executeScenario(
   scenarioPath: string,
@@ -566,14 +578,14 @@ export async function executeScenario(
   assertScenarioCanRun(plan);
   const plannedLanes = countPlannedLanes(scenario);
   const assessmentId = `${scenario.id}-${Date.now()}`;
-  const assessmentDir = path.resolve(options.outputDir ?? "aee-output", assessmentId);
+  const assessmentDir = path.resolve(options.outputDir ?? DEFAULT_OUTPUT_DIR, assessmentId);
   const startedAt = new Date().toISOString();
   const childManifestFiles: string[] = [];
   const actions: ScenarioActionReport[] = [];
   const findings: Array<Record<string, unknown>> = [];
   const diagnostics: string[] = [];
 
-  const browser = options.browser ?? (await chromium.launch({ headless: true }));
+  const browser = options.browser ?? (await launchChromium());
   const ownsBrowser = !options.browser;
   const assessment = { assessmentDir, childManifestFiles, actions, findings, diagnostics };
   const runLane = laneRunner(assessment);
