@@ -18,6 +18,7 @@ import interactionComparisonRequestSchema from "../json/interaction-comparison-r
 import interactionVideoSchema from "../json/interaction-video.schema.json";
 import judgmentSchema from "../json/judgment.schema.json";
 import keyboardPointerSweepLaneSchema from "../json/keyboard-pointer-sweep-lane.schema.json";
+import realReaderComparisonSchema from "../json/real-reader-comparison.schema.json";
 import remediationRegistrySchema from "../json/remediation-registry.schema.json";
 import scenarioPlanSchema from "../json/scenario-plan.schema.json";
 import scenarioReportSchema from "../json/scenario-report.schema.json";
@@ -55,6 +56,7 @@ const schemaDocuments = {
   interactionComparison: interactionComparisonSchema,
   interactionComparisonRequest: interactionComparisonRequestSchema,
   interactionVideo: interactionVideoSchema,
+  realReaderComparison: realReaderComparisonSchema,
   evidenceManifest: evidenceManifestSchema,
   axeResult: axeResultSchema
 } as const satisfies Record<SchemaName, AnySchemaObject>;
@@ -83,6 +85,7 @@ const schemaTitles: Record<SchemaName, string> = {
   interactionComparison: "AEE pointer and keyboard interaction comparison",
   interactionComparisonRequest: "AEE pointer and keyboard interaction comparison request",
   interactionVideo: "AEE interaction video sidecar",
+  realReaderComparison: "AEE real screen reader comparison",
   evidenceManifest: "AEE evidence manifest",
   axeResult: "AEE axe result"
 };

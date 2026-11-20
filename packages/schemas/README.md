@@ -12,6 +12,8 @@ Every document a schema checks has a TypeScript type, generated from the schema 
 
 `interaction-video.schema.json` validates the lane recording sidecar, action timing, caption linkage, execution status, and conservative privacy state.
 
+`real-reader-comparison.schema.json` validates the `comparison.json` that `npm run readers:compare` writes: what AEE's virtual reader and a real screen reader said, their alignment, and how the real reader ran (runner image, browser, reader and Guidepup versions, locale, voice, rate, verbosity, punctuation, commands and retries). Each of those is a value with where it was read, or `unknown` with why; never blank.
+
 `focus-state.schema.json` validates document and deepest active elements, shadow/iframe focus chains, focus-indicator metadata, `aria-activedescendant`, and accessibility-tree focus. Portable-reader items may also include document-relative rendered bounds used to correlate the semantic target with full-page visual evidence.
 
 `axe-result.schema.json` validates the axe-core 4.14 result AEE writes at a checkpoint: the axe fields AEE reads, with axe's own types and optionality, and AEE's additions to it (each violation's place on the screenshot and the page around it, its contrast measurement, and the frames left out). axe's other fields are kept as axe wrote them and not checked.

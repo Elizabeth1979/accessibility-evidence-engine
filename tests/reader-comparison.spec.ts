@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+
+import { validateSchema } from "@aee/schemas";
 import { expect, test } from "@playwright/test";
 
 import {
@@ -10,8 +13,74 @@ import {
   summarize,
   withoutReaderHints,
   wordDifference,
+  writeComparison,
   type ReaderComparison
 } from "./reader-comparison";
+import {
+  CommandLog,
+  osLocale,
+  readerBuild,
+  readerSettings,
+  readerVersion,
+  runnerImage,
+  type RunCommand
+} from "./reader-run-details";
+
+const VOICEOVER_SPEECH =
+  "SCRCategories_SCRCategorySystemWide_SCRSpeechLanguages_default_SCRSpeechComponentSettings_";
+
+/** Each reader's settings as Guidepup's `getSettings()` gives them, from the files Guidepup installs. */
+const SETTINGS: Record<string, unknown> = {
+  // guidepup/nvda's nvda.ini, parsed as Guidepup parses it: only what differs from NVDA's defaults.
+  NVDA: {
+    general: { language: "Windows" },
+    speech: {
+      synth: "oneCore",
+      oneCore: {
+        voice:
+          "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Speech_OneCore\\Voices\\Tokens\\MSTTS_V110_enGB_GeorgeM",
+        rate: 100,
+        rateBoost: true
+      }
+    },
+    math: { speech: { verbosity: "Medium" } }
+  },
+  // guidepup/voiceover's macos-26 default.plist.
+  VoiceOver: {
+    [`${VOICEOVER_SPEECH}SCRVoiceIdentifier`]: "com.apple.speech.synthesis.voice.daniel.premium",
+    [`${VOICEOVER_SPEECH}SCRRateAsPercent`]: 90,
+    SCRVerbosity_SCRVerbosityLevel: "SCRVerbosityHigh",
+    SCRCategories_SCRCategorySystemWide_SCRPunctuationVerbosenessLevel:
+      "SCRPunctuationVerbosenessLevel1"
+  }
+};
+
+const COMMANDS = [
+  { command: 'start({"capture":"initial"})', count: 1 },
+  { command: "navigateToWebContent()", count: 1 },
+  { command: "lastSpokenPhrase()", count: 4 },
+  { command: 'next({"capture":true})', count: 3 }
+];
+
+/** How `reader` ran on a Mac with no runner image (a desktop, not one of GitHub's runners). */
+function howRan(reader: string, attempt = 1): ReaderComparison["real"] {
+  return {
+    reader,
+    readerVersion:
+      reader === "VoiceOver"
+        ? { value: "10 (build 993)", source: "VoiceOver's app bundle" }
+        : { value: "2026.2.0.54321", source: "the running nvda.exe" },
+    readerBuild: readerBuild(reader === "VoiceOver" ? "0.1.0-VoiceOver4" : "0.2.1-2026.2"),
+    ...readerSettings(reader, () => SETTINGS[reader]),
+    commands: COMMANDS,
+    attempt,
+    retriesAllowed: 2,
+    phrases: [],
+    stoppedBecause: "silence",
+    repeatedAtEnd: [],
+    maxSteps: 33
+  };
+}
 
 const comparison: ReaderComparison = {
   page: "site/test-case.html",
@@ -20,15 +89,17 @@ const comparison: ReaderComparison = {
     platform: "darwin",
     release: "27.0.0",
     guidepup: "0.36.3",
-    speechEngine: "@guidepup/virtual-screen-reader 0.32.1"
+    speechEngine: "@guidepup/virtual-screen-reader 0.32.1",
+    ...runnerImage({}),
+    browser: { value: "chromium", source: "Playwright's browserType().name()" },
+    browserVersion: { value: "149.0.7827.2", source: "Playwright's browser.version()" },
+    osLocale: osLocale("en-US"),
+    browserLocale: { value: "en-US", source: "the browser's navigator.language" }
   },
   virtual: ["heading, Workspace, level 1", "link, Help | projects", "end of list"],
   real: {
-    reader: "VoiceOver",
-    phrases: ["Workspace, heading level 1", "Help, link", "Fern"],
-    stoppedBecause: "silence",
-    repeatedAtEnd: [],
-    maxSteps: 33
+    ...howRan("VoiceOver"),
+    phrases: ["Workspace, heading level 1", "Help, link", "Fern"]
   }
 };
 
@@ -394,7 +465,7 @@ function ran(reader: string, phrases: string[], attempt = 1): ReaderComparison {
   return {
     ...comparison,
     virtual: ["banner", "link, Test lab", "end of list"],
-    real: { reader, phrases, stoppedBecause: "silence", repeatedAtEnd: [], maxSteps: 33, attempt }
+    real: { ...howRan(reader, attempt), phrases }
   };
 }
 
@@ -498,5 +569,250 @@ test("where one reader says several of AEE's steps in one phrase, the combined r
   ]);
   expect(readersSideBySide([folded, stepByStep]).split("\n")).toContain(
     "| 1 | main<br>list<br>link, Test lab | main landmark, list, with 2 items, link, Test lab | only NVDA: **landmark with 2 items** | main<br>list 2 items<br>link, Test lab | only VoiceOver: **2 items** |"
+  );
+});
+
+test("the runner image comes from its own variables, and is unknown, with why, anywhere else", () => {
+  expect(runnerImage({ ImageOS: "win25", ImageVersion: "20261110.1.0" })).toEqual({
+    osImage: { value: "win25", source: "the runner image's ImageOS variable" },
+    osImageVersion: { value: "20261110.1.0", source: "the runner image's ImageVersion variable" }
+  });
+  // On a desktop neither is set; a blank one is no value either.
+  expect(runnerImage({ ImageVersion: "  " })).toEqual({
+    osImage: {
+      unknown: "ImageOS is not set: this is not one of GitHub's hosted runners, whose images set it"
+    },
+    osImageVersion: {
+      unknown:
+        "ImageVersion is not set: this is not one of GitHub's hosted runners, whose images set it"
+    }
+  });
+  expect(osLocale("")).toEqual({ unknown: "Node reports no default locale" });
+});
+
+test("NVDA's language, voice, rate, verbosity and punctuation come from its nvda.ini", () => {
+  expect(readerSettings("NVDA", () => SETTINGS.NVDA)).toEqual({
+    language: {
+      value: "Windows",
+      source:
+        "NVDA's general.language setting (nvda.ini); \"Windows\" means NVDA follows Windows' language"
+    },
+    voice: {
+      value:
+        "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Speech_OneCore\\Voices\\Tokens\\MSTTS_V110_enGB_GeorgeM",
+      source: "NVDA's speech.oneCore.voice setting (nvda.ini), for NVDA's oneCore synthesizer"
+    },
+    rate: {
+      value: "100, rate boost on",
+      source: "NVDA's speech.oneCore.rate setting (nvda.ini) and speech.oneCore.rateBoost"
+    },
+    verbosity: {
+      value: "Medium",
+      source:
+        "NVDA's math.speech.verbosity setting (nvda.ini): for maths only, as NVDA has no verbosity setting for other content"
+    },
+    // Guidepup's nvda.ini leaves the punctuation level at NVDA's default, which it does not record.
+    punctuation: {
+      unknown:
+        "nvda.ini does not set speech.symbolLevel, so NVDA uses its own default, which nvda.ini does not record"
+    }
+  });
+  const set = readerSettings("NVDA", () => ({ speech: { symbolLevel: 200 } }));
+  expect(set.punctuation).toEqual({
+    value: "most (200)",
+    source: "NVDA's speech.symbolLevel setting (nvda.ini), NVDA's punctuation/symbol level"
+  });
+  // With no synthesizer named, the voice and rate cannot be found.
+  expect(set.voice).toEqual({
+    unknown:
+      "nvda.ini does not set speech.synth, so NVDA uses its own default, which nvda.ini does not record"
+  });
+});
+
+test("VoiceOver's voice, rate, verbosity and punctuation come from Guidepup's VoiceOver settings", () => {
+  expect(readerSettings("VoiceOver", () => SETTINGS.VoiceOver)).toEqual({
+    language: { unknown: "Guidepup's VoiceOver settings hold no language setting" },
+    voice: {
+      value: "com.apple.speech.synthesis.voice.daniel.premium",
+      source: `VoiceOver's ${VOICEOVER_SPEECH}SCRVoiceIdentifier setting`
+    },
+    rate: { value: "90%", source: `VoiceOver's ${VOICEOVER_SPEECH}SCRRateAsPercent setting` },
+    verbosity: {
+      value: "SCRVerbosityHigh",
+      source: "VoiceOver's SCRVerbosity_SCRVerbosityLevel setting"
+    },
+    punctuation: {
+      value: "SCRPunctuationVerbosenessLevel1",
+      source:
+        "VoiceOver's SCRCategories_SCRCategorySystemWide_SCRPunctuationVerbosenessLevel setting"
+    }
+  });
+  expect(readerSettings("VoiceOver", () => ({})).verbosity).toEqual({
+    unknown: "Guidepup's VoiceOver settings do not set SCRVerbosity_SCRVerbosityLevel"
+  });
+});
+
+test("settings that cannot be read are each unknown, with why", () => {
+  const failing = readerSettings("NVDA", () => {
+    throw new Error("Failed to get NVDA settings.");
+  });
+  for (const value of Object.values(failing)) {
+    expect(value).toEqual({
+      unknown: "Guidepup could not read NVDA's settings: Failed to get NVDA settings."
+    });
+  }
+  for (const value of Object.values(readerSettings("Orca", () => ({})))) {
+    expect(value).toEqual({
+      unknown: "AEE reads the settings of NVDA and VoiceOver only, not of Orca"
+    });
+  }
+});
+
+/** A stand-in for running a command, answering `outputs` by the command's last argument. */
+function fakeRun(outputs: Record<string, string>, ran: string[][] = []): RunCommand {
+  return async (file, args) => {
+    ran.push([file, ...args]);
+    const output = outputs[args.at(-1)!];
+    if (output === undefined) throw new Error(`${file} exited with code 1`);
+    return output;
+  };
+}
+
+test("the reader's own version is read from the reader, and is unknown, with why, when it says none", async () => {
+  const ran: string[][] = [];
+  const nvdaVersion = "(Get-Process -Name nvda | Select-Object -First 1).ProductVersion";
+  expect(
+    await readerVersion("NVDA", fakeRun({ [nvdaVersion]: "2026.2.0.54321\r\n" }, ran))
+  ).toEqual({
+    value: "2026.2.0.54321",
+    source: "the product version of the running nvda.exe (Get-Process)"
+  });
+  expect(ran).toEqual([["powershell", "-NoProfile", "-NonInteractive", "-Command", nvdaVersion]]);
+  expect(await readerVersion("NVDA", fakeRun({ [nvdaVersion]: "\r\n" }))).toEqual({
+    unknown: "the running nvda.exe reports no product version"
+  });
+  expect(await readerVersion("NVDA", fakeRun({}))).toEqual({
+    unknown: "NVDA's version could not be read: powershell exited with code 1"
+  });
+
+  const plutil: RunCommand = async (file, args) => {
+    ran.push([file, ...args]);
+    return args[1] === "CFBundleShortVersionString" ? "10\n" : "993\n";
+  };
+  expect(await readerVersion("VoiceOver", plutil)).toEqual({
+    value: "10 (build 993)",
+    source: "VoiceOver's app bundle (CFBundleShortVersionString and CFBundleVersion)"
+  });
+  const bundle = "/System/Library/CoreServices/VoiceOver.app/Contents/Info.plist";
+  expect(ran.slice(1)).toEqual([
+    ["plutil", "-extract", "CFBundleShortVersionString", "raw", bundle],
+    ["plutil", "-extract", "CFBundleVersion", "raw", bundle]
+  ]);
+  expect(await readerVersion("Orca", fakeRun({}))).toEqual({
+    unknown: "AEE reads the version of NVDA and VoiceOver only, not of Orca"
+  });
+  expect(readerBuild("")).toEqual({ unknown: "Guidepup names no version for this reader" });
+});
+
+test("every command sent to the real reader is counted, in the order each was first sent", async () => {
+  const log = new CommandLog();
+  log.sent('start({"capture":"initial"})');
+  await readWithRealReader(fakeReader(["main", "Workspace"]), 10, log);
+  // One phrase read before the first step, then a step and a read until the reader is silent.
+  expect(log.commands).toEqual([
+    { command: 'start({"capture":"initial"})', count: 1 },
+    { command: "lastSpokenPhrase()", count: 3 },
+    { command: 'next({"capture":true})', count: 2 }
+  ]);
+});
+
+test("the comparison says how the real reader ran, next to what it said, and what it could not read", () => {
+  const lines = sideBySide(comparison).split("\n");
+  const ranAt = lines.indexOf("## How it ran");
+  expect(ranAt).toBeGreaterThan(lines.indexOf("| Reader | Announcements |"));
+  expect(ranAt).toBeLessThan(lines.indexOf("## How the two line up"));
+  expect(lines).toContain("| Detail | VoiceOver |");
+  expect(lines).toContain(
+    "| Runner image | **unknown**: ImageOS is not set: this is not one of GitHub's hosted runners, whose images set it |"
+  );
+  expect(lines).toContain(
+    "| Operating system | darwin 27.0.0 (from Node's process.platform and os.release()) |"
+  );
+  expect(lines).toContain(
+    "| Browser version | 149.0.7827.2 (from Playwright's browser.version()) |"
+  );
+  expect(lines).toContain("| Reader version | 10 (build 993) (from VoiceOver's app bundle) |");
+  expect(lines).toContain(
+    "| Guidepup's build of the reader | 0.1.0-VoiceOver4 (from Guidepup's screenReader.version, from its manifest of reader builds) |"
+  );
+  expect(lines).toContain("| Guidepup | 0.36.3 (from @guidepup/guidepup's package.json) |");
+  expect(lines).toContain(
+    "| Reader language | **unknown**: Guidepup's VoiceOver settings hold no language setting |"
+  );
+  expect(lines).toContain(
+    "| Verbosity | SCRVerbosityHigh (from VoiceOver's SCRVerbosity_SCRVerbosityLevel setting) |"
+  );
+  expect(lines).toContain(
+    '| Commands | start({"capture":"initial"}), 1 time<br>navigateToWebContent(), 1 time<br>lastSpokenPhrase(), 4 times<br>next({"capture":true}), 3 times |'
+  );
+  expect(lines).toContain("| Retries | 0 of the 2 allowed retries needed: this is attempt 1 |");
+});
+
+test("the combined page says how each real reader ran, a column each", () => {
+  const lines = readersSideBySide([nvda, voiceOver]).split("\n");
+  expect(lines.indexOf("## How each reader ran")).toBeLessThan(
+    lines.indexOf("## How they line up")
+  );
+  expect(lines).toContain("| Detail | NVDA | VoiceOver |");
+  expect(lines).toContain(
+    "| Reader version | 2026.2.0.54321 (from the running nvda.exe) | 10 (build 993) (from VoiceOver's app bundle) |"
+  );
+  expect(lines).toContain(
+    "| Punctuation | **unknown**: nvda.ini does not set speech.symbolLevel, so NVDA uses its own default, which nvda.ini does not record | SCRPunctuationVerbosenessLevel1 (from VoiceOver's SCRCategories_SCRCategorySystemWide_SCRPunctuationVerbosenessLevel setting) |"
+  );
+  expect(lines).toContain(
+    "| Retries | 1 of the 2 allowed retries needed: this is attempt 2 | 0 of the 2 allowed retries needed: this is attempt 1 |"
+  );
+});
+
+test("comparison.json is checked against its schema: a blank value or a missing detail is refused", async () => {
+  const dir = test.info().outputPath("readers");
+  await writeComparison(dir, comparison);
+  const file: unknown = JSON.parse(await readFile(`${dir}/comparison.json`, "utf8"));
+  expect(validateSchema("realReaderComparison", file)).toEqual({ valid: true, errors: [] });
+
+  const written = file as { environment: Record<string, unknown>; real: Record<string, unknown> };
+  const blank = {
+    ...written,
+    environment: { ...written.environment, osImage: { value: "", source: "ImageOS" } }
+  };
+  expect(validateSchema("realReaderComparison", blank).errors.join("; ")).toContain(
+    "/environment/osImage"
+  );
+  const { voice: _voice, ...withoutVoice } = written.real;
+  expect(
+    validateSchema("realReaderComparison", { ...written, real: withoutVoice }).errors.join("; ")
+  ).toContain("voice");
+  await expect(
+    writeComparison(dir, {
+      ...comparison,
+      real: { ...comparison.real, readerVersion: { unknown: "" } }
+    })
+  ).rejects.toThrow("Invalid real screen reader comparison");
+});
+
+test("a backslash in a value is shown as it is, not read as a Markdown escape", () => {
+  const lines = sideBySide({
+    ...comparison,
+    real: {
+      ...comparison.real,
+      voice: { value: "C:\\voices\\_default", source: "a test" },
+      phrases: ["Workspace, heading level 1", "Help\\, link", "Fern"]
+    }
+  }).split("\n");
+  // In Markdown a backslash before punctuation vanishes; each one is doubled, so it shows as read.
+  expect(lines).toContain("| Voice | C:\\\\voices\\\\_default (from a test) |");
+  expect(lines).toContain(
+    "| 2 | link, Help \\| projects | Help\\\\, link | only AEE's virtual screen reader: **projects** |"
   );
 });

@@ -30,11 +30,13 @@ name: Real screen readers
       - .github/workflows/real-screen-readers.yml
       - package-lock.json
       - packages/playwright/src/**
+      - packages/schemas/json/real-reader-comparison.schema.json
       - playwright.readers.config.ts
       - scripts/build-guidepup-reader.mjs
       - site/test-case.html
       - site/test-case.js
       - tests/reader-comparison.ts
+      - tests/reader-run-details.ts
       - tests/readers.combine.ts
       - tests/readers.compare.ts
   # Weekly, so a new Chrome or runner image shows up even when nothing here changed.

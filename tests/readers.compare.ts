@@ -14,6 +14,16 @@ import {
   realReaderName,
   writeComparison
 } from "./reader-comparison";
+import {
+  command,
+  CommandLog,
+  detail,
+  osLocale,
+  readerBuild,
+  readerSettings,
+  readerVersion,
+  runnerImage
+} from "./reader-run-details";
 
 // The page to read: AEE_READERS_PAGE, a file or a URL, else the demo page.
 const page = process.env.AEE_READERS_PAGE ?? "site/test-case.html";
@@ -37,7 +47,9 @@ const record = process.env.AEE_READERS_RECORD
 // start, and the comparison says which attempt it came from.
 test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async ({
   page: browserPage,
-  screenReader
+  browser,
+  screenReader,
+  screenReaderStartOptions
 }, testInfo) => {
   await browserPage.goto(url);
   const { phrases: virtual, speechEngine } = await readWithVirtualReader(browserPage);
@@ -45,11 +57,15 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
   await mkdir(dir, { recursive: true });
   const stopRecording = record?.(path.resolve(dir, "real-reader.mp4"));
   const maxSteps = virtual.length + EXTRA_REAL_STEPS;
-  const { phrases, stoppedBecause, repeatedAtEnd } = await screenReader
-    .navigateToWebContent()
-    .then(() => readWithRealReader(screenReader, maxSteps))
+  const log = new CommandLog();
+  // Guidepup's fixture started the reader with these options before the test.
+  log.sent(command("start", screenReaderStartOptions));
+  const { phrases, stoppedBecause, repeatedAtEnd } = await log
+    .send(command("navigateToWebContent"), () => screenReader.navigateToWebContent())
+    .then(() => readWithRealReader(screenReader, maxSteps, log))
     .finally(() => stopRecording?.());
 
+  const reader = realReaderName();
   await writeComparison(dir, {
     page,
     recordedAt: new Date().toISOString(),
@@ -57,19 +73,41 @@ test(`AEE's virtual screen reader and ${realReaderName()} read ${page}`, async (
       platform: process.platform,
       release: os.release(),
       guidepup: GUIDEPUP_VERSION,
-      speechEngine
+      speechEngine,
+      ...runnerImage(),
+      browser: detail(
+        browser.browserType().name(),
+        "Playwright's browserType().name()",
+        "Playwright names no browser"
+      ),
+      browserVersion: detail(
+        browser.version(),
+        "Playwright's browser.version()",
+        "the browser reports no version"
+      ),
+      osLocale: osLocale(),
+      browserLocale: detail(
+        await browserPage.evaluate(() => navigator.language),
+        "the browser's navigator.language",
+        "the browser reports no language"
+      )
     },
     virtual,
     real: {
-      reader: realReaderName(),
+      reader,
+      readerVersion: await readerVersion(reader),
+      readerBuild: readerBuild(screenReader.version),
+      ...readerSettings(reader, () => screenReader.getSettings()),
+      commands: log.commands,
+      attempt: testInfo.retry + 1,
+      retriesAllowed: testInfo.project.retries,
       phrases,
       stoppedBecause,
       repeatedAtEnd,
-      maxSteps,
-      attempt: testInfo.retry + 1
+      maxSteps
     }
   });
   console.log(
-    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${realReaderName()} ${phrases.length} (stopped: ${stoppedBecause}).`
+    `Wrote ${path.join(dir, "comparison.md")}: AEE's virtual reader ${virtual.length} announcements, ${reader} ${phrases.length} (stopped: ${stoppedBecause}).`
   );
 });

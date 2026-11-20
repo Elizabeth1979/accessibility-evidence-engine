@@ -21,6 +21,7 @@ export interface components {
       interaction: components["schemas"]["Interaction"];
       judgment: components["schemas"]["Judgment"];
       keyboardPointerSweepLane: components["schemas"]["KeyboardPointerSweepLaneDocument"];
+      realReaderComparison: components["schemas"]["RealReaderComparison"];
       remediationRegistry: components["schemas"]["RemediationRegistry"];
       report: components["schemas"]["AeeReport"];
       run: components["schemas"]["AeeRun"];
@@ -941,6 +942,98 @@ export interface components {
       }[];
       diagnostics?: string[];
     };
+    /** @description A value read from where it is recorded, with where that is; or, when it could not be read, why. Never a guess. */
+    RealReaderRunDetail:
+      | {
+          value: string;
+          /** @description Where the value was read. */
+          source: string;
+        }
+      | {
+          /** @description Why the value could not be read. */
+          unknown: string;
+        };
+    RealReaderCommand: {
+      /** @description The Guidepup command, by its name and options. */
+      command: string;
+      count: number;
+    };
+    /**
+     * @description Why the real reader's walk ended: it said nothing at the next step, it said the same thing three times in a row, or it reached `maxSteps`.
+     * @enum {unknown}
+     */
+    RealReaderWalkEnd: "silence" | "repeated" | "step-limit";
+    RealReaderAlignedRow: {
+      real: string[];
+      virtual: string[];
+      onlyReal: string[];
+      onlyVirtual: string[];
+    };
+    /**
+     * AEE Real Screen Reader Comparison
+     * @description What AEE's virtual screen reader and one real screen reader (NVDA, VoiceOver or Orca, driven by Guidepup) said on the same page, written by `npm run readers:compare` as comparison.json, with how the real reader ran: the machine, the browser, the reader and its settings, the commands it was given and the retries it was allowed.
+     */
+    RealReaderComparison: {
+      /** @description The page both readers read: a file in the repository or a URL. */
+      page: string;
+      recordedAt: components["schemas"]["IsoTimestamp"];
+      /** @description The machine and browser both readers ran on. */
+      environment: {
+        /** @description Node's `process.platform`. */
+        platform: string;
+        /** @description Node's `os.release()`: the operating system's own version. */
+        release: string;
+        /** @description The version of `@guidepup/guidepup` that drove the real reader. */
+        guidepup: string;
+        /** @description What decides what AEE's virtual reader says: Guidepup's virtual screen reader, and its version. */
+        speechEngine: string;
+        /** @description The GitHub runner image, from its `ImageOS` variable (such as `win25`). */
+        osImage: components["schemas"]["RealReaderRunDetail"];
+        /** @description The runner image's version, from its `ImageVersion` variable. */
+        osImageVersion: components["schemas"]["RealReaderRunDetail"];
+        /** @description The browser Playwright ran, by Playwright's name for it. */
+        browser: components["schemas"]["RealReaderRunDetail"];
+        /** @description The version the browser reports (Playwright's `browser.version()`). */
+        browserVersion: components["schemas"]["RealReaderRunDetail"];
+        /** @description The operating system's locale, as Node's `Intl` reads it. */
+        osLocale: components["schemas"]["RealReaderRunDetail"];
+        /** @description The browser's language (`navigator.language` on the page). */
+        browserLocale: components["schemas"]["RealReaderRunDetail"];
+      };
+      /** @description What AEE's virtual screen reader said, one announcement per step. */
+      virtual: string[];
+      /** @description What the real screen reader said, why its walk ended, and how it ran. */
+      real: {
+        reader: string;
+        /** @description The version the reader itself reports: NVDA's `nvda.exe`, VoiceOver's app bundle. */
+        readerVersion: components["schemas"]["RealReaderRunDetail"];
+        /** @description Guidepup's `screenReader.version`: the build of the reader, or of its settings, that Guidepup installed. */
+        readerBuild: components["schemas"]["RealReaderRunDetail"];
+        /** @description The reader's own language setting. */
+        language: components["schemas"]["RealReaderRunDetail"];
+        /** @description The voice the reader spoke with. */
+        voice: components["schemas"]["RealReaderRunDetail"];
+        /** @description How fast the voice spoke. */
+        rate: components["schemas"]["RealReaderRunDetail"];
+        /** @description The reader's verbosity setting, where it has one. */
+        verbosity: components["schemas"]["RealReaderRunDetail"];
+        /** @description How much punctuation and how many symbols the reader speaks. */
+        punctuation: components["schemas"]["RealReaderRunDetail"];
+        /** @description Every Guidepup command sent to the reader during the walk, with how many times, in the order each was first sent. */
+        commands: components["schemas"]["RealReaderCommand"][];
+        /** @description Which attempt this was: a reader that fails to start is tried again. */
+        attempt: number;
+        /** @description How many retries the run allowed (Playwright's `--retries`). */
+        retriesAllowed: number;
+        phrases: string[];
+        stoppedBecause: components["schemas"]["RealReaderWalkEnd"];
+        /** @description What the reader said again at the end of the page, left out of `phrases`. */
+        repeatedAtEnd: string[];
+        maxSteps: number;
+      };
+      /** @description The two transcripts lined up, one row per thing on the page. */
+      alignment: components["schemas"]["RealReaderAlignedRow"][];
+    };
     RemediationEntry: {
       id: string;
       title: string;
@@ -1506,6 +1599,11 @@ export type KeyboardPointerSweepLaneTabStop =
   components["schemas"]["KeyboardPointerSweepLaneTabStop"];
 export type KeyboardPointerSweepLaneDocument =
   components["schemas"]["KeyboardPointerSweepLaneDocument"];
+export type RealReaderRunDetail = components["schemas"]["RealReaderRunDetail"];
+export type RealReaderCommand = components["schemas"]["RealReaderCommand"];
+export type RealReaderWalkEnd = components["schemas"]["RealReaderWalkEnd"];
+export type RealReaderAlignedRow = components["schemas"]["RealReaderAlignedRow"];
+export type RealReaderComparison = components["schemas"]["RealReaderComparison"];
 export type RemediationEntry = components["schemas"]["RemediationEntry"];
 export type RemediationRequirement = components["schemas"]["RemediationRequirement"];
 export type RemediationAiPolicy = components["schemas"]["RemediationAiPolicy"];

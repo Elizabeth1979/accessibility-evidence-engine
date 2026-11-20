@@ -3,7 +3,9 @@ import path from "node:path";
 
 import { test } from "@playwright/test";
 
-import { readersSideBySide, type ReaderComparison } from "./reader-comparison";
+import { assertValidSchema, type RealReaderComparison } from "@aee/schemas";
+
+import { readersSideBySide } from "./reader-comparison";
 
 // The folder holding the comparison.json that `npm run readers:compare` wrote on each machine:
 // AEE_READERS_RUNS, else test-results/readers-runs. Each may sit at any depth: GitHub's
@@ -19,10 +21,14 @@ test("every real reader that ran, next to AEE's virtual reader", async () => {
     .filter((file) => path.basename(file) === "comparison.json")
     .sort();
   if (files.length === 0) throw new Error(`No comparison.json found under ${runs}.`);
+  // Each file is checked against its schema, so a comparison missing how its reader ran (one
+  // from before AEE recorded it) fails here, naming the file and the field.
   const comparisons = await Promise.all(
-    files.map(
-      async (file) => JSON.parse(await readFile(path.join(runs, file), "utf8")) as ReaderComparison
-    )
+    files.map(async (file): Promise<RealReaderComparison> => {
+      const comparison: unknown = JSON.parse(await readFile(path.join(runs, file), "utf8"));
+      assertValidSchema("realReaderComparison", comparison, path.join(runs, file));
+      return comparison;
+    })
   );
   const markdown = readersSideBySide(comparisons);
   await mkdir(path.dirname(out), { recursive: true });

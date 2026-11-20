@@ -4,6 +4,10 @@ All notable changes to Accessibility Evidence Engine are documented here. The pr
 
 ## [Unreleased]
 
+### Added
+
+- Every real-screen-reader result says how it ran (M12.3). `comparison.md` and the combined `combined.md` have a **How it ran** table next to what each reader said, a column per reader: the runner image and its version, the operating system and its locale, the browser, its version and its language, the reader's own version and Guidepup's build of it, Guidepup's version, the reader's language, voice, rate, verbosity and punctuation, every command sent to it with how many times, and which attempt it was of the retries allowed. Each value says where it was read (such as "win25 (from the runner image's ImageOS variable)"); a value that cannot be read says **unknown** and why, such as "ImageOS is not set: this is not one of GitHub's hosted runners, whose images set it", and none is guessed or left blank. `comparison.json` gains the same fields and has a schema, `real-reader-comparison.schema.json` in `@aee/schemas`, checked when the file is written and when `npm run readers:combine` reads it, so a comparison from before this change is refused with the missing fields named. See [Real NVDA on GitHub's Windows computers](docs/real-screen-readers.md#how-each-reader-ran).
+
 ## [0.9.0] - 2026-11-18
 
 ### Fixed
