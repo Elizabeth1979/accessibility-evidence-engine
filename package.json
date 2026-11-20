@@ -24,7 +24,7 @@
     "site:generate": "node scripts/generate-site-registry.mjs && node scripts/generate-features.mjs",
     "site:check": "node scripts/generate-site-registry.mjs --check && node scripts/generate-features.mjs --check",
     "site:roadmap": "node scripts/generate-roadmap.mjs",
-    "site:lab": "node scripts/generate-test-lab.mjs",
+    "site:lab": "npm run build && node scripts/generate-test-lab.mjs",
     "site:shots": "npm run build && playwright test --config playwright.shots.config.ts",
     "score:ai": "npm run build && playwright test --config playwright.score.config.ts",
     "reader:record": "npm run build && playwright test --config playwright.readers.config.ts --project record",

@@ -1,5 +1,6 @@
-// The HTML is the fixed page. Each defect below breaks it in one way, and its key is the
-// issue id in test-lab-contract.json. `?case=fixed` applies none of them.
+// The HTML is the fixed page. Each defect below is one named mutation that breaks it in one way,
+// and its key is the issue id in test-lab-contract.json. With no `?case`, the page applies them
+// all; `?case=fixed` applies none; `?case=<issue id>` applies only that one, the issue's own page.
 const defects = {
   "unnamed-archive-button": () => {
     document.querySelector("#archive-project").removeAttribute("aria-label");
@@ -79,12 +80,23 @@ const defects = {
   }
 };
 
-const fixed = new URLSearchParams(location.search).get("case") === "fixed";
-const applied = new Set(fixed ? [] : Object.keys(defects));
+const requested = new URLSearchParams(location.search).get("case");
+const fixed = requested === "fixed";
+const single = requested !== null && !fixed;
+// A case the page does not know would otherwise show the fixed page under another name.
+if (single && !Object.hasOwn(defects, requested)) {
+  document.querySelector("#case-name").textContent = `Unknown case “${requested}”`;
+  throw new Error(`test-case.html has no case "${requested}"`);
+}
+const applied = new Set(fixed ? [] : single ? [requested] : Object.keys(defects));
 applied.forEach((id) => defects[id]());
 document.body.dataset.defects = [...applied].join(" ");
 
-const caseName = fixed ? "Fixed" : "With deliberate accessibility issues";
+const caseName = fixed
+  ? "Fixed"
+  : single
+    ? "With one deliberate accessibility issue"
+    : "With deliberate accessibility issues";
 document.querySelector("#case-name").textContent = caseName;
 document.title = `${caseName} · Workspace overview · AEE demo page`;
 const otherVersion = document.querySelector("#other-version");

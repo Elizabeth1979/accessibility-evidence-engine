@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -15,6 +14,7 @@ import {
   type VirtualScreenReaderItem
 } from "@aee/playwright";
 
+import { issuePageUrl } from "../scripts/test-lab-contract.mjs";
 import {
   contract,
   labFixtureModel,
@@ -25,9 +25,6 @@ import {
 } from "./test-lab-helpers";
 import { serveDirectory, startHtmlServer } from "./scenario-helpers";
 
-const registry = JSON.parse(
-  readFileSync("packages/schemas/json/remediation-registry.json", "utf8")
-) as { entries: Array<{ id: string }> };
 const site = pathToFileURL(path.resolve("site") + path.sep).href;
 const { issues: issuesPage, fixed: fixedPage } = contract.pages;
 
@@ -39,9 +36,12 @@ async function open(page: Page, labPage: LabPage) {
   await page.goto(new URL(labPage.url, site).href);
 }
 
+async function axeViolations(page: Page) {
+  return (await new AxeBuilder({ page }).analyze()).violations;
+}
+
 async function axeRules(page: Page) {
-  const result = await new AxeBuilder({ page }).analyze();
-  return result.violations.map(({ id }) => id).sort();
+  return (await axeViolations(page)).map(({ id }) => id).sort();
 }
 
 // The headings in the accessibility tree, in page order, each with its level and accessible name.
@@ -80,28 +80,85 @@ const expectedSweepKinds = contract.issues.flatMap(({ sweepFinding }) =>
 const expectedAxeRules = contract.issues.flatMap(({ axeRule }) => (axeRule ? [axeRule] : []));
 
 // Over http, as the lab is published: a page opened from a file cannot send a request.
-async function sweepFindings(page: Page, labPage: LabPage) {
+async function sweep(page: Page, url: string) {
   const server = await startHtmlServer(serveDirectory("site"));
   try {
     const result = await sweepKeyboardAndPointer({
       page,
-      url: new URL(labPage.url, `${server.origin}/`).href,
+      url: new URL(url, `${server.origin}/`).href,
       activateControls: true
     });
-    return result.findings.map(({ kind }) => kind).sort();
+    return result.findings;
   } finally {
     await server.close();
   }
 }
 
-test("every issue belongs to a registry concept and has exactly one way it is found", () => {
-  const concepts = new Set(registry.entries.map(({ id }) => id));
+async function sweepFindings(page: Page, labPage: LabPage) {
+  return (await sweep(page, labPage.url)).map(({ kind }) => kind).sort();
+}
+
+test("every issue has its own page, with only its own mutation and its expected element", async ({
+  page
+}) => {
   for (const issue of contract.issues) {
-    expect(concepts, issue.id).toContain(issue.concept);
-    const ways = [issue.axeRule, issue.sweepFinding, issue.plannedStep].filter(Boolean);
-    expect(ways, issue.id).toHaveLength(1);
+    await page.goto(new URL(issuePageUrl(contract, issue), site).href);
+    await expect(page.locator("body"), issue.id).toHaveAttribute("data-defects", issue.id);
+    await expect(page.locator("#case-name")).toHaveText("With one deliberate accessibility issue");
+    await expect(page.locator(issue.expected.ownPage.element), issue.id).toHaveCount(1);
+  }
+  // A case that passes on the fixed page points at an element there; an inapplicable one has none.
+  await open(page, fixedPage);
+  for (const { id, expected } of contract.issues) {
+    if (expected.fixedPage.outcome === "passed") {
+      await expect(page.locator(expected.fixedPage.element), id).toHaveCount(1);
+    }
   }
 });
+
+test("a case the page does not know is refused, not shown as the fixed page", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", ({ message }) => errors.push(message));
+  await page.goto(new URL("test-case.html?case=no-such-issue", site).href);
+  await expect(page.locator("#case-name")).toHaveText("Unknown case “no-such-issue”");
+  await expect(page.locator("body")).not.toHaveAttribute("data-defects");
+  expect(errors).toEqual(['test-case.html has no case "no-such-issue"']);
+});
+
+// Each issue alone: its check finds it at the element the contract names, and nothing else on the
+// page is found. A check may find it more than once, as the silent status message is found once
+// for each control whose message it hides; each is the same bug at the same element. An issue AEE
+// has no check for yet is found by nothing: a miss, still counted as one, since its expected
+// outcome is "failed" whatever the judges say.
+for (const issue of contract.issues) {
+  test(`on its own page, ${issue.id} is found only where the contract says`, async ({ page }) => {
+    const url = issuePageUrl(contract, issue);
+    const found = (await sweep(page, url)).map(({ kind, selector }) => ({ by: kind, selector }));
+    await page.goto(new URL(url, site).href);
+    for (const { id, nodes } of await axeViolations(page)) {
+      found.push(...nodes.map(({ target }) => ({ by: id, selector: target.join(" ") })));
+    }
+    const check = issue.axeRule ?? issue.sweepFinding;
+    expect([...new Set(found.map(({ by }) => by))], issue.id).toEqual(check ? [check] : []);
+    if (!check) {
+      test.info().annotations.push({
+        type: "missed",
+        description: `${issue.id} has no check yet (planned in ${issue.plannedStep})`
+      });
+    }
+    // The same element, however the judge writes its selector.
+    for (const { selector } of found) {
+      const sameElement = await page.evaluate(
+        ([foundSelector, expectedSelector]) => {
+          const expected = document.querySelector(expectedSelector);
+          return expected !== null && document.querySelector(foundSelector) === expected;
+        },
+        [selector, issue.expected.ownPage.element]
+      );
+      expect(sameElement, `${issue.id}: found at ${selector}`).toBe(true);
+    }
+  });
+}
 
 test("the demo page shows exactly the issues' axe rules", async ({ page }) => {
   await open(page, issuesPage);

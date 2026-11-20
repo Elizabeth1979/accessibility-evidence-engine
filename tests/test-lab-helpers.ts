@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -7,6 +6,7 @@ import type { Browser, TestInfo } from "@playwright/test";
 import { createStubModelProvider, type ModelProvider, type ModelRequest } from "@aee/ai-fixes";
 import { SWEEP_FINDING_CONCEPTS } from "@aee/playwright";
 
+import { loadTestLabContract } from "../scripts/test-lab-contract.mjs";
 import { runApprovedScenario, serveDirectory, startHtmlServer } from "./scenario-helpers";
 
 // A heading as a screen reader lists it: its level and accessible name, from the accessibility tree.
@@ -24,15 +24,23 @@ export interface LabPage {
 export interface LabIssue {
   id: string;
   concept: string;
+  family: string;
   axeRule?: string;
   sweepFinding?: string;
   plannedStep?: string;
+  /** What a correct check says, written with the case; never taken from a judge (ADR 0006). */
+  expected: {
+    ownPage: { outcome: "failed"; element: string };
+    fixedPage: { outcome: "passed"; element: string } | { outcome: "inapplicable" };
+  };
 }
 
 // The contract is the known answer: the demo page must show exactly its issues' axe rules and
-// sweep findings, and the fixed page none. The lab page is generated from the same file.
-export const contract = JSON.parse(readFileSync("site/test-lab-contract.json", "utf8")) as {
+// sweep findings, each issue's own page only its own, and the fixed page none. The lab page is
+// generated from the same file, and both read it through its schema.
+export const contract = loadTestLabContract() as {
   pages: { issues: LabPage; fixed: LabPage };
+  issuePage: { urlTemplate: string };
   issues: LabIssue[];
 };
 
